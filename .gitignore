@@ -60,3 +60,16 @@ tmp/
 # Artifacts
 artifacts/
 uploads/
+
+# Control-plane runtime
+control-plane-runtime/
+runtime/
+data/
+backups/
+secrets/
+logs/
+
+# Python environments
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
