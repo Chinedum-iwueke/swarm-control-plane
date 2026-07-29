@@ -57,23 +57,27 @@ class CodeValidationContract(BaseModel):
     @field_validator("base_ref")
     @classmethod
     def validate_base_ref(cls, base_ref: str) -> str:
-        if base_ref.startswith("-"):
-            raise ValueError("base_ref must not begin with '-'")
-        if not _SAFE_BASE_REF.fullmatch(base_ref):
-            raise ValueError("base_ref contains unsafe characters")
-        if (
-            ".." in base_ref
-            or "//" in base_ref
-            or "@{" in base_ref
-            or base_ref.endswith(("/", ".", ".lock"))
-        ):
-            raise ValueError("base_ref is not a safe Git reference")
-        return base_ref
+        return validate_base_ref(base_ref)
 
 
 class ValidatedTaskPolicy(BaseModel):
     contract: CodeValidationContract
     workflow: WorkflowDefinition
+
+
+def validate_base_ref(base_ref: str) -> str:
+    if base_ref.startswith("-"):
+        raise ValueError("base_ref must not begin with '-'")
+    if not _SAFE_BASE_REF.fullmatch(base_ref):
+        raise ValueError("base_ref contains unsafe characters")
+    if (
+        ".." in base_ref
+        or "//" in base_ref
+        or "@{" in base_ref
+        or base_ref.endswith(("/", ".", ".lock"))
+    ):
+        raise ValueError("base_ref is not a safe Git reference")
+    return base_ref
 
 
 def validate_task_policy(
