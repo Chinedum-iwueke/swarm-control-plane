@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -160,24 +160,29 @@ class ExecutionResult(BaseModel):
 
 
 class StepExecutionResult(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=100)
     success: bool
     return_code: int | None
     started_at: datetime
     ended_at: datetime
-    duration_seconds: float
+    duration_seconds: float = Field(ge=0)
     timed_out: bool = False
-    stdout_log: str
-    stderr_log: str
+    stdout_log: str = Field(min_length=1, max_length=250)
+    stderr_log: str = Field(min_length=1, max_length=250)
 
 
 class WorkflowExecutionResult(BaseModel):
-    workflow: str
-    repository: str
-    base_commit: str
-    task_attempt: int
-    total_duration_seconds: float
-    steps: list[StepExecutionResult]
+    workflow: str = Field(min_length=1, max_length=100)
+    repository: str = Field(min_length=1, max_length=100)
+    base_commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    task_attempt: int = Field(ge=1)
+    total_duration_seconds: float = Field(ge=0)
+    steps: list[StepExecutionResult] = Field(max_length=50)
     success: bool
-    heartbeat_failures: list[str] = Field(default_factory=list)
-    termination_reason: str | None = None
+    heartbeat_failures: list[Annotated[str, Field(min_length=1, max_length=200)]] = (
+        Field(
+            default_factory=list,
+            max_length=20,
+        )
+    )
+    termination_reason: str | None = Field(default=None, max_length=100)

@@ -303,7 +303,15 @@ class CodeValidationExecutor:
                         )
                     except asyncio.TimeoutError:
                         continue
-            except BaseException:
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                await asyncio.shield(
+                    self._runner.terminate(
+                        running,
+                        grace_seconds=self._termination_grace_seconds,
+                    )
+                )
+                raise
+            except Exception:
                 await asyncio.shield(
                     self._runner.terminate(
                         running,
