@@ -157,3 +157,27 @@ class ExecutionResult(BaseModel):
     return_codes: dict[str, int] = Field(default_factory=dict)
     logs: list[str] = Field(default_factory=list)
     error: str | None = None
+
+
+class StepExecutionResult(BaseModel):
+    name: str
+    success: bool
+    return_code: int | None
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    timed_out: bool = False
+    stdout_log: str
+    stderr_log: str
+
+
+class WorkflowExecutionResult(BaseModel):
+    workflow: str
+    repository: str
+    base_commit: str
+    task_attempt: int
+    total_duration_seconds: float
+    steps: list[StepExecutionResult]
+    success: bool
+    heartbeat_failures: list[str] = Field(default_factory=list)
+    termination_reason: str | None = None

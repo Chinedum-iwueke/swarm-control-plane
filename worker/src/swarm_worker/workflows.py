@@ -107,7 +107,10 @@ class WorkflowStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=100, pattern=_SAFE_NAME.pattern)
-    command: Annotated[list[str], Field(min_length=1)]
+    command: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=4096)]],
+        Field(min_length=1, max_length=64),
+    ]
 
     @field_validator("command")
     @classmethod
@@ -157,7 +160,7 @@ class WorkflowDefinition(BaseModel):
         ],
         Field(min_length=1),
     ]
-    steps: Annotated[list[WorkflowStep], Field(min_length=1)]
+    steps: Annotated[list[WorkflowStep], Field(min_length=1, max_length=50)]
 
     @field_validator("allowed_repositories")
     @classmethod
