@@ -191,6 +191,7 @@ def test_arbitrary_command_in_task_contract_is_rejected(
         ["sudo", "pytest", "-q"],
         ["bash", "-c", "pytest -q"],
         ["git", "push", "origin", "main"],
+        ["git", "worktree", "remove", "another-worktree"],
     ],
 )
 def test_unsafe_commands_are_rejected(

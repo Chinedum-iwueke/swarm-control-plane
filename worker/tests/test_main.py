@@ -20,8 +20,9 @@ def make_settings(tmp_path: Path) -> WorkerSettings:
     workspace_root.mkdir(mode=0o700)
     workflow_directory = tmp_path / "workflows"
     workflow_directory.mkdir()
-    source_workflow = Path(__file__).parents[1] / "workflows" / "code-validation.yaml"
-    shutil.copy(source_workflow, workflow_directory)
+    source_workflows = Path(__file__).parents[1] / "workflows"
+    for source_workflow in source_workflows.glob("*.yaml"):
+        shutil.copy(source_workflow, workflow_directory)
     return WorkerSettings(
         swarm_api_url="http://control-plane.test",
         swarm_agent_token="swarm_ag_abcdef_cli-agent-token",

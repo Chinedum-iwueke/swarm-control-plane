@@ -18,7 +18,7 @@ from swarm_worker.policy import validate_base_ref
 _SAFE_REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SAFE_TASK_COMPONENT = re.compile(r"[^A-Za-z0-9._-]+")
 _ENVIRONMENT_ALLOWLIST = frozenset(
-    {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "VIRTUAL_ENV"}
+    {"PATH", "HOME", "LANG", "LC_ALL", "VIRTUAL_ENV"}
 )
 _GIT_ENVIRONMENT = {
     "GIT_CONFIG_GLOBAL": os.devnull,

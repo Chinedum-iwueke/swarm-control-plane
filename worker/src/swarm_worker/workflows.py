@@ -15,6 +15,7 @@ from pydantic import (
 
 WORKFLOW_FILES = {
     "code-validation": "code-validation.yaml",
+    "code-validation-failure": "code-validation-failure.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -86,7 +87,6 @@ _READ_ONLY_GIT_OPTIONS = {
         }
     ),
 }
-_LOCAL_WORKTREE_COMMANDS = frozenset({"add", "list", "prune", "remove"})
 _ALLOWED_PYTHON_FLAGS = frozenset({"-q"})
 _ALLOWED_PYTEST_OPTIONS = frozenset({"-q", "--quiet"})
 
@@ -262,13 +262,6 @@ def _validate_git(command: list[str]) -> None:
         if subcommand == "branch" and (len(command) < 3 or command[2] != "--list"):
             raise ValueError("git branch is restricted to listing branches")
         _reject_absolute_operands(command[2:])
-        return
-
-    if subcommand == "worktree":
-        if len(command) < 3 or command[2] not in _LOCAL_WORKTREE_COMMANDS:
-            raise ValueError("unsupported git worktree operation")
-        if any(argument.startswith("-") for argument in command[3:]):
-            raise ValueError("git worktree options are not allowed")
         return
 
     raise ValueError(f"git subcommand {subcommand!r} is not allowlisted")

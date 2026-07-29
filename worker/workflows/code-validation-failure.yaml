@@ -1,0 +1,11 @@
+name: code-validation-failure
+task_type: code_validation
+timeout_seconds: 300
+allowed_repositories:
+- swarm-control-plane
+steps:
+- name: expected-failure
+  command:
+  - pytest
+  - -q
+  - worker-pilot-intentional-failure

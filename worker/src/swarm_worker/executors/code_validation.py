@@ -82,10 +82,19 @@ class AsyncProcessRunner:
         if isinstance(args, (str, bytes)) or not args:
             raise ValueError("subprocess commands must be argument arrays")
         command = tuple(str(argument) for argument in args)
+        environment = dict(self._environment)
+        python_paths = [cwd]
+        backend_path = cwd / "backend"
+        if backend_path.is_dir():
+            python_paths.append(backend_path)
+        environment["HOME"] = str(cwd.parent)
+        environment["PYTHONPATH"] = os.pathsep.join(
+            str(path) for path in python_paths
+        )
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
-            env=self._environment,
+            env=environment,
             stdout=stdout,
             stderr=stderr,
             start_new_session=True,

@@ -310,12 +310,15 @@ async def test_token_not_inherited_and_working_directory_is_worktree(
         "from pathlib import Path\n\n"
         "def test_environment():\n"
         "    assert 'SWARM_AGENT_TOKEN' not in os.environ\n"
+        "    assert '/primary-checkout' not in os.environ['PYTHONPATH']\n"
+        "    assert os.environ['PYTHONPATH'].split(os.pathsep)[0] == os.getcwd()\n"
         "    Path('observed-cwd').write_text(os.getcwd())\n"
     )
     runner = AsyncProcessRunner(
         environment={
             **os.environ,
             "SWARM_AGENT_TOKEN": token,
+            "PYTHONPATH": "/primary-checkout",
         }
     )
 
