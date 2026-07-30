@@ -3,83 +3,265 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171b1a">
   <title>Hermes Mission Control</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <header class="topbar">
+    <button class="mobile-menu icon-button" id="mobile-menu" aria-label="Open navigation" title="Open navigation">☰</button>
     <div class="brand">
       <span class="mark" aria-hidden="true">H</span>
       <div><strong>Hermes</strong><span>Mission Control</span></div>
     </div>
-    <div class="connection"><span id="health-dot"></span><span id="health">Connecting</span></div>
+    <button class="command-search" id="command-search" aria-label="Open global search">
+      <span>Search tasks, agents, evidence</span><kbd>⌘ K</kbd>
+    </button>
+    <div class="topbar-status">
+      <div class="clock"><strong id="clock">--:--</strong><span>UTC</span></div>
+      <div class="connection"><span id="health-dot"></span><span id="health">Connecting</span></div>
+    </div>
   </header>
+
   <div class="shell">
-    <nav aria-label="Primary">
-      <button class="nav-item active" data-view="overview">Overview</button>
-      <button class="nav-item" data-view="tasks">Tasks</button>
-      <button class="nav-item" data-view="approvals">Approvals</button>
-      <button class="nav-item" data-view="knowledge">Knowledge</button>
+    <nav id="primary-nav" aria-label="Primary">
+      <div class="nav-group">
+        <p class="nav-label">Operate</p>
+        <button class="nav-item active" data-view="command"><span class="nav-glyph">⌂</span>Command</button>
+        <button class="nav-item" data-view="missions"><span class="nav-glyph">◎</span>Missions</button>
+        <button class="nav-item" data-view="tasks"><span class="nav-glyph">≡</span>Tasks</button>
+        <button class="nav-item" data-view="approvals"><span class="nav-glyph">✓</span>Approvals <span class="nav-count" id="approval-count">0</span></button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-label">Systems</p>
+        <button class="nav-item" data-view="agents"><span class="nav-glyph">◇</span>Agents</button>
+        <button class="nav-item" data-view="infrastructure"><span class="nav-glyph">▦</span>Infrastructure</button>
+        <button class="nav-item" data-view="research"><span class="nav-glyph">⌁</span>Research</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-label">Intelligence</p>
+        <button class="nav-item" data-view="knowledge"><span class="nav-glyph">⌕</span>Knowledge</button>
+        <button class="nav-item" data-view="evidence"><span class="nav-glyph">□</span>Evidence</button>
+      </div>
+      <div class="nav-footer">
+        <span class="security-mark">LOOPBACK</span>
+        <p>Private founder surface</p>
+      </div>
     </nav>
+
     <main>
-      <section id="overview" class="view active">
+      <div id="demo-banner" class="demo-banner" hidden>
+        <strong>Demonstration data</strong>
+        <span>This view is isolated from the live control plane.</span>
+        <button id="exit-demo">Reconnect</button>
+      </div>
+
+      <section id="command" class="view active">
         <div class="section-heading">
-          <div><p class="eyebrow">Founder command center</p><h1>Operational picture</h1></div>
-          <button class="command" id="refresh">Refresh</button>
+          <div>
+            <p class="eyebrow">Company operating picture</p>
+            <h1>Command</h1>
+            <p class="heading-context" id="command-context">Current state across VM1, VM2, and Mac</p>
+          </div>
+          <div class="heading-actions">
+            <button class="secondary" id="refresh">↻ <span>Refresh</span></button>
+            <button class="command" id="open-intake">＋ New request</button>
+          </div>
         </div>
-        <div class="metrics" id="metrics"></div>
-        <div class="split">
-          <section class="panel"><h2>Agents</h2><div id="agents"></div></section>
-          <section class="panel"><h2>Control state</h2><div id="controls"></div></section>
+
+        <div class="status-strip" id="machine-strip" aria-label="Machine readiness"></div>
+
+        <div class="command-grid">
+          <div class="command-canvas">
+            <section class="operational-band">
+              <div class="band-heading">
+                <div><p class="section-kicker">Execution</p><h2>Mission pulse</h2></div>
+                <button class="text-button" data-navigate="missions">View missions →</button>
+              </div>
+              <div class="metric-row" id="metrics"></div>
+              <div id="mission-pulse" class="entity-list"></div>
+            </section>
+
+            <section class="operational-band">
+              <div class="band-heading">
+                <div><p class="section-kicker">Live system</p><h2>Active execution</h2></div>
+                <button class="text-button" data-navigate="tasks">Open ledger →</button>
+              </div>
+              <div id="active-execution" class="execution-flow"></div>
+            </section>
+
+            <section class="operational-band two-column-band">
+              <div>
+                <div class="band-heading"><div><p class="section-kicker">Fleet</p><h2>Workers and machines</h2></div></div>
+                <div id="fleet-summary" class="entity-list"></div>
+              </div>
+              <div>
+                <div class="band-heading"><div><p class="section-kicker">Outcomes</p><h2>Recent proof</h2></div></div>
+                <div id="recent-proof" class="entity-list"></div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="attention-rail" aria-label="Founder attention">
+            <div class="attention-heading">
+              <div><p class="section-kicker">Founder queue</p><h2>Needs you</h2></div>
+              <span class="attention-total" id="attention-count">0</span>
+            </div>
+            <div id="attention-list"></div>
+            <div class="rail-section">
+              <div class="band-heading"><div><p class="section-kicker">Governance</p><h2>Control state</h2></div></div>
+              <div id="controls"></div>
+            </div>
+          </aside>
         </div>
-        <section class="panel"><h2>Recent activity</h2><div id="activity"></div></section>
+      </section>
+
+      <section id="missions" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Objectives to evidence</p><h1>Missions</h1><p class="heading-context">Strategic work grouped by mission and milestone</p></div>
+          <button class="command open-intake-copy">＋ New mission</button>
+        </div>
+        <div class="toolbar">
+          <div class="segmented" id="mission-segments">
+            <button class="active" data-filter="">All</button><button data-filter="active">Active</button><button data-filter="completed">Completed</button><button data-filter="attention">Attention</button>
+          </div>
+        </div>
+        <div id="mission-list" class="mission-list"></div>
       </section>
 
       <section id="tasks" class="view">
         <div class="section-heading">
-          <div><p class="eyebrow">Structured intake</p><h1>Tasks and missions</h1></div>
-          <button class="command" id="open-intake">New request</button>
+          <div><p class="eyebrow">Immutable execution ledger</p><h1>Tasks</h1><p class="heading-context">Every lease, attempt, result, and failure</p></div>
+          <button class="command open-intake-copy">＋ New task</button>
         </div>
-        <div class="filters">
-          <input id="task-filter" type="search" placeholder="Filter tasks">
-          <select id="status-filter"><option value="">All statuses</option></select>
+        <div class="toolbar">
+          <label class="search-field"><span>⌕</span><input id="task-filter" type="search" placeholder="Filter task number, title, or project"></label>
+          <select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select>
+          <select id="project-filter" aria-label="Filter by project"><option value="">All projects</option></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Risk</th><th>Updated</th></tr></thead><tbody id="task-table"></tbody></table></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Task</th><th>Project</th><th>Type</th><th>Status</th><th>Risk</th><th>Updated</th><th></th></tr></thead>
+            <tbody id="task-table"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="approvals" class="view">
-        <div class="section-heading"><div><p class="eyebrow">Human authority</p><h1>Approval queue</h1></div></div>
-        <div id="approval-list"></div>
+        <div class="section-heading">
+          <div><p class="eyebrow">Human authority</p><h1>Approvals</h1><p class="heading-context">Review scope and effect before authorizing change</p></div>
+        </div>
+        <div class="approval-layout">
+          <div id="approval-list"></div>
+          <aside class="policy-panel">
+            <p class="section-kicker">Decision policy</p>
+            <h2>Risk gates</h2>
+            <div class="policy-row"><strong>0</strong><span>Read-only observation</span><span class="status success">Automatic</span></div>
+            <div class="policy-row"><strong>1</strong><span>Bounded isolated work</span><span class="status success">Automatic</span></div>
+            <div class="policy-row"><strong>2</strong><span>Elevated local change</span><span class="status pending">Review</span></div>
+            <div class="policy-row"><strong>3+</strong><span>Production operation</span><span class="status critical">Explicit</span></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="agents" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Permission-bounded fleet</p><h1>Agents</h1><p class="heading-context">Identity, capability, machine, and current presence</p></div>
+        </div>
+        <div id="agent-matrix" class="agent-matrix"></div>
+      </section>
+
+      <section id="infrastructure" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">VM2 production foundation</p><h1>Infrastructure</h1><p class="heading-context">Health evidence and approved operations</p></div>
+        </div>
+        <div class="status-strip" id="infra-strip"></div>
+        <section class="operational-band">
+          <div class="band-heading"><div><p class="section-kicker">Runbooks</p><h2>Infrastructure activity</h2></div></div>
+          <div id="infra-tasks" class="entity-list"></div>
+        </section>
+      </section>
+
+      <section id="research" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Hypotheses to governed findings</p><h1>Research</h1><p class="heading-context">Reproducible evidence with explicit promotion gates</p></div>
+        </div>
+        <div id="research-gate" class="research-gate"></div>
+        <section class="operational-band">
+          <div class="band-heading"><div><p class="section-kicker">Programs</p><h2>Experiment ledger</h2></div></div>
+          <div id="research-list" class="research-list"></div>
+        </section>
       </section>
 
       <section id="knowledge" class="view">
-        <div class="section-heading"><div><p class="eyebrow">Mac-local and private</p><h1>Knowledge explorer</h1></div></div>
-        <div class="knowledge-tools">
-          <form id="search-form"><input id="search-query" required minlength="2" placeholder="Search indexed knowledge"><button class="command">Search</button></form>
-          <form id="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/Documents/example.md"><button class="secondary">Index file</button></form>
+        <div class="section-heading">
+          <div><p class="eyebrow">Mac-local intelligence</p><h1>Knowledge</h1><p class="heading-context">Private sources, cited retrieval, and explicit relationships</p></div>
+        </div>
+        <div class="knowledge-toolbar">
+          <form id="search-form" class="search-field knowledge-search"><span>⌕</span><input id="search-query" required minlength="2" placeholder="Ask your indexed knowledge"></form>
+          <form id="ingest-form" class="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/…/source.md"><button class="secondary">Index source</button></form>
         </div>
         <div class="knowledge-layout">
-          <section class="panel"><h2>Cited results</h2><div id="search-results" class="empty">Search your private corpus.</div></section>
-          <section class="panel"><h2>Knowledge graph</h2><div id="graph"></div></section>
+          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Retrieval</p><h2>Cited results</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
+          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Relationships</p><h2>Knowledge graph</h2></div></div><div id="graph"></div></section>
         </div>
+      </section>
+
+      <section id="evidence" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Proof and provenance</p><h1>Evidence</h1><p class="heading-context">Artifacts bound to tasks, commits, workflows, and agents</p></div>
+        </div>
+        <div class="toolbar">
+          <label class="search-field"><span>⌕</span><input id="artifact-filter" type="search" placeholder="Filter artifacts"></label>
+          <select id="artifact-type-filter" aria-label="Filter artifact type"><option value="">All types</option></select>
+        </div>
+        <div id="artifact-list" class="artifact-list"></div>
       </section>
     </main>
   </div>
 
-  <dialog id="intake-dialog">
+  <dialog id="intake-dialog" class="modal">
     <form id="intake-form" method="dialog">
-      <div class="dialog-heading"><h2>New founder request</h2><button value="cancel" class="close" aria-label="Close">×</button></div>
-      <label>Request type<select name="kind"><option value="task">Task</option><option value="mission">Mission</option></select></label>
-      <label>Project<input name="project" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
-      <label>Title<input name="title" required minlength="3" maxlength="160"></label>
-      <label>Objective<textarea name="objective" required minlength="10" maxlength="4000"></textarea></label>
-      <label>Risk level<select name="risk_level"><option value="0">0 — read only</option><option value="1">1 — bounded local</option><option value="2">2 — approval required</option><option value="3">3 — production change</option></select></label>
-      <label>Acceptance criteria<textarea name="criteria" placeholder="One criterion per line"></textarea></label>
+      <div class="dialog-heading"><div><p class="section-kicker">Structured intake</p><h2>New founder request</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <div class="form-grid">
+        <label>Request type<select name="kind"><option value="task">Task</option><option value="mission">Mission</option></select></label>
+        <label>Risk level<select name="risk_level"><option value="0">0 · read only</option><option value="1">1 · bounded local</option><option value="2">2 · approval required</option><option value="3">3 · production change</option></select></label>
+      </div>
+      <label>Project<input name="project" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="swarm-control-plane"></label>
+      <label>Title<input name="title" required minlength="3" maxlength="160" placeholder="What outcome should Hermes deliver?"></label>
+      <label>Objective<textarea name="objective" required minlength="10" maxlength="4000" placeholder="Describe the intended outcome, constraints, and context."></textarea></label>
+      <label>Acceptance criteria<textarea name="criteria" placeholder="One verifiable criterion per line"></textarea></label>
+      <div class="safety-note"><strong>Structured request</strong><span>This form cannot submit shell commands or bypass worker policy.</span></div>
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Submit request</button></div>
     </form>
   </dialog>
+
+  <dialog id="decision-dialog" class="modal decision-modal">
+    <form id="decision-form" method="dialog">
+      <div class="dialog-heading"><div><p class="section-kicker">Governed decision</p><h2 id="decision-title">Review approval</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <div id="decision-summary" class="decision-summary"></div>
+      <input type="hidden" name="approval_id">
+      <input type="hidden" name="action">
+      <label>Decision reason<textarea name="reason" required minlength="10" maxlength="500" placeholder="Record why this decision is appropriate."></textarea></label>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command" id="decision-submit">Approve</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="search-dialog" class="search-dialog">
+    <form method="dialog">
+      <label class="global-search"><span>⌕</span><input id="global-search-input" autocomplete="off" placeholder="Search tasks, agents, and artifacts"></label>
+      <div id="global-search-results" class="global-search-results"></div>
+      <div class="search-hint"><span>↑↓ Navigate</span><span>Enter Open</span><span>Esc Close</span></div>
+    </form>
+  </dialog>
+
+  <aside id="inspector" class="inspector" aria-hidden="true">
+    <div class="inspector-heading"><div><p class="section-kicker" id="inspector-kicker">Details</p><h2 id="inspector-title">Entity</h2></div><button class="icon-button" id="close-inspector" aria-label="Close inspector" title="Close inspector">×</button></div>
+    <div id="inspector-body"></div>
+  </aside>
+  <div id="inspector-backdrop" class="inspector-backdrop"></div>
+
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/static/app.js" defer></script>
 </body>
 </html>
-

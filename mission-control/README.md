@@ -87,6 +87,19 @@ tail -f "$HOME/Library/Application Support/Hermes Mission Control/mission-contro
 tail -f "$HOME/Library/Application Support/Hermes Mission Control/mission-control.error.log"
 ```
 
+The interface system and safety rules are defined in `DESIGN.md`. Views have
+stable links such as `?view=research` and `?view=evidence`.
+
+To inspect the representative M8 prototype without contacting or mutating the
+control plane, open:
+
+```text
+http://127.0.0.1:8790/?demo=1
+```
+
+Demonstration mode is visibly labeled and disables intake, approval decisions,
+and knowledge ingestion.
+
 Place or link an approved text source inside the private `data/sources`
 directory, then index it by entering its absolute path in Knowledge Explorer.
 Repository documentation may be indexed read-only when its directory is

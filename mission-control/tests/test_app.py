@@ -46,6 +46,9 @@ def test_static_application_and_safe_status(
         status = client.get("/api/status")
     assert page.status_code == 200
     assert "Hermes Mission Control" in page.text
+    assert 'id="command"' in page.text
+    assert 'id="research"' in page.text
+    assert 'id="evidence"' in page.text
     assert settings.read_token() not in page.text
     assert status.json()["scope"] == "loopback-only"
     assert fake.closed is True
