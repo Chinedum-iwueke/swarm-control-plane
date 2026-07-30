@@ -20,6 +20,9 @@ legacy_broker_group=invariance-swarm-rehearsal
 guard_rehearsal() {
   test -f "$state/DISPOSABLE_REHEARSAL"
   test "$(cat "$state/DISPOSABLE_REHEARSAL")" = vm2-postgres
+  if [[ ! -e $postgres_root ]]; then
+    return
+  fi
   if [[ -f $postgres_root/metadata.json ]]; then
     test "$(python3 -c \
       'import json,sys; print(json.load(open(sys.argv[1]))["deployment"])' \
@@ -65,8 +68,13 @@ if [[ $action != run ]]; then
 fi
 
 if [[ -e $postgres_root ]]; then
-  printf '%s already exists; refusing to touch it.\n' "$postgres_root" >&2
-  exit 1
+  if [[ -f $state/DISPOSABLE_REHEARSAL ]]; then
+    printf 'Recovering the previous marked partial rehearsal.\n'
+    cleanup
+  else
+    printf '%s already exists; refusing to touch it.\n' "$postgres_root" >&2
+    exit 1
+  fi
 fi
 test -d "$source_root/invariance_research/.git"
 test -d "$source_root/bulletproof_bt/.git"
@@ -80,8 +88,13 @@ fi
 if getent group "$broker_group" >/dev/null ||
   getent group "$backup_group" >/dev/null
 then
-  printf 'Rehearsal groups already exist; clean up the previous run first.\n' >&2
-  exit 1
+  if [[ -f $state/DISPOSABLE_REHEARSAL ]]; then
+    printf 'Recovering the previous marked partial rehearsal.\n'
+    cleanup
+  else
+    printf 'Unmarked rehearsal groups already exist; refusing recovery.\n' >&2
+    exit 1
+  fi
 fi
 groupadd --system "$broker_group"
 groupadd --system "$backup_group"
@@ -98,9 +111,10 @@ git clone --quiet --local --no-hardlinks \
   "$source_root/bulletproof_bt" "$source_stage/bulletproof_bt"
 git clone --quiet --local --no-hardlinks \
   "$repo" "$source_stage/swarm-control-plane"
+printf 'Creating isolated rehearsal Python environment.\n'
 python3 -m venv "$state/.venv"
-"$state/.venv/bin/python" -m pip install --quiet --upgrade pip
-"$state/.venv/bin/python" -m pip install --quiet \
+"$state/.venv/bin/python" -m pip install --upgrade pip
+"$state/.venv/bin/python" -m pip install \
   -e "$source_stage/swarm-control-plane/worker"
 
 install -d -o root -g root -m 0700 "$postgres_root"
