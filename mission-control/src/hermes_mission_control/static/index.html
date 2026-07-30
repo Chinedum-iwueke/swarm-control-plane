@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hermes Mission Control</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">H</span>
+      <div><strong>Hermes</strong><span>Mission Control</span></div>
+    </div>
+    <div class="connection"><span id="health-dot"></span><span id="health">Connecting</span></div>
+  </header>
+  <div class="shell">
+    <nav aria-label="Primary">
+      <button class="nav-item active" data-view="overview">Overview</button>
+      <button class="nav-item" data-view="tasks">Tasks</button>
+      <button class="nav-item" data-view="approvals">Approvals</button>
+      <button class="nav-item" data-view="knowledge">Knowledge</button>
+    </nav>
+    <main>
+      <section id="overview" class="view active">
+        <div class="section-heading">
+          <div><p class="eyebrow">Founder command center</p><h1>Operational picture</h1></div>
+          <button class="command" id="refresh">Refresh</button>
+        </div>
+        <div class="metrics" id="metrics"></div>
+        <div class="split">
+          <section class="panel"><h2>Agents</h2><div id="agents"></div></section>
+          <section class="panel"><h2>Control state</h2><div id="controls"></div></section>
+        </div>
+        <section class="panel"><h2>Recent activity</h2><div id="activity"></div></section>
+      </section>
+
+      <section id="tasks" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Structured intake</p><h1>Tasks and missions</h1></div>
+          <button class="command" id="open-intake">New request</button>
+        </div>
+        <div class="filters">
+          <input id="task-filter" type="search" placeholder="Filter tasks">
+          <select id="status-filter"><option value="">All statuses</option></select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Risk</th><th>Updated</th></tr></thead><tbody id="task-table"></tbody></table></div>
+      </section>
+
+      <section id="approvals" class="view">
+        <div class="section-heading"><div><p class="eyebrow">Human authority</p><h1>Approval queue</h1></div></div>
+        <div id="approval-list"></div>
+      </section>
+
+      <section id="knowledge" class="view">
+        <div class="section-heading"><div><p class="eyebrow">Mac-local and private</p><h1>Knowledge explorer</h1></div></div>
+        <div class="knowledge-tools">
+          <form id="search-form"><input id="search-query" required minlength="2" placeholder="Search indexed knowledge"><button class="command">Search</button></form>
+          <form id="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/Documents/example.md"><button class="secondary">Index file</button></form>
+        </div>
+        <div class="knowledge-layout">
+          <section class="panel"><h2>Cited results</h2><div id="search-results" class="empty">Search your private corpus.</div></section>
+          <section class="panel"><h2>Knowledge graph</h2><div id="graph"></div></section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="intake-dialog">
+    <form id="intake-form" method="dialog">
+      <div class="dialog-heading"><h2>New founder request</h2><button value="cancel" class="close" aria-label="Close">×</button></div>
+      <label>Request type<select name="kind"><option value="task">Task</option><option value="mission">Mission</option></select></label>
+      <label>Project<input name="project" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
+      <label>Title<input name="title" required minlength="3" maxlength="160"></label>
+      <label>Objective<textarea name="objective" required minlength="10" maxlength="4000"></textarea></label>
+      <label>Risk level<select name="risk_level"><option value="0">0 — read only</option><option value="1">1 — bounded local</option><option value="2">2 — approval required</option><option value="3">3 — production change</option></select></label>
+      <label>Acceptance criteria<textarea name="criteria" placeholder="One criterion per line"></textarea></label>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Submit request</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
+
