@@ -15,6 +15,7 @@ from swarm_worker.api_client import (
 from swarm_worker.config import WorkerSettings
 from swarm_worker.models import (
     AgentHeartbeat,
+    BrokerTicketRequest,
     TaskCompleteRequest,
     TaskFailRequest,
     TaskLeaseRequest,
@@ -202,6 +203,51 @@ async def test_no_task_response_is_not_an_error() -> None:
 
     assert lease.task is None
     assert lease.lease_token is None
+
+
+@pytest.mark.asyncio
+async def test_broker_ticket_request_is_lease_bound_and_parsed() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == f"/v1/agent/tasks/{TASK_ID}/broker-ticket"
+        assert __import__("json").loads(request.content) == {
+            "lease_token": LEASE_TOKEN
+        }
+        return httpx.Response(
+            200,
+            json={
+                "payload": {
+                    "schema_version": 1,
+                    "task_id": TASK_ID,
+                    "task_number": "VM2-TEST-1",
+                    "attempt_number": 1,
+                    "agent_id": AGENT_ID,
+                    "machine": "vm2-deployment",
+                    "task_type": "infrastructure_observation",
+                    "risk_level": 0,
+                    "plan_digest": "a" * 64,
+                    "contract": {
+                        "runbook": "vm2-infrastructure",
+                        "runbook_version": "1.0.0",
+                        "operation": "observe-control-plane",
+                        "target": "vm2-control-plane",
+                        "parameters": {},
+                    },
+                    "nonce": "b" * 64,
+                    "issued_at": NOW,
+                    "expires_at": "2026-07-29T12:05:00Z",
+                },
+                "signature": "c" * 64,
+            },
+        )
+
+    async with SwarmAPIClient(
+        settings(), transport=httpx.MockTransport(handler)
+    ) as client:
+        response = await client.get_broker_ticket(
+            TASK_ID, BrokerTicketRequest(lease_token=LEASE_TOKEN)
+        )
+
+    assert response.payload.contract.operation == "observe-control-plane"
 
 
 @pytest.mark.asyncio

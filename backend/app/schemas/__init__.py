@@ -21,6 +21,12 @@ from app.schemas.governance import (
     ArtifactCreate,
     ArtifactResponse,
 )
+from app.schemas.infrastructure import (
+    BrokerTicketPayload,
+    BrokerTicketRequest,
+    BrokerTicketResponse,
+    InfrastructureContract,
+)
 from app.schemas.mission import (
     EngineeringMilestoneManifest,
     EngineeringWorkItem,
@@ -65,6 +71,9 @@ __all__ = [
     "ApprovalResponse",
     "ArtifactCreate",
     "ArtifactResponse",
+    "BrokerTicketPayload",
+    "BrokerTicketRequest",
+    "BrokerTicketResponse",
     "ControlEventResponse",
     "ControlMutation",
     "ControlMutationResponse",
@@ -74,6 +83,7 @@ __all__ = [
     "EngineeringMilestoneManifest",
     "EngineeringWorkItem",
     "ExpiredLeaseReapResponse",
+    "InfrastructureContract",
     "MissionCreate",
     "MissionDetailResponse",
     "MissionResponse",

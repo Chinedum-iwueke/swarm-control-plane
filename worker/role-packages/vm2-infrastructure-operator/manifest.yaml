@@ -1,0 +1,35 @@
+schema_version: 1
+name: vm2-infrastructure-operator
+version: 1.0.0
+role: Restricted VM2 infrastructure observer and controlled operator
+task_types:
+- infrastructure_observation
+- infrastructure_operation
+workflows:
+- name: infrastructure-observer
+  file: observer.yaml
+  sha256: aedda4bc93f713f3c60fdefb9df1d1a517737caf570df80092e596203f7d31e8
+- name: controlled-restart
+  file: controlled-restart.yaml
+  sha256: fb8fdbf36850a085eff824f5cc71e6049ae04c1cf6a3c1b9ec8e05c406ce54d8
+required_capabilities:
+- infrastructure-observation
+- service-health
+- controlled-restart
+allowed_machines:
+- vm2-deployment
+risk_ceiling: 3
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: brokered-infrastructure
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - infrastructure-workspace
+repository_profile:
+  repositories:
+  - swarm-control-plane
+  primary_checkout_write: false
+  remote_write: false

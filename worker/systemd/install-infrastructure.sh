@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  printf 'Run this installer as root.\n' >&2
+  exit 1
+fi
+
+start=false
+enable=false
+for argument in "$@"; do
+  case "$argument" in
+    --start) start=true ;;
+    --enable) enable=true ;;
+    *)
+      printf 'Unknown argument: %s\n' "$argument" >&2
+      exit 2
+      ;;
+  esac
+done
+
+repo=/srv/invariance/swarm/repositories/swarm-control-plane
+worker="$repo/worker"
+test -x "$worker/.venv/bin/invariance-swarm-infrastructure-worker"
+test -x "$worker/.venv/bin/invariance-swarm-infrastructure-broker"
+test -d /srv/invariance/swarm/control-plane-runtime
+test -S /var/run/docker.sock
+
+getent group invariance-swarm-infrastructure >/dev/null ||
+  groupadd --system invariance-swarm-infrastructure
+id swarm-infrastructure >/dev/null 2>&1 ||
+  useradd \
+    --system \
+    --gid invariance-swarm-infrastructure \
+    --home-dir /nonexistent \
+    --shell /usr/sbin/nologin \
+    swarm-infrastructure
+
+install -d \
+  -o swarm-infrastructure \
+  -g invariance-swarm-infrastructure \
+  -m 0700 \
+  /srv/invariance/swarm/agent-workspaces/infrastructure
+install -d -o root -g root -m 0755 /etc/invariance-swarm
+install -d -o root -g root -m 0700 /var/lib/invariance-swarm-infrastructure
+
+for unit in \
+  invariance-swarm-infrastructure-broker.service \
+  invariance-swarm-infrastructure-worker.service
+do
+  install -o root -g root -m 0644 \
+    "$worker/systemd/$unit" \
+    "/etc/systemd/system/$unit"
+  systemd-analyze verify "/etc/systemd/system/$unit"
+done
+
+systemctl daemon-reload
+
+if $enable; then
+  systemctl enable invariance-swarm-infrastructure-broker.service
+  systemctl enable invariance-swarm-infrastructure-worker.service
+fi
+if $start; then
+  systemctl start invariance-swarm-infrastructure-broker.service
+  systemctl start invariance-swarm-infrastructure-worker.service
+fi
+
+printf 'Infrastructure units installed. enable=%s start=%s\n' "$enable" "$start"

@@ -1,0 +1,45 @@
+[Unit]
+Description=Invariance Swarm restricted VM2 infrastructure worker
+After=network-online.target invariance-swarm-infrastructure-broker.service
+Wants=network-online.target
+Requires=invariance-swarm-infrastructure-broker.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=swarm-infrastructure
+Group=invariance-swarm-infrastructure
+WorkingDirectory=/srv/invariance/swarm/repositories/swarm-control-plane/worker
+EnvironmentFile=/etc/invariance-swarm/vm2-infrastructure-worker.env
+ExecStart=/srv/invariance/swarm/repositories/swarm-control-plane/worker/.venv/bin/invariance-swarm-infrastructure-worker run
+Restart=on-failure
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/invariance/swarm/repositories
+ReadOnlyPaths=/run/invariance-swarm-infrastructure
+ReadWritePaths=/srv/invariance/swarm/agent-workspaces/infrastructure
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

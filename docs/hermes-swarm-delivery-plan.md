@@ -751,6 +751,11 @@ credential, and the supervised no-push pilot in the M4 runbook.
 - no mutation;
 - dashboard/evidence integration.
 
+**Source status:** implemented on `feat/restricted-vm1-worker`. Operational
+completion requires API ticket-secret deployment, VM2 broker/worker
+installation, package binding, and the supervised M5 observation in the M5/M6
+runbook.
+
 ### M6: VM2 Controlled Operator
 
 - privileged broker;
@@ -758,6 +763,12 @@ credential, and the supervised no-push pilot in the M4 runbook.
 - restart transaction;
 - pre/post verification;
 - disposable-environment tests and rollback drill.
+
+**Source status:** implemented on `feat/restricted-vm1-worker`. The first
+operation is limited to an explicitly approved control-plane API restart.
+Operational completion requires approval-consumption validation, pre/post
+health evidence, and one supervised restart with the continuous worker kept
+disabled.
 
 ### M7: Mac Mission Control and knowledge pilot
 
