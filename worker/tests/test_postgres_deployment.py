@@ -111,8 +111,11 @@ def test_stage_upgrades_static_template_without_rotating_secrets(
 
     upgraded = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert result["reused"] is True
-    assert upgraded["deployment_version"] == "1.2.0"
+    assert upgraded["deployment_version"] == "1.3.0"
     assert (root / ".env.postgres").read_bytes() == environment
+    assert "invariance_owner 172.16.0.0/12" in (
+        root / "conf/pg_hba.conf"
+    ).read_text(encoding="utf-8")
     assert "edoburu/pgbouncer:v1.24.1-p1@sha256:" in (
         root / "compose.yaml"
     ).read_text(encoding="utf-8")

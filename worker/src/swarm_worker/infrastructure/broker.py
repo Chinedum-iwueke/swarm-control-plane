@@ -351,6 +351,29 @@ class InfrastructureBroker:
             source = self._source_commit()
             environment = self._schema_environment()
             owner_password = environment.pop("OWNER_PASSWORD")
+            postgres_password = self._postgres_environment()[
+                "POSTGRES_SUPERUSER_PASSWORD"
+            ]
+            reload_configuration = self._postgres_compose(
+                [
+                    "exec",
+                    "-T",
+                    "-e",
+                    "PGPASSWORD",
+                    "postgres",
+                    "psql",
+                    "-v",
+                    "ON_ERROR_STOP=1",
+                    "-U",
+                    "postgres",
+                    "-d",
+                    "invariance_research",
+                    "-c",
+                    "SELECT pg_reload_conf()",
+                ],
+                timeout=60,
+                extra_env={"PGPASSWORD": postgres_password},
+            )
             action = self._runner.run(
                 [
                     "docker",
@@ -384,20 +407,20 @@ class InfrastructureBroker:
             marker = self._runner.run(
                 self._postgres_compose_args(
                     [
-                    "exec",
-                    "-T",
-                    "-e",
-                    f"PGAPPNAME={source}",
-                    "-e",
-                    "PGPASSWORD",
-                    "postgres",
-                    "psql",
-                    "-v",
-                    "ON_ERROR_STOP=1",
-                    "-U",
-                    "invariance_owner",
-                    "-d",
-                    "invariance_research",
+                        "exec",
+                        "-T",
+                        "-e",
+                        f"PGAPPNAME={source}",
+                        "-e",
+                        "PGPASSWORD",
+                        "postgres",
+                        "psql",
+                        "-v",
+                        "ON_ERROR_STOP=1",
+                        "-U",
+                        "invariance_owner",
+                        "-d",
+                        "invariance_research",
                     ]
                 ),
                 cwd=self._postgres_root,
@@ -407,7 +430,10 @@ class InfrastructureBroker:
                 / "001-broker-marker.sql",
                 extra_env={"PGPASSWORD": owner_password},
             )
-            success = action["return_code"] == 0 and marker["return_code"] == 0
+            success = all(
+                item["return_code"] == 0
+                for item in (reload_configuration, action, marker)
+            )
             return self._postgres_result(
                 operation,
                 task_id,
@@ -415,7 +441,11 @@ class InfrastructureBroker:
                 started_at,
                 success=success,
                 pre_state={"source_commit": source},
-                action={"schema": action, "marker": marker},
+                action={
+                    "reload_configuration": reload_configuration,
+                    "schema": action,
+                    "marker": marker,
+                },
                 post_state={"schema_marker": marker["return_code"] == 0},
                 error=None if success else "Schema initialization failed.",
             )

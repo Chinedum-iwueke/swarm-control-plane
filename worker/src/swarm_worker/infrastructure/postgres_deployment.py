@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 POSTGRES_ROOT = Path("/srv/invariance/postgres")
-DEPLOYMENT_VERSION = "1.2.0"
-_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0", "1.1.0"}
+DEPLOYMENT_VERSION = "1.3.0"
+_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0", "1.1.0", "1.2.0"}
 UTC = timezone.utc
 
 
@@ -221,6 +221,8 @@ class PostgresDeploymentManager:
         self._replace_file(override_path, _WORKER_NETWORK_OVERRIDE, 0o644)
         backup_path = self.root / "bin" / "backup.sh"
         self._replace_file(backup_path, _BACKUP_SCRIPT, 0o755)
+        hba_path = self.root / "conf" / "pg_hba.conf"
+        self._replace_file(hba_path, _PG_HBA, 0o644)
         metadata["deployment_version"] = DEPLOYMENT_VERSION
         metadata["updated_at"] = datetime.now(UTC).isoformat()
         metadata["files"]["compose.yaml"] = hashlib.sha256(
@@ -231,6 +233,9 @@ class PostgresDeploymentManager:
         ).hexdigest()
         metadata["files"]["bin/backup.sh"] = hashlib.sha256(
             _BACKUP_SCRIPT.encode()
+        ).hexdigest()
+        metadata["files"]["conf/pg_hba.conf"] = hashlib.sha256(
+            _PG_HBA.encode()
         ).hexdigest()
         rendered = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
         self._replace_file(metadata_path, rendered, 0o600)
@@ -403,6 +408,7 @@ timezone = 'UTC'
 _PG_HBA = """local all all scram-sha-256
 host all all 127.0.0.1/32 scram-sha-256
 host all all ::1/128 scram-sha-256
+host invariance_research invariance_owner 172.16.0.0/12 scram-sha-256
 host invariance_research invariance_app 172.16.0.0/12 scram-sha-256
 host invariance_research invariance_worker 172.16.0.0/12 scram-sha-256
 """
