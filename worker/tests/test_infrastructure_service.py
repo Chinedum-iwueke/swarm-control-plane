@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +21,7 @@ from swarm_worker.models import (
 )
 
 ROOT = Path("/home/omenka/Projects/swarm-control-plane/worker")
+UTC = timezone.utc
 AGENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 TASK_ID = UUID("22222222-2222-4222-8222-222222222222")
 LEASE_TOKEN = "lease-token-for-infrastructure-tests"

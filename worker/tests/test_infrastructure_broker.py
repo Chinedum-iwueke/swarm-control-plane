@@ -3,7 +3,7 @@ import hmac
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -18,6 +18,7 @@ from swarm_worker.infrastructure.runbooks import RunbookError, load_runbook
 from swarm_worker.models import BrokerTicketPayload, BrokerTicketResponse
 
 SECRET = "broker-test-secret-value-1234567890"
+UTC = timezone.utc
 TASK_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 AGENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 

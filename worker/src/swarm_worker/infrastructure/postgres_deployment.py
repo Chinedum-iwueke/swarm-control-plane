@@ -4,12 +4,13 @@ import hashlib
 import json
 import os
 import secrets
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 POSTGRES_ROOT = Path("/srv/invariance/postgres")
 DEPLOYMENT_VERSION = "1.0.0"
+UTC = timezone.utc
 
 
 class PostgresDeploymentError(Exception):
