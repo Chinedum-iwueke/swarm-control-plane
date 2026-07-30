@@ -67,6 +67,18 @@ def test_stage_is_idempotent_only_for_untampered_metadata(tmp_path: Path) -> Non
         manager(root).stage()
 
 
+def test_staged_check_is_read_only_and_rejects_tampering(tmp_path: Path) -> None:
+    root = tmp_path / "postgres"
+    manager(root).stage()
+    metadata_before = (root / "metadata.json").read_bytes()
+
+    assert manager(root).is_staged() is True
+    assert (root / "metadata.json").read_bytes() == metadata_before
+
+    (root / "compose.yaml").write_text("tampered\n", encoding="utf-8")
+    assert manager(root).is_staged() is False
+
+
 def test_stage_upgrades_static_template_without_rotating_secrets(
     tmp_path: Path,
 ) -> None:

@@ -118,6 +118,33 @@ class PostgresDeploymentManager:
             return False
         return True
 
+    def is_staged(self) -> bool:
+        metadata_path = self.root / "metadata.json"
+        if not metadata_path.is_file():
+            return False
+        try:
+            self._validate_runtime_directories()
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if (
+                metadata.get("deployment") != "vm2-invariance-postgres"
+                or metadata.get("deployment_version")
+                not in ({DEPLOYMENT_VERSION} | _UPGRADABLE_DEPLOYMENT_VERSIONS)
+                or metadata.get("public_access") is not False
+                or not isinstance(metadata.get("files"), dict)
+            ):
+                return False
+            for relative, expected in metadata["files"].items():
+                path = (self.root / relative).resolve()
+                if (
+                    not path.is_relative_to(self.root.resolve())
+                    or not path.is_file()
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected
+                ):
+                    return False
+        except (OSError, json.JSONDecodeError, PostgresDeploymentError):
+            return False
+        return True
+
     def _validate_preprovisioned(self) -> None:
         allowed = {
             "archive",

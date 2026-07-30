@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,9 @@ from swarm_worker.infrastructure.broker import (
     BrokerError,
     FixedRunner,
     InfrastructureBroker,
+)
+from swarm_worker.infrastructure.postgres_deployment import (
+    PostgresDeploymentManager,
 )
 from swarm_worker.infrastructure.runbooks import RunbookError, load_runbook
 from swarm_worker.models import BrokerTicketPayload, BrokerTicketResponse
@@ -252,6 +256,42 @@ def test_postgres_preflight_accepts_exact_preprovisioned_layout(
 
     assert result.success is True
     assert result.pre_state["target_directory"] == "preprovisioned"
+
+
+def test_postgres_preflight_accepts_digest_bound_staged_layout(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "postgres"
+    PostgresDeploymentManager(
+        root,
+        postgres_uid=os.geteuid(),
+        postgres_gid=os.getegid(),
+    ).stage()
+    instance = InfrastructureBroker(
+        secret=SECRET,
+        ledger_path=tmp_path / "consumed.json",
+        runner=FakeRunner(),
+        effective_uid=0,
+        runtime_path=tmp_path,
+        backup_path=tmp_path / "backups",
+        postgres_root=root,
+        research_repository=tmp_path / "invariance_research",
+        systemd_path=tmp_path / "systemd",
+        sleep=lambda _: None,
+    )
+
+    result = instance.execute(
+        ticket(
+            "preflight-invariance-postgres",
+            risk=0,
+            task_type="infrastructure_observation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    assert result.success is True
+    assert result.pre_state["target_directory"] == "staged"
 
 
 def test_postgres_stage_uses_compiled_private_template(tmp_path: Path) -> None:

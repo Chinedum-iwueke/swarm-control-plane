@@ -16,9 +16,14 @@ from app.schemas import (
     TaskCreate,
     TaskDetailResponse,
     TaskEventResponse,
+    TaskMutationResponse,
     TaskResponse,
+    TaskResumeRequest,
 )
+from app.services.governance import rearm_task_approval
+from app.services.missions import refresh_mission
 from app.services.tasks import (
+    append_task_event,
     build_task,
     persist_new_task,
     reap_expired_leases,
@@ -122,6 +127,54 @@ def reap_task_leases(
         inspected=inspected,
         requeued=requeued,
         failed=failed,
+    )
+
+
+@router.post(
+    "/{task_id}/resume",
+    response_model=TaskMutationResponse,
+)
+def resume_failed_task(
+    task_id: uuid.UUID,
+    payload: TaskResumeRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> TaskMutationResponse:
+    task = db.scalar(
+        select(Task).where(Task.id == task_id).with_for_update()
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    if task.status != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail="Only a failed task can be resumed.",
+        )
+
+    previous_attempts = task.attempt_count
+    task.max_attempts = max(task.max_attempts, previous_attempts + 1)
+    task.completed_at = None
+    task.result = {}
+    rearm_task_approval(db, task, payload.reason)
+    event = append_task_event(
+        db,
+        task,
+        "task_resumed",
+        "Failed task checkpoint resumed by operator.",
+        payload={
+            "requested_by": payload.requested_by,
+            "reason": payload.reason,
+            "previous_attempts": previous_attempts,
+            "next_attempt": previous_attempts + 1,
+        },
+    )
+    if task.mission_id is not None:
+        refresh_mission(db, task.mission_id)
+    db.commit()
+    db.refresh(task)
+    db.refresh(event)
+    return TaskMutationResponse(
+        task=TaskResponse.model_validate(serialize_task(task)),
+        event=TaskEventResponse.model_validate(event),
     )
 
 

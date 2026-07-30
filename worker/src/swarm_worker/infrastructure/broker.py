@@ -822,6 +822,8 @@ class InfrastructureBroker:
             else "empty"
             if self._postgres_root.is_dir()
             and not any(self._postgres_root.iterdir())
+            else "staged"
+            if deployment.is_staged()
             else "preprovisioned"
             if deployment.is_preprovisioned()
             else "occupied"
@@ -834,7 +836,7 @@ class InfrastructureBroker:
             "compose_available": compose["return_code"] == 0,
             "source_repository_available": source_commit["return_code"] == 0,
             "target_directory_available": target_state
-            in {"absent", "empty", "preprovisioned"},
+            in {"absent", "empty", "preprovisioned", "staged"},
             "postgres_port_available": port_state["5432"],
             "pgbouncer_port_available": port_state["6432"],
         }

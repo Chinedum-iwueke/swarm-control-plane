@@ -13,9 +13,11 @@ import yaml
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("create", "list", "status"))
+    parser.add_argument("action", choices=("create", "list", "status", "resume"))
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--mission-id")
+    parser.add_argument("--task-id")
+    parser.add_argument("--reason")
     parser.add_argument("--actor", default="founder-operator")
     args = parser.parse_args()
     api_url = os.environ.get("SWARM_API_URL", "").rstrip("/")
@@ -34,6 +36,16 @@ def main() -> int:
             if not args.mission_id:
                 parser.error("status requires --mission-id")
             response = client.get(f"/v1/missions/{args.mission_id}")
+        elif args.action == "resume":
+            if not args.task_id or not args.reason:
+                parser.error("resume requires --task-id and --reason")
+            response = client.post(
+                f"/v1/tasks/{args.task_id}/resume",
+                json={
+                    "requested_by": args.actor,
+                    "reason": args.reason,
+                },
+            )
         else:
             if not args.manifest:
                 parser.error("create requires --manifest")

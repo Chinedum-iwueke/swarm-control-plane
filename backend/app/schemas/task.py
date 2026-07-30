@@ -166,6 +166,11 @@ class TaskFailRequest(TaskLeaseMutation):
     retryable: bool = False
 
 
+class TaskResumeRequest(BaseModel):
+    requested_by: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class TaskReleaseRequest(TaskLeaseMutation):
     message: str = Field(
         default="Task lease released by worker.",

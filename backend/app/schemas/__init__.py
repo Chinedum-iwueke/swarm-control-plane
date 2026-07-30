@@ -69,6 +69,7 @@ from app.schemas.task import (
     TaskMutationResponse,
     TaskReleaseRequest,
     TaskResponse,
+    TaskResumeRequest,
     TaskStartRequest,
 )
 
@@ -127,5 +128,6 @@ __all__ = [
     "TaskMutationResponse",
     "TaskReleaseRequest",
     "TaskResponse",
+    "TaskResumeRequest",
     "TaskStartRequest",
 ]
