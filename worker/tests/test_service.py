@@ -165,6 +165,8 @@ def make_workspace(tmp_path: Path) -> TaskWorkspace:
     repository.mkdir(parents=True, exist_ok=True)
     logs.mkdir(exist_ok=True)
     artifacts.mkdir(exist_ok=True)
+    (logs / "run-tests.stdout.log").write_text("passed\n", encoding="utf-8")
+    (logs / "run-tests.stderr.log").write_text("", encoding="utf-8")
     plan = WorkspacePlan(
         task_id=TASK_ID,
         task_number="TASK-1",
@@ -293,6 +295,10 @@ class FakeAPI:
             raise self.complete_error
         return object()
 
+    async def register_artifact(self, task_id: UUID, request: object) -> object:
+        self.requests.setdefault("artifacts", []).append(request)
+        return object()
+
     async def fail_task(self, task_id: UUID, request: object) -> object:
         self.events.append("fail")
         self.requests["fail"].append(request)
@@ -416,6 +422,8 @@ async def test_happy_path_exact_order_and_complete_once(
     ]
     assert len(api.requests["complete"]) == 1
     assert len(api.requests["fail"]) == 0
+    assert len(api.requests["artifacts"]) == 2
+    assert api.requests["artifacts"][0].location.startswith("workspace://")
     assert api.closed is True
 
 

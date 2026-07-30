@@ -10,11 +10,14 @@ from app.db.session import Base
 from app.models import (  # noqa: F401
     Agent,
     AgentCredential,
+    ApprovalEvent,
+    Artifact,
     ControlEvent,
     ControlScope,
     PackageDeployment,
     RolePackage,
     Task,
+    TaskApproval,
     TaskEvent,
 )
 

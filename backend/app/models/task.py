@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -107,6 +107,10 @@ class Task(Base):
         nullable=False,
         default=dict,
     )
+    approval_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    plan_digest: Mapped[str] = mapped_column(String(64), nullable=False)
 
     required_capabilities: Mapped[list[str]] = mapped_column(
         JSONB,

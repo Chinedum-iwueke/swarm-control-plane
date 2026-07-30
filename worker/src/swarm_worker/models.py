@@ -59,6 +59,8 @@ class Task(BaseModel):
     expected_outputs: list[Any]
     acceptance_criteria: list[Any]
     approval_policy: dict[str, Any]
+    approval_required: bool = False
+    plan_digest: str = ""
     required_capabilities: list[str]
     allowed_machines: list[str]
     max_attempts: int
@@ -149,6 +151,44 @@ class TaskEvent(BaseModel):
 class TaskMutationResponse(BaseModel):
     task: Task
     event: TaskEvent
+
+
+class ArtifactCreateRequest(BaseModel):
+    lease_token: str = Field(min_length=1)
+    artifact_type: Literal["log", "report", "result", "evidence"]
+    name: str = Field(min_length=1, max_length=200)
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    location: str = Field(min_length=1, max_length=2000)
+    storage_backend: Literal["workspace", "object"]
+    workflow: str
+    workflow_version: str
+    source_commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    confidentiality: Literal["internal", "confidential", "restricted"] = "internal"
+    retention_class: Literal["ephemeral", "standard", "audit", "legal"] = "audit"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArtifactResponse(BaseModel):
+    id: UUID
+    task_id: UUID
+    agent_id: UUID
+    attempt_number: int
+    artifact_type: str
+    name: str
+    size_bytes: int
+    sha256: str
+    location: str
+    storage_backend: str
+    workflow: str
+    workflow_version: str
+    source_commit: str
+    confidentiality: str
+    retention_class: str
+    verification_status: str
+    expires_at: datetime | None
+    metadata_json: dict[str, Any]
+    created_at: datetime
 
 
 class ExecutionResult(BaseModel):

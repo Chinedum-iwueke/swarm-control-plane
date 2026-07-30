@@ -727,6 +727,10 @@ check.
 - artifact registry and storage interface;
 - operator inspection endpoints.
 
+**Source status:** complete on `feat/restricted-vm1-worker`. Operational
+completion requires migration/API and worker deployment plus supervised
+approval-consumption, rejection, reapproval, and artifact-digest validation.
+
 ### M4: Engineering mission pilot
 
 - milestone manifest;

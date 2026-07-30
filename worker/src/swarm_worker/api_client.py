@@ -13,6 +13,8 @@ from swarm_worker.models import (
     AgentHeartbeat,
     AgentHeartbeatResponse,
     AgentIdentity,
+    ArtifactCreateRequest,
+    ArtifactResponse,
     LeaseResponse,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
@@ -149,6 +151,19 @@ class SwarmAPIClient:
         request: TaskReleaseRequest,
     ) -> TaskMutationResponse:
         return await self._task_mutation(task_id, "release", request)
+
+    async def register_artifact(
+        self,
+        task_id: UUID | str,
+        request: ArtifactCreateRequest,
+    ) -> ArtifactResponse:
+        return await self._request(
+            "POST",
+            f"/v1/agent/tasks/{task_id}/artifacts",
+            ArtifactResponse,
+            payload=request,
+            secrets=(request.lease_token,),
+        )
 
     async def _task_mutation(
         self,

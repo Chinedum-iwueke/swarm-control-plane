@@ -23,6 +23,7 @@ from app.schemas import (
     TaskStartRequest,
 )
 from app.services.controls import matching_control_scopes
+from app.services.governance import rearm_task_approval
 from app.services.tasks import (
     append_task_event,
     clear_lease,
@@ -314,11 +315,11 @@ def release_task(
     )
 
     previous_status = task.status
-    task.status = (
-        "queued"
-        if task.attempt_count < task.max_attempts
-        else "failed"
-    )
+    task.status = "queued" if task.attempt_count < task.max_attempts else "failed"
+    if task.status == "queued":
+        rearm_task_approval(
+            db, task, "A new approval is required after lease release."
+        )
 
     if task.status == "failed":
         task.failure = {
@@ -341,7 +342,7 @@ def release_task(
         },
     )
 
-    if task.status == "queued":
+    if task.status in {"queued", "pending_approval"}:
         append_task_event(
             db,
             task,

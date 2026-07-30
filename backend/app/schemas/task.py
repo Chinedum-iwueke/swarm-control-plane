@@ -13,6 +13,7 @@ TaskStatus = Literal[
     "succeeded",
     "failed",
     "cancelled",
+    "pending_approval",
 ]
 
 
@@ -38,6 +39,7 @@ class TaskCreate(BaseModel):
     expected_outputs: list = Field(default_factory=list)
     acceptance_criteria: list = Field(default_factory=list)
     approval_policy: dict = Field(default_factory=dict)
+    approval_required: bool = False
 
     required_capabilities: list[str] = Field(default_factory=list)
     allowed_machines: list[str] = Field(default_factory=list)
@@ -66,6 +68,8 @@ class TaskResponse(BaseModel):
     expected_outputs: list
     acceptance_criteria: list
     approval_policy: dict
+    approval_required: bool
+    plan_digest: str
 
     required_capabilities: list[str]
     allowed_machines: list[str]

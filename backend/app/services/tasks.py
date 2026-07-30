@@ -15,7 +15,11 @@ from app.core.security import (
     extract_task_lease_token_prefix,
 )
 from app.models import Agent, Task, TaskEvent
-
+from app.services.governance import (
+    consume_task_approval,
+    expire_approvals,
+    rearm_task_approval,
+)
 
 ACTIVE_LEASE_STATUSES = {"leased", "running"}
 
@@ -42,6 +46,8 @@ def serialize_task(task: Task) -> dict[str, Any]:
         "expected_outputs": task.expected_outputs,
         "acceptance_criteria": task.acceptance_criteria,
         "approval_policy": task.approval_policy,
+        "approval_required": task.approval_required,
+        "plan_digest": task.plan_digest,
         "required_capabilities": task.required_capabilities,
         "allowed_machines": task.allowed_machines,
         "max_attempts": task.max_attempts,
@@ -160,6 +166,7 @@ def lease_next_task(
     lease_seconds: int,
 ) -> tuple[Task | None, str | None, TaskEvent | None]:
     now = utc_now()
+    expire_approvals(db, now)
 
     task = db.scalar(
         select(Task)
@@ -189,6 +196,8 @@ def lease_next_task(
 
     if task is None:
         return None, None, None
+
+    consume_task_approval(db, task, now)
 
     generated = create_task_lease_token()
 
@@ -301,13 +310,15 @@ def reap_expired_leases(
 
             failed += 1
         else:
-            task.status = "queued"
+            rearm_task_approval(
+                db, task, "A new approval is required after lease expiry."
+            )
 
             append_task_event(
                 db,
                 task,
                 "task_requeued",
-                "Task requeued after lease expiry.",
+                "Task returned for approval or requeued after lease expiry.",
                 agent_id=previous_agent_id,
                 payload={},
             )

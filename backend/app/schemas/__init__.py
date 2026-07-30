@@ -14,6 +14,13 @@ from app.schemas.control import (
     ControlScopeResponse,
     EffectiveControlResponse,
 )
+from app.schemas.governance import (
+    ApprovalDecision,
+    ApprovalEventResponse,
+    ApprovalResponse,
+    ArtifactCreate,
+    ArtifactResponse,
+)
 from app.schemas.package import (
     AgentPackageDeployment,
     PackageDeploymentCreate,
@@ -46,6 +53,11 @@ __all__ = [
     "AgentRegistrationResponse",
     "AgentResponse",
     "AgentRevocationResponse",
+    "ApprovalDecision",
+    "ApprovalEventResponse",
+    "ApprovalResponse",
+    "ArtifactCreate",
+    "ArtifactResponse",
     "ControlEventResponse",
     "ControlMutation",
     "ControlMutationResponse",

@@ -5,6 +5,7 @@ from app.api.routes import (
     agent_runtime_router,
     agents_router,
     controls_router,
+    governance_router,
     health_router,
     metrics_router,
     packages_router,
@@ -26,6 +27,7 @@ app.include_router(packages_router)
 app.include_router(agent_packages_router)
 app.include_router(agents_router)
 app.include_router(controls_router)
+app.include_router(governance_router)
 app.include_router(agent_runtime_router)
 app.include_router(tasks_router)
 app.include_router(task_runtime_router)

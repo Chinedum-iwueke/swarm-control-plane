@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal, Protocol
@@ -25,6 +26,8 @@ from swarm_worker.models import (
     AgentHeartbeat,
     AgentHeartbeatResponse,
     AgentIdentity,
+    ArtifactCreateRequest,
+    ArtifactResponse,
     LeaseResponse,
     Task,
     TaskCompleteRequest,
@@ -166,6 +169,12 @@ class AgentAPI(Protocol):
         task_id: UUID | str,
         request: TaskReleaseRequest,
     ) -> TaskMutationResponse: ...
+
+    async def register_artifact(
+        self,
+        task_id: UUID | str,
+        request: ArtifactCreateRequest,
+    ) -> ArtifactResponse: ...
 
 
 class WorkspacePreparer(Protocol):
@@ -396,6 +405,14 @@ class WorkerService:
                 execution_result = WorkflowExecutionResult.model_validate(
                     execution_result.model_dump(mode="python")
                 )
+                await self._register_execution_artifacts(
+                    api,
+                    task,
+                    lease_token,
+                    workspace,
+                    execution_result,
+                    role_package.manifest.version,
+                )
             except LeaseLost:
                 return self._lease_lost(task, "execution", workspace)
             except Exception as exc:  # noqa: BLE001 - executor boundary
@@ -591,6 +608,45 @@ class WorkerService:
             failure=failure,
             retryable=retryable,
         )
+
+    async def _register_execution_artifacts(
+        self,
+        api: AgentAPI,
+        task: Task,
+        lease_token: str,
+        workspace: TaskWorkspace,
+        execution: WorkflowExecutionResult,
+        workflow_version: str,
+    ) -> None:
+        for step in execution.steps:
+            for stream, relative in (
+                ("stdout", step.stdout_log),
+                ("stderr", step.stderr_log),
+            ):
+                attempt_root = workspace.plan.attempt_directory.resolve()
+                log_path = (attempt_root / relative).resolve()
+                if not log_path.is_relative_to(attempt_root):
+                    raise WorkerConfigurationError(
+                        "Execution log path escapes the task workspace."
+                    )
+                safe_relative = log_path.relative_to(attempt_root).as_posix()
+                content = log_path.read_bytes()
+                await api.register_artifact(
+                    task.id,
+                    ArtifactCreateRequest(
+                        lease_token=lease_token,
+                        artifact_type="log",
+                        name=f"{step.name}.{stream}.log",
+                        size_bytes=len(content),
+                        sha256=hashlib.sha256(content).hexdigest(),
+                        location=f"workspace://{safe_relative}",
+                        storage_backend="workspace",
+                        workflow=execution.workflow,
+                        workflow_version=workflow_version,
+                        source_commit=execution.base_commit,
+                        metadata={"step": step.name, "stream": stream},
+                    ),
+                )
 
     @staticmethod
     async def _release_after_cancellation(

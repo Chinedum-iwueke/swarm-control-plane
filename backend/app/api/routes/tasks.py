@@ -18,12 +18,12 @@ from app.schemas import (
     TaskEventResponse,
     TaskResponse,
 )
+from app.services.governance import create_approval, task_plan_digest
 from app.services.tasks import (
     append_task_event,
     reap_expired_leases,
     serialize_task,
 )
-
 
 router = APIRouter(
     prefix="/v1/tasks",
@@ -50,13 +50,25 @@ def create_task(
                 detail="Parent task not found.",
             )
 
+    plan_document = {
+        "project": payload.project,
+        "task_type": payload.task_type,
+        "objective": payload.objective,
+        "risk_level": payload.risk_level,
+        "input_contract": payload.input_contract,
+        "expected_outputs": payload.expected_outputs,
+        "acceptance_criteria": payload.acceptance_criteria,
+        "required_capabilities": payload.required_capabilities,
+        "allowed_machines": payload.allowed_machines,
+    }
+    approval_required = payload.approval_required or payload.risk_level >= 2
     task = Task(
         task_number=payload.task_number,
         project=payload.project,
         task_type=payload.task_type,
         title=payload.title,
         objective=payload.objective,
-        status="queued",
+        status="pending_approval" if approval_required else "queued",
         priority=payload.priority,
         risk_level=payload.risk_level,
         parent_task_id=payload.parent_task_id,
@@ -65,6 +77,8 @@ def create_task(
         expected_outputs=payload.expected_outputs,
         acceptance_criteria=payload.acceptance_criteria,
         approval_policy=payload.approval_policy,
+        approval_required=approval_required,
+        plan_digest=task_plan_digest(plan_document),
         required_capabilities=payload.required_capabilities,
         allowed_machines=payload.allowed_machines,
         max_attempts=payload.max_attempts,
@@ -77,12 +91,18 @@ def create_task(
 
     try:
         db.flush()
+        if task.approval_required:
+            create_approval(db, task)
 
         append_task_event(
             db,
             task,
             "task_created",
-            "Task created and queued.",
+            (
+                "Task created pending approval."
+                if task.approval_required
+                else "Task created and queued."
+            ),
             payload={
                 "created_by": payload.created_by,
                 "priority": payload.priority,
@@ -192,5 +212,3 @@ def get_task(
             for event in events
         ],
     )
-
-
