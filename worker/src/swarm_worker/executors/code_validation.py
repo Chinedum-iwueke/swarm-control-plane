@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -83,6 +84,12 @@ class AsyncProcessRunner:
             raise ValueError("subprocess commands must be argument arrays")
         command = tuple(str(argument) for argument in args)
         environment = dict(self._environment)
+        virtualenv_bin = Path(sys.executable).resolve().parent
+        existing_path = environment.get("PATH", "")
+        environment["PATH"] = os.pathsep.join(
+            part for part in (str(virtualenv_bin), existing_path) if part
+        )
+        environment["VIRTUAL_ENV"] = str(virtualenv_bin.parent)
         python_paths = [cwd]
         backend_path = cwd / "backend"
         if backend_path.is_dir():

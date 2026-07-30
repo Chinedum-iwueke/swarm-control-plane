@@ -307,11 +307,16 @@ async def test_token_not_inherited_and_working_directory_is_worktree(
     token = "swarm_ag_do_not_inherit_this_token"
     (workspace.repository / "test_environment.py").write_text(
         "import os\n"
+        "import sys\n"
         "from pathlib import Path\n\n"
         "def test_environment():\n"
         "    assert 'SWARM_AGENT_TOKEN' not in os.environ\n"
         "    assert '/primary-checkout' not in os.environ['PYTHONPATH']\n"
         "    assert os.environ['PYTHONPATH'].split(os.pathsep)[0] == os.getcwd()\n"
+        "    assert os.environ['PATH'].split(os.pathsep)[0] == "
+        "str(Path(sys.executable).resolve().parent)\n"
+        "    assert os.environ['VIRTUAL_ENV'] == "
+        "str(Path(sys.executable).resolve().parent.parent)\n"
         "    Path('observed-cwd').write_text(os.getcwd())\n"
     )
     runner = AsyncProcessRunner(
