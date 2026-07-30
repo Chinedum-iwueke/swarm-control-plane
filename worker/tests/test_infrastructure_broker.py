@@ -190,7 +190,13 @@ def test_postgres_preflight_is_read_only_and_reports_tls_blocker(
 
     assert result.operation == "preflight-invariance-postgres"
     assert result.pre_state["public_tls"]["ready"] is False
-    assert ("git", "rev-parse", "HEAD") in runner.commands
+    assert (
+        "git",
+        "-c",
+        f"safe.directory={tmp_path / 'invariance_research'}",
+        "rev-parse",
+        "HEAD",
+    ) in runner.commands
     assert not any(
         {"up", "restart", "install", "push"} & set(command)
         for command in runner.commands

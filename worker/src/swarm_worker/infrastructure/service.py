@@ -326,7 +326,19 @@ class InfrastructureService:
             "attempt": result.attempt_number,
             "started_at": result.started_at.isoformat(),
             "ended_at": result.ended_at.isoformat(),
-            "pre_healthy": bool(result.pre_state.get("healthy")),
+            "pre_healthy": bool(
+                result.pre_state.get("healthy", result.pre_state.get("ready"))
+            ),
+            "preflight_checks": (
+                result.pre_state.get("checks")
+                if result.operation == "preflight-invariance-postgres"
+                else None
+            ),
+            "public_tls": (
+                result.pre_state.get("public_tls")
+                if result.operation == "preflight-invariance-postgres"
+                else None
+            ),
             "post_healthy": (
                 bool(result.post_state.get("healthy"))
                 if result.post_state is not None

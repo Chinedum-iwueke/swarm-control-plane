@@ -36,12 +36,14 @@ async def _run(command: str, level: str) -> int:
     if command == "check":
         try:
             settings.prepare_directories()
-            load_role_package(
+            package = load_role_package(
                 settings.swarm_infrastructure_role_manifest,
                 settings.swarm_infrastructure_runbook_directory,
             )
-            for filename in ("observer.yaml", "controlled-restart.yaml"):
-                load_runbook(settings.swarm_infrastructure_runbook_directory / filename)
+            for artifact in package.manifest.workflows:
+                load_runbook(
+                    settings.swarm_infrastructure_runbook_directory / artifact.file
+                )
             if not settings.swarm_broker_socket.exists():
                 raise RuntimeError("Broker socket is unavailable.")
             api = service._api_factory(settings)
@@ -104,7 +106,7 @@ async def _run(command: str, level: str) -> int:
             delay = min(120, max(delay * 2, 5))
         try:
             await asyncio.wait_for(stop.wait(), timeout=delay)
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             pass
     return 0
 

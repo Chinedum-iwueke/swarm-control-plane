@@ -239,7 +239,13 @@ class InfrastructureBroker:
             timeout=30,
         )
         source_commit = self._runner.run(
-            ["git", "rev-parse", "HEAD"],
+            [
+                "git",
+                "-c",
+                f"safe.directory={self._research_repository}",
+                "rev-parse",
+                "HEAD",
+            ],
             cwd=self._research_repository,
             timeout=30,
         )
