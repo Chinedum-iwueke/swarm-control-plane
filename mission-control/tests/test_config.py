@@ -25,12 +25,24 @@ def test_permissive_token_file_is_rejected(
         settings.prepare()
 
 
-def test_empty_knowledge_roots_are_rejected(
+def test_empty_knowledge_roots_use_private_data_source(
     settings: MissionControlSettings,
 ) -> None:
     empty = settings.model_copy(update={"knowledge_roots": ""})
-    with pytest.raises(ValueError, match="knowledge root"):
-        empty.prepare()
+    empty.prepare()
+    expected = (empty.data_root / "sources").resolve()
+    assert empty.allowed_knowledge_roots == (expected,)
+    assert expected.stat().st_mode & 0o777 == 0o700
+
+
+def test_missing_configured_knowledge_root_is_rejected(
+    settings: MissionControlSettings,
+) -> None:
+    missing = settings.model_copy(
+        update={"knowledge_roots": str(settings.data_root / "missing")}
+    )
+    with pytest.raises(ValueError, match="unavailable"):
+        missing.prepare()
 
 
 def test_token_path_can_expand_home(
@@ -38,4 +50,3 @@ def test_token_path_can_expand_home(
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     assert settings.read_token() == "operator-token-that-is-long-enough"
-

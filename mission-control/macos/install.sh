@@ -33,7 +33,10 @@ python="${HERMES_PYTHON:-$(command -v python3)}"
   exit 2
 }
 
-install -d -m 0700 "$app_root" "${HOME}/Library/LaunchAgents"
+install -d -m 0700 \
+  "$app_root" \
+  "${app_root}/data/sources" \
+  "${HOME}/Library/LaunchAgents"
 if [[ ! -f "$env_file" || ! -f "$token_file" ]]; then
   cat >&2 <<EOF
 Create these protected files before installation:
