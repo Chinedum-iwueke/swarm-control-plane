@@ -9,6 +9,7 @@ StartLimitBurst=3
 Type=simple
 User=root
 Group=invariance-swarm-infrastructure
+SupplementaryGroups=invariance-swarm-backup-readers
 WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
 ExecStart=/srv/invariance/swarm/repositories/swarm-control-plane/worker/.venv/bin/invariance-swarm-infrastructure-broker
 Restart=on-failure

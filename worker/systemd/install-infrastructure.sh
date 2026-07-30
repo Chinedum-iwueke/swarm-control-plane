@@ -28,6 +28,8 @@ test -S /var/run/docker.sock
 
 getent group invariance-swarm-infrastructure >/dev/null ||
   groupadd --system invariance-swarm-infrastructure
+getent group invariance-swarm-backup-readers >/dev/null ||
+  groupadd --system invariance-swarm-backup-readers
 id swarm-infrastructure >/dev/null 2>&1 ||
   useradd \
     --system \
@@ -43,6 +45,24 @@ install -d \
   /srv/invariance/swarm/agent-workspaces/infrastructure
 install -d -o root -g root -m 0755 /etc/invariance-swarm
 install -d -o root -g root -m 0700 /var/lib/invariance-swarm-infrastructure
+install -d \
+  -o omenka \
+  -g invariance-swarm-backup-readers \
+  -m 2750 \
+  /srv/invariance/swarm/control-plane-runtime/backups
+find /srv/invariance/swarm/control-plane-runtime/backups \
+  -maxdepth 1 \
+  -type f \
+  -name '*.dump' \
+  -exec chgrp invariance-swarm-backup-readers {} +
+find /srv/invariance/swarm/control-plane-runtime/backups \
+  -maxdepth 1 \
+  -type f \
+  -name '*.dump' \
+  -exec chmod 0640 {} +
+install -o omenka -g invariance -m 0750 \
+  "$worker/systemd/backup-database.sh" \
+  /srv/invariance/swarm/control-plane-runtime/scripts/backup-database.sh
 
 for unit in \
   invariance-swarm-infrastructure-broker.service \
