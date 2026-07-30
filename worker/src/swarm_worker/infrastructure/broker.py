@@ -315,13 +315,18 @@ class InfrastructureBroker:
             config = self._postgres_compose(["config", "--quiet"], timeout=30)
             pull = self._postgres_compose(["pull"], timeout=600)
             start = self._postgres_compose(["up", "-d"], timeout=300)
-            post = self._postgres_health()
+            post = self._wait_for_postgres_health()
             success = all(
                 item["return_code"] == 0
                 for item in (config, pull, start)
             ) and post["healthy"]
             rollback = None
+            diagnostics = None
             if not success:
+                diagnostics = self._postgres_compose(
+                    ["logs", "--no-color", "--tail", "200"],
+                    timeout=30,
+                )
                 rollback = self._postgres_compose(
                     ["stop", "--timeout", "30"], timeout=90
                 )
@@ -332,7 +337,12 @@ class InfrastructureBroker:
                 started_at,
                 success=success,
                 pre_state={"staged": staged["staged"]},
-                action={"config": config, "pull": pull, "start": start},
+                action={
+                    "config": config,
+                    "pull": pull,
+                    "start": start,
+                    "diagnostics": diagnostics,
+                },
                 post_state=post,
                 rollback=rollback,
                 error=None if success else "Private startup verification failed.",
@@ -494,7 +504,7 @@ class InfrastructureBroker:
                 "-h",
                 "127.0.0.1",
                 "-p",
-                "6432",
+                "5432",
                 "-U",
                 "invariance_app",
                 "-d",
@@ -513,6 +523,22 @@ class InfrastructureBroker:
             "bindings": ["127.0.0.1:5432", "100.112.117.59:6432"],
             "public_access": False,
         }
+
+    def _wait_for_postgres_health(
+        self,
+        *,
+        attempts: int = 10,
+        interval_seconds: float = 3,
+    ) -> dict[str, Any]:
+        latest: dict[str, Any] = {"healthy": False}
+        for attempt in range(1, attempts + 1):
+            latest = self._postgres_health()
+            latest["readiness_attempt"] = attempt
+            if latest["healthy"]:
+                return latest
+            if attempt < attempts:
+                self._sleep(interval_seconds)
+        return latest
 
     def _source_commit(self) -> str:
         result = self._runner.run(

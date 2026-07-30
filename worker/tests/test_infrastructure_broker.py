@@ -348,6 +348,21 @@ def test_postgres_phases_use_only_fixed_broker_commands(
         assert result.success is False
     else:
         assert result.success is True
+    if operation == "start-invariance-postgres-private":
+        assert any(
+            command[-8:]
+            == (
+                "-h",
+                "127.0.0.1",
+                "-p",
+                "5432",
+                "-U",
+                "invariance_app",
+                "-d",
+                "invariance_research",
+            )
+            for command in runner.commands
+        )
     serialized = json.dumps(result.model_dump(mode="json"))
     assert "INVARIANCE_OWNER_PASSWORD" not in serialized
     assert "postgresql://invariance_owner:" not in serialized
