@@ -1,0 +1,46 @@
+schema_version: 1
+milestone_id: M4-ENGINEERING-PILOT-RETRY-2
+project: swarm-control-plane
+objective: Add one bounded engineering mission pilot record and validate it.
+base_ref: main
+source_references:
+- docs/hermes-swarm-delivery-plan.md
+- docs/hermes-swarm-system-design.md
+workflow: engineering-mission
+risk_level: 0
+allowed_machines:
+- vm1-developer
+required_capabilities:
+- git
+- python
+- testing
+budget:
+  max_tasks: 1
+  max_attempts_per_task: 1
+  max_duration_seconds: 1800
+  max_files_changed: 1
+  max_diff_lines: 120
+work_items:
+- id: record-pilot
+  objective: Create docs/m4-engineering-pilot-result.md documenting the bounded pilot.
+  depends_on: []
+  allowed_paths:
+  - docs/m4-engineering-pilot-result.md
+  context_paths:
+  - docs/hermes-swarm-delivery-plan.md
+  - docs/runbooks/m4-engineering-missions.md
+  acceptance_criteria:
+  - The document identifies the milestone and states that no push or merge occurred.
+  - The document records validation and review evidence locations.
+  - No other repository file is changed.
+  stop_conditions:
+  - A requested change would leave the allowed path.
+  - Validation fails for reasons outside this work item.
+  - Credentials, deployment, or protected branches would be required.
+deliverables:
+- patch
+- validation logs
+- independent review
+- PR bundle
+approved_by: founder-operator
+approval_reference: M4-ENGINEERING-PILOT-RETRY-2-APPROVAL
