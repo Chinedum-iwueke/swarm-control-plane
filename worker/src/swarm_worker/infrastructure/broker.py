@@ -9,7 +9,7 @@ import socketserver
 import subprocess
 import time
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ _RUNTIME = Path("/srv/invariance/swarm/control-plane-runtime")
 _BACKUPS = _RUNTIME / "backups"
 _MAX_OUTPUT = 16_000
 _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
+UTC = timezone.utc
 
 
 class BrokerError(Exception):
