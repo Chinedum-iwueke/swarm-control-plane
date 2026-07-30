@@ -679,9 +679,7 @@ class WorkerService:
                 task.id,
                 ArtifactCreateRequest(
                     lease_token=lease_token,
-                    artifact_type=(
-                        "result" if artifact_path.name == "pr-bundle.json" else "evidence"
-                    ),
+                    artifact_type=_artifact_type(artifact_path.name),
                     name=artifact_path.name,
                     size_bytes=len(content),
                     sha256=hashlib.sha256(content).hexdigest(),
@@ -690,7 +688,7 @@ class WorkerService:
                     workflow=execution.workflow,
                     workflow_version=workflow_version,
                     source_commit=execution.base_commit,
-                    metadata={"mission_artifact": True},
+                    metadata={"execution_artifact": True},
                 ),
             )
 
@@ -718,3 +716,11 @@ class WorkerService:
             await asyncio.shield(release)
         except WorkerAPIError:
             pass
+
+
+def _artifact_type(name: str) -> str:
+    if name in {"pr-bundle.json", "research-evidence.json"}:
+        return "result"
+    if name.endswith((".md", ".html", ".pdf")):
+        return "report"
+    return "evidence"

@@ -1,0 +1,13 @@
+name: research-experiment
+task_type: research_experiment
+timeout_seconds: 1800
+allowed_repositories:
+- bulletproof_bt
+steps:
+- name: compile-python
+  command:
+  - python3
+  - -m
+  - compileall
+  - -q
+  - .

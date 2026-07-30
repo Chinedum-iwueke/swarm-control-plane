@@ -9,6 +9,7 @@ from swarm_worker.role_package import PackageVerificationError, load_role_packag
 ROOT = Path(__file__).parents[1]
 MANIFEST = ROOT / "role-packages/vm1-engineering-worker/manifest.yaml"
 WORKFLOWS = ROOT / "workflows"
+RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
 
 
 def test_versioned_package_and_workflow_digest_verify() -> None:
@@ -16,6 +17,15 @@ def test_versioned_package_and_workflow_digest_verify() -> None:
     assert package.manifest.name == "vm1-engineering-worker"
     assert package.manifest.version == "1.0.0"
     assert len(package.manifest_digest) == 64
+
+
+def test_research_package_is_narrow_and_digest_verified() -> None:
+    package = load_role_package(RESEARCH_MANIFEST, WORKFLOWS)
+    assert package.manifest.name == "vm1-research-runner"
+    assert package.manifest.task_types == ["research_experiment"]
+    assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
+    assert package.manifest.permission_profile.privileged_operations is False
+    assert package.manifest.permission_profile.network_access == "control-plane"
 
 
 def test_tampered_workflow_is_rejected(tmp_path: Path) -> None:

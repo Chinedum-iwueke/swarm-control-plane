@@ -715,7 +715,7 @@ workspaces, logs, and repositories are preserved by worker uninstall tooling.
 | General automatic retry orchestration | VM2 control plane | Bounded M4 task retry only |
 | Deployment worker | VM2 | Designed, not implemented |
 | Backup/restore worker | VM2 | Designed, not implemented |
-| Research and experiment workers | VM1 | Designed, not implemented |
+| Research and experiment workers | VM1 | First bounded synthetic pilot implemented |
 | Founder/business/content workers | Mac | Designed, not implemented |
 | Dashboard and Telegram interface | Mac/VM2 | Designed, not implemented |
 | Redis queue/event transport | VM2 | Dependency/readiness only |

@@ -790,6 +790,11 @@ ineligible for all deployed workers. Evidence and limitations are recorded in
 - planner/executor/auditor;
 - reproducible evidence and report.
 
+**Source status:** implemented on `feat/m8-research-pilot`. Operational
+completion requires Git promotion, a dedicated research identity and role
+package, and one supervised synthetic experiment whose digest-bound evidence,
+audit, and report are registered without changing the primary checkout.
+
 ## 13. Definition of Functional Swarm
 
 Hermes is operationally functional when:

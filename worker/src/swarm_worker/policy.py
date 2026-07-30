@@ -95,8 +95,43 @@ class EngineeringMissionContract(BaseModel):
         return paths
 
 
+class ResearchAcceptanceCriteria(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    minimum_out_of_sample_sharpe: float = Field(ge=-10, le=10)
+    maximum_out_of_sample_drawdown: float = Field(ge=0, le=1)
+    minimum_out_of_sample_trades: int = Field(ge=1, le=10000)
+    minimum_cost_stress_sharpe: float = Field(ge=-10, le=10)
+
+
+class ResearchExperimentContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["research-experiment"]
+    base_ref: str = Field(min_length=1, max_length=255)
+    program_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
+    hypothesis_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
+    hypothesis: Literal["lagged-return-momentum"]
+    dataset: Literal["synthetic-regime-v1"]
+    seed: int = Field(ge=0, le=2_147_483_647)
+    observations: int = Field(ge=500, le=10000)
+    train_fraction: float = Field(ge=0.5, le=0.8)
+    transaction_cost_bps: float = Field(ge=0, le=100)
+    acceptance: ResearchAcceptanceCriteria
+
+    @field_validator("base_ref")
+    @classmethod
+    def safe_base_ref(cls, value: str) -> str:
+        return validate_base_ref(value)
+
+
 class ValidatedTaskPolicy(BaseModel):
-    contract: CodeValidationContract | EngineeringMissionContract
+    contract: (
+        CodeValidationContract
+        | EngineeringMissionContract
+        | ResearchExperimentContract
+    )
     workflow: WorkflowDefinition
 
 
@@ -122,7 +157,11 @@ def validate_task_policy(
     *,
     worker_machine: str,
 ) -> ValidatedTaskPolicy:
-    if task.task_type not in {"code_validation", "engineering_mission"}:
+    if task.task_type not in {
+        "code_validation",
+        "engineering_mission",
+        "research_experiment",
+    }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
     contract = _parse_contract(task.task_type, task.input_contract)
@@ -155,13 +194,14 @@ def validate_task_policy(
 
 def _parse_contract(
     task_type: str, input_contract: dict[str, Any]
-) -> CodeValidationContract | EngineeringMissionContract:
+) -> CodeValidationContract | EngineeringMissionContract | ResearchExperimentContract:
     try:
-        model = (
-            EngineeringMissionContract
-            if task_type == "engineering_mission"
-            else CodeValidationContract
-        )
+        models = {
+            "code_validation": CodeValidationContract,
+            "engineering_mission": EngineeringMissionContract,
+            "research_experiment": ResearchExperimentContract,
+        }
+        model = models[task_type]
         return model.model_validate(input_contract)
     except ValidationError as exc:
         summary = "; ".join(

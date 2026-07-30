@@ -16,6 +16,7 @@ from pydantic import (
 WORKFLOW_FILES = {
     "code-validation": "code-validation.yaml",
     "engineering-mission": "engineering-mission.yaml",
+    "research-experiment": "research-experiment.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -149,7 +150,11 @@ class WorkflowDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=100, pattern=_SAFE_NAME.pattern)
-    task_type: Literal["code_validation", "engineering_mission"]
+    task_type: Literal[
+        "code_validation",
+        "engineering_mission",
+        "research_experiment",
+    ]
     timeout_seconds: int = Field(ge=1, le=3600)
     allowed_repositories: Annotated[
         list[

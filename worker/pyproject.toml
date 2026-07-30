@@ -3,7 +3,7 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "invariance-swarm-worker"
-version = "0.3.1"
+version = "0.3.2"
 description = "Restricted Hermes worker for the Invariance Swarm control plane"
 requires-python = ">=3.10"
 dependencies = [

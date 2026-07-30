@@ -1,8 +1,9 @@
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AgentRuntimeStatus = Literal["idle", "busy", "degraded"]
 
@@ -307,3 +308,11 @@ class WorkflowExecutionResult(BaseModel):
     worker_version: str = Field(default="unknown", min_length=1, max_length=100)
     artifacts: list[str] = Field(default_factory=list, max_length=20)
     retryable: bool = False
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("summary")
+    @classmethod
+    def bounded_summary(cls, summary: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(summary, ensure_ascii=True, sort_keys=True)) > 16_384:
+            raise ValueError("execution summary exceeds 16 KiB")
+        return summary

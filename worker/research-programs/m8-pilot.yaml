@@ -1,0 +1,18 @@
+schema_version: 1
+program_id: M8-SYNTHETIC-MOMENTUM
+project: bulletproof_bt
+repository: bulletproof_bt
+workflow: research-experiment
+base_ref: main
+hypothesis_id: M8-H1-LAGGED-MOMENTUM
+hypothesis: lagged-return-momentum
+dataset: synthetic-regime-v1
+seed: 20260730
+observations: 1200
+train_fraction: 0.65
+transaction_cost_bps: 5.0
+acceptance:
+  minimum_out_of_sample_sharpe: 1.0
+  maximum_out_of_sample_drawdown: 0.25
+  minimum_out_of_sample_trades: 50
+  minimum_cost_stress_sharpe: 0.5

@@ -3,7 +3,8 @@
 The VM1 worker leases one control-plane task at a time, validates it against a
 server-local named workflow, creates an isolated detached Git worktree, runs
 the allowlisted validation steps, and reports a bounded result. Phase 1
-supports the `code_validation` and bounded `engineering_mission` task types
+supports the `code_validation`, bounded `engineering_mission`, and
+deterministic `research_experiment` task types
 through reviewed local workflows.
 
 ## Architecture
@@ -293,7 +294,10 @@ logs, or repositories.
 ## Limitations
 
 - Phase 1 processes one task at a time on one machine.
-- Only `code_validation` and low-risk `engineering_mission` are supported.
+- Only `code_validation`, low-risk `engineering_mission`, and the dedicated
+  synthetic `research_experiment` contract are supported.
+- The research pilot cannot read live market data, search parameters, invoke
+  Codex, push Git, or promote a finding to production.
 - Workflow definitions are static and server-local; task-supplied commands are
   rejected.
 - Workspaces are intentionally preserved after success and failure for audit.
