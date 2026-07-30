@@ -13,7 +13,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .config import MissionControlSettings
 from .control_plane import ControlPlaneClient, ControlPlaneError
 from .knowledge import KnowledgePolicyError, KnowledgeStore
-from .models import ApprovalDecision, IntakeRequest, KnowledgeIngestRequest
+from .models import (
+    ApprovalDecision,
+    IntakeRequest,
+    KnowledgeIngestRequest,
+    ProposalDecision,
+)
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -97,6 +102,21 @@ def create_app(
         if action not in {"approve", "reject"}:
             raise HTTPException(status_code=404, detail="Unknown approval action.")
         return await client.decide_approval(approval_id, action, payload)
+
+    @app.post(
+        "/api/proposals/{proposal_id}/{action}",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def decide_proposal(
+        proposal_id: str,
+        action: str,
+        payload: ProposalDecision,
+    ) -> dict:
+        if action not in {"materialize", "reject"}:
+            raise HTTPException(status_code=404, detail="Unknown proposal action.")
+        return await client.decide_proposal(
+            proposal_id, action, payload
+        )
 
     @app.post("/api/control/{action}", dependencies=[Depends(_mutation_intent)])
     async def control(

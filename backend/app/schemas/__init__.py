@@ -42,6 +42,13 @@ from app.schemas.package import (
     RolePackageManifest,
     RolePackageResponse,
 )
+from app.schemas.proposal import (
+    FounderProposalCreate,
+    FounderProposalDecision,
+    FounderProposalDocument,
+    FounderProposalResponse,
+    ProposedTask,
+)
 from app.schemas.task import (
     ExpiredLeaseReapResponse,
     TaskCompleteRequest,
@@ -83,12 +90,17 @@ __all__ = [
     "EngineeringMilestoneManifest",
     "EngineeringWorkItem",
     "ExpiredLeaseReapResponse",
+    "FounderProposalCreate",
+    "FounderProposalDecision",
+    "FounderProposalDocument",
+    "FounderProposalResponse",
     "InfrastructureContract",
     "MissionCreate",
     "MissionDetailResponse",
     "MissionResponse",
     "PackageDeploymentCreate",
     "PackageDeploymentResponse",
+    "ProposedTask",
     "RolePackageCreate",
     "RolePackageManifest",
     "RolePackageResponse",

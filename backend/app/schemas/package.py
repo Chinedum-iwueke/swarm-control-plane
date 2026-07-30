@@ -27,7 +27,7 @@ class PermissionProfile(BaseModel):
 
 class RepositoryProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    repositories: list[str] = Field(min_length=1, max_length=50)
+    repositories: list[str] = Field(default_factory=list, max_length=50)
     primary_checkout_write: bool = False
     remote_write: bool = False
 
@@ -46,7 +46,7 @@ class RolePackageManifest(BaseModel):
     version: str = Field(pattern=_VERSION)
     role: str = Field(min_length=1, max_length=150)
     task_types: list[str] = Field(min_length=1, max_length=50)
-    workflows: list[WorkflowArtifact] = Field(min_length=1, max_length=50)
+    workflows: list[WorkflowArtifact] = Field(default_factory=list, max_length=50)
     required_capabilities: list[str] = Field(min_length=1, max_length=50)
     allowed_machines: list[str] = Field(min_length=1, max_length=50)
     risk_ceiling: int = Field(ge=0, le=5)
@@ -84,6 +84,12 @@ class RolePackageManifest(BaseModel):
             raise ValueError("primary checkout writes are forbidden")
         if self.repository_profile.remote_write:
             raise ValueError("remote repository writes are forbidden")
+        if not self.workflows and self.task_types != ["founder_request"]:
+            raise ValueError("only founder_request planner packages may omit workflows")
+        if not self.repository_profile.repositories and self.task_types != [
+            "founder_request"
+        ]:
+            raise ValueError("only founder_request planners may omit repositories")
         return self
 
 

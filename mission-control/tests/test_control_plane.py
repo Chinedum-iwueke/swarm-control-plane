@@ -10,7 +10,11 @@ from hermes_mission_control.control_plane import (
     ControlPlaneClient,
     ControlPlaneError,
 )
-from hermes_mission_control.models import ApprovalDecision, IntakeRequest
+from hermes_mission_control.models import (
+    ApprovalDecision,
+    IntakeRequest,
+    ProposalDecision,
+)
 
 
 @pytest.mark.asyncio
@@ -69,7 +73,7 @@ async def test_intake_is_structured_and_non_executable(
         await client.close()
     assert captured["task_type"] == "founder_request"
     assert captured["required_capabilities"] == ["founder-intake"]
-    assert captured["allowed_machines"] == ["control-plane-planner"]
+    assert captured["allowed_machines"] == ["vm1-developer"]
     assert set(captured["input_contract"]) == {
         "schema_version",
         "request_kind",
@@ -152,3 +156,33 @@ async def test_api_error_is_bounded_and_token_free(
     assert "HTTP 500" in str(raised.value)
     assert token not in str(raised.value)
 
+
+@pytest.mark.asyncio
+async def test_proposal_materialization_is_an_explicit_founder_action(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"id": "task-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.decide_proposal(
+            "proposal-id",
+            "materialize",
+            ProposalDecision(
+                reason="Founder reviewed the complete bounded proposal."
+            ),
+        )
+    finally:
+        await client.close()
+    assert captured == {
+        "path": "/v1/proposals/proposal-id/materialize",
+        "body": {
+            "actor": "founder-mission-control",
+            "reason": "Founder reviewed the complete bounded proposal.",
+        },
+    }

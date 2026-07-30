@@ -1,0 +1,25 @@
+schema_version: 1
+name: founder-intake-planner
+version: 1.0.0
+role: Founder request interpreter and bounded task proposal planner
+task_types:
+- founder_request
+workflows: []
+required_capabilities:
+- founder-intake
+allowed_machines:
+- vm1-developer
+risk_ceiling: 1
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: read-only-planning
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - planner-temporary
+repository_profile:
+  repositories: []
+  primary_checkout_write: false
+  remote_write: false

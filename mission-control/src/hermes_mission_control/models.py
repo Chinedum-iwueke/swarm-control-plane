@@ -28,6 +28,10 @@ class ApprovalDecision(StrictModel):
     expires_in_seconds: int = Field(default=900, ge=60, le=3600)
 
 
+class ProposalDecision(StrictModel):
+    reason: str = Field(min_length=10, max_length=1000)
+
+
 class KnowledgeIngestRequest(StrictModel):
     path: str = Field(min_length=1, max_length=2000)
     confidentiality: Literal["private", "internal"] = "private"
@@ -77,4 +81,3 @@ class ApprovalAction(StrictModel):
     approval_id: UUID
     action: Literal["approve", "reject"]
     reason: str
-

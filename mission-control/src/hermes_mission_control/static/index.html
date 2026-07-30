@@ -30,6 +30,7 @@
         <button class="nav-item active" data-view="command"><span class="nav-glyph">⌂</span>Command</button>
         <button class="nav-item" data-view="missions"><span class="nav-glyph">◎</span>Missions</button>
         <button class="nav-item" data-view="tasks"><span class="nav-glyph">≡</span>Tasks</button>
+        <button class="nav-item" data-view="proposals"><span class="nav-glyph">◆</span>Proposals <span class="nav-count" id="proposal-count">0</span></button>
         <button class="nav-item" data-view="approvals"><span class="nav-glyph">✓</span>Approvals <span class="nav-count" id="approval-count">0</span></button>
       </div>
       <div class="nav-group">
@@ -147,6 +148,14 @@
         </div>
       </section>
 
+      <section id="proposals" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Plain English to governed work</p><h1>Proposals</h1><p class="heading-context">Planner interpretations awaiting founder review and materialization</p></div>
+          <button class="command open-intake-copy">＋ New request</button>
+        </div>
+        <div id="proposal-list" class="proposal-list"></div>
+      </section>
+
       <section id="approvals" class="view">
         <div class="section-heading">
           <div><p class="eyebrow">Human authority</p><h1>Approvals</h1><p class="heading-context">Review scope and effect before authorizing change</p></div>
@@ -166,7 +175,7 @@
 
       <section id="agents" class="view">
         <div class="section-heading">
-          <div><p class="eyebrow">Permission-bounded fleet</p><h1>Agents</h1><p class="heading-context">Identity, capability, machine, and current presence</p></div>
+          <div><p class="eyebrow">Permission-bounded fleet</p><h1>Agents</h1><p class="heading-context">Roles, responsibilities, executable task envelope, and effective permissions</p></div>
         </div>
         <div id="agent-matrix" class="agent-matrix"></div>
       </section>
@@ -244,6 +253,17 @@
       <input type="hidden" name="action">
       <label>Decision reason<textarea name="reason" required minlength="10" maxlength="500" placeholder="Record why this decision is appropriate."></textarea></label>
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command" id="decision-submit">Approve</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="proposal-dialog" class="modal decision-modal">
+    <form id="proposal-form" method="dialog">
+      <div class="dialog-heading"><div><p class="section-kicker">Proposal decision</p><h2 id="proposal-title">Review proposal</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <div id="proposal-summary" class="decision-summary"></div>
+      <input type="hidden" name="proposal_id">
+      <input type="hidden" name="action">
+      <label>Decision reason<textarea name="reason" required minlength="10" maxlength="1000" placeholder="Record why this proposal should or should not become a task."></textarea></label>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command" id="proposal-submit">Create governed task</button></div>
     </form>
   </dialog>
 

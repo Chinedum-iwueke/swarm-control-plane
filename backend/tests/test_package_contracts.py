@@ -72,3 +72,16 @@ def test_unsafe_permission_profile_is_rejected() -> None:
 def test_manifest_has_no_command_surface() -> None:
     assert "command" not in RolePackageManifest.model_fields
     assert "steps" not in RolePackageManifest.model_fields
+
+
+def test_workflowless_package_is_limited_to_founder_planner() -> None:
+    planner = manifest().model_dump()
+    planner["task_types"] = ["founder_request"]
+    planner["workflows"] = []
+    planner["repository_profile"]["repositories"] = []
+    parsed = RolePackageManifest.model_validate(planner)
+    assert parsed.workflows == []
+
+    planner["task_types"] = ["code_validation"]
+    with pytest.raises(ValueError):
+        RolePackageManifest.model_validate(planner)

@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "missions", "tasks", "approvals", "agents", "infrastructure", "research", "knowledge", "evidence"]);
+const allowedViews = new Set(["command", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const state = {
   dashboard: null,
@@ -90,6 +90,21 @@ document.getElementById("decision-form").addEventListener("submit", async (event
   await loadDashboard();
 });
 
+document.getElementById("proposal-form").addEventListener("submit", async (event) => {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  if (state.demo) return toast("Decisions are disabled in demonstration mode.");
+  const form = new FormData(event.target);
+  const action = form.get("action");
+  await mutate(
+    `/api/proposals/${form.get("proposal_id")}/${action}`,
+    { reason: form.get("reason") },
+    action === "materialize" ? "Governed task created." : "Proposal rejected.",
+  );
+  document.getElementById("proposal-dialog").close();
+  await loadDashboard();
+});
+
 document.getElementById("ingest-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (state.demo) return toast("Indexing is disabled in demonstration mode.");
@@ -152,6 +167,7 @@ function renderAll() {
   renderCommand();
   renderMissions();
   renderTasks();
+  renderProposals();
   renderApprovals();
   renderAgents();
   renderInfrastructure();
@@ -165,6 +181,7 @@ function renderCommand() {
   const agents = data.agents || [];
   const approvals = data.approvals || [];
   const pendingApprovals = approvals.filter((item) => item.status === "pending");
+  const pendingProposals = (data.proposals || []).filter((item) => item.status === "proposed");
   const active = tasks.filter((item) => activeStatuses.has(item.status));
   const failed = tasks.filter((item) => item.status === "failed");
   const online = agents.filter((item) => agentStatus(item) === "online");
@@ -172,7 +189,7 @@ function renderCommand() {
 
   document.getElementById("metrics").innerHTML = [
     metric(active.length, "Active tasks", `${tasks.length} total recorded`),
-    metric(pendingApprovals.length, "Pending decisions", pendingApprovals.length ? "Founder action required" : "Queue clear"),
+    metric(pendingApprovals.length + pendingProposals.length, "Pending decisions", (pendingApprovals.length + pendingProposals.length) ? "Founder action required" : "Queue clear"),
     metric(`${online.length}/${agents.length}`, "Online agents", "Across three machine roles"),
     metric(succeeded.length, "Verified outcomes", `${failed.length} failed preserved`),
   ].join("");
@@ -262,6 +279,9 @@ function proofRows(tasks, artifacts) {
 function renderAttention() {
   const data = state.dashboard;
   const items = [];
+  (data.proposals || []).filter((item) => item.status === "proposed").forEach((proposal) => {
+    items.push({ severity: "pending", title: proposal.proposal.summary, detail: `${humanize(proposal.proposal.recommended_action)} · proposal`, proposal });
+  });
   (data.approvals || []).filter((item) => item.status === "pending").forEach((approval) => {
     items.push({ severity: "pending", title: `${approval.scope?.project || "Project"} approval`, detail: `Risk ${approval.risk_level} · ${approval.scope?.task_type || "operation"}`, approval });
   });
@@ -276,6 +296,7 @@ function renderAttention() {
   });
   document.getElementById("attention-count").textContent = items.length;
   document.getElementById("approval-count").textContent = (data.approvals || []).filter((item) => item.status === "pending").length;
+  document.getElementById("proposal-count").textContent = (data.proposals || []).filter((item) => item.status === "proposed").length;
   document.getElementById("attention-list").innerHTML = items.length ? items.map((item, index) => `
     <button class="attention-item ${item.severity}" data-attention="${index}">
       <span class="attention-bar"></span>
@@ -284,10 +305,32 @@ function renderAttention() {
   document.querySelectorAll("[data-attention]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = items[Number(button.dataset.attention)];
-      if (item.approval) navigate("approvals");
+      if (item.proposal) openProposal(item.proposal.id);
+      else if (item.approval) navigate("approvals");
       else if (item.task) openTask(item.task.id);
       else if (item.agent) openAgent(item.agent.id);
     });
+  });
+}
+
+function renderProposals() {
+  if (!state.dashboard) return;
+  const proposals = state.dashboard.proposals || [];
+  document.getElementById("proposal-list").innerHTML = proposals.length ? proposals.map((item) => {
+    const proposal = item.proposal;
+    const task = proposal.proposed_task;
+    return `<article class="proposal-row" data-proposal-id="${item.id}">
+      <div class="proposal-main">
+        <div class="proposal-eyebrow">${escapeHtml(humanize(proposal.recommended_action))} · ${escapeHtml(proposal.target_role || "Unassigned role")}</div>
+        <h2>${escapeHtml(proposal.summary)}</h2>
+        <p>${escapeHtml(proposal.interpretation)}</p>
+        <div class="entity-meta"><span>${task ? escapeHtml(task.project) : "No task drafted"}</span><span>${task ? escapeHtml(humanize(task.task_type)) : "Clarification required"}</span><span>${relativeTime(item.created_at)}</span></div>
+      </div>
+      <div class="proposal-side">${task ? `<span class="risk ${task.risk_level >= 3 ? "high" : ""}">Risk ${task.risk_level}</span>` : ""}${statusBadge(item.status)}<span class="row-open">›</span></div>
+    </article>`;
+  }).join("") : empty("No founder proposals recorded.");
+  document.querySelectorAll("[data-proposal-id]").forEach((element) => {
+    element.onclick = () => openProposal(element.dataset.proposalId);
   });
 }
 
@@ -401,12 +444,18 @@ function openDecision(id, action) {
 function renderAgents() {
   if (!state.dashboard) return;
   const agents = state.dashboard.agents || [];
-  document.getElementById("agent-matrix").innerHTML = agents.length ? agents.map((agent) => `
+  document.getElementById("agent-matrix").innerHTML = agents.length ? agents.map((agent) => {
+    const deployment = activeDeployment(agent.id);
+    const manifest = deployment?.package?.manifest;
+    return `
     <article class="agent-card" data-agent-id="${agent.id}">
       <div class="agent-header"><div><h3>${escapeHtml(agent.display_name || agent.slug)}</h3><div class="agent-machine">${escapeHtml(agent.machine)}</div></div>${statusBadge(agentStatus(agent))}</div>
       <div class="capabilities">${(agent.capabilities || []).map((capability) => `<span class="capability">${escapeHtml(capability)}</span>`).join("")}</div>
-      <div class="agent-footer"><span>Risk ceiling ${agent.risk_ceiling ?? "–"}</span><span>${escapeHtml(agent.role || agent.hermes_profile || "Worker")}</span></div>
-    </article>`).join("") : empty("No agents registered.");
+      <p class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</p>
+      <div class="agent-envelope"><span>${manifest?.task_types?.length || 0} task types</span><span>${manifest?.repository_profile?.repositories?.length || 0} repositories</span><span>${manifest?.permission_profile?.privileged_operations ? "Privileged" : "Unprivileged"}</span></div>
+      <div class="agent-footer"><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"}</span></div>
+    </article>`;
+  }).join("") : empty("No agents registered.");
   bindEntityButtons();
 }
 
@@ -513,17 +562,120 @@ function openTask(id) {
 function openAgent(id) {
   const agent = state.dashboard.agents.find((item) => String(item.id) === String(id));
   if (!agent) return;
+  const deployment = activeDeployment(agent.id);
+  const pkg = deployment?.package;
+  const manifest = pkg?.manifest;
+  const permission = manifest?.permission_profile;
+  const repository = manifest?.repository_profile;
   openInspector("Agent", agent.display_name || agent.slug, `
     <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
       <dt>Slug</dt><dd class="mono">${escapeHtml(agent.slug)}</dd>
       <dt>Machine</dt><dd>${escapeHtml(agent.machine)}</dd>
       <dt>Presence</dt><dd>${statusBadge(agentStatus(agent))}</dd>
       <dt>Enabled</dt><dd>${String(agent.is_enabled ?? agent.enabled ?? true)}</dd>
-      <dt>Risk ceiling</dt><dd>${agent.risk_ceiling ?? "–"}</dd>
-      <dt>Role</dt><dd>${escapeHtml(agent.role || agent.hermes_profile || "Worker")}</dd>
+      <dt>Risk ceiling</dt><dd>${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</dd>
+      <dt>Profile</dt><dd>${escapeHtml(agent.hermes_profile || "Worker")}</dd>
     </dl></section>
+    <section class="detail-section"><h3>Role and responsibility</h3>
+      <p><strong>${escapeHtml(manifest?.role || agent.role || "No deployed role package")}</strong></p>
+      <p>${escapeHtml(roleResponsibility(manifest))}</p>
+    </section>
+    <section class="detail-section"><h3>Tasks this agent can carry out</h3>
+      <div class="capabilities">${(manifest?.task_types || []).map((item) => `<span class="capability strong">${escapeHtml(humanize(item))}</span>`).join("") || '<span class="muted">No executable task types deployed.</span>'}</div>
+      <dl class="detail-grid compact">
+        <dt>Workflows</dt><dd>${listOrNone((manifest?.workflows || []).map((item) => item.name))}</dd>
+        <dt>Machines</dt><dd>${listOrNone(manifest?.allowed_machines)}</dd>
+        <dt>Repositories</dt><dd>${listOrNone(repository?.repositories)}</dd>
+      </dl>
+    </section>
     <section class="detail-section"><h3>Capabilities</h3><div class="capabilities">${(agent.capabilities || []).map((item) => `<span class="capability">${escapeHtml(item)}</span>`).join("")}</div></section>
+    <section class="detail-section"><h3>Effective permissions</h3><dl class="detail-grid">
+      <dt>Profile</dt><dd>${escapeHtml(permission?.name || "No active package")}</dd>
+      <dt>Network</dt><dd>${escapeHtml(humanize(permission?.network_access || "none"))}</dd>
+      <dt>Writable roots</dt><dd>${listOrNone(permission?.writable_roots)}</dd>
+      <dt>Privileged ops</dt><dd>${yesNo(permission?.privileged_operations)}</dd>
+      <dt>Primary write</dt><dd>${yesNo(repository?.primary_checkout_write)}</dd>
+      <dt>Remote write</dt><dd>${yesNo(repository?.remote_write)}</dd>
+    </dl></section>
+    <section class="detail-section"><h3>Signed deployment</h3><dl class="detail-grid">
+      <dt>Package</dt><dd>${escapeHtml(pkg ? `${pkg.name} ${pkg.version}` : "None")}</dd>
+      <dt>Active</dt><dd>${yesNo(deployment?.deployment?.is_active)}</dd>
+      <dt>Source commit</dt><dd class="mono">${escapeHtml(pkg?.source_commit || "Not recorded")}</dd>
+      <dt>Manifest digest</dt><dd class="mono">${escapeHtml(pkg?.manifest_digest || "Not recorded")}</dd>
+    </dl></section>
   `);
+}
+
+function openProposal(id) {
+  const item = (state.dashboard.proposals || []).find((proposal) => String(proposal.id) === String(id));
+  if (!item) return;
+  const proposal = item.proposal;
+  const task = proposal.proposed_task;
+  openInspector("Founder proposal", proposal.summary, `
+    <section class="detail-section"><h3>Planner recommendation</h3><dl class="detail-grid">
+      <dt>Status</dt><dd>${statusBadge(item.status)}</dd>
+      <dt>Action</dt><dd>${escapeHtml(humanize(proposal.recommended_action))}</dd>
+      <dt>Target role</dt><dd>${escapeHtml(proposal.target_role || "Not assigned")}</dd>
+      <dt>Digest</dt><dd class="mono">${escapeHtml(item.proposal_digest)}</dd>
+    </dl></section>
+    <section class="detail-section"><h3>Interpretation</h3><p>${escapeHtml(proposal.interpretation)}</p></section>
+    <section class="detail-section"><h3>Assumptions</h3>${bulletList(proposal.assumptions, "No assumptions recorded.")}</section>
+    <section class="detail-section"><h3>Clarification questions</h3>${bulletList(proposal.clarification_questions, "No clarification required.")}</section>
+    <section class="detail-section"><h3>Safety constraints</h3>${bulletList(proposal.safety_constraints, "No additional constraints recorded.")}</section>
+    ${task ? `<section class="detail-section"><h3>Proposed governed task</h3><dl class="detail-grid">
+      <dt>Project</dt><dd>${escapeHtml(task.project)}</dd>
+      <dt>Type</dt><dd>${escapeHtml(humanize(task.task_type))}</dd>
+      <dt>Risk</dt><dd>${task.risk_level}</dd>
+      <dt>Machines</dt><dd>${listOrNone(task.allowed_machines)}</dd>
+      <dt>Capabilities</dt><dd>${listOrNone(task.required_capabilities)}</dd>
+      <dt>Approval</dt><dd>${task.approval_required || task.risk_level >= 2 ? "Required" : "Automatic policy"}</dd>
+    </dl><p><strong>${escapeHtml(task.title)}</strong></p><p>${escapeHtml(task.objective)}</p></section>` : ""}
+    ${item.status === "proposed" ? `<section class="detail-actions"><button class="secondary danger" data-proposal-action="reject">Reject</button>${task ? '<button class="command" data-proposal-action="materialize">Create governed task</button>' : ""}</section>` : ""}
+  `);
+  document.querySelectorAll("[data-proposal-action]").forEach((button) => {
+    button.onclick = () => openProposalDecision(item, button.dataset.proposalAction);
+  });
+}
+
+function openProposalDecision(proposal, action) {
+  closeInspector();
+  const form = document.getElementById("proposal-form");
+  form.reset();
+  form.elements.proposal_id.value = proposal.id;
+  form.elements.action.value = action;
+  const create = action === "materialize";
+  document.getElementById("proposal-title").textContent = create ? "Create governed task" : "Reject proposal";
+  document.getElementById("proposal-submit").textContent = create ? "Create governed task" : "Reject proposal";
+  document.getElementById("proposal-submit").className = create ? "command" : "secondary danger";
+  document.getElementById("proposal-summary").innerHTML = `<p>${escapeHtml(proposal.proposal.summary)}</p><dl><dt>Target role</dt><dd>${escapeHtml(proposal.proposal.target_role || "Unassigned")}</dd><dt>Risk</dt><dd>${proposal.proposal.proposed_task?.risk_level ?? "–"}</dd></dl>`;
+  document.getElementById("proposal-dialog").showModal();
+}
+
+function activeDeployment(agentId) {
+  const deployments = (state.dashboard.package_deployments || []).filter((item) =>
+    String(item.deployment?.agent_id) === String(agentId) && item.deployment?.is_active
+  );
+  return deployments.at(-1);
+}
+
+function roleResponsibility(manifest) {
+  if (!manifest) return "No active signed role package is deployed. This identity should not receive work.";
+  const tasks = (manifest.task_types || []).map(humanize).join(", ");
+  const repos = manifest.repository_profile?.repositories || [];
+  const scope = repos.length ? ` within ${repos.join(", ")}` : " without repository access";
+  return `Responsible for ${tasks || "no executable task types"}${scope}.`;
+}
+
+function listOrNone(values) {
+  return values?.length ? values.map((item) => escapeHtml(humanize(item))).join(", ") : "None";
+}
+
+function yesNo(value) {
+  return value ? "Yes" : "No";
+}
+
+function bulletList(values, fallback) {
+  return values?.length ? `<ul class="detail-list">${values.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p class="muted">${escapeHtml(fallback)}</p>`;
 }
 
 function openArtifact(id) {
@@ -805,6 +957,48 @@ function demoDashboard() {
     approvals: [
       { id: "approval-demo", status: "pending", risk_level: 3, created_at: now, plan_digest: "bc50ba1014ff33e68defbba9a1c727e2513d782fa1473547834d62cba1c16879", scope: { project: "swarm-control-plane", task_type: "infrastructure_operation" } },
     ],
+    proposals: [
+      {
+        id: "proposal-demo",
+        source_task_id: "mission-1",
+        planner_agent_id: "agent-planner",
+        status: "proposed",
+        proposal_digest: "d24a51f4db52eb5365ac17534a2189d4d353350292efd17048e12a9c64f75561",
+        created_at: now,
+        proposal: {
+          schema_version: 1,
+          summary: "Plan a bounded Mission Control agent-profile enhancement",
+          interpretation: "Expose each active role package as the authoritative task and permission envelope, then validate the dashboard without deploying production changes.",
+          recommended_action: "create_task",
+          assumptions: ["The signed deployment registry remains the permission source of truth."],
+          clarification_questions: [],
+          target_role: "Restricted VM1 engineering worker",
+          target_role_reason: "The change is isolated engineering work in swarm-control-plane.",
+          safety_constraints: ["No primary checkout writes.", "No remote repository write.", "Founder review precedes task creation."],
+          proposed_task: {
+            project: "swarm-control-plane",
+            task_type: "engineering_mission",
+            title: "Expand Mission Control agent profiles",
+            objective: "Implement and validate complete role and permission inspection.",
+            priority: 70,
+            risk_level: 1,
+            input_contract: { repository: "swarm-control-plane", workflow: "engineering-mission", base_ref: "main" },
+            expected_outputs: ["patch", "validation logs"],
+            acceptance_criteria: ["Every agent profile shows its effective signed permissions."],
+            approval_policy: { kind: "automatic", risk: 1 },
+            approval_required: false,
+            required_capabilities: ["git", "python", "testing"],
+            allowed_machines: ["vm1-developer"],
+            max_attempts: 1,
+          },
+        },
+      },
+    ],
+    package_deployments: [
+      demoDeployment("agent-eng", "vm1-engineering-worker", "Restricted VM1 engineering worker", ["code_validation", "engineering_mission"], ["code-validation", "engineering-mission"], ["swarm-control-plane", "bulletproof_bt", "invariance_research"], 1, ["workspace"]),
+      demoDeployment("23c62000-1fad-48bb-8ce5-3f4cb26f3779", "vm1-research-runner", "Restricted VM1 reproducible research runner", ["research_experiment"], ["research-experiment"], ["bulletproof_bt"], 1, ["workspace"]),
+      demoDeployment("agent-infra", "vm2-infrastructure-operator", "Restricted VM2 infrastructure observer and controlled operator", ["infrastructure_observation", "infrastructure_operation"], ["infrastructure-observer", "controlled-restart"], ["swarm-control-plane"], 3, ["infrastructure-workspace"]),
+    ],
     artifacts: [
       { id: "artifact-evidence", task_id: task.id, attempt_number: 1, artifact_type: "result", name: "research-evidence.json", size_bytes: 1917, sha256: "a68317817f2b39c760f1c4743050ad6a5d5719b51db543c5b0eb9983b4d398c8", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },
       { id: "artifact-audit", task_id: task.id, attempt_number: 1, artifact_type: "evidence", name: "research-audit.json", size_bytes: 818, sha256: "3c34b883b29be9214640e66e8103051e334f1cabd7570a2ffcf3d29b698c8b88", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },
@@ -826,6 +1020,27 @@ function demoDashboard() {
         { source: 1, target: 4, relation: "directed_from" },
         { source: 5, target: 2, relation: "executed_on" },
       ],
+    },
+  };
+}
+
+function demoDeployment(agentId, name, role, taskTypes, workflows, repositories, riskCeiling, writableRoots) {
+  return {
+    deployment: { agent_id: agentId, is_active: true },
+    package: {
+      name,
+      version: "1.0.0",
+      source_commit: "309b48d5d412282a3e5f12ec7c2889f7adbffe23",
+      manifest_digest: "a".repeat(64),
+      manifest: {
+        role,
+        task_types: taskTypes,
+        workflows: workflows.map((workflow) => ({ name: workflow })),
+        allowed_machines: [agentId === "agent-infra" ? "vm2-deployment" : "vm1-developer"],
+        risk_ceiling: riskCeiling,
+        permission_profile: { name: name.replaceAll("vm1-", "restricted-"), network_access: "control-plane", privileged_operations: false, writable_roots: writableRoots },
+        repository_profile: { repositories, primary_checkout_write: false, remote_write: false },
+      },
     },
   };
 }

@@ -42,7 +42,7 @@ class PermissionProfile(BaseModel):
 
 class RepositoryProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    repositories: list[str] = Field(min_length=1, max_length=50)
+    repositories: list[str] = Field(default_factory=list, max_length=50)
     primary_checkout_write: Literal[False]
     remote_write: Literal[False]
 
@@ -54,7 +54,7 @@ class RolePackageManifest(BaseModel):
     version: str = Field(pattern=_VERSION)
     role: str = Field(min_length=1, max_length=150)
     task_types: list[str] = Field(min_length=1, max_length=50)
-    workflows: list[WorkflowArtifact] = Field(min_length=1, max_length=50)
+    workflows: list[WorkflowArtifact] = Field(default_factory=list, max_length=50)
     required_capabilities: list[str] = Field(min_length=1, max_length=50)
     allowed_machines: list[str] = Field(min_length=1, max_length=50)
     risk_ceiling: int = Field(ge=0, le=5)
@@ -63,9 +63,15 @@ class RolePackageManifest(BaseModel):
     repository_profile: RepositoryProfile
 
     @model_validator(mode="after")
-    def unique_workflows(self) -> RolePackageManifest:
+    def validate_profile(self) -> RolePackageManifest:
         if len({item.name for item in self.workflows}) != len(self.workflows):
             raise ValueError("workflow names must be unique")
+        if not self.workflows and self.task_types != ["founder_request"]:
+            raise ValueError("only founder_request planner packages may omit workflows")
+        if not self.repository_profile.repositories and self.task_types != [
+            "founder_request"
+        ]:
+            raise ValueError("only founder_request planners may omit repositories")
         return self
 
 

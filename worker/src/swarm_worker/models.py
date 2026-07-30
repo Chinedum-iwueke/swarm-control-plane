@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 AgentRuntimeStatus = Literal["idle", "busy", "degraded"]
 
 
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class AgentHeartbeat(BaseModel):
     status: AgentRuntimeStatus = "idle"
     runtime: str = Field(default="hermes", min_length=1, max_length=100)
@@ -154,6 +158,93 @@ class TaskEvent(BaseModel):
 class TaskMutationResponse(BaseModel):
     task: Task
     event: TaskEvent
+
+
+class ProposedTask(StrictModel):
+    project: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )
+    task_type: Literal[
+        "code_validation",
+        "engineering_mission",
+        "infrastructure_observation",
+        "infrastructure_operation",
+        "research_experiment",
+    ]
+    title: str = Field(min_length=3, max_length=300)
+    objective: str = Field(min_length=10, max_length=8000)
+    priority: int = Field(default=50, ge=0, le=100)
+    risk_level: int = Field(default=0, ge=0, le=5)
+    input_contract: dict[str, Any] = Field(default_factory=dict)
+    expected_outputs: list[str] = Field(default_factory=list, max_length=30)
+    acceptance_criteria: list[str] = Field(default_factory=list, max_length=30)
+    approval_policy: dict[str, Any] = Field(default_factory=dict)
+    approval_required: bool = False
+    required_capabilities: list[str] = Field(default_factory=list, max_length=30)
+    allowed_machines: list[str] = Field(default_factory=list, max_length=20)
+    max_attempts: int = Field(default=1, ge=1, le=5)
+
+    @model_validator(mode="after")
+    def no_execution_surface(self) -> "ProposedTask":
+        forbidden = {"command", "commands", "shell", "script", "argv", "executable"}
+
+        def inspect(value: object) -> None:
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    if str(key).lower() in forbidden:
+                        raise ValueError("proposal contains an execution command surface")
+                    inspect(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    inspect(nested)
+
+        inspect(self.input_contract)
+        return self
+
+
+class FounderProposalDocument(StrictModel):
+    schema_version: Literal[1]
+    summary: str = Field(min_length=10, max_length=1000)
+    interpretation: str = Field(min_length=10, max_length=4000)
+    recommended_action: Literal[
+        "create_task", "needs_clarification", "decline"
+    ]
+    assumptions: list[str] = Field(default_factory=list, max_length=20)
+    clarification_questions: list[str] = Field(default_factory=list, max_length=20)
+    target_role: str | None = Field(default=None, max_length=150)
+    target_role_reason: str | None = Field(default=None, max_length=1000)
+    safety_constraints: list[str] = Field(default_factory=list, max_length=20)
+    proposed_task: ProposedTask | None = None
+
+    @model_validator(mode="after")
+    def task_matches_action(self) -> "FounderProposalDocument":
+        if self.recommended_action == "create_task" and self.proposed_task is None:
+            raise ValueError("create_task requires proposed_task")
+        if self.recommended_action != "create_task" and self.proposed_task is not None:
+            raise ValueError("only create_task may include proposed_task")
+        return self
+
+
+class FounderProposalCreate(StrictModel):
+    lease_token: str = Field(min_length=1)
+    proposal: FounderProposalDocument
+
+
+class FounderProposalResponse(StrictModel):
+    id: UUID
+    source_task_id: UUID
+    planner_agent_id: UUID
+    status: str
+    proposal: FounderProposalDocument
+    proposal_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_reason: str | None
+    decided_by: str | None
+    materialized_task_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    decided_at: datetime | None
 
 
 class ArtifactCreateRequest(BaseModel):

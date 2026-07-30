@@ -24,6 +24,8 @@ class FakeControlPlane:
             "approvals": [],
             "artifacts": [],
             "control_scopes": [],
+            "package_deployments": [],
+            "proposals": [],
         }
 
     async def create_intake(self, payload) -> dict:
@@ -35,6 +37,13 @@ class FakeControlPlane:
 
     async def set_pause(self, **kwargs) -> dict:
         return kwargs
+
+    async def decide_proposal(self, proposal_id, action, decision) -> dict:
+        return {
+            "id": proposal_id,
+            "status": action,
+            "reason": decision.reason,
+        }
 
 
 def test_static_application_and_safe_status(
@@ -60,6 +69,7 @@ def test_application_routes_construct_for_supported_python(
     app = create_app(settings, control_plane=FakeControlPlane())
     paths = {route.path for route in app.routes}
     assert "/api/intake" in paths
+    assert "/api/proposals/{proposal_id}/{action}" in paths
     assert "/api/knowledge/search" in paths
 
 

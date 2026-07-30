@@ -15,13 +15,77 @@ from app.core.security import (
     extract_task_lease_token_prefix,
 )
 from app.models import Agent, EngineeringMission, Task, TaskDependency, TaskEvent
+from app.schemas.task import TaskCreate
 from app.services.governance import (
     consume_task_approval,
+    create_approval,
     expire_approvals,
     rearm_task_approval,
+    task_plan_digest,
 )
 
 ACTIVE_LEASE_STATUSES = {"leased", "running"}
+
+
+def build_task(payload: TaskCreate) -> Task:
+    plan_document = {
+        "project": payload.project,
+        "task_type": payload.task_type,
+        "objective": payload.objective,
+        "risk_level": payload.risk_level,
+        "input_contract": payload.input_contract,
+        "expected_outputs": payload.expected_outputs,
+        "acceptance_criteria": payload.acceptance_criteria,
+        "required_capabilities": payload.required_capabilities,
+        "allowed_machines": payload.allowed_machines,
+    }
+    approval_required = payload.approval_required or payload.risk_level >= 2
+    return Task(
+        task_number=payload.task_number,
+        project=payload.project,
+        task_type=payload.task_type,
+        title=payload.title,
+        objective=payload.objective,
+        status="pending_approval" if approval_required else "queued",
+        priority=payload.priority,
+        risk_level=payload.risk_level,
+        parent_task_id=payload.parent_task_id,
+        created_by=payload.created_by,
+        input_contract=payload.input_contract,
+        expected_outputs=payload.expected_outputs,
+        acceptance_criteria=payload.acceptance_criteria,
+        approval_policy=payload.approval_policy,
+        approval_required=approval_required,
+        plan_digest=task_plan_digest(plan_document),
+        required_capabilities=payload.required_capabilities,
+        allowed_machines=payload.allowed_machines,
+        max_attempts=payload.max_attempts,
+        attempt_count=0,
+        result={},
+        failure={},
+    )
+
+
+def persist_new_task(db: Session, task: Task) -> None:
+    db.add(task)
+    db.flush()
+    if task.approval_required:
+        create_approval(db, task)
+    append_task_event(
+        db,
+        task,
+        "task_created",
+        (
+            "Task created pending approval."
+            if task.approval_required
+            else "Task created and queued."
+        ),
+        payload={
+            "created_by": task.created_by,
+            "priority": task.priority,
+            "risk_level": task.risk_level,
+        },
+    )
 
 
 def utc_now() -> datetime:

@@ -17,6 +17,8 @@ from swarm_worker.models import (
     ArtifactResponse,
     BrokerTicketRequest,
     BrokerTicketResponse,
+    FounderProposalCreate,
+    FounderProposalResponse,
     LeaseResponse,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
@@ -176,6 +178,19 @@ class SwarmAPIClient:
             "POST",
             f"/v1/agent/tasks/{task_id}/broker-ticket",
             BrokerTicketResponse,
+            payload=request,
+            secrets=(request.lease_token,),
+        )
+
+    async def submit_founder_proposal(
+        self,
+        task_id: UUID | str,
+        request: FounderProposalCreate,
+    ) -> FounderProposalResponse:
+        return await self._request(
+            "POST",
+            f"/v1/agent/tasks/{task_id}/proposal",
+            FounderProposalResponse,
             payload=request,
             secrets=(request.lease_token,),
         )

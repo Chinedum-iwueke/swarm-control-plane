@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from .config import MissionControlSettings
-from .models import ApprovalDecision, IntakeRequest
+from .models import ApprovalDecision, IntakeRequest, ProposalDecision
 
 
 class ControlPlaneError(RuntimeError):
@@ -44,6 +44,8 @@ class ControlPlaneClient:
             "GET", "/v1/artifacts", params={"limit": 100}
         )
         scopes = await self._request("GET", "/v1/control/scopes")
+        deployments = await self._request("GET", "/v1/packages/deployments")
+        proposals = await self._request("GET", "/v1/proposals")
         return {
             "health": health,
             "tasks": tasks,
@@ -51,6 +53,8 @@ class ControlPlaneClient:
             "approvals": approvals,
             "artifacts": artifacts,
             "control_scopes": scopes,
+            "package_deployments": deployments,
+            "proposals": proposals,
         }
 
     async def create_intake(self, request: IntakeRequest) -> dict[str, Any]:
@@ -77,10 +81,27 @@ class ControlPlaneClient:
             },
             "approval_required": request.risk_level >= 2,
             "required_capabilities": ["founder-intake"],
-            "allowed_machines": ["control-plane-planner"],
+            "allowed_machines": ["vm1-developer"],
             "max_attempts": 1,
         }
         return await self._request("POST", "/v1/tasks", json=payload)
+
+    async def decide_proposal(
+        self,
+        proposal_id: str,
+        action: str,
+        decision: ProposalDecision,
+    ) -> dict[str, Any]:
+        if action not in {"materialize", "reject"}:
+            raise ValueError("Unsupported proposal action.")
+        return await self._request(
+            "POST",
+            f"/v1/proposals/{proposal_id}/{action}",
+            json={
+                "actor": "founder-mission-control",
+                "reason": decision.reason,
+            },
+        )
 
     async def decide_approval(
         self,
@@ -154,4 +175,3 @@ def _safe_detail(response: httpx.Response) -> str:
     except (ValueError, TypeError):
         rendered = "Request failed."
     return rendered[:1000]
-
