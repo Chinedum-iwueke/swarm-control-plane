@@ -13,8 +13,9 @@ state=/var/lib/invariance-swarm-rehearsal
 postgres_root=/srv/invariance/postgres
 source_stage=/srv/invariance/rehearsal-source
 unit=invariance-postgres-rehearsal
-broker_group=invariance-swarm-rehearsal
-backup_group=invariance-swarm-rehearsal-backups
+broker_group=swarm-rehearsal
+backup_group=swarm-rehearsal-bak
+legacy_broker_group=invariance-swarm-rehearsal
 
 guard_rehearsal() {
   test -f "$state/DISPOSABLE_REHEARSAL"
@@ -71,6 +72,11 @@ test -d "$source_root/invariance_research/.git"
 test -d "$source_root/bulletproof_bt/.git"
 test -d "$repo/.git"
 test -S /var/run/docker.sock
+if getent group "$legacy_broker_group" >/dev/null &&
+  [[ ! -e $state/DISPOSABLE_REHEARSAL && ! -e $postgres_root ]]
+then
+  groupdel "$legacy_broker_group"
+fi
 if getent group "$broker_group" >/dev/null ||
   getent group "$backup_group" >/dev/null
 then
