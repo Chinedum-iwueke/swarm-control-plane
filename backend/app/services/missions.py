@@ -153,6 +153,7 @@ def verify_mission_approval(
 
 
 def refresh_mission(db: Session, mission_id) -> None:
+    db.flush()
     mission = db.get(EngineeringMission, mission_id)
     if mission is None:
         return
