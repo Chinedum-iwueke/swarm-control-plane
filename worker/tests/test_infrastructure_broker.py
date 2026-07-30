@@ -202,6 +202,10 @@ def test_fixed_runner_converts_timeout_to_bounded_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def timeout(*args, **kwargs):
+        assert kwargs["env"]["DOCKER_CONFIG"] == (
+            "/run/invariance-swarm-infrastructure/docker-config"
+        )
+        assert "SWARM_AGENT_TOKEN" not in kwargs["env"]
         raise subprocess.TimeoutExpired(
             cmd=["docker", "compose", "restart"],
             timeout=1,
