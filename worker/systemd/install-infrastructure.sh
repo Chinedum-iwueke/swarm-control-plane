@@ -8,10 +8,12 @@ fi
 
 start=false
 enable=false
+restart=false
 for argument in "$@"; do
   case "$argument" in
     --start) start=true ;;
     --enable) enable=true ;;
+    --restart) restart=true ;;
     *)
       printf 'Unknown argument: %s\n' "$argument" >&2
       exit 2
@@ -45,6 +47,7 @@ install -d \
   /srv/invariance/swarm/agent-workspaces/infrastructure
 install -d -o root -g root -m 0755 /etc/invariance-swarm
 install -d -o root -g root -m 0700 /var/lib/invariance-swarm-infrastructure
+install -d -o root -g root -m 0700 /srv/invariance/postgres
 install -d \
   -o omenka \
   -g invariance-swarm-backup-readers \
@@ -84,5 +87,12 @@ if $start; then
   systemctl start invariance-swarm-infrastructure-broker.service
   systemctl start invariance-swarm-infrastructure-worker.service
 fi
+if $restart; then
+  systemctl restart invariance-swarm-infrastructure-broker.service
+fi
 
-printf 'Infrastructure units installed. enable=%s start=%s\n' "$enable" "$start"
+printf \
+  'Infrastructure units installed. enable=%s start=%s restart=%s\n' \
+  "$enable" \
+  "$start" \
+  "$restart"
