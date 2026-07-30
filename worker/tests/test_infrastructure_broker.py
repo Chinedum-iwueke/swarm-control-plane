@@ -368,6 +368,18 @@ def test_postgres_phases_use_only_fixed_broker_commands(
     assert "postgresql://invariance_owner:" not in serialized
     if operation == "initialize-invariance-schema":
         assert any(
+            command[-6:]
+            == (
+                "up",
+                "-d",
+                "--no-deps",
+                "--force-recreate",
+                "--wait",
+                "postgres",
+            )
+            for command in runner.commands
+        )
+        assert any(
             "PGPASSWORD" in command
             and "invariance_owner" in command
             and "--env-file" in command

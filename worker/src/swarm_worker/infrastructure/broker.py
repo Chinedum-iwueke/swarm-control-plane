@@ -354,6 +354,17 @@ class InfrastructureBroker:
             postgres_password = self._postgres_environment()[
                 "POSTGRES_SUPERUSER_PASSWORD"
             ]
+            apply_configuration = self._postgres_compose(
+                [
+                    "up",
+                    "-d",
+                    "--no-deps",
+                    "--force-recreate",
+                    "--wait",
+                    "postgres",
+                ],
+                timeout=300,
+            )
             reload_configuration = self._postgres_compose(
                 [
                     "exec",
@@ -432,7 +443,12 @@ class InfrastructureBroker:
             )
             success = all(
                 item["return_code"] == 0
-                for item in (reload_configuration, action, marker)
+                for item in (
+                    apply_configuration,
+                    reload_configuration,
+                    action,
+                    marker,
+                )
             )
             return self._postgres_result(
                 operation,
@@ -442,6 +458,7 @@ class InfrastructureBroker:
                 success=success,
                 pre_state={"source_commit": source},
                 action={
+                    "apply_configuration": apply_configuration,
                     "reload_configuration": reload_configuration,
                     "schema": action,
                     "marker": marker,
