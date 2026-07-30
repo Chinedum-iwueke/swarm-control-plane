@@ -1,6 +1,6 @@
 schema_version: 1
 name: vm2-deployment-architect
-version: 1.0.0
+version: 1.0.1
 role: VM2 deployment architect for approval-gated production runbooks
 task_types:
 - infrastructure_observation
