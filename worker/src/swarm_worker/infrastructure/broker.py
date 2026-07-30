@@ -37,25 +37,33 @@ class FixedRunner:
         *,
         cwd: Path = _RUNTIME,
         timeout: float = 60,
+        stdin_path: Path | None = None,
     ) -> dict[str, Any]:
         if isinstance(args, (str, bytes)) or not args:
             raise BrokerError("Broker commands must be argument arrays.")
         try:
-            completed = subprocess.run(
-                tuple(args),
-                cwd=cwd,
-                env={
-                    "PATH": (
-                        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                    ),
-                    "LANG": "C.UTF-8",
-                    "LC_ALL": "C.UTF-8",
-                },
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
+            with (
+                stdin_path.open("rb")
+                if stdin_path is not None
+                else open(os.devnull, "rb")
+            ) as stdin:
+                completed = subprocess.run(
+                    tuple(args),
+                    cwd=cwd,
+                    env={
+                        "PATH": (
+                            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+                            "/sbin:/bin"
+                        ),
+                        "LANG": "C.UTF-8",
+                        "LC_ALL": "C.UTF-8",
+                    },
+                    stdin=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    check=False,
+                )
         except subprocess.TimeoutExpired as exc:
             return {
                 "args": list(args),
@@ -261,9 +269,18 @@ class InfrastructureBroker:
                 for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                     digest.update(chunk)
             integrity = self._runner.run(
-                ["pg_restore", "--list", str(path)],
+                [
+                    "docker",
+                    "compose",
+                    "exec",
+                    "-T",
+                    "postgres",
+                    "pg_restore",
+                    "--list",
+                ],
                 cwd=self._runtime_path,
                 timeout=60,
+                stdin_path=path,
             )
             age_seconds = max(
                 0, int(datetime.now(UTC).timestamp() - stat.st_mtime)
