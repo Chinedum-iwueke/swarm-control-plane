@@ -15,7 +15,6 @@ from pydantic import (
 
 WORKFLOW_FILES = {
     "code-validation": "code-validation.yaml",
-    "code-validation-failure": "code-validation-failure.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")

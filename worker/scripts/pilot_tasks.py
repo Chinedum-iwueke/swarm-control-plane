@@ -48,28 +48,23 @@ def _client() -> httpx.Client:
     )
 
 
-def _task_payload(kind: str) -> dict[str, Any]:
+def _task_payload() -> dict[str, Any]:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    workflow = (
-        "code-validation"
-        if kind == "success"
-        else "code-validation-failure"
-    )
     return {
-        "task_number": f"VM1-PILOT-{kind.upper()}-{timestamp}",
+        "task_number": f"VM1-PILOT-SUCCESS-{timestamp}",
         "project": "swarm-control-plane",
         "task_type": "code_validation",
-        "title": f"Restricted VM1 {kind} pilot",
+        "title": "Restricted VM1 success pilot",
         "objective": (
             "Validate the isolated swarm-control-plane worktree using the "
-            f"server-local {workflow} workflow."
+            "server-local code-validation workflow."
         ),
         "priority": 100,
         "risk_level": 0,
         "created_by": "phase-1-pilot",
         "input_contract": {
             "repository": "swarm-control-plane",
-            "workflow": workflow,
+            "workflow": "code-validation",
             "base_ref": "main",
         },
         "expected_outputs": ["bounded workflow result", "workspace logs"],
@@ -83,9 +78,9 @@ def _task_payload(kind: str) -> dict[str, Any]:
     }
 
 
-def create_task(kind: str) -> int:
+def create_task() -> int:
     with _client() as client:
-        response = client.post("/v1/tasks", json=_task_payload(kind))
+        response = client.post("/v1/tasks", json=_task_payload())
         response.raise_for_status()
         task = response.json()
     print(json.dumps({"id": task["id"], "task_number": task["task_number"]}))
@@ -163,15 +158,14 @@ def verify_task(task_id: str, kind: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    create = subparsers.add_parser("create")
-    create.add_argument("kind", choices=("success", "failure"))
+    subparsers.add_parser("create")
     verify = subparsers.add_parser("verify")
     verify.add_argument("kind", choices=("success", "failure"))
     verify.add_argument("task_id")
     args = parser.parse_args()
     try:
         if args.command == "create":
-            return create_task(args.kind)
+            return create_task()
         return verify_task(args.task_id, args.kind)
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         print(f"pilot operation failed: {_redact(str(exc))}", file=sys.stderr)
