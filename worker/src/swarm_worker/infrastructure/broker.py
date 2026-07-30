@@ -7,6 +7,7 @@ import json
 import os
 import socketserver
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
@@ -350,6 +351,18 @@ class _Handler(socketserver.StreamRequestHandler):
             result = self.server.broker.execute(document)  # type: ignore[attr-defined]
             response = {"ok": True, "result": result.model_dump(mode="json")}
         except Exception as exc:  # noqa: BLE001 - root broker boundary
+            print(
+                json.dumps(
+                    {
+                        "event": "broker_request_failed",
+                        "error": type(exc).__name__,
+                        "message": str(exc)[:500],
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
             response = {
                 "ok": False,
                 "error": type(exc).__name__,
