@@ -715,6 +715,11 @@ pause/metrics/backup validation.
 - deployment inventory;
 - compatibility and signature/digest checks.
 
+**Source status:** complete on `feat/restricted-vm1-worker`. Operational
+completion requires migration/API deployment, protected signing-secret
+installation, package registration, agent binding, and a supervised attestation
+check.
+
 ### M3: Approvals and artifacts
 
 - approval state machine;

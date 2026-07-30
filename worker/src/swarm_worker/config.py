@@ -24,6 +24,10 @@ class WorkerSettings(BaseSettings):
     swarm_workflow_directory: Path = Path(
         "/home/omenka/Projects/swarm-control-plane/worker/workflows"
     )
+    swarm_role_package_manifest: Path = Path(
+        "/home/omenka/Projects/swarm-control-plane/worker/"
+        "role-packages/restricted-code-validator/manifest.yaml"
+    )
     request_timeout_seconds: float = 30.0
 
     def prepare_directories(self) -> None:

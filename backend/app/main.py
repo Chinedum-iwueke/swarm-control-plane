@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 
 from app.api.routes import (
+    agent_packages_router,
     agent_runtime_router,
     agents_router,
     controls_router,
     health_router,
     metrics_router,
+    packages_router,
     task_runtime_router,
     tasks_router,
 )
@@ -20,6 +22,8 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(metrics_router)
+app.include_router(packages_router)
+app.include_router(agent_packages_router)
 app.include_router(agents_router)
 app.include_router(controls_router)
 app.include_router(agent_runtime_router)

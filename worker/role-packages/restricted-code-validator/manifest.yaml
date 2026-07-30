@@ -1,0 +1,33 @@
+schema_version: 1
+name: restricted-code-validator
+version: 1.0.0
+role: Restricted code validation worker
+task_types:
+- code_validation
+workflows:
+- name: code-validation
+  file: code-validation.yaml
+  sha256: dd36f1a9a10f89bd0a9d55a9ec3a9c145c740615d1b4f28cd446dc73e1be96c3
+required_capabilities:
+- git
+- python
+- testing
+allowed_machines:
+- vm1-developer
+risk_ceiling: 1
+compatibility:
+  worker_version_min: 0.2.0
+  worker_version_max_exclusive: 0.3.0
+permission_profile:
+  name: restricted-validation
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - swarm-control-plane
+  - bulletproof_bt
+  - invariance_research
+  primary_checkout_write: false
+  remote_write: false

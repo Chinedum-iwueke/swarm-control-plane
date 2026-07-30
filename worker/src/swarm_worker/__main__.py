@@ -24,6 +24,7 @@ from swarm_worker.daemon import (
     EXIT_RUNTIME_ERROR,
     WorkerDaemon,
 )
+from swarm_worker.role_package import load_role_package
 from swarm_worker.service import (
     AgentDisabled,
     IdentityMismatch,
@@ -195,6 +196,10 @@ async def check_worker(
         workflow_loader = WorkflowLoader(settings.swarm_workflow_directory)
         for workflow_name in WORKFLOW_FILES:
             workflow_loader.load(workflow_name)
+        load_role_package(
+            settings.swarm_role_package_manifest,
+            settings.swarm_workflow_directory,
+        )
 
         api = api_client_factory(settings)
         try:

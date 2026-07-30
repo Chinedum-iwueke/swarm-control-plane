@@ -14,6 +14,14 @@ from app.schemas.control import (
     ControlScopeResponse,
     EffectiveControlResponse,
 )
+from app.schemas.package import (
+    AgentPackageDeployment,
+    PackageDeploymentCreate,
+    PackageDeploymentResponse,
+    RolePackageCreate,
+    RolePackageManifest,
+    RolePackageResponse,
+)
 from app.schemas.task import (
     ExpiredLeaseReapResponse,
     TaskCompleteRequest,
@@ -34,6 +42,7 @@ __all__ = [
     "AgentCreate",
     "AgentHeartbeat",
     "AgentHeartbeatResponse",
+    "AgentPackageDeployment",
     "AgentRegistrationResponse",
     "AgentResponse",
     "AgentRevocationResponse",
@@ -44,6 +53,11 @@ __all__ = [
     "CredentialSecretResponse",
     "EffectiveControlResponse",
     "ExpiredLeaseReapResponse",
+    "PackageDeploymentCreate",
+    "PackageDeploymentResponse",
+    "RolePackageCreate",
+    "RolePackageManifest",
+    "RolePackageResponse",
     "TaskCompleteRequest",
     "TaskCreate",
     "TaskDetailResponse",

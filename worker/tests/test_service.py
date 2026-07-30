@@ -22,6 +22,7 @@ from swarm_worker.policy import (
     RepositoryNotAllowed,
     ValidatedTaskPolicy,
 )
+from swarm_worker.role_package import load_role_package
 from swarm_worker.service import (
     AgentDisabled,
     FailedOutcome,
@@ -45,6 +46,16 @@ AGENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 TASK_ID = UUID("22222222-2222-4222-8222-222222222222")
 LEASE_TOKEN = "swarm_lt_abcdef_service-lease-token"
 AGENT_TOKEN = "swarm_ag_abcdef_service-agent-token"
+
+
+def verified_role_package():
+    return load_role_package(
+        Path(
+            "/home/omenka/Projects/swarm-control-plane/worker/"
+            "role-packages/restricted-code-validator/manifest.yaml"
+        ),
+        Path("/home/omenka/Projects/swarm-control-plane/worker/workflows"),
+    )
 NOW = "2026-07-29T12:00:00Z"
 
 
@@ -71,7 +82,7 @@ def make_identity(**changes: Any) -> AgentIdentity:
         "runtime_version": "1.0",
         "status": "idle",
         "presence": "online",
-        "capabilities": ["code_validation"],
+        "capabilities": ["code_validation", "git", "python", "testing"],
         "heartbeat_metadata": {},
         "risk_ceiling": 1,
         "is_enabled": True,
@@ -378,6 +389,7 @@ def make_service(
         workspace_manager_factory=lambda current: manager,
         executor_factory=lambda current: fake_executor,
         policy_validator=validate,
+        role_package_loader=lambda current: verified_role_package(),
     )
 
 
@@ -721,6 +733,7 @@ async def test_cancellation_releases_and_propagates(tmp_path: Path) -> None:
         workspace_manager_factory=lambda current: manager,
         executor_factory=lambda current: cancelling_executor,
         policy_validator=validate,
+        role_package_loader=lambda current: verified_role_package(),
     )
     run = asyncio.create_task(service.run_once())
     while "execute" not in events:

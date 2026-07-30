@@ -17,6 +17,7 @@ from app.schemas import (
 )
 from app.services.agents import serialize_agent
 from app.services.controls import matching_control_scopes
+from app.services.packages import verify_agent_package_attestation
 
 router = APIRouter(
     prefix="/v1/agent",
@@ -59,6 +60,7 @@ def receive_heartbeat(
     db: Annotated[Session, Depends(get_db)],
 ) -> AgentHeartbeatResponse:
     now = datetime.now(UTC)
+    verify_agent_package_attestation(db, agent, payload)
 
     agent.status = payload.status
     agent.runtime = payload.runtime

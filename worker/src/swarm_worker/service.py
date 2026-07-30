@@ -41,6 +41,7 @@ from swarm_worker.policy import (
     WorkerPolicyError,
     validate_task_policy,
 )
+from swarm_worker.role_package import VerifiedRolePackage, load_role_package
 from swarm_worker.workflows import (
     WorkflowDefinition,
     WorkflowLoader,
@@ -197,10 +198,18 @@ WorkflowLoaderFactory = Callable[[WorkerSettings], WorkflowLoader]
 WorkspaceManagerFactory = Callable[[WorkerSettings], WorkspacePreparer]
 ExecutorFactory = Callable[[WorkerSettings], WorkflowExecutor]
 PolicyValidator = Callable[..., ValidatedTaskPolicy]
+RolePackageLoader = Callable[[WorkerSettings], VerifiedRolePackage]
 
 
 def _default_workflow_loader(settings: WorkerSettings) -> WorkflowLoader:
     return WorkflowLoader(settings.swarm_workflow_directory)
+
+
+def _default_role_package_loader(settings: WorkerSettings) -> VerifiedRolePackage:
+    return load_role_package(
+        settings.swarm_role_package_manifest,
+        settings.swarm_workflow_directory,
+    )
 
 
 def _default_workspace_manager(settings: WorkerSettings) -> WorkspaceManager:
@@ -228,6 +237,7 @@ class WorkerService:
         ),
         executor_factory: ExecutorFactory = _default_executor,
         policy_validator: PolicyValidator = validate_task_policy,
+        role_package_loader: RolePackageLoader = _default_role_package_loader,
     ) -> None:
         self._settings_loader = settings_loader
         self._api_client_factory = api_client_factory
@@ -235,6 +245,7 @@ class WorkerService:
         self._workspace_manager_factory = workspace_manager_factory
         self._executor_factory = executor_factory
         self._policy_validator = policy_validator
+        self._role_package_loader = role_package_loader
 
     async def run_once(self) -> RunOnceOutcome:
         settings = self._load_settings()
@@ -247,6 +258,20 @@ class WorkerService:
         try:
             identity = await api.get_identity()
             self._validate_identity(identity, settings)
+            role_package = self._role_package_loader(settings)
+            manifest = role_package.manifest
+            if settings.swarm_machine not in manifest.allowed_machines:
+                raise WorkerConfigurationError(
+                    "Role package does not allow the configured machine."
+                )
+            if not set(manifest.required_capabilities).issubset(identity.capabilities):
+                raise WorkerConfigurationError(
+                    "Agent identity lacks role-package capabilities."
+                )
+            if identity.risk_ceiling > manifest.risk_ceiling:
+                raise WorkerConfigurationError(
+                    "Agent risk ceiling exceeds role-package ceiling."
+                )
             heartbeat_response = await api.send_agent_heartbeat(
                 AgentHeartbeat(
                     status="idle",
@@ -257,6 +282,9 @@ class WorkerService:
                         "agent_slug": settings.swarm_agent_slug,
                         "machine": settings.swarm_machine,
                         "worker_version": __version__,
+                        "role_package": role_package.manifest.name,
+                        "role_package_version": role_package.manifest.version,
+                        "role_package_digest": role_package.manifest_digest,
                     },
                 )
             )
