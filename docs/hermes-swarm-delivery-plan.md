@@ -790,10 +790,12 @@ ineligible for all deployed workers. Evidence and limitations are recorded in
 - planner/executor/auditor;
 - reproducible evidence and report.
 
-**Source status:** implemented on `feat/m8-research-pilot`. Operational
-completion requires Git promotion, a dedicated research identity and role
-package, and one supervised synthetic experiment whose digest-bound evidence,
-audit, and report are registered without changing the primary checkout.
+**Status:** operationally complete for the bounded synthetic pilot. A dedicated
+VM1 research identity executed one predeclared hypothesis from an isolated
+`bulletproof_bt` worktree, registered digest-bound evidence, audit, and report
+artifacts, and left the primary checkout unchanged. The finding is explicitly
+ineligible for production. Evidence and limitations are recorded in
+`docs/m8-validation.md`.
 
 ## 13. Definition of Functional Swarm
 
