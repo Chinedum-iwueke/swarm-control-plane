@@ -11,6 +11,11 @@ A root-owned local broker accepts only an API-signed, short-lived ticket over a
 Unix socket. The ticket binds the task, attempt, agent, machine, plan digest,
 typed contract, risk, expiry, and deterministic one-time nonce.
 
+The broker has no Linux capabilities. Backup dumps are `0640` beneath a
+setgid `2750` directory owned by the dedicated
+`invariance-swarm-backup-readers` group. Only the broker receives that group as
+a supplementary group; the unprivileged worker does not.
+
 The broker registry contains exactly:
 
 - `observe-control-plane`, risk 0, no approval;
