@@ -111,6 +111,7 @@ def test_observation_is_read_only_and_replay_is_rejected(tmp_path: Path) -> None
     result = instance.execute(document)
     assert result.success is True
     assert result.pre_state["latest_backup"]["integrity_ok"] is True
+    assert result.pre_state["latest_backup"]["integrity_error"] == ""
     assert result.pre_state["latest_backup"]["fresh"] is True
     assert result.pre_state["latest_backup"]["sha256"] == hashlib.sha256(
         b"test backup"

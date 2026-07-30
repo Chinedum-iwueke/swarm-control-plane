@@ -295,6 +295,7 @@ class InfrastructureBroker:
                 "sha256": digest.hexdigest(),
                 "integrity_return_code": integrity["return_code"],
                 "integrity_ok": integrity["return_code"] == 0,
+                "integrity_error": integrity["stderr"][-500:],
                 "fresh": age_seconds <= _MAX_BACKUP_AGE_SECONDS,
             }
         healthy = all(
