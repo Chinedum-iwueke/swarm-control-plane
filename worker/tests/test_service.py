@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from swarm_worker import __version__
 from swarm_worker.api_client import AuthenticationError, ConflictError
 from swarm_worker.config import WorkerSettings
 from swarm_worker.executors.code_validation import LeaseLost
@@ -264,8 +265,8 @@ class FakeAPI:
     async def send_agent_heartbeat(self, heartbeat: object):
         self.events.append("agent_heartbeat")
         assert heartbeat.status == "idle"
-        assert heartbeat.runtime_version == "0.3.0"
-        assert heartbeat.metadata["worker_version"] == "0.3.0"
+        assert heartbeat.runtime_version == __version__
+        assert heartbeat.metadata["worker_version"] == __version__
         return AgentHeartbeatResponse(
             agent_id=AGENT_ID,
             status="idle",
@@ -464,7 +465,7 @@ async def test_failure_path_exact_order_and_fail_once(
         "stdout_log": "logs/run-tests.stdout.log",
         "stderr_log": "logs/run-tests.stderr.log",
         "retryable": False,
-        "worker_version": "0.3.0",
+        "worker_version": __version__,
     }
 
 

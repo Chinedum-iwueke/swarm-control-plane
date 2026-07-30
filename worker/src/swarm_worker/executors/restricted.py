@@ -5,6 +5,7 @@ from swarm_worker.executors.code_validation import (
     HeartbeatCallback,
 )
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
+from swarm_worker.executors.research_experiment import ResearchExperimentExecutor
 from swarm_worker.models import Task, WorkflowExecutionResult
 from swarm_worker.workflows import WorkflowDefinition
 from swarm_worker.workspace import TaskWorkspace
@@ -29,6 +30,10 @@ class RestrictedExecutor:
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             validation_executor=self._validation,
         )
+        self._research = ResearchExperimentExecutor(
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+            validation_executor=self._validation,
+        )
 
     async def execute(
         self,
@@ -38,11 +43,12 @@ class RestrictedExecutor:
         workspace: TaskWorkspace,
         heartbeat: HeartbeatCallback,
     ) -> WorkflowExecutionResult:
-        executor = (
-            self._engineering
-            if task.task_type == "engineering_mission"
-            else self._validation
-        )
+        executors = {
+            "code_validation": self._validation,
+            "engineering_mission": self._engineering,
+            "research_experiment": self._research,
+        }
+        executor = executors[task.task_type]
         return await executor.execute(
             task=task,
             workflow=workflow,

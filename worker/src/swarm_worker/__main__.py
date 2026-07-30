@@ -201,7 +201,8 @@ async def check_worker(
             settings.swarm_role_package_manifest,
             settings.swarm_workflow_directory,
         )
-        _verify_engineering_runtime(settings)
+        if "engineering_mission" in role_package.manifest.task_types:
+            _verify_engineering_runtime(settings)
 
         api = api_client_factory(settings)
         try:
