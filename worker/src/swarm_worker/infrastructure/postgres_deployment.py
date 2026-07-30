@@ -108,6 +108,15 @@ class PostgresDeploymentManager:
             "file_digests": digests,
         }
 
+    def is_preprovisioned(self) -> bool:
+        if not self.root.is_dir():
+            return False
+        try:
+            self._validate_preprovisioned()
+        except PostgresDeploymentError:
+            return False
+        return True
+
     def _validate_preprovisioned(self) -> None:
         allowed = {
             "archive",

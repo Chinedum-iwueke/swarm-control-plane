@@ -805,12 +805,19 @@ class InfrastructureBroker:
         port_state = {
             str(port): self._port_available(port) for port in (5432, 6432)
         }
+        deployment = PostgresDeploymentManager(
+            self._postgres_root,
+            postgres_uid=999,
+            postgres_gid=999,
+        )
         target_state = (
             "absent"
             if not self._postgres_root.exists()
             else "empty"
             if self._postgres_root.is_dir()
             and not any(self._postgres_root.iterdir())
+            else "preprovisioned"
+            if deployment.is_preprovisioned()
             else "occupied"
         )
         checks = {
@@ -820,7 +827,8 @@ class InfrastructureBroker:
             "docker_available": docker["return_code"] == 0,
             "compose_available": compose["return_code"] == 0,
             "source_repository_available": source_commit["return_code"] == 0,
-            "target_directory_available": target_state in {"absent", "empty"},
+            "target_directory_available": target_state
+            in {"absent", "empty", "preprovisioned"},
             "postgres_port_available": port_state["5432"],
             "pgbouncer_port_available": port_state["6432"],
         }

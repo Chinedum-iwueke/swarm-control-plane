@@ -85,7 +85,10 @@ def test_stage_accepts_exact_empty_preprovisioned_layout(tmp_path: Path) -> None
     ):
         (root / name).mkdir()
 
-    result = manager(root).stage()
+    candidate = manager(root)
+    assert candidate.is_preprovisioned() is True
+
+    result = candidate.stage()
 
     assert result["staged"] is True
     assert (root / "metadata.json").is_file()

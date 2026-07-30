@@ -206,6 +206,51 @@ def test_postgres_preflight_is_read_only_and_reports_tls_blocker(
     )
 
 
+def test_postgres_preflight_accepts_exact_preprovisioned_layout(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "postgres"
+    root.mkdir()
+    for name in (
+        "archive",
+        "backups",
+        "bin",
+        "certs",
+        "conf",
+        "data",
+        "init",
+        "logs",
+        "pgbouncer",
+        "schema",
+    ):
+        (root / name).mkdir()
+    instance = InfrastructureBroker(
+        secret=SECRET,
+        ledger_path=tmp_path / "consumed.json",
+        runner=FakeRunner(),
+        effective_uid=0,
+        runtime_path=tmp_path,
+        backup_path=tmp_path / "backups",
+        postgres_root=root,
+        research_repository=tmp_path / "invariance_research",
+        systemd_path=tmp_path / "systemd",
+        sleep=lambda _: None,
+    )
+
+    result = instance.execute(
+        ticket(
+            "preflight-invariance-postgres",
+            risk=0,
+            task_type="infrastructure_observation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    assert result.success is True
+    assert result.pre_state["target_directory"] == "preprovisioned"
+
+
 def test_postgres_stage_uses_compiled_private_template(tmp_path: Path) -> None:
     result = broker(tmp_path, FakeRunner()).execute(
         ticket(
