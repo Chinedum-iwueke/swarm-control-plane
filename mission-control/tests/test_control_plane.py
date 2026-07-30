@@ -1,0 +1,154 @@
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+
+from hermes_mission_control.config import MissionControlSettings
+from hermes_mission_control.control_plane import (
+    ControlPlaneClient,
+    ControlPlaneError,
+)
+from hermes_mission_control.models import ApprovalDecision, IntakeRequest
+
+
+@pytest.mark.asyncio
+async def test_dashboard_uses_bearer_without_exposing_token(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(200, json=[])
+
+    client = ControlPlaneClient(
+        settings, transport=httpx.MockTransport(handler)
+    )
+    try:
+        result = await client.dashboard()
+    finally:
+        await client.close()
+    assert result["health"]["status"] == "ok"
+    authenticated = [request for request in seen if request.url.path != "/health"]
+    assert authenticated
+    assert all(
+        request.headers["authorization"]
+        == "Bearer operator-token-that-is-long-enough"
+        for request in authenticated
+    )
+    assert "operator-token-that-is-long-enough" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_intake_is_structured_and_non_executable(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(201, json={"id": "task-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.create_intake(
+            IntakeRequest(
+                kind="mission",
+                project="swarm-control-plane",
+                title="Build the next bounded milestone",
+                objective="Prepare a reviewed implementation plan and evidence.",
+                risk_level=1,
+                acceptance_criteria=["Plan is reviewable."],
+            )
+        )
+    finally:
+        await client.close()
+    assert captured["task_type"] == "founder_request"
+    assert captured["required_capabilities"] == ["founder-intake"]
+    assert captured["allowed_machines"] == ["control-plane-planner"]
+    assert set(captured["input_contract"]) == {
+        "schema_version",
+        "request_kind",
+        "objective",
+    }
+    assert "command" not in json.dumps(captured).lower()
+
+
+@pytest.mark.asyncio
+async def test_high_risk_intake_requires_approval(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(201, json={"id": "task-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.create_intake(
+            IntakeRequest(
+                kind="task",
+                project="operations",
+                title="Review a production proposal",
+                objective="Review the proposal without executing any operation.",
+                risk_level=3,
+            )
+        )
+    finally:
+        await client.close()
+    assert captured["approval_required"] is True
+    assert captured["approval_policy"] == {"kind": "explicit", "risk": 3}
+
+
+@pytest.mark.asyncio
+async def test_approval_body_is_explicit(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"status": "approved"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.decide_approval(
+            "approval-id",
+            "approve",
+            ApprovalDecision(
+                reason="Founder reviewed the exact bounded plan.",
+                expires_in_seconds=600,
+            ),
+        )
+    finally:
+        await client.close()
+    assert captured == {
+        "actor": "founder-mission-control",
+        "reason": "Founder reviewed the exact bounded plan.",
+        "expires_in_seconds": 600,
+    }
+
+
+@pytest.mark.asyncio
+async def test_api_error_is_bounded_and_token_free(
+    settings: MissionControlSettings,
+) -> None:
+    token = settings.read_token()
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "database unavailable"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(ControlPlaneError) as raised:
+            await client.dashboard()
+    finally:
+        await client.close()
+    assert "HTTP 500" in str(raised.value)
+    assert token not in str(raised.value)
+

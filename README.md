@@ -10,6 +10,8 @@ implementation status, and open design decisions are documented in
 [`docs/hermes-swarm-system-design.md`](docs/hermes-swarm-system-design.md).
 The dependency-ordered implementation roadmap and early agent catalog are in
 [`docs/hermes-swarm-delivery-plan.md`](docs/hermes-swarm-delivery-plan.md).
+The Mac-local founder interface and private cited-search pilot are documented
+in [`mission-control/`](mission-control/README.md).
 
 ## Intended components
 
