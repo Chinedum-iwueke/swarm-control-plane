@@ -317,6 +317,10 @@ async def test_token_not_inherited_and_working_directory_is_worktree(
         "str(Path(sys.executable).resolve().parent)\n"
         "    assert os.environ['VIRTUAL_ENV'] == "
         "str(Path(sys.executable).resolve().parent.parent)\n"
+        "    assert os.environ['APP_ENVIRONMENT'] == 'test'\n"
+        "    secret_path = Path(os.environ['POSTGRES_PASSWORD_FILE'])\n"
+        "    assert secret_path.read_text() == 'isolated-worker-test-value'\n"
+        "    assert oct(secret_path.stat().st_mode & 0o777) == '0o600'\n"
         "    Path('observed-cwd').write_text(os.getcwd())\n"
     )
     runner = AsyncProcessRunner(

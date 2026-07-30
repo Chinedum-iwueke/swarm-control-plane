@@ -32,6 +32,12 @@ from swarm_worker.workspace import SubprocessRunner, TaskWorkspace
 
 HeartbeatCallback = Callable[[dict[str, object]], Awaitable[None]]
 _MAX_HEARTBEAT_FAILURES = 20
+_TEST_SECRET_FILES = {
+    "POSTGRES_PASSWORD_FILE": "postgres_password",
+    "ORCHESTRATOR_SECRET_FILE": "orchestrator_secret",
+    "AGENT_TOKEN_SECRET_FILE": "agent_token_secret",
+}
+_SYNTHETIC_TEST_VALUE = "isolated-worker-test-value"
 
 
 class ExecutionError(Exception):
@@ -79,6 +85,7 @@ class AsyncProcessRunner:
         cwd: Path,
         stdout: object,
         stderr: object,
+        environment_overrides: Mapping[str, str] | None = None,
     ) -> RunningProcess:
         if isinstance(args, (str, bytes)) or not args:
             raise ValueError("subprocess commands must be argument arrays")
@@ -98,6 +105,8 @@ class AsyncProcessRunner:
         environment["PYTHONPATH"] = os.pathsep.join(
             str(path) for path in python_paths
         )
+        if environment_overrides:
+            environment.update(environment_overrides)
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
@@ -180,6 +189,7 @@ class CodeValidationExecutor:
                 "Refusing to execute workflow subprocesses as root."
             )
         safe_workflow = self._validate_inputs(task, workflow, workspace)
+        test_environment = self._prepare_test_environment(workspace)
 
         workflow_started_at = time.monotonic()
         workflow_deadline = workflow_started_at + safe_workflow.timeout_seconds
@@ -202,6 +212,7 @@ class CodeValidationExecutor:
                 workflow_started_at=workflow_started_at,
                 timeout_seconds=min(self._step_timeout_seconds, remaining),
                 heartbeat_failures=heartbeat_failures,
+                test_environment=test_environment,
             )
             results.append(outcome)
             if lease_lost:
@@ -254,6 +265,7 @@ class CodeValidationExecutor:
         workflow_started_at: float,
         timeout_seconds: float,
         heartbeat_failures: list[str],
+        test_environment: Mapping[str, str],
     ) -> tuple[StepExecutionResult, bool]:
         stdout_path = workspace.logs / f"{step.name}.stdout.log"
         stderr_path = workspace.logs / f"{step.name}.stderr.log"
@@ -273,6 +285,7 @@ class CodeValidationExecutor:
                 cwd=workspace.repository,
                 stdout=stdout_file,
                 stderr=stderr_file,
+                environment_overrides=test_environment,
             )
             deadline = started_monotonic + timeout_seconds
 
@@ -354,6 +367,25 @@ class CodeValidationExecutor:
             ),
             lease_lost,
         )
+
+    @staticmethod
+    def _prepare_test_environment(
+        workspace: TaskWorkspace,
+    ) -> dict[str, str]:
+        secret_directory = workspace.artifacts / "test-secrets"
+        secret_directory.mkdir(mode=0o700)
+        secret_directory.chmod(0o700)
+        environment: dict[str, str] = {
+            "APP_ENVIRONMENT": "test",
+            "POSTGRES_HOST": "127.0.0.1",
+            "REDIS_URL": "redis://127.0.0.1:1/0",
+        }
+        for variable, filename in _TEST_SECRET_FILES.items():
+            secret_path = secret_directory / filename
+            secret_path.write_text(_SYNTHETIC_TEST_VALUE, encoding="utf-8")
+            secret_path.chmod(0o600)
+            environment[variable] = str(secret_path)
+        return environment
 
     async def _send_heartbeat(
         self,

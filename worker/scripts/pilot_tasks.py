@@ -111,9 +111,19 @@ def verify_task(task_id: str, kind: str) -> int:
         task_response = client.get(f"/v1/tasks/{task_id}")
         task_response.raise_for_status()
         detail = task_response.json()
-        assigned_agent_id = detail["task"]["assigned_agent_id"]
+        terminal_event = next(
+            (
+                event
+                for event in reversed(detail["events"])
+                if event["event_type"] in {"task_completed", "task_failed"}
+            ),
+            None,
+        )
+        assigned_agent_id = detail["task"]["assigned_agent_id"] or (
+            terminal_event["agent_id"] if terminal_event else None
+        )
         if not assigned_agent_id:
-            raise RuntimeError("Task has no assigned agent.")
+            raise RuntimeError("Task lifecycle has no acting agent.")
         agent_response = client.get(f"/v1/agents/{assigned_agent_id}")
         agent_response.raise_for_status()
         agent = agent_response.json()
