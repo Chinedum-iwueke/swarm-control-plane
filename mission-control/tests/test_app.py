@@ -51,6 +51,15 @@ def test_static_application_and_safe_status(
     assert fake.closed is True
 
 
+def test_application_routes_construct_for_supported_python(
+    settings: MissionControlSettings,
+) -> None:
+    app = create_app(settings, control_plane=FakeControlPlane())
+    paths = {route.path for route in app.routes}
+    assert "/api/intake" in paths
+    assert "/api/knowledge/search" in paths
+
+
 def test_mutations_require_founder_intent_header(
     settings: MissionControlSettings,
 ) -> None:
@@ -95,4 +104,3 @@ def test_unknown_intake_fields_are_rejected(
             headers={"X-Hermes-Intent": "founder-action"},
         )
     assert response.status_code == 422
-

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -138,7 +138,8 @@ def create_app(
 
 
 def _mutation_intent(
-    value: Annotated[str | None, Header(alias="X-Hermes-Intent")] = None,
+    # FastAPI evaluates this annotation on Python 3.9 at runtime.
+    value: Annotated[Optional[str], Header(alias="X-Hermes-Intent")] = None,  # noqa: UP045
 ) -> None:
     if value != "founder-action":
         raise HTTPException(status_code=403, detail="Founder action header required.")
