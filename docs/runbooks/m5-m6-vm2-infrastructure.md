@@ -99,7 +99,8 @@ sudo -u swarm-infrastructure \
 
 Accept only when the task succeeds at attempt one, the evidence digest matches,
 Docker/PostgreSQL/Redis/API health is recorded, storage evidence is bounded,
-the latest backup is no older than seven days and passes `pg_restore --list`,
+the latest backup is no older than seven days and passes the PostgreSQL
+container's version-matched `pg_restore --list`,
 no mutation command ran, and no credential appears.
 
 ## M6 Pilot

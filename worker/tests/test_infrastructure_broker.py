@@ -115,9 +115,15 @@ def test_observation_is_read_only_and_replay_is_rejected(tmp_path: Path) -> None
     assert result.pre_state["latest_backup"]["sha256"] == hashlib.sha256(
         b"test backup"
     ).hexdigest()
-    assert ("pg_restore", "--list", str(
-        tmp_path / "runtime" / "backups" / "swarm-control.dump"
-    )) in runner.commands
+    assert (
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "pg_restore",
+        "--list",
+    ) in runner.commands
     assert not any("restart" in command for command in runner.commands)
     with pytest.raises(BrokerError, match="already consumed"):
         instance.execute(document)
