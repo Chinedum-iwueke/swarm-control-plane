@@ -71,11 +71,12 @@ def make_task(**changes: Any) -> Task:
 def make_workflow(
     *commands: tuple[str, list[str]],
     timeout_seconds: int = 10,
+    task_type: str = "code_validation",
 ) -> WorkflowDefinition:
     return WorkflowDefinition.model_validate(
         {
             "name": "code-validation",
-            "task_type": "code_validation",
+            "task_type": task_type,
             "timeout_seconds": timeout_seconds,
             "allowed_repositories": ["project"],
             "steps": [{"name": name, "command": command} for name, command in commands],
@@ -162,6 +163,27 @@ async def test_successful_compile_and_test_workflow(
     assert all(step.duration_seconds >= 0 for step in result.steps)
     assert result.base_commit == BASE_COMMIT
     assert result.task_attempt == 1
+
+
+@pytest.mark.asyncio
+async def test_engineering_mission_can_reuse_named_validation_workflow(
+    tmp_path: Path,
+) -> None:
+    workspace = make_workspace(tmp_path)
+    task = make_task(task_type="engineering_mission")
+    workflow = make_workflow(
+        ("compile-python", ["python3", "-m", "compileall", "-q", "."]),
+        task_type="engineering_mission",
+    )
+
+    result = await executor().execute(
+        task=task,
+        workflow=workflow,
+        workspace=workspace,
+        heartbeat=heartbeat_ok,
+    )
+
+    assert result.success is True
 
 
 @pytest.mark.asyncio
