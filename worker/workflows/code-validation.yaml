@@ -1,0 +1,19 @@
+name: code-validation
+task_type: code_validation
+timeout_seconds: 900
+allowed_repositories:
+- swarm-control-plane
+- bulletproof_bt
+- invariance_research
+steps:
+- name: compile-python
+  command:
+  - python3
+  - -m
+  - compileall
+  - -q
+  - .
+- name: run-tests
+  command:
+  - pytest
+  - -q

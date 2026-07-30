@@ -1,0 +1,124 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from swarm_worker.executors.code_validation import (
+    ExecutionPolicyError,
+    RootExecutionError,
+)
+from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
+from swarm_worker.policy import EngineeringMissionContract
+from swarm_worker.workspace import CommandResult
+
+
+def contract() -> EngineeringMissionContract:
+    return EngineeringMissionContract(
+        repository="swarm-control-plane",
+        workflow="engineering-mission",
+        base_ref="main",
+        milestone_id="M4-PILOT",
+        work_item_id="docs",
+        objective="Add the bounded mission pilot documentation.",
+        allowed_paths=["docs"],
+        context_paths=["README.md"],
+        acceptance_criteria=["Documentation is accurate."],
+        stop_conditions=["Requirements conflict."],
+        max_files_changed=2,
+        max_diff_lines=100,
+        max_duration_seconds=600,
+    )
+
+
+class FakeGit:
+    def __init__(self) -> None:
+        self.commands: list[tuple[str, ...]] = []
+
+    def run(self, args, **kwargs):
+        self.commands.append(tuple(args))
+        return CommandResult(tuple(args), 0, "one\n", "")
+
+
+def test_contract_rejects_commands_and_traversal() -> None:
+    document = contract().model_dump()
+    document["command"] = ["bash", "-c", "anything"]
+    document["allowed_paths"] = ["../outside"]
+    with pytest.raises(ValidationError):
+        EngineeringMissionContract.model_validate(document)
+
+
+def test_changed_paths_must_remain_in_scope(tmp_path: Path) -> None:
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        git_runner=FakeGit(),
+        effective_uid=lambda: 1000,
+    )
+    workspace = type(
+        "Workspace",
+        (),
+        {"repository": tmp_path},
+    )()
+    with pytest.raises(ExecutionPolicyError, match="outside scope"):
+        executor._enforce_scope(contract(), ["backend/secret.py"], workspace)
+
+
+def test_scope_check_uses_git_argument_arrays(tmp_path: Path) -> None:
+    git = FakeGit()
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        git_runner=git,
+        effective_uid=lambda: 1000,
+    )
+    workspace = type("Workspace", (), {"repository": tmp_path})()
+    executor._enforce_scope(contract(), ["docs/pilot.md"], workspace)
+    assert git.commands[0][:4] == ("git", "add", "--intent-to-add", "--")
+    assert all(isinstance(command, tuple) for command in git.commands)
+
+
+def test_prompt_forbids_push_merge_and_deploy() -> None:
+    prompt = EngineeringMissionExecutor._coding_prompt(contract())
+    assert "Do not push, merge, deploy" in prompt
+    assert "Allowed paths" in prompt
+
+
+def test_high_severity_review_blocks_bundle(tmp_path: Path) -> None:
+    review = tmp_path / "review.json"
+    review.write_text(
+        '{"approved":true,"summary":"reviewed","findings":'
+        '[{"severity":"high","message":"unsafe"}]}',
+        encoding="utf-8",
+    )
+    assert EngineeringMissionExecutor._review_approved(review) is False
+
+
+def test_clean_structured_review_is_approved(tmp_path: Path) -> None:
+    review = tmp_path / "review.json"
+    review.write_text(
+        '{"approved":true,"summary":"clean","findings":[]}',
+        encoding="utf-8",
+    )
+    assert EngineeringMissionExecutor._review_approved(review) is True
+
+
+@pytest.mark.asyncio
+async def test_engineering_executor_refuses_root(tmp_path: Path) -> None:
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        effective_uid=lambda: 0,
+    )
+    with pytest.raises(RootExecutionError):
+        await executor.execute(
+            task=None,
+            workflow=None,
+            workspace=None,
+            heartbeat=None,
+        )

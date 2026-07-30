@@ -1,0 +1,19 @@
+name: engineering-mission
+task_type: engineering_mission
+timeout_seconds: 3600
+allowed_repositories:
+- swarm-control-plane
+- bulletproof_bt
+- invariance_research
+steps:
+- name: compile-python
+  command:
+  - python3
+  - -m
+  - compileall
+  - -q
+  - .
+- name: run-tests
+  command:
+  - pytest
+  - -q

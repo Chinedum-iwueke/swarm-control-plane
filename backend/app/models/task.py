@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,7 +49,7 @@ class Task(Base):
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        default="draft",
+        default="queued",
         index=True,
     )
 
@@ -78,6 +78,13 @@ class Task(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
+    mission_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("engineering_missions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    milestone_step_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     created_by: Mapped[str] = mapped_column(
         String(150),
@@ -107,10 +114,27 @@ class Task(Base):
         nullable=False,
         default=dict,
     )
+    approval_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    plan_digest: Mapped[str] = mapped_column(String(64), nullable=False)
 
-    lease_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
+    required_capabilities: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )
+
+    allowed_machines: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )
+
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
     )
 
     attempt_count: Mapped[int] = mapped_column(
@@ -119,9 +143,55 @@ class Task(Base):
         default=0,
     )
 
+    leased_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
+    lease_token_prefix: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        index=True,
+    )
+
+    lease_token_digest: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    last_execution_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    result: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    failure: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )
 

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +45,16 @@ class Agent(Base):
         nullable=False,
     )
 
+    runtime: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    runtime_version: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -58,10 +68,24 @@ class Agent(Base):
         default=list,
     )
 
+    heartbeat_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
     risk_ceiling: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=1,
+    )
+
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+        index=True,
     )
 
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "invariance-swarm-worker"
+version = "0.3.0"
+description = "Restricted Hermes worker for the Invariance Swarm control plane"
+requires-python = ">=3.10"
+dependencies = [
+  "httpx>=0.28,<1.0",
+  "pydantic>=2.10,<3.0",
+  "pydantic-settings>=2.7,<3.0",
+  "PyYAML>=6.0,<7.0",
+  "typing-extensions>=4.12,<5.0",
+]
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9.0",
+  "pytest-asyncio>=0.24,<1.0",
+  "ruff>=0.9,<1.0",
+]
+[project.scripts]
+invariance-swarm-worker = "swarm_worker.__main__:main"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+[tool.ruff]
+line-length = 88
+target-version = "py310"

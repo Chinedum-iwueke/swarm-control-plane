@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Invariance Swarm Control Plane"
     app_environment: str = "production"
-    app_version: str = "0.1.0"
+    app_version: str = "0.3.0"
 
     api_host: str = "0.0.0.0"
     api_port: int = 8787
@@ -48,6 +48,12 @@ class Settings(BaseSettings):
 
     agent_token_secret_file: str = Field(
         default="/run/secrets/agent_token_secret"
+    )
+    package_signing_secret_file: str = Field(
+        default="/run/secrets/package_signing_secret"
+    )
+    mission_approval_secret_file: str = Field(
+        default="/run/secrets/mission_approval_secret"
     )
 
     @property
@@ -80,6 +86,20 @@ class Settings(BaseSettings):
         value = read_secret(self.agent_token_secret_file)
         if value is None:
             raise RuntimeError("Agent token secret is unavailable.")
+        return value
+
+    @property
+    def package_signing_secret(self) -> str:
+        value = read_secret(self.package_signing_secret_file)
+        if value is None or len(value) < 32:
+            raise RuntimeError("Package signing secret is unavailable or too short.")
+        return value
+
+    @property
+    def mission_approval_secret(self) -> str:
+        value = read_secret(self.mission_approval_secret_file)
+        if value is None or len(value) < 32:
+            raise RuntimeError("Mission approval secret is unavailable or too short.")
         return value
 
 
