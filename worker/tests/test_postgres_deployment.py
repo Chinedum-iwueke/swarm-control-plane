@@ -66,3 +66,26 @@ def test_stage_refuses_unknown_non_empty_root(tmp_path: Path) -> None:
 
     with pytest.raises(PostgresDeploymentError, match="metadata"):
         manager(root).stage()
+
+
+def test_stage_accepts_exact_empty_preprovisioned_layout(tmp_path: Path) -> None:
+    root = tmp_path / "postgres"
+    root.mkdir()
+    for name in (
+        "archive",
+        "backups",
+        "bin",
+        "certs",
+        "conf",
+        "data",
+        "init",
+        "logs",
+        "pgbouncer",
+        "schema",
+    ):
+        (root / name).mkdir()
+
+    result = manager(root).stage()
+
+    assert result["staged"] is True
+    assert (root / "metadata.json").is_file()

@@ -32,7 +32,9 @@ class PostgresDeploymentManager:
     def stage(self) -> dict[str, Any]:
         metadata_path = self.root / "metadata.json"
         if self.root.exists() and any(self.root.iterdir()):
-            return self._validate_existing(metadata_path)
+            if metadata_path.exists():
+                return self._validate_existing(metadata_path)
+            self._validate_preprovisioned()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.root.chmod(0o700)
         for name in (
@@ -48,14 +50,17 @@ class PostgresDeploymentManager:
             "schema",
         ):
             path = self.root / name
-            path.mkdir(mode=0o700)
+            path.mkdir(mode=0o700, exist_ok=True)
             path.chmod(0o700)
         for name in ("archive", "data", "logs"):
-            os.chown(
-                self.root / name,
-                self.postgres_uid,
-                self.postgres_gid,
-            )
+            stat = (self.root / name).stat()
+            if (
+                stat.st_uid != self.postgres_uid
+                or stat.st_gid != self.postgres_gid
+            ):
+                raise PostgresDeploymentError(
+                    "Preprovisioned Postgres directory ownership is invalid."
+                )
         for name in ("bin", "conf", "init", "schema"):
             (self.root / name).chmod(0o755)
 
@@ -102,6 +107,34 @@ class PostgresDeploymentManager:
             "metadata_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
             "file_digests": digests,
         }
+
+    def _validate_preprovisioned(self) -> None:
+        allowed = {
+            "archive",
+            "backups",
+            "bin",
+            "certs",
+            "conf",
+            "data",
+            "init",
+            "logs",
+            "pgbouncer",
+            "schema",
+        }
+        entries = {path.name: path for path in self.root.iterdir()}
+        if set(entries) != allowed:
+            raise PostgresDeploymentError(
+                "Non-empty deployment root has no valid metadata."
+            )
+        if any(
+            path.is_symlink()
+            or not path.is_dir()
+            or any(path.iterdir())
+            for path in entries.values()
+        ):
+            raise PostgresDeploymentError(
+                "Preprovisioned deployment layout is not empty."
+            )
 
     def _validate_existing(self, metadata_path: Path) -> dict[str, Any]:
         try:

@@ -48,6 +48,14 @@ install -d \
 install -d -o root -g root -m 0755 /etc/invariance-swarm
 install -d -o root -g root -m 0700 /var/lib/invariance-swarm-infrastructure
 install -d -o root -g root -m 0700 /srv/invariance/postgres
+for directory in backups bin certs conf init pgbouncer schema; do
+  install -d -o root -g root -m 0700 \
+    "/srv/invariance/postgres/${directory}"
+done
+for directory in archive data logs; do
+  install -d -o 999 -g 999 -m 0700 \
+    "/srv/invariance/postgres/${directory}"
+done
 install -d \
   -o omenka \
   -g invariance-swarm-backup-readers \

@@ -1,0 +1,100 @@
+schema_version: 1
+milestone_id: VM2-POSTGRES-ROLLOUT-RETRY-2
+project: invariance_research
+objective: Deploy and validate the reviewed Invariance Postgres runbook on VM2.
+source_references:
+- deploy/ON_PREM_POSTGRES_RUNBOOK.md
+workflow: infrastructure-runbook
+runbook: vm2-postgres-deployment
+runbook_version: 1.0.0
+target: vm2-invariance-postgres
+allowed_machines:
+- vm2-deployment
+required_capabilities:
+- deployment-architecture
+- infrastructure-observation
+- postgres-deployment
+- service-health
+budget:
+  max_tasks: 7
+  max_attempts_per_task: 1
+  max_duration_seconds: 21600
+phases:
+- id: preflight
+  operation: preflight-invariance-postgres
+  objective: Confirm VM2 capacity, source, ports, and target readiness.
+  depends_on: []
+  risk_level: 0
+  approval_required: false
+  acceptance_criteria:
+  - All mandatory preflight checks pass.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: stage
+  operation: stage-invariance-postgres
+  objective: Stage reviewed configuration and generate protected local credentials.
+  depends_on:
+  - preflight
+  risk_level: 2
+  approval_required: true
+  acceptance_criteria:
+  - Staged files match reviewed digests and contain no placeholder credentials.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: start-private
+  operation: start-invariance-postgres-private
+  objective: Start Postgres and PgBouncer on the private VM2 network boundary.
+  depends_on:
+  - stage
+  risk_level: 3
+  approval_required: true
+  acceptance_criteria:
+  - Postgres and PgBouncer pass bounded local health checks.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: initialize-schema
+  operation: initialize-invariance-schema
+  objective: Initialize the Invariance product schema exactly once as schema owner.
+  depends_on:
+  - start-private
+  risk_level: 3
+  approval_required: true
+  acceptance_criteria:
+  - Schema initialization succeeds and runtime auto-initialization remains disabled.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: configure-backups
+  operation: configure-invariance-backups
+  objective: Configure local backup automation and complete one restore drill.
+  depends_on:
+  - initialize-schema
+  risk_level: 3
+  approval_required: true
+  acceptance_criteria:
+  - A backup passes integrity verification and a restore drill is recorded.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: verify
+  operation: verify-invariance-postgres
+  objective: Verify roles, persistence, health, backup freshness, and network exposure.
+  depends_on:
+  - configure-backups
+  risk_level: 0
+  approval_required: false
+  acceptance_criteria:
+  - All private deployment and recovery checks pass.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: prepare-cutover
+  operation: prepare-invariance-cutover
+  objective: Assess DNS, trusted TLS, Vercel access, and rollback readiness.
+  depends_on:
+  - verify
+  risk_level: 0
+  approval_required: false
+  acceptance_criteria:
+  - A bounded go or no-go determination is recorded without changing public access.
+  expected_outputs:
+  - infrastructure-evidence.json
+approved_by: founder-operator
+approval_reference: VM2-POSTGRES-ROLLOUT-RETRY-2-APPROVAL
