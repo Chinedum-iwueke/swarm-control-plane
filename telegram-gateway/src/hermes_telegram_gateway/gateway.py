@@ -65,6 +65,9 @@ class RestrictedTelegramGateway:
         if text == "/status":
             await self._send_status()
             return
+        if text == "/approvals":
+            await self._send_approvals()
+            return
         if text.startswith("/start review_"):
             await self._review_handoff(text.removeprefix("/start review_"))
             return
@@ -81,7 +84,8 @@ class RestrictedTelegramGateway:
         if text.startswith("/"):
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                "Supported: plain-English request, /status, approval links.",
+                "Supported: plain-English request, /status, /approvals, "
+                "approval links.",
             )
             return
         project, risk = classify_request(text)
@@ -136,7 +140,7 @@ class RestrictedTelegramGateway:
             state = f"{task['status']}:{task['attempt_count']}:{task['updated_at']}"
             if not self._store.changed(f"task:{task['id']}", _digest(state)):
                 continue
-            if task["status"] in {"succeeded", "failed", "pending_approval"}:
+            if task["status"] in {"succeeded", "failed"}:
                 await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"{task['task_number']} · {task['status']}\n{task['title']}",
@@ -144,28 +148,50 @@ class RestrictedTelegramGateway:
 
     async def _notify_approvals(self) -> None:
         for approval in await self._channel.approvals():
-            state = f"{approval['status']}:{approval['plan_digest']}"
+            if approval["status"] != "pending" or not approval["actionable"]:
+                continue
+            state = (
+                f"{approval['status']}:{approval['actionable']}:"
+                f"{approval['plan_digest']}"
+            )
             if not self._store.changed(f"approval:{approval['id']}", state):
                 continue
-            if approval["status"] != "pending":
-                continue
-            token = self._store.create(
-                "approval",
-                approval["id"],
-                approval["plan_digest"],
-                self._settings.handoff_ttl_seconds,
-            )
-            url = f"https://t.me/{self._username}?start=review_{token}"
+            await self._send_approval(approval)
+
+    async def _send_approvals(self) -> None:
+        approvals = [
+            item
+            for item in await self._channel.approvals()
+            if item["status"] == "pending" and item["actionable"]
+        ]
+        if not approvals:
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                f"Task approval required\n"
-                f"{approval['scope']['project']} · "
-                f"{approval['scope']['task_type']}\n"
-                f"Risk: {approval['risk_level']}\n"
-                f"Plan: {approval['plan_digest'][:12]}",
-                button_text="Review approval",
-                button_url=url,
+                "No approvals are actionable now.",
             )
+            return
+        for approval in approvals:
+            await self._send_approval(approval)
+
+    async def _send_approval(self, approval: dict[str, Any]) -> None:
+        token = self._store.create(
+            "approval",
+            approval["id"],
+            approval["plan_digest"],
+            self._settings.handoff_ttl_seconds,
+        )
+        url = f"https://t.me/{self._username}?start=review_{token}"
+        operation = approval.get("operation") or approval["scope"]["task_type"]
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Task approval required\n"
+            f"{approval['task_number']} · {approval['task_title']}\n"
+            f"Operation: {operation}\n"
+            f"Risk: {approval['risk_level']}\n"
+            f"Plan: {approval['plan_digest']}",
+            button_text="Review approval",
+            button_url=url,
+        )
 
     async def _review_handoff(self, token: str) -> None:
         handoff = self._store.resolve(token)
@@ -188,6 +214,7 @@ class RestrictedTelegramGateway:
             if (
                 current is None
                 or current["status"] != "pending"
+                or not current["actionable"]
                 or current["plan_digest"] != expected_digest
             ):
                 await self._telegram.send(
@@ -197,8 +224,11 @@ class RestrictedTelegramGateway:
                 return
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                f"Approve {current['scope']['task_type']} at risk "
-                f"{current['risk_level']}?\nPlan: {expected_digest}\n\n"
+                f"Approve {current['task_number']} · "
+                f"{current['task_title']}?\n"
+                f"Operation: {current.get('operation') or current['scope']['task_type']}\n"
+                f"Risk: {current['risk_level']}\n"
+                f"Plan: {expected_digest}\n\n"
                 f"Approve: /approve {token}\nReject: /reject {token}",
             )
             return
@@ -251,6 +281,7 @@ class RestrictedTelegramGateway:
             if (
                 current is None
                 or current["status"] != "pending"
+                or not current["actionable"]
                 or current["plan_digest"] != expected_digest
             ):
                 await self._telegram.send(

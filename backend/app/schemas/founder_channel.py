@@ -1,6 +1,10 @@
+import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.governance import ApprovalResponse
 
 
 class StrictModel(BaseModel):
@@ -23,3 +27,15 @@ class FounderChannelRequest(StrictModel):
 class FounderChannelDecision(StrictModel):
     reason: str = Field(min_length=10, max_length=1000)
     expires_in_seconds: int = Field(default=900, ge=60, le=3600)
+
+
+class FounderChannelApproval(ApprovalResponse):
+    task_number: str
+    task_title: str
+    operation: str | None
+    milestone_step_id: str | None
+    mission_id: uuid.UUID | None
+    task_status: str
+    actionable: bool
+    blocked_by: list[str]
+    mission_deadline_at: datetime | None

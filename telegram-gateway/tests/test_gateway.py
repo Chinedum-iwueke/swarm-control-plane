@@ -47,6 +47,7 @@ class Channel:
     def __init__(self) -> None:
         self.created: list[dict] = []
         self.proposal_decisions: list[tuple[str, str, str]] = []
+        self.approval_values: list[dict] = []
 
     async def create_request(self, payload):
         self.created.append(payload)
@@ -59,11 +60,29 @@ class Channel:
         return []
 
     async def approvals(self):
-        return []
+        return self.approval_values
 
     async def decide_proposal(self, proposal_id, action, reason):
         self.proposal_decisions.append((proposal_id, action, reason))
         return {}
+
+
+def approval(*, actionable: bool, suffix: str = "02") -> dict:
+    return {
+        "id": f"approval-{suffix}",
+        "task_id": f"task-{suffix}",
+        "status": "pending",
+        "plan_digest": suffix[-1] * 64,
+        "risk_level": 2,
+        "scope": {
+            "project": "invariance_research",
+            "task_type": "infrastructure_operation",
+        },
+        "task_number": f"INF-RETRY-{suffix}",
+        "task_title": "VM2-POSTGRES-ROLLOUT-RETRY-1: stage",
+        "operation": "stage-invariance-postgres",
+        "actionable": actionable,
+    }
 
 
 @pytest.mark.asyncio
@@ -120,3 +139,91 @@ def test_domain_classification_is_bounded() -> None:
     assert classify_request("Run a research hypothesis") == ("bulletproof_bt", 1)
     assert classify_request("Restart the API") == ("swarm-control-plane", 3)
     assert classify_request("Index my knowledge notes") == ("knowledge", 0)
+
+
+@pytest.mark.asyncio
+async def test_only_actionable_approval_is_notified_with_task_identity(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.approval_values = [
+        approval(actionable=False, suffix="03"),
+        approval(actionable=False, suffix="04"),
+        approval(actionable=False, suffix="05"),
+        approval(actionable=True, suffix="02"),
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_approvals()
+
+    assert len(telegram.sent) == 1
+    message = telegram.sent[0][1]
+    assert "INF-RETRY-02" in message
+    assert "stage-invariance-postgres" in message
+    assert "2" * 64 in message
+
+
+@pytest.mark.asyncio
+async def test_blocked_approval_notifies_when_it_becomes_actionable(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    candidate = approval(actionable=False, suffix="03")
+    channel.approval_values = [candidate]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_approvals()
+    assert telegram.sent == []
+
+    candidate["actionable"] = True
+    await gateway._notify_approvals()
+    assert len(telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_approvals_command_returns_fresh_actionable_links(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.approval_values = [approval(actionable=True)]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._handle_update(
+        {
+            "message": {
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "/approvals",
+            }
+        }
+    )
+
+    assert len(telegram.sent) == 1
+    assert telegram.sent[0][2]["button_text"] == "Review approval"

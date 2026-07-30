@@ -11,9 +11,16 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_founder_channel
 from app.db.session import get_db
-from app.models import FounderProposal, Task, TaskApproval
+from app.models import (
+    EngineeringMission,
+    FounderProposal,
+    Task,
+    TaskApproval,
+    TaskDependency,
+)
 from app.schemas import (
     ApprovalResponse,
+    FounderChannelApproval,
     FounderChannelDecision,
     FounderChannelRequest,
     FounderProposalResponse,
@@ -138,14 +145,14 @@ def decide_proposal(
     raise HTTPException(status_code=404, detail="Unknown proposal action.")
 
 
-@router.get("/approvals", response_model=list[ApprovalResponse])
+@router.get("/approvals", response_model=list[FounderChannelApproval])
 def list_approvals(
     db: Annotated[Session, Depends(get_db)],
-) -> list[ApprovalResponse]:
+) -> list[FounderChannelApproval]:
     values = db.scalars(
         select(TaskApproval).order_by(TaskApproval.created_at.desc())
     ).all()
-    return [ApprovalResponse.model_validate(item) for item in values]
+    return [_founder_approval(db, item) for item in values]
 
 
 @router.post(
@@ -166,6 +173,12 @@ def decide_approval(
     if approval is None:
         raise HTTPException(status_code=404, detail="Approval not found.")
     if action == "approve":
+        view = _founder_approval(db, approval)
+        if not view.actionable:
+            raise HTTPException(
+                status_code=409,
+                detail="Approval is blocked by task dependencies or mission state.",
+            )
         approve_task(
             db,
             approval,
@@ -186,3 +199,53 @@ def decide_approval(
     db.commit()
     db.refresh(approval)
     return ApprovalResponse.model_validate(approval)
+
+
+def _founder_approval(
+    db: Session, approval: TaskApproval
+) -> FounderChannelApproval:
+    task = db.get(Task, approval.task_id)
+    if task is None:
+        raise HTTPException(status_code=409, detail="Approval task is unavailable.")
+    dependencies = db.execute(
+        select(Task.task_number, Task.status)
+        .join(
+            TaskDependency,
+            Task.id == TaskDependency.depends_on_task_id,
+        )
+        .where(TaskDependency.task_id == task.id)
+    ).all()
+    blocked_by = [
+        f"{task_number}:{task_status}"
+        for task_number, task_status in dependencies
+        if task_status != "succeeded"
+    ]
+    mission = (
+        db.get(EngineeringMission, task.mission_id)
+        if task.mission_id is not None
+        else None
+    )
+    now = datetime.now(UTC)
+    mission_ready = mission is None or (
+        mission.status == "active" and mission.deadline_at > now
+    )
+    actionable = (
+        approval.status == "pending"
+        and task.status == "pending_approval"
+        and not blocked_by
+        and mission_ready
+    )
+    base = ApprovalResponse.model_validate(approval).model_dump(mode="python")
+    contract = task.input_contract if isinstance(task.input_contract, dict) else {}
+    return FounderChannelApproval(
+        **base,
+        task_number=task.task_number,
+        task_title=task.title,
+        operation=contract.get("operation"),
+        milestone_step_id=task.milestone_step_id,
+        mission_id=task.mission_id,
+        task_status=task.status,
+        actionable=actionable,
+        blocked_by=blocked_by,
+        mission_deadline_at=mission.deadline_at if mission is not None else None,
+    )

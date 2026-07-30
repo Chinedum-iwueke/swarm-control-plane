@@ -15,6 +15,7 @@ from app.schemas.control import (
     EffectiveControlResponse,
 )
 from app.schemas.founder_channel import (
+    FounderChannelApproval,
     FounderChannelDecision,
     FounderChannelRequest,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "EngineeringMilestoneManifest",
     "EngineeringWorkItem",
     "ExpiredLeaseReapResponse",
+    "FounderChannelApproval",
     "FounderChannelDecision",
     "FounderChannelRequest",
     "FounderProposalCreate",

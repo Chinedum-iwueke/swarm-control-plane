@@ -46,9 +46,11 @@ or start the service.
 
 - Send a plain-English request to create structured intake.
 - Send `/status` for a bounded task summary.
+- Send `/approvals` for fresh links to dependency-eligible approvals only.
 - Open a `t.me` review link to see the exact digest and risk.
 - Use the generated `/approve TOKEN` or `/reject TOKEN` command once.
 
 Tokens expire after 15 minutes, are stored only as SHA-256 digests, and are
 consumed after one decision. Any proposal or approval digest change invalidates
-the handoff.
+the handoff. Blocked future phases are not announced until every dependency has
+succeeded.
