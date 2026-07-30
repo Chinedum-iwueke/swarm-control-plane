@@ -20,6 +20,8 @@ def make_settings(tmp_path: Path) -> WorkerSettings:
     workspace_root.mkdir(mode=0o700)
     workflow_directory = tmp_path / "workflows"
     workflow_directory.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir(mode=0o700)
     source_workflows = Path(__file__).parents[1] / "workflows"
     for source_workflow in source_workflows.glob("*.yaml"):
         shutil.copy(source_workflow, workflow_directory)
@@ -29,6 +31,7 @@ def make_settings(tmp_path: Path) -> WorkerSettings:
         swarm_repository_root=repository_root,
         swarm_workspace_root=workspace_root,
         swarm_workflow_directory=workflow_directory,
+        swarm_codex_home=codex_home,
     )
 
 
@@ -45,7 +48,7 @@ def make_identity() -> AgentIdentity:
         runtime_version="1.0",
         status="idle",
         presence="online",
-        capabilities=["code_validation"],
+        capabilities=["code_validation", "git", "python", "testing"],
         heartbeat_metadata={},
         risk_ceiling=1,
         is_enabled=True,

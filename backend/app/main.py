@@ -8,6 +8,7 @@ from app.api.routes import (
     governance_router,
     health_router,
     metrics_router,
+    missions_router,
     packages_router,
     task_runtime_router,
     tasks_router,
@@ -23,6 +24,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(metrics_router)
+app.include_router(missions_router)
 app.include_router(packages_router)
 app.include_router(agent_packages_router)
 app.include_router(agents_router)

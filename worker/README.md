@@ -3,8 +3,8 @@
 The VM1 worker leases one control-plane task at a time, validates it against a
 server-local named workflow, creates an isolated detached Git worktree, runs
 the allowlisted validation steps, and reports a bounded result. Phase 1
-supports only the `code_validation` task type and the
-`code-validation` workflow.
+supports the `code_validation` and bounded `engineering_mission` task types
+through reviewed local workflows.
 
 ## Architecture
 
@@ -39,6 +39,9 @@ SWARM_MACHINE=vm1-developer
 SWARM_WORKSPACE_ROOT=/home/omenka/Projects/swarm-agent-workspaces
 SWARM_REPOSITORY_ROOT=/home/omenka/Projects
 SWARM_WORKFLOW_DIRECTORY=/home/omenka/Projects/swarm-control-plane/worker/workflows
+SWARM_ROLE_PACKAGE_MANIFEST=/home/omenka/Projects/swarm-control-plane/worker/role-packages/vm1-engineering-worker/manifest.yaml
+SWARM_CODEX_HOME=/etc/invariance-swarm/codex-worker
+SWARM_CODEX_MODEL=gpt-5.6-sol
 ```
 
 Optional settings include:
@@ -49,6 +52,7 @@ SWARM_AGENT_HEARTBEAT_SECONDS=30
 SWARM_TASK_HEARTBEAT_SECONDS=30
 SWARM_LEASE_SECONDS=300
 REQUEST_TIMEOUT_SECONDS=30
+SWARM_ENGINEERING_TIMEOUT_SECONDS=1800
 ```
 
 Do not put tokens in command-line arguments, shell history, logs, workflow
@@ -96,6 +100,10 @@ sudo install -o root -g root -m 0600 /secure/source/vm1-worker.env \
 
 The source repositories named by `worker/workflows/code-validation.yaml` must
 exist as direct children of `SWARM_REPOSITORY_ROOT`.
+
+Engineering missions additionally require the dedicated Codex identity and
+setup described in `docs/runbooks/m4-engineering-missions.md`. They produce a
+local patch and PR bundle; they do not push, merge, or deploy.
 
 ## Commands
 
@@ -255,7 +263,7 @@ logs, or repositories.
 ## Limitations
 
 - Phase 1 processes one task at a time on one machine.
-- Only `code_validation` is supported.
+- Only `code_validation` and low-risk `engineering_mission` are supported.
 - Workflow definitions are static and server-local; task-supplied commands are
   rejected.
 - Workspaces are intentionally preserved after success and failure for audit.
@@ -263,4 +271,6 @@ logs, or repositories.
   files.
 - Isolation uses Unix permissions, systemd sandboxing, and Git worktrees; it is
   not a container or virtual machine boundary.
-- Network access remains available for the control-plane API over IPv4/IPv6.
+- The service needs network access for the control-plane API and the dedicated
+  Codex model session. Codex-generated child commands use a network-disabled
+  workspace-write sandbox.

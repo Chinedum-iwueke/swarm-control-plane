@@ -18,10 +18,8 @@ from swarm_worker.api_client import (
     WorkerAPIError,
 )
 from swarm_worker.config import WorkerSettings
-from swarm_worker.executors.code_validation import (
-    CodeValidationExecutor,
-    LeaseLost,
-)
+from swarm_worker.executors.code_validation import LeaseLost
+from swarm_worker.executors.restricted import RestrictedExecutor
 from swarm_worker.models import (
     AgentHeartbeat,
     AgentHeartbeatResponse,
@@ -228,8 +226,11 @@ def _default_workspace_manager(settings: WorkerSettings) -> WorkspaceManager:
     )
 
 
-def _default_executor(settings: WorkerSettings) -> CodeValidationExecutor:
-    return CodeValidationExecutor(
+def _default_executor(settings: WorkerSettings) -> RestrictedExecutor:
+    return RestrictedExecutor(
+        codex_home=settings.swarm_codex_home,
+        codex_model=settings.swarm_codex_model,
+        engineering_timeout_seconds=settings.swarm_engineering_timeout_seconds,
         heartbeat_interval_seconds=settings.swarm_task_heartbeat_seconds,
     )
 
@@ -320,6 +321,10 @@ class WorkerService:
             lease_token = lease.lease_token
 
             try:
+                if task.task_type not in role_package.manifest.task_types:
+                    raise WorkerConfigurationError(
+                        "Task type is absent from the deployed role package."
+                    )
                 workflow_loader = self._workflow_loader_factory(settings)
                 validated = self._policy_validator(
                     task,
@@ -329,6 +334,19 @@ class WorkerService:
                 )
                 if not isinstance(validated, ValidatedTaskPolicy):
                     raise TypeError("Policy validator returned an invalid result.")
+                if validated.workflow.name not in {
+                    artifact.name for artifact in role_package.manifest.workflows
+                }:
+                    raise WorkerConfigurationError(
+                        "Workflow is absent from the deployed role package."
+                    )
+                if (
+                    validated.contract.repository
+                    not in role_package.manifest.repository_profile.repositories
+                ):
+                    raise WorkerConfigurationError(
+                        "Repository is absent from the deployed role package."
+                    )
             except (WorkerPolicyError, WorkflowPolicyError) as exc:
                 return await self._release_or_lease_lost(
                     api=api,
@@ -455,7 +473,8 @@ class WorkerService:
                     stderr_log=(
                         failed_step.stderr_log if failed_step is not None else None
                     ),
-                    retryable=category
+                    retryable=execution_result.retryable
+                    or category
                     in {
                         "step_timeout",
                         "workflow_timeout",
@@ -647,6 +666,33 @@ class WorkerService:
                         metadata={"step": step.name, "stream": stream},
                     ),
                 )
+        for relative in execution.artifacts:
+            attempt_root = workspace.plan.attempt_directory.resolve()
+            artifact_path = (attempt_root / relative).resolve()
+            if not artifact_path.is_relative_to(attempt_root):
+                raise WorkerConfigurationError(
+                    "Execution artifact path escapes the task workspace."
+                )
+            safe_relative = artifact_path.relative_to(attempt_root).as_posix()
+            content = artifact_path.read_bytes()
+            await api.register_artifact(
+                task.id,
+                ArtifactCreateRequest(
+                    lease_token=lease_token,
+                    artifact_type=(
+                        "result" if artifact_path.name == "pr-bundle.json" else "evidence"
+                    ),
+                    name=artifact_path.name,
+                    size_bytes=len(content),
+                    sha256=hashlib.sha256(content).hexdigest(),
+                    location=f"workspace://{safe_relative}",
+                    storage_backend="workspace",
+                    workflow=execution.workflow,
+                    workflow_version=workflow_version,
+                    source_commit=execution.base_commit,
+                    metadata={"mission_artifact": True},
+                ),
+            )
 
     @staticmethod
     async def _release_after_cancellation(

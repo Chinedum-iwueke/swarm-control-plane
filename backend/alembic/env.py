@@ -14,10 +14,13 @@ from app.models import (  # noqa: F401
     Artifact,
     ControlEvent,
     ControlScope,
+    EngineeringMission,
+    MissionEvent,
     PackageDeployment,
     RolePackage,
     Task,
     TaskApproval,
+    TaskDependency,
     TaskEvent,
 )
 

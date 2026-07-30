@@ -24,6 +24,7 @@ from app.schemas import (
 )
 from app.services.controls import matching_control_scopes
 from app.services.governance import rearm_task_approval
+from app.services.missions import refresh_mission
 from app.services.tasks import (
     append_task_event,
     clear_lease,
@@ -214,6 +215,8 @@ def complete_task(
     )
 
     clear_lease(task)
+    if task.mission_id is not None:
+        refresh_mission(db, task.mission_id)
 
     db.commit()
     db.refresh(task)
@@ -282,6 +285,8 @@ def fail_task(
         task.completed_at = now
 
     clear_lease(task)
+    if task.mission_id is not None:
+        refresh_mission(db, task.mission_id)
 
     db.commit()
     db.refresh(task)

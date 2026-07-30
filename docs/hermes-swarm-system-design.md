@@ -549,13 +549,31 @@ attribution.
 
 Append-only pause/resume history.
 
+**role_packages / package_deployments**
+
+Immutable signed package manifests and the active/revoked agent deployment
+inventory.
+
+**task_approvals / approval_events**
+
+Task-bound plan digests, approval projections, digest-only nonces, expiry and
+consumption state, and append-only decision history.
+
+**artifacts**
+
+Immutable evidence manifests containing producer, attempt, workflow version,
+source commit, size, digest, storage URI, confidentiality, and retention.
+
+**engineering_missions / mission_events / task_dependencies**
+
+Signed milestone manifests, budgets and deadlines, mission state, and
+append-only transitions plus dependency edges used by lease eligibility.
+
 ### 8.2 Designed but absent persistence
 
-The PRD requires durable artifact registration, workflow versions, approval
-records, operator decisions, and potentially machine/worker-version snapshots.
-No dedicated tables for these concepts exist in the current migrations.
-Phase 1 stores local artifact paths and selected metadata inside result/event
-JSON but does not provide a durable artifact catalog.
+Recurring schedules, dead-letter queues, generalized concurrency locks,
+object-storage upload state, and cross-machine trace correlation remain
+unimplemented.
 
 ## 9. Security Architecture
 
@@ -624,15 +642,16 @@ credential patterns.
 
 ### 10.2 Current gaps
 
-- no centralized artifact upload or retention policy;
+- no centralized artifact upload backend;
 - no dashboard or founder notification channel;
-- no durable workflow-package version or immutable worker-build digest;
 - no cross-machine correlation view beyond task and event queries.
 
 M1 provides a protected Prometheus endpoint, baseline alert rules, worker
 version in heartbeat and terminal evidence, audited pause controls, and a
-terminal-state-aware retention tool. Alert routing, centralized artifact
-retention, and a founder-facing dashboard remain deployment/product work.
+terminal-state-aware retention tool. M2-M4 add signed role packages, deployment
+attestation, approval and artifact evidence, and bounded engineering missions.
+Alert routing, object storage, and a founder-facing dashboard remain product
+work.
 
 ## 11. Source Promotion and Operations
 
@@ -687,10 +706,13 @@ workspaces, logs, and repositories are preserved by worker uninstall tooling.
 | Continuous VM1 service | VM1 systemd | Built and validated; operator activation is separate |
 | Terminal-aware workspace retention tool | VM1 | Implemented in M1 source |
 | Control-plane backup and restore-drill runbook | VM2 operations | Implemented in M1 source |
-| Scheduler, recurring jobs, dependencies, and dead-letter queue | VM2 control plane | Designed, not implemented |
-| Automatic retry orchestration | VM2 control plane | Designed, not implemented |
-| Artifact catalog/storage | VM2 control plane | Designed, not implemented |
-| Approval enforcement | VM2 plus Mac operator | Designed, not implemented |
+| Signed role packages and deployment attestation | VM2/VM1 | Implemented in M2 source |
+| Approval enforcement and immutable decision events | VM2 plus operator | Implemented in M3 source |
+| Artifact evidence catalog | VM2 control plane | Implemented in M3 source; object storage pending |
+| Engineering mission DAG and dependency scheduling | VM2/VM1 | Implemented in M4 source |
+| Isolated coding, validation, review, and PR bundle | VM1 | Implemented in M4 source; supervised pilot pending |
+| Recurring jobs and dead-letter queue | VM2 control plane | Designed, not implemented |
+| General automatic retry orchestration | VM2 control plane | Bounded M4 task retry only |
 | Deployment worker | VM2 | Designed, not implemented |
 | Backup/restore worker | VM2 | Designed, not implemented |
 | Research and experiment workers | VM1 | Designed, not implemented |

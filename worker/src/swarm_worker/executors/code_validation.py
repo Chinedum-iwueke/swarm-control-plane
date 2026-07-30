@@ -86,6 +86,7 @@ class AsyncProcessRunner:
         cwd: Path,
         stdout: object,
         stderr: object,
+        stdin: object | None = None,
         environment_overrides: Mapping[str, str] | None = None,
     ) -> RunningProcess:
         if isinstance(args, (str, bytes)) or not args:
@@ -114,6 +115,7 @@ class AsyncProcessRunner:
             env=environment,
             stdout=stdout,
             stderr=stderr,
+            stdin=stdin,
             start_new_session=True,
         )
         return RunningProcess(process=process, args=command)

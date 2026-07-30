@@ -740,6 +740,10 @@ approval-consumption, rejection, reapproval, and artifact-digest validation.
 - PR bundle;
 - unattended progression for one low-risk milestone.
 
+**Source status:** complete on `feat/restricted-vm1-worker`. Operational
+completion requires migration and role-package deployment, a dedicated coding
+credential, and the supervised no-push pilot in the M4 runbook.
+
 ### M5: VM2 Infrastructure Observer
 
 - PostgreSQL/Redis/Docker/storage/certificate health;

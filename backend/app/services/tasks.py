@@ -6,15 +6,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.core.security import (
     create_task_lease_token,
     digest_task_lease_token,
     extract_task_lease_token_prefix,
 )
-from app.models import Agent, Task, TaskEvent
+from app.models import Agent, EngineeringMission, Task, TaskDependency, TaskEvent
 from app.services.governance import (
     consume_task_approval,
     expire_approvals,
@@ -41,6 +41,8 @@ def serialize_task(task: Task) -> dict[str, Any]:
         "risk_level": task.risk_level,
         "assigned_agent_id": task.assigned_agent_id,
         "parent_task_id": task.parent_task_id,
+        "mission_id": task.mission_id,
+        "milestone_step_id": task.milestone_step_id,
         "created_by": task.created_by,
         "input_contract": task.input_contract,
         "expected_outputs": task.expected_outputs,
@@ -167,6 +169,15 @@ def lease_next_task(
 ) -> tuple[Task | None, str | None, TaskEvent | None]:
     now = utc_now()
     expire_approvals(db, now)
+    predecessor = aliased(Task)
+    blocked_dependency = (
+        select(TaskDependency.id)
+        .join(predecessor, predecessor.id == TaskDependency.depends_on_task_id)
+        .where(
+            TaskDependency.task_id == Task.id,
+            predecessor.status != "succeeded",
+        )
+    )
 
     task = db.scalar(
         select(Task)
@@ -177,6 +188,17 @@ def lease_next_task(
             Task.required_capabilities.contained_by(
                 agent.capabilities
             ),
+            or_(
+                Task.mission_id.is_(None),
+                exists(
+                    select(EngineeringMission.id).where(
+                        EngineeringMission.id == Task.mission_id,
+                        EngineeringMission.status == "active",
+                        EngineeringMission.deadline_at > now,
+                    )
+                ),
+            ),
+            ~exists(blocked_dependency),
             or_(
                 func.jsonb_array_length(
                     Task.allowed_machines

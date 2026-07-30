@@ -2,6 +2,7 @@ from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
 from app.models.governance import ApprovalEvent, Artifact, TaskApproval
+from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.package import PackageDeployment, RolePackage
 from app.models.task import Task
 from app.models.task_event import TaskEvent
@@ -13,9 +14,12 @@ __all__ = [
     "Artifact",
     "ControlEvent",
     "ControlScope",
+    "EngineeringMission",
+    "MissionEvent",
     "PackageDeployment",
     "RolePackage",
     "Task",
     "TaskApproval",
+    "TaskDependency",
     "TaskEvent",
 ]

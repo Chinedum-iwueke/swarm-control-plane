@@ -78,6 +78,13 @@ class Task(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
+    mission_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("engineering_missions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    milestone_step_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     created_by: Mapped[str] = mapped_column(
         String(150),

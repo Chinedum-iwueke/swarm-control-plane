@@ -54,6 +54,8 @@ class Task(BaseModel):
     risk_level: int
     assigned_agent_id: UUID | None
     parent_task_id: UUID | None
+    mission_id: UUID | None = None
+    milestone_step_id: str | None = None
     created_by: str
     input_contract: dict[str, Any]
     expected_outputs: list[Any]
@@ -229,3 +231,5 @@ class WorkflowExecutionResult(BaseModel):
     )
     termination_reason: str | None = Field(default=None, max_length=100)
     worker_version: str = Field(default="unknown", min_length=1, max_length=100)
+    artifacts: list[str] = Field(default_factory=list, max_length=20)
+    retryable: bool = False

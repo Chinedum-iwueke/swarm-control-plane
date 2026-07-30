@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
 import stat
 import sys
@@ -196,10 +197,11 @@ async def check_worker(
         workflow_loader = WorkflowLoader(settings.swarm_workflow_directory)
         for workflow_name in WORKFLOW_FILES:
             workflow_loader.load(workflow_name)
-        load_role_package(
+        role_package = load_role_package(
             settings.swarm_role_package_manifest,
             settings.swarm_workflow_directory,
         )
+        _verify_engineering_runtime(settings)
 
         api = api_client_factory(settings)
         try:
@@ -207,6 +209,19 @@ async def check_worker(
         finally:
             await api.aclose()
         _verify_identity(identity, settings)
+        manifest = role_package.manifest
+        if settings.swarm_machine not in manifest.allowed_machines:
+            raise WorkerConfigurationError(
+                "Role package does not allow the configured machine."
+            )
+        if not set(manifest.required_capabilities).issubset(identity.capabilities):
+            raise WorkerConfigurationError(
+                "Agent identity lacks role-package capabilities."
+            )
+        if identity.risk_ceiling > manifest.risk_ceiling:
+            raise WorkerConfigurationError(
+                "Agent risk ceiling exceeds role-package ceiling."
+            )
     except AuthenticationError:
         active_logger.critical(
             "authentication_failed",
@@ -248,6 +263,22 @@ def _verify_roots(settings: WorkerSettings) -> None:
         )
     if not os.access(workspace_root, os.R_OK | os.W_OK | os.X_OK):
         raise WorkerConfigurationError("Workspace root is not accessible.")
+
+
+def _verify_engineering_runtime(settings: WorkerSettings) -> None:
+    if shutil.which("codex") is None:
+        raise WorkerConfigurationError("Codex executable is unavailable.")
+    try:
+        codex_home = settings.swarm_codex_home.resolve(strict=True)
+    except OSError as exc:
+        raise WorkerConfigurationError("Codex worker home is unavailable.") from exc
+    if not codex_home.is_dir():
+        raise WorkerConfigurationError("Codex worker home is not a directory.")
+    mode = stat.S_IMODE(codex_home.stat().st_mode)
+    if mode & 0o077:
+        raise WorkerConfigurationError(
+            "Codex worker home must not be accessible by group or others."
+        )
 
 
 def _verify_identity(identity: Any, settings: WorkerSettings) -> None:

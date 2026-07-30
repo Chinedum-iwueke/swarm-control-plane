@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -60,8 +60,43 @@ class CodeValidationContract(BaseModel):
         return validate_base_ref(base_ref)
 
 
+class EngineeringMissionContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: str = Field(pattern=_SAFE_REPOSITORY.pattern, max_length=100)
+    workflow: Literal["engineering-mission"]
+    base_ref: str = Field(min_length=1, max_length=255)
+    milestone_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
+    work_item_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
+    objective: str = Field(min_length=10, max_length=4000)
+    allowed_paths: list[str] = Field(min_length=1, max_length=50)
+    context_paths: list[str] = Field(default_factory=list, max_length=50)
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=50)
+    stop_conditions: list[str] = Field(min_length=1, max_length=20)
+    max_files_changed: int = Field(ge=1, le=100)
+    max_diff_lines: int = Field(ge=1, le=10000)
+    max_duration_seconds: int = Field(ge=60, le=86400)
+
+    @field_validator("base_ref")
+    @classmethod
+    def safe_base_ref(cls, value: str) -> str:
+        return validate_base_ref(value)
+
+    @field_validator("allowed_paths", "context_paths")
+    @classmethod
+    def safe_paths(cls, paths: list[str]) -> list[str]:
+        for path in paths:
+            if (
+                path.startswith(("/", ".", "-"))
+                or ".." in path.split("/")
+                or not re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9/_.-]*$", path)
+            ):
+                raise ValueError("paths must be safe repository-relative paths")
+        return paths
+
+
 class ValidatedTaskPolicy(BaseModel):
-    contract: CodeValidationContract
+    contract: CodeValidationContract | EngineeringMissionContract
     workflow: WorkflowDefinition
 
 
@@ -87,10 +122,10 @@ def validate_task_policy(
     *,
     worker_machine: str,
 ) -> ValidatedTaskPolicy:
-    if task.task_type != "code_validation":
+    if task.task_type not in {"code_validation", "engineering_mission"}:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
-    contract = _parse_contract(task.input_contract)
+    contract = _parse_contract(task.task_type, task.input_contract)
     workflow = workflow_loader.load(contract.workflow)
 
     if workflow.task_type != task.task_type:
@@ -118,9 +153,16 @@ def validate_task_policy(
     return ValidatedTaskPolicy(contract=contract, workflow=workflow)
 
 
-def _parse_contract(input_contract: dict[str, Any]) -> CodeValidationContract:
+def _parse_contract(
+    task_type: str, input_contract: dict[str, Any]
+) -> CodeValidationContract | EngineeringMissionContract:
     try:
-        return CodeValidationContract.model_validate(input_contract)
+        model = (
+            EngineeringMissionContract
+            if task_type == "engineering_mission"
+            else CodeValidationContract
+        )
+        return model.model_validate(input_contract)
     except ValidationError as exc:
         summary = "; ".join(
             f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"

@@ -49,13 +49,15 @@ AGENT_TOKEN = "swarm_ag_abcdef_service-agent-token"
 
 
 def verified_role_package():
-    return load_role_package(
+    package = load_role_package(
         Path(
             "/home/omenka/Projects/swarm-control-plane/worker/"
-            "role-packages/restricted-code-validator/manifest.yaml"
+            "role-packages/vm1-engineering-worker/manifest.yaml"
         ),
         Path("/home/omenka/Projects/swarm-control-plane/worker/workflows"),
     )
+    package.manifest.repository_profile.repositories.append("project")
+    return package
 NOW = "2026-07-29T12:00:00Z"
 
 
@@ -262,8 +264,8 @@ class FakeAPI:
     async def send_agent_heartbeat(self, heartbeat: object):
         self.events.append("agent_heartbeat")
         assert heartbeat.status == "idle"
-        assert heartbeat.runtime_version == "0.2.0"
-        assert heartbeat.metadata["worker_version"] == "0.2.0"
+        assert heartbeat.runtime_version == "0.3.0"
+        assert heartbeat.metadata["worker_version"] == "0.3.0"
         return AgentHeartbeatResponse(
             agent_id=AGENT_ID,
             status="idle",
@@ -462,7 +464,7 @@ async def test_failure_path_exact_order_and_fail_once(
         "stdout_log": "logs/run-tests.stdout.log",
         "stderr_log": "logs/run-tests.stderr.log",
         "retryable": False,
-        "worker_version": "0.2.0",
+        "worker_version": "0.3.0",
     }
 
 

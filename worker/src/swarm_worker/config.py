@@ -26,8 +26,11 @@ class WorkerSettings(BaseSettings):
     )
     swarm_role_package_manifest: Path = Path(
         "/home/omenka/Projects/swarm-control-plane/worker/"
-        "role-packages/restricted-code-validator/manifest.yaml"
+        "role-packages/vm1-engineering-worker/manifest.yaml"
     )
+    swarm_codex_home: Path = Path("/etc/invariance-swarm/codex-worker")
+    swarm_codex_model: str = "gpt-5.6-sol"
+    swarm_engineering_timeout_seconds: float = 1800.0
     request_timeout_seconds: float = 30.0
 
     def prepare_directories(self) -> None:

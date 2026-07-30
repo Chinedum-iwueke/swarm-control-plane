@@ -21,6 +21,13 @@ from app.schemas.governance import (
     ArtifactCreate,
     ArtifactResponse,
 )
+from app.schemas.mission import (
+    EngineeringMilestoneManifest,
+    EngineeringWorkItem,
+    MissionCreate,
+    MissionDetailResponse,
+    MissionResponse,
+)
 from app.schemas.package import (
     AgentPackageDeployment,
     PackageDeploymentCreate,
@@ -64,7 +71,12 @@ __all__ = [
     "ControlScopeResponse",
     "CredentialSecretResponse",
     "EffectiveControlResponse",
+    "EngineeringMilestoneManifest",
+    "EngineeringWorkItem",
     "ExpiredLeaseReapResponse",
+    "MissionCreate",
+    "MissionDetailResponse",
+    "MissionResponse",
     "PackageDeploymentCreate",
     "PackageDeploymentResponse",
     "RolePackageCreate",
