@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import httpx
 
@@ -48,7 +48,7 @@ def main() -> int:
             task_type = (
                 "infrastructure_operation" if restart else "infrastructure_observation"
             )
-            timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
             response = client.post(
                 "/v1/tasks",
                 json={
