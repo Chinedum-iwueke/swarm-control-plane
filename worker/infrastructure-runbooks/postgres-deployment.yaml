@@ -1,0 +1,16 @@
+schema_version: 1
+name: vm2-postgres-deployment
+version: 1.0.0
+operations:
+- name: preflight-invariance-postgres
+  task_type: infrastructure_observation
+  target: vm2-invariance-postgres
+  risk_level: 0
+  approval_required: false
+  evidence:
+  - VM2 CPU, memory, and storage capacity
+  - Docker Engine and Compose availability
+  - Postgres and PgBouncer host-port availability
+  - deployment target directory state
+  - invariance_research source revision
+  - public client TLS readiness

@@ -48,7 +48,14 @@ class FakeRunner:
         }
 
 
-def ticket(operation: str, *, risk: int, task_type: str) -> dict:
+def ticket(
+    operation: str,
+    *,
+    risk: int,
+    task_type: str,
+    runbook: str = "vm2-infrastructure",
+    target: str = "vm2-control-plane",
+) -> dict:
     now = datetime.now(UTC)
     payload = BrokerTicketPayload(
         schema_version=1,
@@ -61,10 +68,10 @@ def ticket(operation: str, *, risk: int, task_type: str) -> dict:
         risk_level=risk,
         plan_digest="a" * 64,
         contract={
-            "runbook": "vm2-infrastructure",
+            "runbook": runbook,
             "runbook_version": "1.0.0",
             "operation": operation,
-            "target": "vm2-control-plane",
+            "target": target,
             "parameters": {},
         },
         nonce=hashlib.sha256(operation.encode()).hexdigest(),
@@ -96,6 +103,8 @@ def broker(tmp_path: Path, runner: FakeRunner) -> InfrastructureBroker:
         effective_uid=0,
         runtime_path=runtime,
         backup_path=backups,
+        postgres_root=tmp_path / "postgres",
+        research_repository=tmp_path / "invariance_research",
         sleep=lambda _: None,
     )
 
@@ -163,6 +172,29 @@ def test_tampered_and_expired_ticket_are_rejected(tmp_path: Path) -> None:
     ).hexdigest()
     with pytest.raises(BrokerError, match="expired"):
         broker(tmp_path, FakeRunner()).execute(document)
+
+
+def test_postgres_preflight_is_read_only_and_reports_tls_blocker(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    result = broker(tmp_path, runner).execute(
+        ticket(
+            "preflight-invariance-postgres",
+            risk=0,
+            task_type="infrastructure_observation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    assert result.operation == "preflight-invariance-postgres"
+    assert result.pre_state["public_tls"]["ready"] is False
+    assert ("git", "rev-parse", "HEAD") in runner.commands
+    assert not any(
+        {"up", "restart", "install", "push"} & set(command)
+        for command in runner.commands
+    )
 
 
 def test_restart_uses_exact_action_and_rolls_back_failed_health(

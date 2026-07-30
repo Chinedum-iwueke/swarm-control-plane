@@ -12,11 +12,17 @@ ROOT = Path(__file__).parents[1]
 def test_reviewed_runbooks_load_without_commands() -> None:
     observer = load_runbook(ROOT / "infrastructure-runbooks/observer.yaml")
     restart = load_runbook(ROOT / "infrastructure-runbooks/controlled-restart.yaml")
+    postgres = load_runbook(
+        ROOT / "infrastructure-runbooks/postgres-deployment.yaml"
+    )
     assert observer.operations[0].risk_level == 0
     assert restart.operations[0].risk_level == 3
     assert restart.operations[0].approval_required is True
     assert "command" not in observer.model_dump_json()
     assert "command" not in restart.model_dump_json()
+    assert postgres.operations[0].name == "preflight-invariance-postgres"
+    assert postgres.operations[0].risk_level == 0
+    assert "command" not in postgres.model_dump_json()
 
 
 def test_unknown_runbook_fields_and_arbitrary_parameters_are_rejected() -> None:

@@ -46,7 +46,11 @@ def issue_broker_ticket(
         ) from exc
     if task.risk_level > 3:
         raise HTTPException(status_code=422, detail="Broker risk ceiling exceeded.")
-    if contract.operation == "observe-control-plane" and task.risk_level != 0:
+    if (
+        contract.operation
+        in {"observe-control-plane", "preflight-invariance-postgres"}
+        and task.risk_level != 0
+    ):
         raise HTTPException(status_code=422, detail="Observation must use risk zero.")
     if contract.operation == "restart-control-plane-api" and task.risk_level != 3:
         raise HTTPException(status_code=422, detail="Restart must use risk three.")

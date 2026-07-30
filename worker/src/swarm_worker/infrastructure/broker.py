@@ -5,6 +5,8 @@ import hashlib
 import hmac
 import json
 import os
+import platform
+import shutil
 import socketserver
 import subprocess
 import sys
@@ -26,6 +28,8 @@ _BACKUPS = _RUNTIME / "backups"
 _DOCKER_CONFIG = Path("/run/invariance-swarm-infrastructure/docker-config")
 _MAX_OUTPUT = 16_000
 _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
+_POSTGRES_ROOT = Path("/srv/invariance/postgres")
+_RESEARCH_REPOSITORY = Path("/srv/invariance/invariance_research")
 UTC = timezone.utc
 
 
@@ -93,6 +97,8 @@ class InfrastructureBroker:
         effective_uid: int | None = None,
         runtime_path: Path = _RUNTIME,
         backup_path: Path = _BACKUPS,
+        postgres_root: Path = _POSTGRES_ROOT,
+        research_repository: Path = _RESEARCH_REPOSITORY,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if len(secret) < 32:
@@ -104,6 +110,8 @@ class InfrastructureBroker:
         self._runner = runner or FixedRunner()
         self._runtime_path = runtime_path
         self._backup_path = backup_path
+        self._postgres_root = postgres_root
+        self._research_repository = research_repository
         self._sleep = sleep
         self._consumed = self._load_ledger()
 
@@ -138,6 +146,10 @@ class InfrastructureBroker:
         expected = {
             "observe-control-plane": ("infrastructure_observation", 0),
             "restart-control-plane-api": ("infrastructure_operation", 3),
+            "preflight-invariance-postgres": (
+                "infrastructure_observation",
+                0,
+            ),
         }[operation]
         if (
             payload.machine != "vm2-deployment"
@@ -153,6 +165,18 @@ class InfrastructureBroker:
         started_at: datetime,
     ) -> BrokerExecutionResult:
         payload = ticket.payload
+        if payload.contract.operation == "preflight-invariance-postgres":
+            pre = self._preflight_invariance_postgres()
+            return BrokerExecutionResult(
+                success=bool(pre["ready"]),
+                operation=payload.contract.operation,
+                task_id=payload.task_id,
+                attempt_number=payload.attempt_number,
+                started_at=started_at,
+                ended_at=datetime.now(UTC),
+                pre_state=pre,
+                error=None if pre["ready"] else "Deployment preflight failed.",
+            )
         pre = self._observe()
         if payload.contract.operation == "observe-control-plane":
             ended = datetime.now(UTC)
@@ -204,6 +228,86 @@ class InfrastructureBroker:
             rollback_state=rollback_state,
             error=None if success else "Restart transaction verification failed.",
         )
+
+    def _preflight_invariance_postgres(self) -> dict[str, Any]:
+        docker = self._runner.run(
+            ["docker", "version", "--format", "{{.Server.Version}}"],
+            timeout=30,
+        )
+        compose = self._runner.run(
+            ["docker", "compose", "version", "--short"],
+            timeout=30,
+        )
+        source_commit = self._runner.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self._research_repository,
+            timeout=30,
+        )
+        memory_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        storage = shutil.disk_usage(self._postgres_root.parent)
+        port_state = {
+            str(port): self._port_available(port) for port in (5432, 6432)
+        }
+        target_state = (
+            "absent"
+            if not self._postgres_root.exists()
+            else "empty"
+            if self._postgres_root.is_dir()
+            and not any(self._postgres_root.iterdir())
+            else "occupied"
+        )
+        checks = {
+            "not_root_filesystem_constrained": storage.free >= 50 * 1024**3,
+            "memory_sufficient": memory_bytes >= 8 * 1024**3,
+            "cpu_sufficient": (os.cpu_count() or 0) >= 4,
+            "docker_available": docker["return_code"] == 0,
+            "compose_available": compose["return_code"] == 0,
+            "source_repository_available": source_commit["return_code"] == 0,
+            "target_directory_available": target_state in {"absent", "empty"},
+            "postgres_port_available": port_state["5432"],
+            "pgbouncer_port_available": port_state["6432"],
+        }
+        return {
+            "ready": all(checks.values()),
+            "checks": checks,
+            "host": {
+                "hostname": platform.node(),
+                "kernel": platform.release(),
+                "cpu_count": os.cpu_count(),
+                "memory_bytes": memory_bytes,
+            },
+            "storage": {
+                "total_bytes": storage.total,
+                "free_bytes": storage.free,
+            },
+            "ports": port_state,
+            "target_directory": target_state,
+            "source_repository": {
+                "path": str(self._research_repository),
+                "commit": source_commit["stdout"].strip()[:64],
+            },
+            "docker": {
+                "version": docker["stdout"].strip()[:100],
+                "compose_version": compose["stdout"].strip()[:100],
+            },
+            "public_tls": {
+                "ready": False,
+                "reason": (
+                    "The source runbook does not configure PgBouncer client TLS."
+                ),
+            },
+        }
+
+    @staticmethod
+    def _port_available(port: int) -> bool:
+        import socket
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("0.0.0.0", port))
+            except OSError:
+                return False
+        return True
 
     def _observe_until_healthy(self) -> dict[str, Any]:
         state = self._observe()

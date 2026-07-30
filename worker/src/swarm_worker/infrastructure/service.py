@@ -69,9 +69,9 @@ class InfrastructureService:
         )
         operations = {
             operation.name: operation
-            for filename in ("observer.yaml", "controlled-restart.yaml")
+            for artifact in package.manifest.workflows
             for operation in load_runbook(
-                settings.swarm_infrastructure_runbook_directory / filename
+                settings.swarm_infrastructure_runbook_directory / artifact.file
             ).operations
         }
         api = self._api_factory(settings)
@@ -277,6 +277,10 @@ class InfrastructureService:
         expected = {
             "observe-control-plane": ("infrastructure_observation", 0),
             "restart-control-plane-api": ("infrastructure_operation", 3),
+            "preflight-invariance-postgres": (
+                "infrastructure_observation",
+                0,
+            ),
         }[contract.operation]
         definition = operations.get(contract.operation)
         if (

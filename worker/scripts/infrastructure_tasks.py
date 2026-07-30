@@ -11,7 +11,13 @@ import httpx
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "action", choices=("create-observation", "create-restart", "status")
+        "action",
+        choices=(
+            "create-observation",
+            "create-restart",
+            "create-postgres-preflight",
+            "status",
+        ),
     )
     parser.add_argument("--task-id")
     args = parser.parse_args()
@@ -31,8 +37,13 @@ def main() -> int:
             response = client.get(f"/v1/tasks/{args.task_id}")
         else:
             restart = args.action == "create-restart"
+            postgres_preflight = args.action == "create-postgres-preflight"
             operation = (
-                "restart-control-plane-api" if restart else "observe-control-plane"
+                "restart-control-plane-api"
+                if restart
+                else "preflight-invariance-postgres"
+                if postgres_preflight
+                else "observe-control-plane"
             )
             task_type = (
                 "infrastructure_operation" if restart else "infrastructure_observation"
@@ -44,28 +55,49 @@ def main() -> int:
                     "task_number": (
                         f"VM2-RESTART-{timestamp}"
                         if restart
+                        else f"VM2-POSTGRES-PREFLIGHT-{timestamp}"
+                        if postgres_preflight
                         else f"VM2-OBSERVE-{timestamp}"
                     ),
-                    "project": "swarm-control-plane",
+                    "project": (
+                        "invariance_research"
+                        if postgres_preflight
+                        else "swarm-control-plane"
+                    ),
                     "task_type": task_type,
                     "title": (
                         "Approved controlled VM2 API restart"
                         if restart
+                        else "Preflight VM2 Invariance Postgres deployment"
+                        if postgres_preflight
                         else "Observe VM2 control-plane infrastructure"
                     ),
                     "objective": (
                         "Restart only the control-plane API with pre/post checks."
                         if restart
+                        else (
+                            "Collect read-only capacity, port, source, target, and "
+                            "TLS-readiness evidence before the on-prem Postgres runbook."
+                        )
+                        if postgres_preflight
                         else "Collect read-only VM2 infrastructure health evidence."
                     ),
                     "priority": 70,
                     "risk_level": 3 if restart else 0,
                     "created_by": "founder-operator",
                     "input_contract": {
-                        "runbook": "vm2-infrastructure",
+                        "runbook": (
+                            "vm2-postgres-deployment"
+                            if postgres_preflight
+                            else "vm2-infrastructure"
+                        ),
                         "runbook_version": "1.0.0",
                         "operation": operation,
-                        "target": "vm2-control-plane",
+                        "target": (
+                            "vm2-invariance-postgres"
+                            if postgres_preflight
+                            else "vm2-control-plane"
+                        ),
                         "parameters": {},
                     },
                     "expected_outputs": ["infrastructure-evidence.json"],
@@ -73,6 +105,8 @@ def main() -> int:
                         (
                             "Pre-state and post-state are healthy."
                             if restart
+                            else "Capacity, ports, source, target, and TLS are recorded."
+                            if postgres_preflight
                             else "Docker, PostgreSQL, Redis, and API health are recorded."
                         ),
                         "Evidence digest is registered.",
@@ -84,9 +118,20 @@ def main() -> int:
                     ),
                     "approval_required": restart,
                     "required_capabilities": [
-                        "infrastructure-observation",
-                        "service-health",
-                        "controlled-restart",
+                        *(
+                            [
+                                "deployment-architecture",
+                                "infrastructure-observation",
+                                "postgres-deployment",
+                                "service-health",
+                            ]
+                            if postgres_preflight
+                            else [
+                                "infrastructure-observation",
+                                "service-health",
+                                "controlled-restart",
+                            ]
+                        ),
                     ],
                     "allowed_machines": ["vm2-deployment"],
                     "max_attempts": 1,

@@ -288,10 +288,14 @@ class ArtifactResponse(BaseModel):
 class InfrastructureContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    runbook: Literal["vm2-infrastructure"]
+    runbook: Literal["vm2-infrastructure", "vm2-postgres-deployment"]
     runbook_version: Literal["1.0.0"]
-    operation: Literal["observe-control-plane", "restart-control-plane-api"]
-    target: Literal["vm2-control-plane"]
+    operation: Literal[
+        "observe-control-plane",
+        "restart-control-plane-api",
+        "preflight-invariance-postgres",
+    ]
+    target: Literal["vm2-control-plane", "vm2-invariance-postgres"]
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -326,9 +330,9 @@ class BrokerTicketPayload(BaseModel):
     @model_validator(mode="after")
     def operation_matches_task_type(self) -> "BrokerTicketPayload":
         expected = (
-            "infrastructure_observation"
-            if self.contract.operation == "observe-control-plane"
-            else "infrastructure_operation"
+            "infrastructure_operation"
+            if self.contract.operation == "restart-control-plane-api"
+            else "infrastructure_observation"
         )
         if self.task_type != expected:
             raise ValueError("operation does not match task type")
