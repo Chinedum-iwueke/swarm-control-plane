@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     infrastructure_broker_secret_file: str = Field(
         default="/run/secrets/infrastructure_broker_secret"
     )
+    founder_channel_secret_file: str = Field(
+        default="/run/secrets/founder_channel_secret"
+    )
 
     @property
     def postgres_password(self) -> str:
@@ -111,6 +114,15 @@ class Settings(BaseSettings):
         if value is None or len(value) < 32:
             raise RuntimeError(
                 "Infrastructure broker secret is unavailable or too short."
+            )
+        return value
+
+    @property
+    def founder_channel_secret(self) -> str:
+        value = read_secret(self.founder_channel_secret_file)
+        if value is None or len(value) < 32:
+            raise RuntimeError(
+                "Founder channel secret is unavailable or too short."
             )
         return value
 

@@ -1,0 +1,1 @@
+"""Restricted Hermes Telegram gateway."""

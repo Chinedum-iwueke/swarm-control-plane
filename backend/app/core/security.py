@@ -16,7 +16,6 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import Agent, AgentCredential
 
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -80,7 +79,6 @@ def require_orchestrator(
             detail="Administrative credential required.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
     if not hmac.compare_digest(
         credentials.credentials,
         settings.orchestrator_secret,
@@ -91,6 +89,23 @@ def require_orchestrator(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
+def require_founder_channel(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(bearer_scheme),
+    ],
+) -> None:
+    settings = get_settings()
+    if credentials is None or not hmac.compare_digest(
+        credentials.credentials,
+        settings.founder_channel_secret,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid founder-channel credential.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 def get_current_agent(
     credentials: Annotated[
