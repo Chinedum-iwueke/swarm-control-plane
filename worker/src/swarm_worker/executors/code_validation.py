@@ -453,7 +453,12 @@ class CodeValidationExecutor:
             raise ExecutionPolicyError("Prepared workspace paths are missing.") from exc
 
         if (
-            task.task_type not in {"code_validation", "engineering_mission"}
+            task.task_type
+            not in {
+                "code_validation",
+                "engineering_mission",
+                "research_experiment",
+            }
             or safe_workflow.task_type != task.task_type
             or plan.task_id != task.id
             or plan.task_number != task.task_number
