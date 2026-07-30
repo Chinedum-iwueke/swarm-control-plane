@@ -15,6 +15,8 @@ from swarm_worker.models import (
     AgentIdentity,
     ArtifactCreateRequest,
     ArtifactResponse,
+    BrokerTicketRequest,
+    BrokerTicketResponse,
     LeaseResponse,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
@@ -161,6 +163,19 @@ class SwarmAPIClient:
             "POST",
             f"/v1/agent/tasks/{task_id}/artifacts",
             ArtifactResponse,
+            payload=request,
+            secrets=(request.lease_token,),
+        )
+
+    async def get_broker_ticket(
+        self,
+        task_id: UUID | str,
+        request: BrokerTicketRequest,
+    ) -> BrokerTicketResponse:
+        return await self._request(
+            "POST",
+            f"/v1/agent/tasks/{task_id}/broker-ticket",
+            BrokerTicketResponse,
             payload=request,
             secrets=(request.lease_token,),
         )

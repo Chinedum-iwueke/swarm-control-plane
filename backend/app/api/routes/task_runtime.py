@@ -7,10 +7,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import get_current_agent
 from app.db.session import get_db
 from app.models import Agent
 from app.schemas import (
+    BrokerTicketRequest,
+    BrokerTicketResponse,
     TaskCompleteRequest,
     TaskEventResponse,
     TaskExecutionHeartbeatRequest,
@@ -22,6 +25,7 @@ from app.schemas import (
     TaskResponse,
     TaskStartRequest,
 )
+from app.services.broker_tickets import issue_broker_ticket
 from app.services.controls import matching_control_scopes
 from app.services.governance import rearm_task_approval
 from app.services.missions import refresh_mission
@@ -38,6 +42,44 @@ router = APIRouter(
     prefix="/v1/agent/tasks",
     tags=["agent-task-runtime"],
 )
+
+
+@router.post(
+    "/{task_id}/broker-ticket",
+    response_model=BrokerTicketResponse,
+)
+def get_broker_ticket(
+    task_id: uuid.UUID,
+    payload: BrokerTicketRequest,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> BrokerTicketResponse:
+    task = lock_task(db, task_id)
+    verify_task_lease(
+        task,
+        agent,
+        payload.lease_token,
+        allowed_statuses={"running"},
+    )
+    ticket = issue_broker_ticket(
+        db,
+        task,
+        agent,
+        secret=get_settings().infrastructure_broker_secret,
+    )
+    append_task_event(
+        db,
+        task,
+        "broker_ticket_issued",
+        "Issued a bounded infrastructure broker ticket.",
+        agent_id=agent.id,
+        payload={
+            "operation": ticket.payload.contract.operation,
+            "expires_at": ticket.payload.expires_at.isoformat(),
+        },
+    )
+    db.commit()
+    return ticket
 
 
 @router.post(

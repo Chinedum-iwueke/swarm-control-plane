@@ -1,0 +1,15 @@
+schema_version: 1
+name: vm2-infrastructure
+version: 1.0.0
+operations:
+- name: restart-control-plane-api
+  task_type: infrastructure_operation
+  target: vm2-control-plane
+  risk_level: 3
+  approval_required: true
+  evidence:
+  - consumed approval and plan digest
+  - pre-operation health
+  - exact action return code
+  - post-operation health
+  - rollback attempt and result when required

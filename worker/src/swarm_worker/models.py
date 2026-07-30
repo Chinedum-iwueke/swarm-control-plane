@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 AgentRuntimeStatus = Literal["idle", "busy", "degraded"]
 
@@ -191,6 +191,80 @@ class ArtifactResponse(BaseModel):
     expires_at: datetime | None
     metadata_json: dict[str, Any]
     created_at: datetime
+
+
+class InfrastructureContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runbook: Literal["vm2-infrastructure"]
+    runbook_version: Literal["1.0.0"]
+    operation: Literal["observe-control-plane", "restart-control-plane-api"]
+    target: Literal["vm2-control-plane"]
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def no_untyped_parameters(self) -> "InfrastructureContract":
+        if self.parameters:
+            raise ValueError("This operation does not accept parameters.")
+        return self
+
+
+class BrokerTicketRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lease_token: str = Field(min_length=1)
+
+
+class BrokerTicketPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    task_id: UUID
+    task_number: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+    attempt_number: int = Field(ge=1)
+    agent_id: UUID
+    machine: Literal["vm2-deployment"]
+    task_type: Literal["infrastructure_observation", "infrastructure_operation"]
+    risk_level: int = Field(ge=0, le=3)
+    plan_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract: InfrastructureContract
+    nonce: str = Field(pattern=r"^[0-9a-f]{64}$")
+    issued_at: datetime
+    expires_at: datetime
+
+    @model_validator(mode="after")
+    def operation_matches_task_type(self) -> "BrokerTicketPayload":
+        expected = (
+            "infrastructure_observation"
+            if self.contract.operation == "observe-control-plane"
+            else "infrastructure_operation"
+        )
+        if self.task_type != expected:
+            raise ValueError("operation does not match task type")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("ticket expiry must follow issuance")
+        return self
+
+
+class BrokerTicketResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payload: BrokerTicketPayload
+    signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BrokerExecutionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    success: bool
+    operation: str
+    task_id: UUID
+    attempt_number: int
+    started_at: datetime
+    ended_at: datetime
+    pre_state: dict[str, Any]
+    action: dict[str, Any] | None = None
+    post_state: dict[str, Any] | None = None
+    rollback: dict[str, Any] | None = None
+    rollback_state: dict[str, Any] | None = None
+    error: str | None = Field(default=None, max_length=500)
 
 
 class ExecutionResult(BaseModel):

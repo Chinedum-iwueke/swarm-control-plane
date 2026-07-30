@@ -235,6 +235,36 @@ attempts:
 See `docs/runbooks/m1-control-and-recovery.md` for deployment, metrics, alert,
 retention, backup, and disposable restore procedures.
 
+## VM2 Infrastructure Operator
+
+M5 and M6 add a separate VM2 role. The `swarm-infrastructure` worker remains
+unprivileged and communicates with a root-owned broker over a group-restricted
+Unix socket. The broker accepts only API-signed, one-time tickets for two
+reviewed operations:
+
+- `observe-control-plane`: read-only Docker, PostgreSQL, Redis, API, storage,
+  backup, and certificate-state evidence;
+- `restart-control-plane-api`: approval-gated restart of only the Compose `api`
+  service, with pre/post verification and one fixed recreate fallback.
+
+Task input cannot supply commands, paths, service names, or parameters. The
+worker has no Docker socket access; the broker receives no agent credential.
+Complete evidence is stored in the infrastructure workspace, registered by
+SHA-256 digest, and represented in the task result by a bounded summary.
+
+The dedicated commands are:
+
+```bash
+invariance-swarm-infrastructure-worker check
+invariance-swarm-infrastructure-worker once
+invariance-swarm-infrastructure-worker run
+invariance-swarm-infrastructure-broker
+```
+
+Installation and supervised pilot steps are in
+`docs/runbooks/m5-m6-vm2-infrastructure.md`. The continuous VM2 worker must
+remain disabled until both one-shot pilots have passed.
+
 ## Rollback
 
 Stop the service, restore the previous reviewed worker revision, reinstall the

@@ -1,0 +1,17 @@
+schema_version: 1
+name: vm2-infrastructure
+version: 1.0.0
+operations:
+- name: observe-control-plane
+  task_type: infrastructure_observation
+  target: vm2-control-plane
+  risk_level: 0
+  approval_required: false
+  evidence:
+  - Docker Compose service state
+  - PostgreSQL readiness
+  - Redis response
+  - control-plane API health
+  - storage capacity
+  - latest backup freshness, SHA-256 digest, and pg_restore integrity
+  - certificate configuration status
