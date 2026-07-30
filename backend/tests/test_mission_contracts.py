@@ -1,12 +1,19 @@
 import hashlib
 import hmac
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.schemas import EngineeringMilestoneManifest
-from app.services.missions import canonical_manifest, verify_mission_approval
+from app.services.missions import (
+    canonical_manifest,
+    refresh_mission,
+    verify_mission_approval,
+)
 
 
 def manifest_document() -> dict:
@@ -98,3 +105,23 @@ def test_founder_approval_signature_is_required() -> None:
     verify_mission_approval(manifest, signature, secret)
     with pytest.raises(HTTPException):
         verify_mission_approval(manifest, "0" * 64, secret)
+
+
+def test_failed_task_blocks_mission_after_pending_state_is_flushed() -> None:
+    mission = SimpleNamespace(
+        id="mission-id",
+        status="active",
+        deadline_at=datetime.now(UTC) + timedelta(minutes=30),
+        completed_at=None,
+    )
+    statuses = MagicMock()
+    statuses.all.return_value = ["failed"]
+    db = MagicMock()
+    db.get.return_value = mission
+    db.scalars.return_value = statuses
+
+    refresh_mission(db, mission.id)
+
+    assert db.method_calls[0] == ("flush", (), {})
+    assert mission.status == "blocked"
+    db.add.assert_called_once()
