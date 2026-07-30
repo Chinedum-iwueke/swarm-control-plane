@@ -23,6 +23,7 @@ from swarm_worker.models import (
 
 _RUNTIME = Path("/srv/invariance/swarm/control-plane-runtime")
 _BACKUPS = _RUNTIME / "backups"
+_DOCKER_CONFIG = Path("/run/invariance-swarm-infrastructure/docker-config")
 _MAX_OUTPUT = 16_000
 _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
 UTC = timezone.utc
@@ -59,6 +60,7 @@ class FixedRunner:
                         ),
                         "LANG": "C.UTF-8",
                         "LC_ALL": "C.UTF-8",
+                        "DOCKER_CONFIG": str(_DOCKER_CONFIG),
                     },
                     stdin=stdin,
                     capture_output=True,
@@ -397,6 +399,8 @@ def main() -> int:
     secret = args.secret_file.read_text(encoding="utf-8").strip()
     broker = InfrastructureBroker(secret=secret, ledger_path=args.ledger)
     args.socket.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+    _DOCKER_CONFIG.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _DOCKER_CONFIG.chmod(0o700)
     if args.socket.exists():
         args.socket.unlink()
     with _Server(str(args.socket), _Handler) as server:
