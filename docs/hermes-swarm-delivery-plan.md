@@ -751,10 +751,9 @@ credential, and the supervised no-push pilot in the M4 runbook.
 - no mutation;
 - dashboard/evidence integration.
 
-**Source status:** implemented on `feat/restricted-vm1-worker`. Operational
-completion requires API ticket-secret deployment, VM2 broker/worker
-installation, package binding, and the supervised M5 observation in the M5/M6
-runbook.
+**Status:** operationally complete. The API ticket secret, VM2 broker and
+worker, package binding, and supervised read-only observation were validated.
+The evidence digest is recorded in `docs/m5-m6-validation.md`.
 
 ### M6: VM2 Controlled Operator
 
@@ -764,11 +763,11 @@ runbook.
 - pre/post verification;
 - disposable-environment tests and rollback drill.
 
-**Source status:** implemented on `feat/restricted-vm1-worker`. The first
-operation is limited to an explicitly approved control-plane API restart.
-Operational completion requires approval-consumption validation, pre/post
-health evidence, and one supervised restart with the continuous worker kept
-disabled.
+**Status:** operationally complete for the first narrow operation. An explicit
+approval was bound to the task plan, consumed once at lease, and used for a
+supervised control-plane API restart with successful pre/post health checks.
+The continuous worker remains disabled; evidence is recorded in
+`docs/m5-m6-validation.md`.
 
 ### M7: Mac Mission Control and knowledge pilot
 
