@@ -350,6 +350,7 @@ class InfrastructureBroker:
         if operation == "initialize-invariance-schema":
             source = self._source_commit()
             environment = self._schema_environment()
+            owner_password = environment.pop("OWNER_PASSWORD")
             action = self._runner.run(
                 [
                     "docker",
@@ -381,27 +382,30 @@ class InfrastructureBroker:
                 extra_env=environment,
             )
             marker = self._runner.run(
-                [
-                    "docker",
-                    "compose",
+                self._postgres_compose_args(
+                    [
                     "exec",
                     "-T",
                     "-e",
                     f"PGAPPNAME={source}",
+                    "-e",
+                    "PGPASSWORD",
                     "postgres",
                     "psql",
                     "-v",
                     "ON_ERROR_STOP=1",
                     "-U",
-                    "postgres",
+                    "invariance_owner",
                     "-d",
                     "invariance_research",
-                ],
+                    ]
+                ),
                 cwd=self._postgres_root,
                 timeout=60,
                 stdin_path=self._postgres_root
                 / "schema"
                 / "001-broker-marker.sql",
+                extra_env={"PGPASSWORD": owner_password},
             )
             success = action["return_code"] == 0 and marker["return_code"] == 0
             return self._postgres_result(
@@ -466,19 +470,29 @@ class InfrastructureBroker:
         )
 
     def _postgres_compose(
-        self, args: Sequence[str], *, timeout: float
+        self,
+        args: Sequence[str],
+        *,
+        timeout: float,
+        extra_env: dict[str, str] | None = None,
+        stdin_path: Path | None = None,
     ) -> dict[str, Any]:
         return self._runner.run(
-            [
-                "docker",
-                "compose",
-                "--env-file",
-                str(self._postgres_root / ".env.postgres"),
-                *args,
-            ],
+            self._postgres_compose_args(args),
             cwd=self._postgres_root,
             timeout=timeout,
+            extra_env=extra_env,
+            stdin_path=stdin_path,
         )
+
+    def _postgres_compose_args(self, args: Sequence[str]) -> list[str]:
+        return [
+            "docker",
+            "compose",
+            "--env-file",
+            str(self._postgres_root / ".env.postgres"),
+            *args,
+        ]
 
     def _postgres_health(self) -> dict[str, Any]:
         compose = self._postgres_compose(["ps", "--format", "json"], timeout=30)
@@ -557,22 +571,27 @@ class InfrastructureBroker:
         return result["stdout"].strip()[:64]
 
     def _schema_environment(self) -> dict[str, str]:
+        values = self._postgres_environment()
+        password = values.get("INVARIANCE_OWNER_PASSWORD")
+        if not password:
+            raise BrokerError("Schema owner credential is unavailable.")
+        return {
+            "INVARIANCE_STACK_ROOT": str(self._research_repository.parent),
+            "OWNER_PASSWORD": password,
+            "DATABASE_URL": (
+                "postgresql://invariance_owner:"
+                f"{password}@postgres:5432/invariance_research"
+            )
+        }
+
+    def _postgres_environment(self) -> dict[str, str]:
         values: dict[str, str] = {}
         for line in (self._postgres_root / ".env.postgres").read_text().splitlines():
             if line and not line.startswith("#"):
                 name, separator, value = line.partition("=")
                 if separator:
                     values[name] = value
-        password = values.get("INVARIANCE_OWNER_PASSWORD")
-        if not password:
-            raise BrokerError("Schema owner credential is unavailable.")
-        return {
-            "INVARIANCE_STACK_ROOT": str(self._research_repository.parent),
-            "DATABASE_URL": (
-                "postgresql://invariance_owner:"
-                f"{password}@postgres:5432/invariance_research"
-            )
-        }
+        return values
 
     def _install_backup_units(self) -> dict[str, dict[str, Any]]:
         service = self._systemd_path / "invariance-postgres-backup.service"
@@ -643,17 +662,14 @@ class InfrastructureBroker:
             }
         path = backups[0]
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        integrity = self._runner.run(
+        integrity = self._postgres_compose(
             [
-                "docker",
-                "compose",
                 "exec",
                 "-T",
                 "postgres",
                 "pg_restore",
                 "--list",
             ],
-            cwd=self._postgres_root,
             timeout=60,
             stdin_path=path,
         )
@@ -676,54 +692,56 @@ class InfrastructureBroker:
         if not backups:
             return {"success": False, "reason": "no-backup"}
         database = "hermes_restore_drill"
+        database_environment = {
+            "PGPASSWORD": self._postgres_environment()[
+                "POSTGRES_SUPERUSER_PASSWORD"
+            ]
+        }
+
+        def database_command(
+            args: list[str],
+            *,
+            timeout: float = 60,
+            stdin_path: Path | None = None,
+        ) -> dict[str, Any]:
+            return self._postgres_compose(
+                ["exec", "-T", "-e", "PGPASSWORD", "postgres", *args],
+                timeout=timeout,
+                extra_env=database_environment,
+                stdin_path=stdin_path,
+            )
+
         commands = [
-            self._postgres_compose(
+            database_command(
                 [
-                    "exec",
-                    "-T",
-                    "postgres",
                     "dropdb",
                     "--if-exists",
                     "-U",
                     "postgres",
                     database,
-                ],
-                timeout=60,
+                ]
             ),
-            self._postgres_compose(
+            database_command(
                 [
-                    "exec",
-                    "-T",
-                    "postgres",
                     "createdb",
                     "-U",
                     "postgres",
                     database,
-                ],
-                timeout=60,
+                ]
             ),
-            self._runner.run(
+            database_command(
                 [
-                    "docker",
-                    "compose",
-                    "exec",
-                    "-T",
-                    "postgres",
                     "pg_restore",
                     "-U",
                     "postgres",
                     "-d",
                     database,
                 ],
-                cwd=self._postgres_root,
                 timeout=900,
                 stdin_path=backups[0],
             ),
-            self._postgres_compose(
+            database_command(
                 [
-                    "exec",
-                    "-T",
-                    "postgres",
                     "psql",
                     "-U",
                     "postgres",
@@ -731,20 +749,15 @@ class InfrastructureBroker:
                     database,
                     "-Atc",
                     "SELECT count(*) FROM pg_catalog.pg_tables",
-                ],
-                timeout=60,
+                ]
             ),
-            self._postgres_compose(
+            database_command(
                 [
-                    "exec",
-                    "-T",
-                    "postgres",
                     "dropdb",
                     "-U",
                     "postgres",
                     database,
-                ],
-                timeout=60,
+                ]
             ),
         ]
         return {

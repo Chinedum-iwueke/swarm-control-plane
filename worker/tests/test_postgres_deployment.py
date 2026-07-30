@@ -12,6 +12,13 @@ from swarm_worker.infrastructure.postgres_deployment import (
 )
 
 
+class ComposeLoader(yaml.SafeLoader):
+    pass
+
+
+ComposeLoader.add_constructor("!reset", lambda loader, node: [])
+
+
 def manager(root: Path) -> PostgresDeploymentManager:
     return PostgresDeploymentManager(
         root,
@@ -41,13 +48,15 @@ def test_stage_creates_private_digest_bound_layout(tmp_path: Path) -> None:
     assert compose["services"]["pgbouncer"]["image"].endswith(
         "@sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e"
     )
-    override = yaml.safe_load(
-        (root / "schema/worker-network.override.yaml").read_text()
+    override = yaml.load(
+        (root / "schema/worker-network.override.yaml").read_text(),
+        Loader=ComposeLoader,
     )
     assert override["networks"]["invariance-postgres"] == {
         "external": True,
         "name": "invariance-postgres_default",
     }
+    assert override["services"]["analysis-worker"]["env_file"] == []
     rendered = str(result)
     environment = (root / ".env.postgres").read_text()
     for line in environment.splitlines():
@@ -102,7 +111,7 @@ def test_stage_upgrades_static_template_without_rotating_secrets(
 
     upgraded = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert result["reused"] is True
-    assert upgraded["deployment_version"] == "1.1.0"
+    assert upgraded["deployment_version"] == "1.2.0"
     assert (root / ".env.postgres").read_bytes() == environment
     assert "edoburu/pgbouncer:v1.24.1-p1@sha256:" in (
         root / "compose.yaml"

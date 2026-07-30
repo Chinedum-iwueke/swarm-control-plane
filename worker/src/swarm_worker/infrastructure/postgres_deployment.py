@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 POSTGRES_ROOT = Path("/srv/invariance/postgres")
-DEPLOYMENT_VERSION = "1.1.0"
-_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0"}
+DEPLOYMENT_VERSION = "1.2.0"
+_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0", "1.1.0"}
 UTC = timezone.utc
 
 
@@ -217,10 +217,20 @@ class PostgresDeploymentManager:
         metadata_path: Path,
     ) -> dict[str, Any]:
         self._replace_file(self.root / "compose.yaml", _COMPOSE, 0o644)
+        override_path = self.root / "schema" / "worker-network.override.yaml"
+        self._replace_file(override_path, _WORKER_NETWORK_OVERRIDE, 0o644)
+        backup_path = self.root / "bin" / "backup.sh"
+        self._replace_file(backup_path, _BACKUP_SCRIPT, 0o755)
         metadata["deployment_version"] = DEPLOYMENT_VERSION
         metadata["updated_at"] = datetime.now(UTC).isoformat()
         metadata["files"]["compose.yaml"] = hashlib.sha256(
             _COMPOSE.encode()
+        ).hexdigest()
+        metadata["files"]["schema/worker-network.override.yaml"] = hashlib.sha256(
+            _WORKER_NETWORK_OVERRIDE.encode()
+        ).hexdigest()
+        metadata["files"]["bin/backup.sh"] = hashlib.sha256(
+            _BACKUP_SCRIPT.encode()
         ).hexdigest()
         rendered = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
         self._replace_file(metadata_path, rendered, 0o600)
@@ -438,6 +448,7 @@ COMMIT;
 
 _WORKER_NETWORK_OVERRIDE = """services:
   analysis-worker:
+    env_file: !reset []
     networks:
     - invariance-postgres
 networks:
@@ -450,12 +461,18 @@ _BACKUP_SCRIPT = """#!/usr/bin/env bash
 set -euo pipefail
 umask 077
 root=/srv/invariance/postgres
+set -a
+source "$root/.env.postgres"
+set +a
+export PGPASSWORD="$POSTGRES_SUPERUSER_PASSWORD"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 output="$root/backups/invariance_research_${stamp}.dump"
 cd "$root"
-docker compose exec -T postgres pg_dump \
+docker compose --env-file "$root/.env.postgres" exec -T -e PGPASSWORD \
+  postgres pg_dump \
   -U postgres -d invariance_research -Fc > "$output"
-docker compose exec -T postgres pg_restore --list < "$output" >/dev/null
+docker compose --env-file "$root/.env.postgres" exec -T postgres \
+  pg_restore --list < "$output" >/dev/null
 sha256sum "$output" > "$output.sha256"
 find "$root/backups" -maxdepth 1 -type f -mtime +14 -delete
 """

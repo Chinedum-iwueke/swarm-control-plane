@@ -366,6 +366,13 @@ def test_postgres_phases_use_only_fixed_broker_commands(
     serialized = json.dumps(result.model_dump(mode="json"))
     assert "INVARIANCE_OWNER_PASSWORD" not in serialized
     assert "postgresql://invariance_owner:" not in serialized
+    if operation == "initialize-invariance-schema":
+        assert any(
+            "PGPASSWORD" in command
+            and "invariance_owner" in command
+            and "--env-file" in command
+            for command in runner.commands
+        )
     assert all(not isinstance(command, str) for command in runner.commands)
 
 
