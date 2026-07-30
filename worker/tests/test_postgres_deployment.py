@@ -64,6 +64,22 @@ def test_stage_creates_private_digest_bound_layout(tmp_path: Path) -> None:
             assert line.split("=", 1)[1] not in rendered
 
 
+def test_stage_supports_isolated_rehearsal_binding(tmp_path: Path) -> None:
+    root = tmp_path / "postgres"
+    PostgresDeploymentManager(
+        root,
+        postgres_uid=os.geteuid(),
+        postgres_gid=os.getegid(),
+        pgbouncer_bind_address="127.0.0.1",
+    ).stage()
+
+    compose = yaml.safe_load((root / "compose.yaml").read_text())
+    assert compose["services"]["pgbouncer"]["ports"] == [
+        "127.0.0.1:6432:5432"
+    ]
+    assert "100.112.117.59" not in (root / "compose.yaml").read_text()
+
+
 def test_stage_is_idempotent_only_for_untampered_metadata(tmp_path: Path) -> None:
     root = tmp_path / "postgres"
     first = manager(root).stage()

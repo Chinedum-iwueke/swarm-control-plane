@@ -26,10 +26,16 @@ class PostgresDeploymentManager:
         *,
         postgres_uid: int = 999,
         postgres_gid: int = 999,
+        pgbouncer_bind_address: str = "100.112.117.59",
     ) -> None:
         self.root = root
         self.postgres_uid = postgres_uid
         self.postgres_gid = postgres_gid
+        self.pgbouncer_bind_address = pgbouncer_bind_address
+        self._compose = _COMPOSE.replace(
+            "__PGBOUNCER_BIND_ADDRESS__",
+            pgbouncer_bind_address,
+        )
 
     def stage(self) -> dict[str, Any]:
         metadata_path = self.root / "metadata.json"
@@ -67,7 +73,7 @@ class PostgresDeploymentManager:
 
         files = {
             ".env.postgres": self._environment(),
-            "compose.yaml": _COMPOSE,
+            "compose.yaml": self._compose,
             "conf/postgresql.conf": _POSTGRESQL_CONF,
             "conf/pg_hba.conf": _PG_HBA,
             "init/001-invariance.sh": _INIT_SCRIPT,
@@ -216,7 +222,7 @@ class PostgresDeploymentManager:
         metadata: dict[str, Any],
         metadata_path: Path,
     ) -> dict[str, Any]:
-        self._replace_file(self.root / "compose.yaml", _COMPOSE, 0o644)
+        self._replace_file(self.root / "compose.yaml", self._compose, 0o644)
         override_path = self.root / "schema" / "worker-network.override.yaml"
         self._replace_file(override_path, _WORKER_NETWORK_OVERRIDE, 0o644)
         backup_path = self.root / "bin" / "backup.sh"
@@ -226,7 +232,7 @@ class PostgresDeploymentManager:
         metadata["deployment_version"] = DEPLOYMENT_VERSION
         metadata["updated_at"] = datetime.now(UTC).isoformat()
         metadata["files"]["compose.yaml"] = hashlib.sha256(
-            _COMPOSE.encode()
+            self._compose.encode()
         ).hexdigest()
         metadata["files"]["schema/worker-network.override.yaml"] = hashlib.sha256(
             _WORKER_NETWORK_OVERRIDE.encode()
@@ -362,7 +368,7 @@ services:
       IGNORE_STARTUP_PARAMETERS: extra_float_digits
       SERVER_RESET_QUERY: DISCARD ALL
     ports:
-    - 100.112.117.59:6432:5432
+    - __PGBOUNCER_BIND_ADDRESS__:6432:5432
     healthcheck:
       test:
       - CMD-SHELL

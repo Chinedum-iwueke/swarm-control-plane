@@ -114,6 +114,7 @@ class InfrastructureBroker:
         runtime_path: Path = _RUNTIME,
         backup_path: Path = _BACKUPS,
         postgres_root: Path = _POSTGRES_ROOT,
+        postgres_bind_address: str = "100.112.117.59",
         research_repository: Path = _RESEARCH_REPOSITORY,
         systemd_path: Path = Path("/etc/systemd/system"),
         sleep: Callable[[float], None] = time.sleep,
@@ -128,6 +129,7 @@ class InfrastructureBroker:
         self._runtime_path = runtime_path
         self._backup_path = backup_path
         self._postgres_root = postgres_root
+        self._postgres_bind_address = postgres_bind_address
         self._research_repository = research_repository
         self._systemd_path = systemd_path
         self._sleep = sleep
@@ -204,6 +206,7 @@ class InfrastructureBroker:
                 self._postgres_root,
                 postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
                 postgres_gid=os.getegid(),
+                pgbouncer_bind_address=self._postgres_bind_address,
             )
             action = manager.stage()
             return BrokerExecutionResult(
@@ -309,6 +312,7 @@ class InfrastructureBroker:
             self._postgres_root,
             postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
             postgres_gid=os.getegid(),
+            pgbouncer_bind_address=self._postgres_bind_address,
         )
         staged = manager.stage()
         if operation == "start-invariance-postgres-private":
@@ -581,7 +585,10 @@ class InfrastructureBroker:
             "compose": compose,
             "postgres": postgres,
             "pgbouncer": pgbouncer,
-            "bindings": ["127.0.0.1:5432", "100.112.117.59:6432"],
+            "bindings": [
+                "127.0.0.1:5432",
+                f"{self._postgres_bind_address}:6432",
+            ],
             "public_access": False,
         }
 
@@ -901,6 +908,7 @@ class InfrastructureBroker:
             self._postgres_root,
             postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
             postgres_gid=os.getegid(),
+            pgbouncer_bind_address=self._postgres_bind_address,
         )
         target_state = (
             "absent"

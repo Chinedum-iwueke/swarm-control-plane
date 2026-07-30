@@ -85,6 +85,20 @@ do
   systemd-analyze verify "/etc/systemd/system/$unit"
 done
 
+for unit in \
+  invariance-postgres-backup.service \
+  invariance-postgres-backup.timer
+do
+  if [[ ! -e "/etc/systemd/system/$unit" ]]; then
+    install -o root -g root -m 0644 /dev/null \
+      "/etc/systemd/system/$unit"
+  fi
+done
+install -d -o root -g root -m 0755 \
+  /etc/systemd/system/timers.target.wants
+ln -sfn ../invariance-postgres-backup.timer \
+  /etc/systemd/system/timers.target.wants/invariance-postgres-backup.timer
+
 systemctl daemon-reload
 
 if $enable; then
