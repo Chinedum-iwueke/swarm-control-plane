@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,7 @@ import pytest
 
 from swarm_worker.api_client import ConflictError
 from swarm_worker.infrastructure.config import InfrastructureSettings
+from swarm_worker.infrastructure.runbooks import OperationDefinition
 from swarm_worker.infrastructure.service import InfrastructureService
 from swarm_worker.models import (
     AgentIdentity,
@@ -302,3 +304,52 @@ async def test_no_work_does_not_create_broker(tmp_path: Path) -> None:
 
     assert outcome.status == "no_work"
     assert events == ["identity", "agent_heartbeat", "lease", "close"]
+
+
+@pytest.mark.parametrize(
+    ("operation", "task_type", "risk"),
+    [
+        ("start-invariance-postgres-private", "infrastructure_operation", 3),
+        ("initialize-invariance-schema", "infrastructure_operation", 3),
+        ("configure-invariance-backups", "infrastructure_operation", 3),
+        ("verify-invariance-postgres", "infrastructure_observation", 0),
+        ("prepare-invariance-cutover", "infrastructure_observation", 0),
+    ],
+)
+def test_deployment_phases_match_closed_service_policy(
+    operation: str,
+    task_type: str,
+    risk: int,
+) -> None:
+    leased_task = task(
+        project="invariance_research",
+        task_type=task_type,
+        risk_level=risk,
+        input_contract={
+            "runbook": "vm2-postgres-deployment",
+            "runbook_version": "1.0.0",
+            "operation": operation,
+            "target": "vm2-invariance-postgres",
+            "parameters": {},
+        },
+    )
+    definition = OperationDefinition(
+        name=operation,
+        task_type=task_type,
+        target="vm2-invariance-postgres",
+        risk_level=risk,
+        approval_required=risk >= 2,
+        evidence=["bounded evidence"],
+    )
+    manifest = SimpleNamespace(
+        task_types=["infrastructure_observation", "infrastructure_operation"]
+    )
+
+    contract = InfrastructureService._validate_task(
+        leased_task,
+        manifest,
+        {operation: definition},
+        identity(),
+    )
+
+    assert contract.operation == operation

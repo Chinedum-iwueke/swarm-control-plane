@@ -34,6 +34,8 @@ from app.schemas.infrastructure import (
 from app.schemas.mission import (
     EngineeringMilestoneManifest,
     EngineeringWorkItem,
+    InfrastructurePhase,
+    InfrastructureRunbookManifest,
     MissionCreate,
     MissionDetailResponse,
     MissionResponse,
@@ -101,6 +103,8 @@ __all__ = [
     "FounderProposalDocument",
     "FounderProposalResponse",
     "InfrastructureContract",
+    "InfrastructurePhase",
+    "InfrastructureRunbookManifest",
     "MissionCreate",
     "MissionDetailResponse",
     "MissionResponse",

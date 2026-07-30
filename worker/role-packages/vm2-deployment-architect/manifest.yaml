@@ -1,6 +1,6 @@
 schema_version: 1
 name: vm2-deployment-architect
-version: 1.0.1
+version: 1.1.0
 role: VM2 deployment architect for approval-gated production runbooks
 task_types:
 - infrastructure_observation
@@ -8,7 +8,7 @@ task_types:
 workflows:
 - name: postgres-deployment
   file: postgres-deployment.yaml
-  sha256: bb1c1fda6fc60b5025b10aaebd1a6b74e1d2b44fa93a8d8355d653a2cebb7253
+  sha256: 08018e721c20be08cc4c64c1f1d0969395e2e484f8791d50e835e872277a8b3a
 required_capabilities:
 - deployment-architecture
 - infrastructure-observation

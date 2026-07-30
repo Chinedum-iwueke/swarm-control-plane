@@ -14,3 +14,62 @@ operations:
   - deployment target directory state
   - invariance_research source revision
   - public client TLS readiness
+- name: stage-invariance-postgres
+  task_type: infrastructure_operation
+  target: vm2-invariance-postgres
+  risk_level: 2
+  approval_required: true
+  evidence:
+  - protected generated credential file mode
+  - reviewed configuration file SHA-256 digests
+  - deployment metadata SHA-256 digest
+  - private-only network binding
+- name: start-invariance-postgres-private
+  task_type: infrastructure_operation
+  target: vm2-invariance-postgres
+  risk_level: 3
+  approval_required: true
+  evidence:
+  - validated Compose configuration
+  - image pull and service start return codes
+  - bounded Postgres and PgBouncer health results
+  - rollback result when startup verification fails
+- name: initialize-invariance-schema
+  task_type: infrastructure_operation
+  target: vm2-invariance-postgres
+  risk_level: 3
+  approval_required: true
+  evidence:
+  - pinned source repository revision
+  - schema initialization return code
+  - schema marker verification
+- name: configure-invariance-backups
+  task_type: infrastructure_operation
+  target: vm2-invariance-postgres
+  risk_level: 3
+  approval_required: true
+  evidence:
+  - protected backup script digest
+  - systemd timer state
+  - backup SHA-256 digest and integrity result
+  - isolated restore drill result
+- name: verify-invariance-postgres
+  task_type: infrastructure_observation
+  target: vm2-invariance-postgres
+  risk_level: 0
+  approval_required: false
+  evidence:
+  - service health
+  - role and schema marker state
+  - persistence and backup freshness
+  - private network bindings
+- name: prepare-invariance-cutover
+  task_type: infrastructure_observation
+  target: vm2-invariance-postgres
+  risk_level: 0
+  approval_required: false
+  evidence:
+  - DNS readiness
+  - trusted client TLS readiness
+  - Vercel egress policy readiness
+  - source migration and rollback readiness

@@ -46,15 +46,23 @@ def issue_broker_ticket(
         ) from exc
     if task.risk_level > 3:
         raise HTTPException(status_code=422, detail="Broker risk ceiling exceeded.")
-    if (
-        contract.operation
-        in {"observe-control-plane", "preflight-invariance-postgres"}
-        and task.risk_level != 0
-    ):
+    observations = {
+        "observe-control-plane",
+        "preflight-invariance-postgres",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
+    }
+    risk_two = {"stage-invariance-postgres"}
+    if contract.operation in observations and task.risk_level != 0:
         raise HTTPException(status_code=422, detail="Observation must use risk zero.")
-    if contract.operation == "restart-control-plane-api" and task.risk_level != 3:
-        raise HTTPException(status_code=422, detail="Restart must use risk three.")
-    if task.risk_level >= 3:
+    if contract.operation in risk_two and task.risk_level != 2:
+        raise HTTPException(status_code=422, detail="Operation must use risk two.")
+    if (
+        contract.operation not in observations | risk_two
+        and task.risk_level != 3
+    ):
+        raise HTTPException(status_code=422, detail="Operation must use risk three.")
+    if task.risk_level >= 2:
         approval = db.scalar(
             select(TaskApproval).where(TaskApproval.task_id == task.id)
         )

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -105,6 +106,7 @@ def broker(tmp_path: Path, runner: FakeRunner) -> InfrastructureBroker:
         backup_path=backups,
         postgres_root=tmp_path / "postgres",
         research_repository=tmp_path / "invariance_research",
+        systemd_path=tmp_path / "systemd",
         sleep=lambda _: None,
     )
 
@@ -201,6 +203,118 @@ def test_postgres_preflight_is_read_only_and_reports_tls_blocker(
         {"up", "restart", "install", "push"} & set(command)
         for command in runner.commands
     )
+
+
+def test_postgres_stage_uses_compiled_private_template(tmp_path: Path) -> None:
+    result = broker(tmp_path, FakeRunner()).execute(
+        ticket(
+            "stage-invariance-postgres",
+            risk=2,
+            task_type="infrastructure_operation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    assert result.success is True
+    assert result.action is not None
+    assert result.action["public_access"] is False
+    assert result.post_state is not None
+    assert result.post_state["staged"] is True
+    assert "PASSWORD" not in json.dumps(result.model_dump(mode="json"))
+
+
+@pytest.mark.parametrize(
+    ("operation", "risk", "task_type"),
+    [
+        ("start-invariance-postgres-private", 3, "infrastructure_operation"),
+        ("initialize-invariance-schema", 3, "infrastructure_operation"),
+        ("verify-invariance-postgres", 0, "infrastructure_observation"),
+        ("prepare-invariance-cutover", 0, "infrastructure_observation"),
+    ],
+)
+def test_postgres_phases_use_only_fixed_broker_commands(
+    tmp_path: Path,
+    operation: str,
+    risk: int,
+    task_type: str,
+) -> None:
+    runner = FakeRunner()
+    instance = broker(tmp_path, runner)
+    result = instance.execute(
+        ticket(
+            operation,
+            risk=risk,
+            task_type=task_type,
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    if operation == "prepare-invariance-cutover":
+        assert result.success is True
+        assert result.post_state["ready"] is False
+        assert result.post_state["public_access_changed"] is False
+    elif operation == "verify-invariance-postgres":
+        assert result.success is False
+    else:
+        assert result.success is True
+    serialized = json.dumps(result.model_dump(mode="json"))
+    assert "INVARIANCE_OWNER_PASSWORD" not in serialized
+    assert "postgresql://invariance_owner:" not in serialized
+    assert all(not isinstance(command, str) for command in runner.commands)
+
+
+def test_backup_phase_installs_timer_and_runs_isolated_restore_drill(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    instance = broker(tmp_path, runner)
+    instance.execute(
+        ticket(
+            "stage-invariance-postgres",
+            risk=2,
+            task_type="infrastructure_operation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+    backup = tmp_path / "postgres" / "backups" / "test.dump"
+    backup.write_bytes(b"reviewed backup")
+
+    result = broker(tmp_path, runner).execute(
+        ticket(
+            "configure-invariance-backups",
+            risk=3,
+            task_type="infrastructure_operation",
+            runbook="vm2-postgres-deployment",
+            target="vm2-invariance-postgres",
+        )
+    )
+
+    assert result.success is True
+    assert result.post_state["restore_drill"]["success"] is True
+    assert result.post_state["restore_drill"]["database"] == (
+        "hermes_restore_drill"
+    )
+    assert (tmp_path / "systemd" / "invariance-postgres-backup.timer").is_file()
+
+
+def test_fixed_runner_redacts_secret_environment_output(tmp_path: Path) -> None:
+    secret = "postgresql://owner:very-secret-value@example/database"
+    result = FixedRunner().run(
+        [
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['DATABASE_URL'])",
+        ],
+        cwd=tmp_path,
+        extra_env={"DATABASE_URL": secret},
+    )
+
+    assert result["return_code"] == 0
+    assert secret not in json.dumps(result)
+    assert "[REDACTED]" in result["stdout"]
 
 
 def test_restart_uses_exact_action_and_rolls_back_failed_health(

@@ -90,9 +90,111 @@ class EngineeringMilestoneManifest(BaseModel):
         return self
 
 
+class InfrastructureMissionBudget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_tasks: int = Field(ge=1, le=20)
+    max_attempts_per_task: int = Field(ge=1, le=3)
+    max_duration_seconds: int = Field(ge=60, le=86400)
+
+
+class InfrastructurePhase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=_SAFE, max_length=100)
+    operation: Literal[
+        "preflight-invariance-postgres",
+        "stage-invariance-postgres",
+        "start-invariance-postgres-private",
+        "initialize-invariance-schema",
+        "configure-invariance-backups",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
+    ]
+    objective: str = Field(min_length=10, max_length=4000)
+    depends_on: list[str] = Field(max_length=20)
+    risk_level: int = Field(ge=0, le=3)
+    approval_required: bool
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=30)
+    expected_outputs: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def operation_policy_matches(self) -> "InfrastructurePhase":
+        expected = {
+            "preflight-invariance-postgres": (0, False),
+            "stage-invariance-postgres": (2, True),
+            "start-invariance-postgres-private": (3, True),
+            "initialize-invariance-schema": (3, True),
+            "configure-invariance-backups": (3, True),
+            "verify-invariance-postgres": (0, False),
+            "prepare-invariance-cutover": (0, False),
+        }[self.operation]
+        if (self.risk_level, self.approval_required) != expected:
+            raise ValueError("phase risk or approval policy is invalid")
+        return self
+
+
+class InfrastructureRunbookManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[1]
+    milestone_id: str = Field(pattern=_SAFE, max_length=100)
+    project: Literal["invariance_research"]
+    objective: str = Field(min_length=10, max_length=4000)
+    source_references: list[str] = Field(min_length=1, max_length=20)
+    workflow: Literal["infrastructure-runbook"]
+    runbook: Literal["vm2-postgres-deployment"]
+    runbook_version: Literal["1.0.0"]
+    target: Literal["vm2-invariance-postgres"]
+    allowed_machines: list[str] = Field(min_length=1, max_length=1)
+    required_capabilities: list[str] = Field(min_length=4, max_length=4)
+    budget: InfrastructureMissionBudget
+    phases: list[InfrastructurePhase] = Field(min_length=1, max_length=20)
+    approved_by: str = Field(pattern=_SAFE, max_length=150)
+    approval_reference: str = Field(pattern=_SAFE, max_length=200)
+
+    @model_validator(mode="after")
+    def valid_dag(self) -> "InfrastructureRunbookManifest":
+        if self.allowed_machines != ["vm2-deployment"]:
+            raise ValueError("infrastructure mission machine is invalid")
+        if self.required_capabilities != [
+            "deployment-architecture",
+            "infrastructure-observation",
+            "postgres-deployment",
+            "service-health",
+        ]:
+            raise ValueError("infrastructure mission capabilities are invalid")
+        ids = [phase.id for phase in self.phases]
+        if len(ids) != len(set(ids)):
+            raise ValueError("phase IDs must be unique")
+        known = set(ids)
+        graph = {phase.id: phase.depends_on for phase in self.phases}
+        if any(dep not in known for deps in graph.values() for dep in deps):
+            raise ValueError("dependency references an unknown phase")
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(node: str) -> None:
+            if node in visiting:
+                raise ValueError("phase dependencies contain a cycle")
+            if node in visited:
+                return
+            visiting.add(node)
+            for dependency in graph[node]:
+                visit(dependency)
+            visiting.remove(node)
+            visited.add(node)
+
+        for phase_id in ids:
+            visit(phase_id)
+        if len(ids) > self.budget.max_tasks:
+            raise ValueError("phase count exceeds mission budget")
+        return self
+
+
+MissionManifest = EngineeringMilestoneManifest | InfrastructureRunbookManifest
+
+
 class MissionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    manifest: EngineeringMilestoneManifest
+    manifest: MissionManifest
     created_by: str = Field(pattern=_SAFE, max_length=150)
     approval_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
 

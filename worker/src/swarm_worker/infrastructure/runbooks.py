@@ -11,6 +11,12 @@ class OperationDefinition(BaseModel):
         "observe-control-plane",
         "restart-control-plane-api",
         "preflight-invariance-postgres",
+        "stage-invariance-postgres",
+        "start-invariance-postgres-private",
+        "initialize-invariance-schema",
+        "configure-invariance-backups",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
     ]
     task_type: Literal["infrastructure_observation", "infrastructure_operation"]
     target: Literal["vm2-control-plane", "vm2-invariance-postgres"]

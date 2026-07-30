@@ -6,10 +6,11 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from app.schemas.infrastructure import InfrastructureContract
-from app.services.broker_tickets import canonical_ticket, issue_broker_ticket
 from fastapi import HTTPException
 from pydantic import ValidationError
+
+from app.schemas.infrastructure import InfrastructureContract
+from app.services.broker_tickets import canonical_ticket, issue_broker_ticket
 
 TASK_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 AGENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
@@ -89,6 +90,23 @@ def test_restart_requires_consumed_approval_for_exact_plan() -> None:
     )
     with pytest.raises(HTTPException, match="consumed approval"):
         issue_broker_ticket(db, task(restart=True), agent(), secret=SECRET, now=NOW)
+
+
+def test_postgres_staging_requires_consumed_approval() -> None:
+    candidate = task()
+    candidate.task_type = "infrastructure_operation"
+    candidate.risk_level = 2
+    candidate.input_contract = {
+        "runbook": "vm2-postgres-deployment",
+        "runbook_version": "1.0.0",
+        "operation": "stage-invariance-postgres",
+        "target": "vm2-invariance-postgres",
+        "parameters": {},
+    }
+    db = MagicMock()
+    db.scalar.return_value = None
+    with pytest.raises(HTTPException, match="consumed approval"):
+        issue_broker_ticket(db, candidate, agent(), secret=SECRET, now=NOW)
 
 
 def test_contract_rejects_commands_paths_and_unknown_parameters() -> None:

@@ -17,6 +17,12 @@ class InfrastructureContract(BaseModel):
         "observe-control-plane",
         "restart-control-plane-api",
         "preflight-invariance-postgres",
+        "stage-invariance-postgres",
+        "start-invariance-postgres-private",
+        "initialize-invariance-schema",
+        "configure-invariance-backups",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
     ]
     target: Literal["vm2-control-plane", "vm2-invariance-postgres"]
     parameters: dict[str, Any] = Field(default_factory=dict)
@@ -59,10 +65,16 @@ class BrokerTicketPayload(BaseModel):
 
     @model_validator(mode="after")
     def operation_matches_task_type(self) -> BrokerTicketPayload:
+        observations = {
+            "observe-control-plane",
+            "preflight-invariance-postgres",
+            "verify-invariance-postgres",
+            "prepare-invariance-cutover",
+        }
         expected = (
-            "infrastructure_operation"
-            if self.contract.operation == "restart-control-plane-api"
-            else "infrastructure_observation"
+            "infrastructure_observation"
+            if self.contract.operation in observations
+            else "infrastructure_operation"
         )
         if self.task_type != expected:
             raise ValueError("operation does not match task type")

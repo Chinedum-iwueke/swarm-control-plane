@@ -8,12 +8,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import EngineeringMission, MissionEvent, Task, TaskDependency
-from app.schemas.mission import EngineeringMilestoneManifest
+from app.schemas.mission import (
+    EngineeringMilestoneManifest,
+    InfrastructureRunbookManifest,
+    MissionManifest,
+)
+from app.schemas.task import TaskCreate
 from app.services.governance import task_plan_digest
-from app.services.tasks import append_task_event
+from app.services.tasks import (
+    append_task_event,
+    build_task,
+    persist_new_task,
+)
 
 
-def canonical_manifest(manifest: EngineeringMilestoneManifest) -> bytes:
+def canonical_manifest(manifest: MissionManifest) -> bytes:
     return json.dumps(
         manifest.model_dump(mode="json"),
         ensure_ascii=True,
@@ -23,6 +32,27 @@ def canonical_manifest(manifest: EngineeringMilestoneManifest) -> bytes:
 
 
 def create_mission(
+    db: Session,
+    manifest: MissionManifest,
+    created_by: str,
+    approval_signature: str,
+) -> EngineeringMission:
+    if isinstance(manifest, InfrastructureRunbookManifest):
+        return _create_infrastructure_mission(
+            db,
+            manifest,
+            created_by,
+            approval_signature,
+        )
+    return _create_engineering_mission(
+        db,
+        manifest,
+        created_by,
+        approval_signature,
+    )
+
+
+def _create_engineering_mission(
     db: Session,
     manifest: EngineeringMilestoneManifest,
     created_by: str,
@@ -138,8 +168,114 @@ def create_mission(
     return mission
 
 
+def _create_infrastructure_mission(
+    db: Session,
+    manifest: InfrastructureRunbookManifest,
+    created_by: str,
+    approval_signature: str,
+) -> EngineeringMission:
+    digest = hashlib.sha256(canonical_manifest(manifest)).hexdigest()
+    mission = EngineeringMission(
+        milestone_id=manifest.milestone_id,
+        project=manifest.project,
+        objective=manifest.objective,
+        status="active",
+        manifest_digest=digest,
+        manifest=manifest.model_dump(mode="json"),
+        approved_by=manifest.approved_by,
+        approval_reference=manifest.approval_reference,
+        approval_signature=approval_signature,
+        max_tasks=manifest.budget.max_tasks,
+        max_attempts=manifest.budget.max_attempts_per_task,
+        max_duration_seconds=manifest.budget.max_duration_seconds,
+        deadline_at=datetime.now(UTC)
+        + timedelta(seconds=manifest.budget.max_duration_seconds),
+        created_by=created_by,
+    )
+    db.add(mission)
+    db.flush()
+    append_mission_event(
+        db,
+        mission,
+        "mission_created",
+        created_by,
+        "Approved infrastructure runbook mission created.",
+        {"manifest_digest": digest, "runbook": manifest.runbook},
+    )
+    tasks_by_phase: dict[str, Task] = {}
+    observation_operations = {
+        "preflight-invariance-postgres",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
+    }
+    for index, phase in enumerate(manifest.phases, start=1):
+        contract = {
+            "runbook": manifest.runbook,
+            "runbook_version": manifest.runbook_version,
+            "operation": phase.operation,
+            "target": manifest.target,
+            "parameters": {},
+        }
+        task = build_task(
+            TaskCreate(
+                task_number=f"INF-{digest[:8]}-{index:02d}",
+                project=manifest.project,
+                task_type=(
+                    "infrastructure_observation"
+                    if phase.operation in observation_operations
+                    else "infrastructure_operation"
+                ),
+                title=f"{manifest.milestone_id}: {phase.id}",
+                objective=phase.objective,
+                priority=70,
+                risk_level=phase.risk_level,
+                created_by=created_by,
+                input_contract=contract,
+                expected_outputs=phase.expected_outputs,
+                acceptance_criteria=phase.acceptance_criteria,
+                approval_policy={
+                    "kind": (
+                        "explicit" if phase.approval_required else "automatic"
+                    ),
+                    "risk": phase.risk_level,
+                    "mission_manifest_digest": digest,
+                    "phase_id": phase.id,
+                },
+                approval_required=phase.approval_required,
+                required_capabilities=manifest.required_capabilities,
+                allowed_machines=manifest.allowed_machines,
+                max_attempts=manifest.budget.max_attempts_per_task,
+            )
+        )
+        task.mission_id = mission.id
+        task.milestone_step_id = phase.id
+        persist_new_task(db, task)
+        append_task_event(
+            db,
+            task,
+            "mission_task_planned",
+            "Task created from approved infrastructure runbook manifest.",
+            payload={
+                "mission_id": str(mission.id),
+                "manifest_digest": digest,
+                "phase_id": phase.id,
+            },
+        )
+        tasks_by_phase[phase.id] = task
+    for phase in manifest.phases:
+        for dependency in phase.depends_on:
+            db.add(
+                TaskDependency(
+                    task_id=tasks_by_phase[phase.id].id,
+                    depends_on_task_id=tasks_by_phase[dependency].id,
+                )
+            )
+    db.flush()
+    return mission
+
+
 def verify_mission_approval(
-    manifest: EngineeringMilestoneManifest,
+    manifest: MissionManifest,
     approval_signature: str,
     approval_secret: str,
 ) -> None:

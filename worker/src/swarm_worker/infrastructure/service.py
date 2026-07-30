@@ -281,6 +281,21 @@ class InfrastructureService:
                 "infrastructure_observation",
                 0,
             ),
+            "stage-invariance-postgres": ("infrastructure_operation", 2),
+            "start-invariance-postgres-private": (
+                "infrastructure_operation",
+                3,
+            ),
+            "initialize-invariance-schema": ("infrastructure_operation", 3),
+            "configure-invariance-backups": ("infrastructure_operation", 3),
+            "verify-invariance-postgres": (
+                "infrastructure_observation",
+                0,
+            ),
+            "prepare-invariance-cutover": (
+                "infrastructure_observation",
+                0,
+            ),
         }[contract.operation]
         definition = operations.get(contract.operation)
         if (
@@ -320,6 +335,12 @@ class InfrastructureService:
         result: BrokerExecutionResult, digest: str
     ) -> dict[str, object]:
         latest = result.pre_state.get("latest_backup")
+        post = result.post_state or {}
+        action_codes = {
+            name: value.get("return_code")
+            for name, value in (result.action or {}).items()
+            if isinstance(value, dict) and "return_code" in value
+        }
         return {
             "success": result.success,
             "operation": result.operation,
@@ -340,14 +361,37 @@ class InfrastructureService:
                 else None
             ),
             "post_healthy": (
-                bool(result.post_state.get("healthy"))
-                if result.post_state is not None
+                bool(post.get("healthy")) if result.post_state is not None else None
+            ),
+            "readiness": (
+                {
+                    "ready": bool(post.get("ready")),
+                    "checks": post.get("checks"),
+                    "public_access_changed": post.get("public_access_changed"),
+                }
+                if result.operation == "prepare-invariance-cutover"
                 else None
             ),
+            "private_network": (
+                {
+                    "public_access": post.get("public_access"),
+                    "bindings": post.get("bindings"),
+                }
+                if result.operation
+                in {
+                    "start-invariance-postgres-private",
+                    "verify-invariance-postgres",
+                }
+                else None
+            ),
+            "schema_marker": post.get("schema_marker"),
+            "backup": post.get("backup", post.get("latest_backup")),
+            "restore_drill": post.get("restore_drill"),
             "latest_backup": latest if isinstance(latest, dict) else None,
             "action_return_code": (
                 result.action.get("return_code") if result.action else None
             ),
+            "action_return_codes": action_codes,
             "rollback_attempted": result.rollback is not None,
             "rollback_return_code": (
                 result.rollback.get("return_code") if result.rollback else None
