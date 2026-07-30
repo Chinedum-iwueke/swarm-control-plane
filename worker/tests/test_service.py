@@ -28,6 +28,7 @@ from swarm_worker.service import (
     IdentityMismatch,
     LeaseLostOutcome,
     NoWorkOutcome,
+    PausedOutcome,
     ReleasedOutcome,
     SucceededOutcome,
     WorkerConfigurationError,
@@ -248,6 +249,8 @@ class FakeAPI:
     async def send_agent_heartbeat(self, heartbeat: object):
         self.events.append("agent_heartbeat")
         assert heartbeat.status == "idle"
+        assert heartbeat.runtime_version == "0.2.0"
+        assert heartbeat.metadata["worker_version"] == "0.2.0"
         return AgentHeartbeatResponse(
             agent_id=AGENT_ID,
             status="idle",
@@ -439,6 +442,7 @@ async def test_failure_path_exact_order_and_fail_once(
         "stdout_log": "logs/run-tests.stdout.log",
         "stderr_log": "logs/run-tests.stderr.log",
         "retryable": False,
+        "worker_version": "0.2.0",
     }
 
 
@@ -484,6 +488,28 @@ async def test_no_available_task_is_clean_no_work(
     assert isinstance(outcome, NoWorkOutcome)
     assert events == ["identity", "agent_heartbeat", "lease"]
     assert api.closed is True
+
+
+@pytest.mark.asyncio
+async def test_paused_worker_does_not_validate_or_prepare(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    api = FakeAPI(
+        events,
+        lease=LeaseResponse(
+            task=None,
+            lease_token=None,
+            paused=True,
+            pause_reasons=["maintenance"],
+        ),
+    )
+
+    outcome = await make_service(tmp_path, api, events).run_once()
+
+    assert isinstance(outcome, PausedOutcome)
+    assert outcome.reasons == ["maintenance"]
+    assert events == ["identity", "agent_heartbeat", "lease"]
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
+from swarm_worker import __version__
 from swarm_worker.api_client import (
     AuthenticationError,
     ConflictError,
@@ -76,6 +77,11 @@ class NoWorkOutcome(ResultModel):
     status: Literal["no_work"] = "no_work"
 
 
+class PausedOutcome(ResultModel):
+    status: Literal["paused"] = "paused"
+    reasons: list[str]
+
+
 class SucceededOutcome(ResultModel):
     status: Literal["succeeded"] = "succeeded"
     task_id: UUID
@@ -110,6 +116,7 @@ class LeaseLostOutcome(ResultModel):
 
 RunOnceOutcome = (
     NoWorkOutcome
+    | PausedOutcome
     | SucceededOutcome
     | FailedOutcome
     | ReleasedOutcome
@@ -244,10 +251,12 @@ class WorkerService:
                 AgentHeartbeat(
                     status="idle",
                     runtime="hermes",
+                    runtime_version=__version__,
                     capabilities=identity.capabilities,
                     metadata={
                         "agent_slug": settings.swarm_agent_slug,
                         "machine": settings.swarm_machine,
+                        "worker_version": __version__,
                     },
                 )
             )
@@ -262,6 +271,8 @@ class WorkerService:
             lease = await api.lease_task(
                 TaskLeaseRequest(lease_seconds=settings.swarm_lease_seconds)
             )
+            if lease.paused:
+                return PausedOutcome(reasons=lease.pause_reasons[:10])
             if lease.task is None and lease.lease_token is None:
                 return NoWorkOutcome()
             if lease.task is None or lease.lease_token is None:
@@ -531,6 +542,7 @@ class WorkerService:
             "stdout_log": stdout_log,
             "stderr_log": stderr_log,
             "retryable": retryable,
+            "worker_version": __version__,
         }
         try:
             await api.fail_task(

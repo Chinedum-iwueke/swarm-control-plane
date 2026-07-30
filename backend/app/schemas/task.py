@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 TaskStatus = Literal[
     "queued",
     "leased",
@@ -112,6 +111,8 @@ class TaskLeaseRequest(BaseModel):
 class TaskLeaseResponse(BaseModel):
     task: TaskResponse | None
     lease_token: str | None
+    paused: bool = False
+    pause_reasons: list[str] = Field(default_factory=list)
 
 
 class TaskLeaseMutation(BaseModel):

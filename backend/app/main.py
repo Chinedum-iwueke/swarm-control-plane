@@ -3,12 +3,13 @@ from fastapi import FastAPI
 from app.api.routes import (
     agent_runtime_router,
     agents_router,
+    controls_router,
     health_router,
+    metrics_router,
     task_runtime_router,
     tasks_router,
 )
 from app.core.config import get_settings
-
 
 settings = get_settings()
 
@@ -18,7 +19,9 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(agents_router)
+app.include_router(controls_router)
 app.include_router(agent_runtime_router)
 app.include_router(tasks_router)
 app.include_router(task_runtime_router)

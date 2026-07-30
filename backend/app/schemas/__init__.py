@@ -7,6 +7,13 @@ from app.schemas.agent import (
     AgentRevocationResponse,
     CredentialSecretResponse,
 )
+from app.schemas.control import (
+    ControlEventResponse,
+    ControlMutation,
+    ControlMutationResponse,
+    ControlScopeResponse,
+    EffectiveControlResponse,
+)
 from app.schemas.task import (
     ExpiredLeaseReapResponse,
     TaskCompleteRequest,
@@ -30,7 +37,12 @@ __all__ = [
     "AgentRegistrationResponse",
     "AgentResponse",
     "AgentRevocationResponse",
+    "ControlEventResponse",
+    "ControlMutation",
+    "ControlMutationResponse",
+    "ControlScopeResponse",
     "CredentialSecretResponse",
+    "EffectiveControlResponse",
     "ExpiredLeaseReapResponse",
     "TaskCompleteRequest",
     "TaskCreate",

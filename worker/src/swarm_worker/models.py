@@ -81,6 +81,8 @@ class TaskLeaseRequest(BaseModel):
 class LeaseResponse(BaseModel):
     task: Task | None
     lease_token: str | None
+    paused: bool = False
+    pause_reasons: list[str] = Field(default_factory=list)
 
 
 class TaskStartRequest(BaseModel):
@@ -186,3 +188,4 @@ class WorkflowExecutionResult(BaseModel):
         )
     )
     termination_reason: str | None = Field(default=None, max_length=100)
+    worker_version: str = Field(default="unknown", min_length=1, max_length=100)

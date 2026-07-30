@@ -11,7 +11,12 @@ from swarm_worker.api_client import (
     ConnectionError,
     ServerError,
 )
-from swarm_worker.service import NoWorkOutcome, WorkerConfigurationError, WorkerService
+from swarm_worker.service import (
+    NoWorkOutcome,
+    PausedOutcome,
+    WorkerConfigurationError,
+    WorkerService,
+)
 
 EXIT_OK = 0
 EXIT_RUNTIME_ERROR = 1
@@ -133,7 +138,7 @@ class WorkerDaemon:
             )
             if isinstance(
                 outcome,
-                NoWorkOutcome,
+                (NoWorkOutcome, PausedOutcome),
             ) and await self._wait_or_shutdown(self._poll_interval_seconds):
                 break
 

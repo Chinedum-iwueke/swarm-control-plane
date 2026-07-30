@@ -189,6 +189,44 @@ journalctl -u invariance-swarm-worker.service --since today
 
 Never edit the token into a command line or paste it into journald output.
 
+## Operational Control
+
+After the M1 control-plane migration and API are deployed, the protected
+operator helper can inspect, pause, resume, and fetch metrics:
+
+```bash
+sudo bash -c '
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+cd /home/omenka/Projects/swarm-control-plane/worker
+exec .venv/bin/python scripts/operator_control.py status
+'
+```
+
+Global pause uses:
+
+```bash
+.venv/bin/python scripts/operator_control.py pause \
+  --scope global --key all \
+  --reason "Operator maintenance" \
+  --actor founder-operator
+```
+
+Machine and agent keys are supported. A pause prevents new leases at the
+control-plane transaction. Stop the systemd unit to cancel and release active
+work gracefully.
+
+Workspace cleanup is dry-run by default and removes only API-confirmed terminal
+attempts:
+
+```bash
+.venv/bin/python scripts/retain_workspaces.py --older-than-days 30
+```
+
+See `docs/runbooks/m1-control-and-recovery.md` for deployment, metrics, alert,
+retention, backup, and disposable restore procedures.
+
 ## Rollback
 
 Stop the service, restore the previous reviewed worker revision, reinstall the

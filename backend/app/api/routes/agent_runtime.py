@@ -13,9 +13,10 @@ from app.schemas import (
     AgentHeartbeat,
     AgentHeartbeatResponse,
     AgentResponse,
+    EffectiveControlResponse,
 )
 from app.services.agents import serialize_agent
-
+from app.services.controls import matching_control_scopes
 
 router = APIRouter(
     prefix="/v1/agent",
@@ -32,6 +33,19 @@ def get_agent_identity(
 ) -> AgentResponse:
     return AgentResponse.model_validate(
         serialize_agent(agent)
+    )
+
+
+@router.get("/control", response_model=EffectiveControlResponse)
+def get_effective_control(
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> EffectiveControlResponse:
+    scopes = matching_control_scopes(db, agent)
+    return EffectiveControlResponse(
+        paused=bool(scopes),
+        reasons=[scope.reason or "Paused by operator." for scope in scopes],
+        matched_scopes=scopes,
     )
 
 

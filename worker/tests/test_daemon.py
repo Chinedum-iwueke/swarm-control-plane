@@ -13,7 +13,7 @@ from swarm_worker.daemon import (
     EXIT_OK,
     WorkerDaemon,
 )
-from swarm_worker.service import NoWorkOutcome, ReleasedOutcome
+from swarm_worker.service import NoWorkOutcome, PausedOutcome, ReleasedOutcome
 
 
 def completed_outcome() -> ReleasedOutcome:
@@ -73,6 +73,27 @@ async def test_no_work_uses_configured_poll_interval() -> None:
     assert await daemon.run() == EXIT_OK
     assert service.calls == 1
     assert delays == [7.5]
+
+
+@pytest.mark.asyncio
+async def test_paused_worker_uses_idle_poll_interval() -> None:
+    shutdown = asyncio.Event()
+    delays: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        delays.append(delay)
+        shutdown.set()
+
+    service = SequenceService([PausedOutcome(reasons=["maintenance"])])
+    daemon = WorkerDaemon(
+        service,
+        poll_interval_seconds=9.0,
+        shutdown_event=shutdown,
+        sleep=sleep,
+    )
+
+    assert await daemon.run() == EXIT_OK
+    assert delays == [9.0]
 
 
 @pytest.mark.asyncio

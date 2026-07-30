@@ -22,6 +22,7 @@ from app.schemas import (
     TaskResponse,
     TaskStartRequest,
 )
+from app.services.controls import matching_control_scopes
 from app.services.tasks import (
     append_task_event,
     clear_lease,
@@ -30,7 +31,6 @@ from app.services.tasks import (
     serialize_task,
     verify_task_lease,
 )
-
 
 router = APIRouter(
     prefix="/v1/agent/tasks",
@@ -47,6 +47,17 @@ def lease_task(
     agent: Annotated[Agent, Depends(get_current_agent)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TaskLeaseResponse:
+    paused_scopes = matching_control_scopes(db, agent)
+    if paused_scopes:
+        db.rollback()
+        return TaskLeaseResponse(
+            task=None,
+            lease_token=None,
+            paused=True,
+            pause_reasons=[
+                scope.reason or "Paused by operator." for scope in paused_scopes
+            ],
+        )
     task, raw_token, _ = lease_next_task(
         db,
         agent,

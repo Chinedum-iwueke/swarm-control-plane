@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
-from sqlalchemy import engine_from_config, pool
-
 from app.core.config import get_settings
 from app.db.session import Base
-from app.models import Agent, AgentCredential, Task, TaskEvent  # noqa: F401
+from app.models import (  # noqa: F401
+    Agent,
+    AgentCredential,
+    ControlEvent,
+    ControlScope,
+    Task,
+    TaskEvent,
+)
+from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 
 config = context.config
 

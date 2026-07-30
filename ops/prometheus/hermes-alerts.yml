@@ -1,0 +1,24 @@
+groups:
+- name: hermes-control-plane
+  rules:
+  - alert: HermesWorkerOffline
+    expr: hermes_agents{state="online"} < 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: No Hermes worker is online
+  - alert: HermesTaskLeaseStuck
+    expr: hermes_oldest_active_lease_age_seconds > 1200
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: A Hermes task lease has remained active for 20 minutes
+  - alert: HermesGlobalPauseActive
+    expr: hermes_paused_scopes{scope_type="global"} > 0
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: Hermes global pause is active

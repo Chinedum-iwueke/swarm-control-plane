@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from swarm_worker import __version__
 from swarm_worker.api_client import (
     AuthenticationError,
     ConflictError,
@@ -500,4 +501,5 @@ class CodeValidationExecutor:
             success=success,
             heartbeat_failures=heartbeat_failures,
             termination_reason=termination_reason,
+            worker_version=__version__,
         )

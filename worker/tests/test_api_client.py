@@ -205,6 +205,26 @@ async def test_no_task_response_is_not_an_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_paused_lease_response_is_parsed() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "task": None,
+                "lease_token": None,
+                "paused": True,
+                "pause_reasons": ["operator maintenance"],
+            },
+        )
+    )
+    async with SwarmAPIClient(settings(), transport=transport) as client:
+        lease = await client.lease_task(TaskLeaseRequest())
+
+    assert lease.paused is True
+    assert lease.pause_reasons == ["operator maintenance"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status_code", "exception_type"),
     [

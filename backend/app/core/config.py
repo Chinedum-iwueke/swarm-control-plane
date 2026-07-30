@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Invariance Swarm Control Plane"
     app_environment: str = "production"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
 
     api_host: str = "0.0.0.0"
     api_port: int = 8787

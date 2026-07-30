@@ -3,6 +3,14 @@
 Central task orchestration and monitoring system for the agent network running
 across the founder MacBook, the development VM, and the deployment VM.
 
+## Design
+
+The system architecture, trust boundaries, lifecycle contracts, current
+implementation status, and open design decisions are documented in
+[`docs/hermes-swarm-system-design.md`](docs/hermes-swarm-system-design.md).
+The dependency-ordered implementation roadmap and early agent catalog are in
+[`docs/hermes-swarm-delivery-plan.md`](docs/hermes-swarm-delivery-plan.md).
+
 ## Intended components
 
 - FastAPI orchestrator API
