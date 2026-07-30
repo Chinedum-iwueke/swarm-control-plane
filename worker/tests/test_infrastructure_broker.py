@@ -35,7 +35,7 @@ class FakeRunner:
         self.commands.append(command)
         if command[:4] == ("docker", "compose", "restart", "--timeout"):
             self.restarted = True
-        if command[:4] == ("docker", "compose", "up", "-d"):
+        if command[:2] == ("docker", "compose") and command[-2:] == ("up", "-d"):
             return {"args": list(args), "return_code": 0, "stdout": "", "stderr": ""}
         failed = (
             self.unhealthy_after_restart

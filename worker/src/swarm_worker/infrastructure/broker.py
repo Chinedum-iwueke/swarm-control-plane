@@ -459,7 +459,13 @@ class InfrastructureBroker:
         self, args: Sequence[str], *, timeout: float
     ) -> dict[str, Any]:
         return self._runner.run(
-            ["docker", "compose", *args],
+            [
+                "docker",
+                "compose",
+                "--env-file",
+                str(self._postgres_root / ".env.postgres"),
+                *args,
+            ],
             cwd=self._postgres_root,
             timeout=timeout,
         )

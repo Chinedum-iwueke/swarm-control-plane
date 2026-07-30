@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 POSTGRES_ROOT = Path("/srv/invariance/postgres")
-DEPLOYMENT_VERSION = "1.0.0"
+DEPLOYMENT_VERSION = "1.1.0"
+_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0"}
 UTC = timezone.utc
 
 
@@ -156,7 +157,6 @@ class PostgresDeploymentManager:
             ) from exc
         if (
             metadata.get("deployment") != "vm2-invariance-postgres"
-            or metadata.get("deployment_version") != DEPLOYMENT_VERSION
             or metadata.get("public_access") is not False
             or not isinstance(metadata.get("files"), dict)
         ):
@@ -168,6 +168,11 @@ class PostgresDeploymentManager:
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
             if actual != expected:
                 raise PostgresDeploymentError("Staged deployment digest mismatches.")
+        deployment_version = metadata.get("deployment_version")
+        if deployment_version in _UPGRADABLE_DEPLOYMENT_VERSIONS:
+            metadata = self._upgrade_existing(metadata, metadata_path)
+        elif deployment_version != DEPLOYMENT_VERSION:
+            raise PostgresDeploymentError("Existing deployment metadata mismatches.")
         rendered = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
         return {
             "staged": True,
@@ -178,6 +183,21 @@ class PostgresDeploymentManager:
             "metadata_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
             "file_digests": metadata["files"],
         }
+
+    def _upgrade_existing(
+        self,
+        metadata: dict[str, Any],
+        metadata_path: Path,
+    ) -> dict[str, Any]:
+        self._replace_file(self.root / "compose.yaml", _COMPOSE, 0o644)
+        metadata["deployment_version"] = DEPLOYMENT_VERSION
+        metadata["updated_at"] = datetime.now(UTC).isoformat()
+        metadata["files"]["compose.yaml"] = hashlib.sha256(
+            _COMPOSE.encode()
+        ).hexdigest()
+        rendered = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
+        self._replace_file(metadata_path, rendered, 0o600)
+        return metadata
 
     def _validate_runtime_directories(self) -> None:
         for name in ("archive", "data", "logs"):
@@ -210,6 +230,24 @@ class PostgresDeploymentManager:
         path.chmod(mode)
 
     @staticmethod
+    def _replace_file(path: Path, content: str, mode: int) -> None:
+        temporary = path.with_name(f".{path.name}.worker-new")
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                mode,
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.chmod(mode)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
     def _environment() -> str:
         values = {
             "POSTGRES_SUPERUSER_PASSWORD": secrets.token_urlsafe(48),
@@ -226,7 +264,7 @@ class PostgresDeploymentManager:
 _COMPOSE = """name: invariance-postgres
 services:
   postgres:
-    image: postgres:16-bookworm
+    image: postgres:16-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
     container_name: invariance-postgres
     restart: unless-stopped
     env_file: [.env.postgres]
@@ -261,36 +299,32 @@ services:
       driver: json-file
       options: {max-size: 50m, max-file: "5"}
   pgbouncer:
-    image: bitnami/pgbouncer:1.24.1
+    image: edoburu/pgbouncer:v1.24.1-p1@sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e
     container_name: invariance-pgbouncer
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
     env_file: [.env.postgres]
     environment:
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: "5432"
-      POSTGRESQL_DATABASE: ${INVARIANCE_DB}
-      POSTGRESQL_USERNAME: invariance_app
-      POSTGRESQL_PASSWORD: ${INVARIANCE_APP_PASSWORD}
-      PGBOUNCER_DATABASE: ${INVARIANCE_DB}
-      PGBOUNCER_PORT: "6432"
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_MAX_CLIENT_CONN: "300"
-      PGBOUNCER_DEFAULT_POOL_SIZE: "30"
-      PGBOUNCER_MIN_POOL_SIZE: "5"
-      PGBOUNCER_RESERVE_POOL_SIZE: "10"
-      PGBOUNCER_AUTH_TYPE: scram-sha-256
-      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
-      PGBOUNCER_SERVER_RESET_QUERY: DISCARD ALL
-      PGBOUNCER_ADMIN_USERS: postgres
-      PGBOUNCER_STATS_USERS: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${INVARIANCE_DB}
+      DB_USER: invariance_app
+      DB_PASSWORD: ${INVARIANCE_APP_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "300"
+      DEFAULT_POOL_SIZE: "30"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "10"
+      AUTH_TYPE: scram-sha-256
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      SERVER_RESET_QUERY: DISCARD ALL
     ports:
-    - 100.112.117.59:6432:6432
+    - 100.112.117.59:6432:5432
     healthcheck:
       test:
       - CMD-SHELL
-      - PGPASSWORD=$${INVARIANCE_APP_PASSWORD} psql -h 127.0.0.1 -p 6432
+      - PGPASSWORD=$${INVARIANCE_APP_PASSWORD} psql -h 127.0.0.1 -p 5432
         -U invariance_app -d $${INVARIANCE_DB} -c 'SELECT 1' >/dev/null
       interval: 15s
       timeout: 5s
