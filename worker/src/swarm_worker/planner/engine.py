@@ -54,6 +54,7 @@ class CodexProposalPlanner:
                 "read-only",
                 "--ephemeral",
                 "--ignore-user-config",
+                "--skip-git-repo-check",
                 "--model",
                 self._model,
                 "--output-schema",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,6 +59,55 @@ def test_planner_child_environment_excludes_worker_token(tmp_path) -> None:
     environment = planner._environment()
     assert "SWARM_AGENT_TOKEN" not in environment
     assert "agent-token-must-not-propagate" not in str(environment)
+
+
+@pytest.mark.asyncio
+async def test_planner_allows_its_ephemeral_non_git_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command: tuple[str, ...] = ()
+
+    class Process:
+        returncode = 0
+
+        async def communicate(self, _: bytes):
+            return b"", b""
+
+    async def create_subprocess_exec(*args: str, **_: object):
+        nonlocal command
+        command = args
+        output_path = Path(args[args.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps(valid_proposal()), encoding="utf-8")
+        return Process()
+
+    monkeypatch.setattr(
+        "swarm_worker.planner.engine.asyncio.create_subprocess_exec",
+        create_subprocess_exec,
+    )
+    planner = CodexProposalPlanner(
+        codex_binary=tmp_path / "codex",
+        codex_home=tmp_path / "home",
+        model="test-model",
+        timeout_seconds=1,
+        working_directory=tmp_path,
+    )
+    task = Task.model_construct(
+        task_type="founder_request",
+        project="swarm-control-plane",
+        title="Plan a bounded validation",
+        risk_level=0,
+        acceptance_criteria=[],
+        input_contract={
+            "schema_version": 1,
+            "request_kind": "task",
+            "objective": "Create a bounded validation task.",
+        },
+    )
+
+    proposal = await planner.plan(task)
+
+    assert proposal.recommended_action == "create_task"
+    assert "--skip-git-repo-check" in command
 
 
 @pytest.mark.asyncio
