@@ -187,6 +187,27 @@ async def test_engineering_mission_can_reuse_named_validation_workflow(
 
 
 @pytest.mark.asyncio
+async def test_research_experiment_can_reuse_named_validation_workflow(
+    tmp_path: Path,
+) -> None:
+    workspace = make_workspace(tmp_path)
+    task = make_task(task_type="research_experiment")
+    workflow = make_workflow(
+        ("compile-python", ["python3", "-m", "compileall", "-q", "."]),
+        task_type="research_experiment",
+    )
+
+    result = await executor().execute(
+        task=task,
+        workflow=workflow,
+        workspace=workspace,
+        heartbeat=heartbeat_ok,
+    )
+
+    assert result.success is True
+
+
+@pytest.mark.asyncio
 async def test_first_failure_stops_later_steps(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     (workspace.repository / "test_failure.py").write_text(
