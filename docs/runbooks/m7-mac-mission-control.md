@@ -12,7 +12,8 @@ without granting it production execution authority.
 - SSH access from VM1 is available;
 - the protected operator token is staged without printing it;
 - Mission Control binds to loopback only;
-- the configured knowledge root contains a non-sensitive pilot Markdown file.
+- the application-private knowledge source directory contains a non-sensitive
+  pilot Markdown file.
 
 ## Source validation
 
@@ -68,4 +69,3 @@ Record:
 Stop if the token appears in output, the server binds non-loopback, a source
 outside approved roots is accepted, knowledge text leaves the Mac, or a current
 worker leases the founder request.
-

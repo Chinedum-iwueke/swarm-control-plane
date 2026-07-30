@@ -777,10 +777,11 @@ The continuous worker remains disabled; evidence is recorded in
 - first private document corpus;
 - cited search and knowledge graph.
 
-**Source status:** implemented on `feat/m7-mac-mission-control`. Operational
-completion requires Git promotion, protected Mac configuration, loopback-only
-installation, one indexed pilot document with cited retrieval, and one
-structured founder-request intake that existing workers cannot lease.
+**Status:** operationally complete for the bounded Mac pilot. Mission Control
+is installed loopback-only, private cited retrieval and explicit graph
+relationships were validated, and one structured founder request remained
+ineligible for all deployed workers. Evidence and limitations are recorded in
+`docs/m7-validation.md`.
 
 ### M8: Research mission pilot
 

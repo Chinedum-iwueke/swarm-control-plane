@@ -40,14 +40,16 @@ cat >"$HOME/Library/Application Support/Hermes Mission Control/mission-control.e
 HERMES_API_URL=http://100.112.117.59:8787
 HERMES_ORCHESTRATOR_TOKEN_FILE="/Users/ice/Library/Application Support/Hermes Mission Control/orchestrator.token"
 HERMES_DATA_ROOT="/Users/ice/Library/Application Support/Hermes Mission Control/data"
-HERMES_KNOWLEDGE_ROOTS=/Users/ice/Documents
+HERMES_KNOWLEDGE_ROOTS="/Users/ice/Library/Application Support/Hermes Mission Control/data/sources:/Users/ice/Projects/swarm-control-plane/docs"
 HERMES_HOST=127.0.0.1
 HERMES_PORT=8790
 EOF
 chmod 0600 "$HOME/Library/Application Support/Hermes Mission Control/mission-control.env"
 ```
 
-Multiple knowledge roots use the macOS path separator (`:`).
+Multiple knowledge roots use the macOS path separator (`:`). The private
+application-data source directory is the default. This avoids granting the
+launch agent Full Disk Access for `~/Documents`.
 
 ## Install
 
@@ -85,8 +87,10 @@ tail -f "$HOME/Library/Application Support/Hermes Mission Control/mission-contro
 tail -f "$HOME/Library/Application Support/Hermes Mission Control/mission-control.error.log"
 ```
 
-Index a source by entering its absolute path in Knowledge Explorer. The source
-must be under `HERMES_KNOWLEDGE_ROOTS`.
+Place or link an approved text source inside the private `data/sources`
+directory, then index it by entering its absolute path in Knowledge Explorer.
+Repository documentation may be indexed read-only when its directory is
+explicitly listed in `HERMES_KNOWLEDGE_ROOTS`. Symlink escapes are rejected.
 
 ## Token rotation
 
