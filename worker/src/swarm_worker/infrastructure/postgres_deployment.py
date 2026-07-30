@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import secrets
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -50,17 +51,16 @@ class PostgresDeploymentManager:
             "schema",
         ):
             path = self.root / name
-            path.mkdir(mode=0o700, exist_ok=True)
-            path.chmod(0o700)
+            runtime_directory = name in {"archive", "data", "logs"}
+            path.mkdir(mode=0o750 if runtime_directory else 0o700, exist_ok=True)
+            if not runtime_directory:
+                path.chmod(0o700)
         for name in ("archive", "data", "logs"):
-            stat = (self.root / name).stat()
-            if (
-                stat.st_uid != self.postgres_uid
-                or stat.st_gid != self.postgres_gid
-            ):
+            if not (self.root / name).is_dir():
                 raise PostgresDeploymentError(
-                    "Preprovisioned Postgres directory ownership is invalid."
+                    "Preprovisioned Postgres directory is unavailable."
                 )
+        self._validate_runtime_directories()
         for name in ("bin", "conf", "init", "schema"):
             (self.root / name).chmod(0o755)
 
@@ -135,6 +135,7 @@ class PostgresDeploymentManager:
             raise PostgresDeploymentError(
                 "Non-empty deployment root has no valid metadata."
             )
+        self._validate_runtime_directories()
         if any(
             path.is_symlink()
             or not path.is_dir()
@@ -146,6 +147,7 @@ class PostgresDeploymentManager:
             )
 
     def _validate_existing(self, metadata_path: Path) -> dict[str, Any]:
+        self._validate_runtime_directories()
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -176,6 +178,23 @@ class PostgresDeploymentManager:
             "metadata_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
             "file_digests": metadata["files"],
         }
+
+    def _validate_runtime_directories(self) -> None:
+        for name in ("archive", "data", "logs"):
+            path = self.root / name
+            if path.is_symlink() or not path.is_dir():
+                raise PostgresDeploymentError(
+                    "Preprovisioned Postgres directory is unavailable."
+                )
+            state = path.stat()
+            if (
+                state.st_uid != self.postgres_uid
+                or state.st_gid != self.postgres_gid
+                or stat.S_IMODE(state.st_mode) != 0o750
+            ):
+                raise PostgresDeploymentError(
+                    "Preprovisioned Postgres directory ownership is invalid."
+                )
 
     @staticmethod
     def _write_new(path: Path, content: str, mode: int) -> None:

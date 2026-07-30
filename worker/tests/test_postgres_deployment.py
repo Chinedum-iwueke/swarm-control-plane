@@ -83,7 +83,10 @@ def test_stage_accepts_exact_empty_preprovisioned_layout(tmp_path: Path) -> None
         "pgbouncer",
         "schema",
     ):
-        (root / name).mkdir()
+        path = root / name
+        path.mkdir()
+        if name in {"archive", "data", "logs"}:
+            path.chmod(0o750)
 
     candidate = manager(root)
     assert candidate.is_preprovisioned() is True

@@ -203,7 +203,7 @@ class InfrastructureBroker:
             manager = PostgresDeploymentManager(
                 self._postgres_root,
                 postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
-                postgres_gid=999 if os.geteuid() == 0 else os.getegid(),
+                postgres_gid=os.getegid(),
             )
             action = manager.stage()
             return BrokerExecutionResult(
@@ -308,7 +308,7 @@ class InfrastructureBroker:
         manager = PostgresDeploymentManager(
             self._postgres_root,
             postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
-            postgres_gid=999 if os.geteuid() == 0 else os.getegid(),
+            postgres_gid=os.getegid(),
         )
         staged = manager.stage()
         if operation == "start-invariance-postgres-private":
@@ -807,8 +807,8 @@ class InfrastructureBroker:
         }
         deployment = PostgresDeploymentManager(
             self._postgres_root,
-            postgres_uid=999,
-            postgres_gid=999,
+            postgres_uid=999 if os.geteuid() == 0 else os.geteuid(),
+            postgres_gid=os.getegid(),
         )
         target_state = (
             "absent"

@@ -223,7 +223,10 @@ def test_postgres_preflight_accepts_exact_preprovisioned_layout(
         "pgbouncer",
         "schema",
     ):
-        (root / name).mkdir()
+        path = root / name
+        path.mkdir()
+        if name in {"archive", "data", "logs"}:
+            path.chmod(0o750)
     instance = InfrastructureBroker(
         secret=SECRET,
         ledger_path=tmp_path / "consumed.json",

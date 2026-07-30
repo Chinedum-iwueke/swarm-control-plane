@@ -53,7 +53,7 @@ for directory in backups bin certs conf init pgbouncer schema; do
     "/srv/invariance/postgres/${directory}"
 done
 for directory in archive data logs; do
-  install -d -o 999 -g 999 -m 0700 \
+  install -d -o 999 -g invariance-swarm-infrastructure -m 0750 \
     "/srv/invariance/postgres/${directory}"
 done
 install -d \
