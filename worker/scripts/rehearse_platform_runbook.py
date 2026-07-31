@@ -126,6 +126,28 @@ def _digest(document: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _source_commit(source: Path) -> str:
+    completed = subprocess.run(
+        [
+            "git",
+            "-c",
+            f"safe.directory={source}",
+            "-C",
+            str(source),
+            "rev-parse",
+            "HEAD",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    commit = completed.stdout.strip()
+    if len(commit) != 40 or any(character not in "0123456789abcdef" for character in commit):
+        raise RuntimeError("source commit is unavailable")
+    return commit
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -153,15 +175,7 @@ def main() -> int:
     packages = args.source / "worker" / "runbook-packages"
     package_path = packages / "vm2-platform-operations.yaml"
     package = load_runbook_package(packages, "vm2-platform-operations")
-    source_commit = subprocess.run(
-        ["git", "-C", str(args.source), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    ).stdout.strip()
-    if not source_commit or len(source_commit) != 40:
-        parser.error("source commit is unavailable")
+    source_commit = _source_commit(args.source)
 
     services = {
         name: (name, args.root, f"hermes-platform-rehearsal-{name}")
