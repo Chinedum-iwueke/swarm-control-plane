@@ -10,12 +10,19 @@ from app.core.config import get_settings
 from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models import EngineeringMission, MissionEvent, Task, TaskDependency
-from app.schemas import MissionCreate, MissionDetailResponse, MissionResponse
+from app.schemas import (
+    MissionCreate,
+    MissionDetailResponse,
+    MissionReconcileResponse,
+    MissionResponse,
+    MissionSupervisionDecision,
+)
 from app.services.missions import (
     create_mission,
     refresh_mission,
     verify_mission_approval,
 )
+from app.services.supervision import approve_supervision, reconcile_mission
 from app.services.tasks import serialize_task
 
 router = APIRouter(
@@ -60,6 +67,53 @@ def list_missions(
         select(EngineeringMission).order_by(EngineeringMission.created_at.desc())
     ).all()
     return [MissionResponse.model_validate(item) for item in missions]
+
+
+@router.post(
+    "/{mission_id}/supervision/approve",
+    response_model=MissionResponse,
+)
+def approve_mission_supervision(
+    mission_id: UUID,
+    payload: MissionSupervisionDecision,
+    db: Annotated[Session, Depends(get_db)],
+) -> MissionResponse:
+    mission = db.scalar(
+        select(EngineeringMission)
+        .where(EngineeringMission.id == mission_id)
+        .with_for_update()
+    )
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+    approve_supervision(db, mission, actor=payload.actor, reason=payload.reason)
+    db.commit()
+    db.refresh(mission)
+    return MissionResponse.model_validate(mission)
+
+
+@router.post(
+    "/{mission_id}/supervision/reconcile",
+    response_model=MissionReconcileResponse,
+)
+def reconcile_mission_supervision(
+    mission_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> MissionReconcileResponse:
+    mission = db.scalar(
+        select(EngineeringMission)
+        .where(EngineeringMission.id == mission_id)
+        .with_for_update()
+    )
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+    action, task_id = reconcile_mission(db, mission)
+    db.commit()
+    db.refresh(mission)
+    return MissionReconcileResponse(
+        mission=MissionResponse.model_validate(mission),
+        action=action,
+        task_id=task_id,
+    )
 
 
 @router.get("/{mission_id}", response_model=MissionDetailResponse)

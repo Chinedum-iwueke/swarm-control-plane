@@ -1,0 +1,43 @@
+[Unit]
+Description=Invariance Swarm autonomous mission supervisor
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=omenka
+Group=omenka
+WorkingDirectory=/srv/invariance/swarm/repositories/swarm-control-plane/worker
+EnvironmentFile=/etc/invariance-swarm/mission-supervisor.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PATH=/srv/invariance/swarm/repositories/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin
+ExecStart=/srv/invariance/swarm/repositories/swarm-control-plane/worker/.venv/bin/invariance-swarm-mission-supervisor run
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=invariance-swarm-mission-supervisor
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

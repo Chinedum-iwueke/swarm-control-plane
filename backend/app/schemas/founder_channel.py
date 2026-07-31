@@ -39,3 +39,16 @@ class FounderChannelApproval(ApprovalResponse):
     actionable: bool
     blocked_by: list[str]
     mission_deadline_at: datetime | None
+
+
+class FounderChannelMission(BaseModel):
+    id: uuid.UUID
+    milestone_id: str
+    objective: str
+    status: str
+    manifest_digest: str
+    supervision_status: str
+    supervision_policy: dict
+    supervision_exception: dict
+    deadline_at: datetime
+    actionable: bool

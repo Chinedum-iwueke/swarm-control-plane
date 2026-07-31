@@ -38,13 +38,12 @@ class RestrictedTelegramGateway:
             await self.run_once()
 
     async def run_once(self) -> None:
-        updates, _, _, _ = await asyncio.gather(
-            self._telegram.updates(
-                self._offset, self._settings.poll_timeout_seconds
-            ),
+        updates, _, _, _, _ = await asyncio.gather(
+            self._telegram.updates(self._offset, self._settings.poll_timeout_seconds),
             self._notify_proposals(),
             self._notify_tasks(),
             self._notify_approvals(),
+            self._notify_missions(),
         )
         for update in updates:
             self._offset = max(self._offset, int(update["update_id"]) + 1)
@@ -77,9 +76,7 @@ class RestrictedTelegramGateway:
             )
             return
         if text.startswith("/reject "):
-            await self._decide_handoff(
-                text.removeprefix("/reject ").strip(), "reject"
-            )
+            await self._decide_handoff(text.removeprefix("/reject ").strip(), "reject")
             return
         if text.startswith("/"):
             await self._telegram.send(
@@ -158,18 +155,71 @@ class RestrictedTelegramGateway:
                 continue
             await self._send_approval(approval)
 
+    async def _notify_missions(self) -> None:
+        for mission in await self._channel.missions():
+            status = mission["supervision_status"]
+            if status not in {"pending_approval", "attention_required"}:
+                continue
+            state = f"{status}:{mission['manifest_digest']}:{mission['supervision_exception']}"
+            if not self._store.changed(f"mission:{mission['id']}", _digest(state)):
+                continue
+            if status == "pending_approval":
+                token = self._store.create(
+                    "mission",
+                    mission["id"],
+                    mission["manifest_digest"],
+                    self._settings.handoff_ttl_seconds,
+                )
+                url = f"https://t.me/{self._username}?start=review_{token}"
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Mission plan approval required\n"
+                    f"{mission['milestone_id']}\n{mission['objective']}\n"
+                    f"Plan: {mission['manifest_digest']}",
+                    button_text="Review mission plan",
+                    button_url=url,
+                )
+            else:
+                exception = mission.get("supervision_exception") or {}
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Mission needs attention\n{mission['milestone_id']}\n"
+                    f"Checkpoint: {exception.get('task_number', 'unknown')}\n"
+                    f"Category: {exception.get('category', 'unknown')}",
+                )
+
     async def _send_approvals(self) -> None:
+        missions = [
+            item
+            for item in await self._channel.missions()
+            if item["supervision_status"] == "pending_approval" and item["actionable"]
+        ]
         approvals = [
             item
             for item in await self._channel.approvals()
             if item["status"] == "pending" and item["actionable"]
         ]
-        if not approvals:
+        if not approvals and not missions:
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 "No approvals are actionable now.",
             )
             return
+        for mission in missions:
+            token = self._store.create(
+                "mission",
+                mission["id"],
+                mission["manifest_digest"],
+                self._settings.handoff_ttl_seconds,
+            )
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Mission plan approval required\n"
+                f"{mission['milestone_id']}\n{mission['objective']}\n"
+                f"Plan: {mission['manifest_digest']}",
+                button_text="Review mission plan",
+                button_url=f"https://t.me/{self._username}?start=review_{token}",
+            )
         for approval in approvals:
             await self._send_approval(approval)
 
@@ -202,6 +252,33 @@ class RestrictedTelegramGateway:
             )
             return
         kind, entity_id, expected_digest = handoff
+        if kind == "mission":
+            current = next(
+                (
+                    item
+                    for item in await self._channel.missions()
+                    if item["id"] == entity_id
+                ),
+                None,
+            )
+            if (
+                current is None
+                or current["supervision_status"] != "pending_approval"
+                or current["manifest_digest"] != expected_digest
+            ):
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Mission plan digest or state no longer matches.",
+                )
+                return
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Approve autonomous supervision for {current['milestone_id']}?\n"
+                f"Plan: {expected_digest}\n"
+                f"Recovery limit: {current['supervision_policy'].get('max_auto_recoveries', 0)}\n\n"
+                f"Approve: /approve {token}\nReject in Mission Control.",
+            )
+            return
         if kind == "approval":
             current = next(
                 (
@@ -273,6 +350,41 @@ class RestrictedTelegramGateway:
             )
             return
         kind, entity_id, expected_digest = handoff
+        if kind == "mission":
+            if action != "approve":
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Reject supervised missions in Mission Control with a recorded reason.",
+                )
+                return
+            current = next(
+                (
+                    item
+                    for item in await self._channel.missions()
+                    if item["id"] == entity_id
+                ),
+                None,
+            )
+            if (
+                current is None
+                or current["supervision_status"] != "pending_approval"
+                or current["manifest_digest"] != expected_digest
+            ):
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Mission plan digest or state no longer matches.",
+                )
+                return
+            await self._channel.approve_mission(
+                entity_id,
+                f"Founder Telegram approved mission plan {expected_digest[:12]}.",
+            )
+            self._store.consume(token)
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Mission {current['milestone_id']} is now autonomously supervised.",
+            )
+            return
         if kind == "approval":
             approvals = await self._channel.approvals()
             current = next(
@@ -326,7 +438,9 @@ class RestrictedTelegramGateway:
         )
 
     async def _send_status(self) -> None:
-        tasks = await self._channel.tasks()
+        tasks, missions = await asyncio.gather(
+            self._channel.tasks(), self._channel.missions()
+        )
         counts: dict[str, int] = {}
         for task in tasks:
             counts[task["status"]] = counts.get(task["status"], 0) + 1
@@ -335,17 +449,42 @@ class RestrictedTelegramGateway:
         )
         await self._telegram.send(
             self._settings.founder_chat_id,
-            f"Hermes status\n{rendered or 'No tasks recorded.'}",
+            f"Hermes status\n{rendered or 'No tasks recorded.'}\n"
+            f"Supervised missions: {sum(item['supervision_status'] == 'active' for item in missions)} active, "
+            f"{sum(item['supervision_status'] == 'attention_required' for item in missions)} need attention",
         )
 
 
 def classify_request(text: str) -> tuple[str, int]:
     lowered = text.lower()
-    if any(word in lowered for word in ("postgres", "redis", "docker", "backup", "restart", "certificate", "infrastructure")):
+    if any(
+        word in lowered
+        for word in (
+            "postgres",
+            "redis",
+            "docker",
+            "backup",
+            "restart",
+            "certificate",
+            "infrastructure",
+        )
+    ):
         return "swarm-control-plane", 3 if "restart" in lowered else 1
-    if any(word in lowered for word in ("research", "hypothesis", "backtest", "strategy", "experiment")):
+    if any(
+        word in lowered
+        for word in ("research", "hypothesis", "backtest", "strategy", "experiment")
+    ):
         return "bulletproof_bt", 1
-    if any(word in lowered for word in ("knowledge", "second brain", "index", "document", "research intelligence")):
+    if any(
+        word in lowered
+        for word in (
+            "knowledge",
+            "second brain",
+            "index",
+            "document",
+            "research intelligence",
+        )
+    ):
         return "knowledge", 0
     return "swarm-control-plane", 1
 

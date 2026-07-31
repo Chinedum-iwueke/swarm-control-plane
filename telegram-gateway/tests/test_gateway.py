@@ -48,6 +48,8 @@ class Channel:
         self.created: list[dict] = []
         self.proposal_decisions: list[tuple[str, str, str]] = []
         self.approval_values: list[dict] = []
+        self.mission_values: list[dict] = []
+        self.mission_approvals: list[tuple[str, str]] = []
 
     async def create_request(self, payload):
         self.created.append(payload)
@@ -61,6 +63,13 @@ class Channel:
 
     async def approvals(self):
         return self.approval_values
+
+    async def missions(self):
+        return self.mission_values
+
+    async def approve_mission(self, mission_id, reason):
+        self.mission_approvals.append((mission_id, reason))
+        return {}
 
     async def decide_proposal(self, proposal_id, action, reason):
         self.proposal_decisions.append((proposal_id, action, reason))
@@ -227,3 +236,39 @@ async def test_approvals_command_returns_fresh_actionable_links(
 
     assert len(telegram.sent) == 1
     assert telegram.sent[0][2]["button_text"] == "Review approval"
+
+
+@pytest.mark.asyncio
+async def test_approvals_command_returns_one_mission_plan_not_phase_approvals(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.mission_values = [
+        {
+            "id": "mission-1",
+            "milestone_id": "M9-PILOT",
+            "objective": "Run one bounded supervised mission.",
+            "manifest_digest": "a" * 64,
+            "supervision_status": "pending_approval",
+            "supervision_policy": {"max_auto_recoveries": 2},
+            "supervision_exception": {},
+            "actionable": True,
+        }
+    ]
+    channel.approval_values = [approval(actionable=False, suffix="02")]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._send_approvals()
+
+    assert len(telegram.sent) == 1
+    assert "M9-PILOT" in telegram.sent[0][1]
+    assert telegram.sent[0][2]["button_text"] == "Review mission plan"

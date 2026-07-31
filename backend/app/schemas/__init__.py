@@ -17,6 +17,7 @@ from app.schemas.control import (
 from app.schemas.founder_channel import (
     FounderChannelApproval,
     FounderChannelDecision,
+    FounderChannelMission,
     FounderChannelRequest,
 )
 from app.schemas.governance import (
@@ -39,7 +40,9 @@ from app.schemas.mission import (
     InfrastructureRunbookManifest,
     MissionCreate,
     MissionDetailResponse,
+    MissionReconcileResponse,
     MissionResponse,
+    MissionSupervisionDecision,
 )
 from app.schemas.package import (
     AgentPackageDeployment,
@@ -100,6 +103,7 @@ __all__ = [
     "ExpiredLeaseReapResponse",
     "FounderChannelApproval",
     "FounderChannelDecision",
+    "FounderChannelMission",
     "FounderChannelRequest",
     "FounderProposalCreate",
     "FounderProposalDecision",
@@ -110,7 +114,9 @@ __all__ = [
     "InfrastructureRunbookManifest",
     "MissionCreate",
     "MissionDetailResponse",
+    "MissionReconcileResponse",
     "MissionResponse",
+    "MissionSupervisionDecision",
     "PackageDeploymentCreate",
     "PackageDeploymentResponse",
     "ProposedTask",

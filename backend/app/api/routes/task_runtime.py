@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import get_current_agent
 from app.db.session import get_db
-from app.models import Agent
+from app.models import Agent, EngineeringMission
 from app.schemas import (
     BrokerTicketRequest,
     BrokerTicketResponse,
@@ -308,10 +308,13 @@ def fail_task(
         payload=failure_payload,
     )
 
-    if (
-        payload.retryable
-        and task.attempt_count < task.max_attempts
-    ):
+    mission = (
+        db.get(EngineeringMission, task.mission_id)
+        if task.mission_id is not None
+        else None
+    )
+    supervised = mission is not None and mission.supervision_enabled
+    if payload.retryable and task.attempt_count < task.max_attempts and not supervised:
         task.status = "queued"
 
         append_task_event(

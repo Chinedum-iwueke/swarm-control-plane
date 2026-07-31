@@ -40,12 +40,11 @@ class ControlPlaneClient:
         tasks = await self._request("GET", "/v1/tasks", params={"limit": 100})
         agents = await self._request("GET", "/v1/agents")
         approvals = await self._request("GET", "/v1/approvals")
-        artifacts = await self._request(
-            "GET", "/v1/artifacts", params={"limit": 100}
-        )
+        artifacts = await self._request("GET", "/v1/artifacts", params={"limit": 100})
         scopes = await self._request("GET", "/v1/control/scopes")
         deployments = await self._request("GET", "/v1/packages/deployments")
         proposals = await self._request("GET", "/v1/proposals")
+        missions = await self._request("GET", "/v1/missions")
         return {
             "health": health,
             "tasks": tasks,
@@ -55,6 +54,7 @@ class ControlPlaneClient:
             "control_scopes": scopes,
             "package_deployments": deployments,
             "proposals": proposals,
+            "missions": missions,
         }
 
     async def create_intake(self, request: IntakeRequest) -> dict[str, Any]:
@@ -121,6 +121,13 @@ class ControlPlaneClient:
             },
         )
 
+    async def approve_mission(self, mission_id: str, reason: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/missions/{mission_id}/supervision/approve",
+            json={"actor": "founder-mission-control", "reason": reason},
+        )
+
     async def set_pause(
         self,
         *,
@@ -170,7 +177,9 @@ class ControlPlaneClient:
 def _safe_detail(response: httpx.Response) -> str:
     try:
         value = response.json()
-        detail = value.get("detail", "Request failed.") if isinstance(value, dict) else value
+        detail = (
+            value.get("detail", "Request failed.") if isinstance(value, dict) else value
+        )
         rendered = json.dumps(detail, ensure_ascii=True)
     except (ValueError, TypeError):
         rendered = "Request failed."

@@ -40,6 +40,27 @@ class EngineeringWorkItem(BaseModel):
         return paths
 
 
+class MissionSupervisionPolicy(BaseModel):
+    """Founder-delegated authority for an immutable mission plan."""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["autonomous"]
+    approval_mode: Literal["mission_plan"]
+    max_auto_recoveries: int = Field(default=2, ge=0, le=10)
+    retry_backoff_seconds: int = Field(default=30, ge=5, le=3600)
+    retryable_categories: list[str] = Field(
+        default_factory=lambda: [
+            "connection_error",
+            "server_error",
+            "lease_expired",
+            "temporary_unavailable",
+        ],
+        max_length=20,
+    )
+    rehearsal_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rehearsal_source_commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+
+
 class EngineeringMilestoneManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1]
@@ -57,6 +78,7 @@ class EngineeringMilestoneManifest(BaseModel):
     deliverables: list[str] = Field(min_length=1, max_length=20)
     approved_by: str = Field(pattern=_SAFE, max_length=150)
     approval_reference: str = Field(pattern=_SAFE, max_length=200)
+    supervision: MissionSupervisionPolicy | None = None
 
     @model_validator(mode="after")
     def valid_dag(self) -> "EngineeringMilestoneManifest":
@@ -149,6 +171,7 @@ class InfrastructureRunbookManifest(BaseModel):
     phases: list[InfrastructurePhase] = Field(min_length=1, max_length=20)
     approved_by: str = Field(pattern=_SAFE, max_length=150)
     approval_reference: str = Field(pattern=_SAFE, max_length=200)
+    supervision: MissionSupervisionPolicy | None = None
 
     @model_validator(mode="after")
     def valid_dag(self) -> "InfrastructureRunbookManifest":
@@ -219,6 +242,32 @@ class MissionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+    supervision_enabled: bool
+    supervision_status: str | None
+    supervision_policy: dict
+    supervision_approved_at: datetime | None
+    supervision_approved_by: str | None
+    recovery_count: int
+    next_reconcile_at: datetime | None
+    supervision_exception: dict
+
+
+class MissionSupervisionDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    actor: str = Field(pattern=_SAFE, max_length=150)
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+class MissionReconcileResponse(BaseModel):
+    mission: MissionResponse
+    action: Literal[
+        "waiting_approval",
+        "waiting",
+        "recovered",
+        "attention_required",
+        "succeeded",
+    ]
+    task_id: uuid.UUID | None = None
 
 
 class MissionDetailResponse(BaseModel):

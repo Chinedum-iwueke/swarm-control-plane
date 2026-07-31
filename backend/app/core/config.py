@@ -36,19 +36,13 @@ class Settings(BaseSettings):
     postgres_db: str = "swarm_control"
     postgres_user: str = "swarm_app"
 
-    postgres_password_file: str = Field(
-        default="/run/secrets/postgres_password"
-    )
+    postgres_password_file: str = Field(default="/run/secrets/postgres_password")
 
     redis_url: str = "redis://redis:6379/0"
 
-    orchestrator_secret_file: str = Field(
-        default="/run/secrets/orchestrator_secret"
-    )
+    orchestrator_secret_file: str = Field(default="/run/secrets/orchestrator_secret")
 
-    agent_token_secret_file: str = Field(
-        default="/run/secrets/agent_token_secret"
-    )
+    agent_token_secret_file: str = Field(default="/run/secrets/agent_token_secret")
     package_signing_secret_file: str = Field(
         default="/run/secrets/package_signing_secret"
     )
@@ -60,6 +54,9 @@ class Settings(BaseSettings):
     )
     founder_channel_secret_file: str = Field(
         default="/run/secrets/founder_channel_secret"
+    )
+    mission_supervisor_secret_file: str = Field(
+        default="/run/secrets/mission_supervisor_secret"
     )
 
     @property
@@ -121,9 +118,14 @@ class Settings(BaseSettings):
     def founder_channel_secret(self) -> str:
         value = read_secret(self.founder_channel_secret_file)
         if value is None or len(value) < 32:
-            raise RuntimeError(
-                "Founder channel secret is unavailable or too short."
-            )
+            raise RuntimeError("Founder channel secret is unavailable or too short.")
+        return value
+
+    @property
+    def mission_supervisor_secret(self) -> str:
+        value = read_secret(self.mission_supervisor_secret_file)
+        if value is None or len(value) < 32:
+            raise RuntimeError("Mission supervisor secret is unavailable or too short.")
         return value
 
 

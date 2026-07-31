@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -35,7 +36,9 @@ class EngineeringMission(Base):
     max_tasks: Mapped[int] = mapped_column(Integer, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     max_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deadline_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     created_by: Mapped[str] = mapped_column(String(150), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -47,6 +50,26 @@ class EngineeringMission(Base):
         nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    supervision_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    supervision_status: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )
+    supervision_policy: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    supervision_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    supervision_approved_by: Mapped[str | None] = mapped_column(String(150))
+    recovery_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_reconcile_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    supervision_exception: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
 
 
 class TaskDependency(Base):

@@ -59,11 +59,12 @@ def _create_engineering_mission(
     approval_signature: str,
 ) -> EngineeringMission:
     digest = hashlib.sha256(canonical_manifest(manifest)).hexdigest()
+    supervised = manifest.supervision is not None
     mission = EngineeringMission(
         milestone_id=manifest.milestone_id,
         project=manifest.project,
         objective=manifest.objective,
-        status="active",
+        status="pending_approval" if supervised else "active",
         manifest_digest=digest,
         manifest=manifest.model_dump(mode="json"),
         approved_by=manifest.approved_by,
@@ -75,6 +76,15 @@ def _create_engineering_mission(
         deadline_at=datetime.now(UTC)
         + timedelta(seconds=manifest.budget.max_duration_seconds),
         created_by=created_by,
+        supervision_enabled=supervised,
+        supervision_status="pending_approval" if supervised else None,
+        supervision_policy=(
+            manifest.supervision.model_dump(mode="json")
+            if manifest.supervision is not None
+            else {}
+        ),
+        recovery_count=0,
+        supervision_exception={},
     )
     db.add(mission)
     db.flush()
@@ -175,11 +185,12 @@ def _create_infrastructure_mission(
     approval_signature: str,
 ) -> EngineeringMission:
     digest = hashlib.sha256(canonical_manifest(manifest)).hexdigest()
+    supervised = manifest.supervision is not None
     mission = EngineeringMission(
         milestone_id=manifest.milestone_id,
         project=manifest.project,
         objective=manifest.objective,
-        status="active",
+        status="pending_approval" if supervised else "active",
         manifest_digest=digest,
         manifest=manifest.model_dump(mode="json"),
         approved_by=manifest.approved_by,
@@ -191,6 +202,15 @@ def _create_infrastructure_mission(
         deadline_at=datetime.now(UTC)
         + timedelta(seconds=manifest.budget.max_duration_seconds),
         created_by=created_by,
+        supervision_enabled=supervised,
+        supervision_status="pending_approval" if supervised else None,
+        supervision_policy=(
+            manifest.supervision.model_dump(mode="json")
+            if manifest.supervision is not None
+            else {}
+        ),
+        recovery_count=0,
+        supervision_exception={},
     )
     db.add(mission)
     db.flush()
@@ -234,14 +254,12 @@ def _create_infrastructure_mission(
                 expected_outputs=phase.expected_outputs,
                 acceptance_criteria=phase.acceptance_criteria,
                 approval_policy={
-                    "kind": (
-                        "explicit" if phase.approval_required else "automatic"
-                    ),
+                    "kind": ("explicit" if phase.approval_required else "automatic"),
                     "risk": phase.risk_level,
                     "mission_manifest_digest": digest,
                     "phase_id": phase.id,
                 },
-                approval_required=phase.approval_required,
+                approval_required=phase.approval_required and not supervised,
                 required_capabilities=manifest.required_capabilities,
                 allowed_machines=manifest.allowed_machines,
                 max_attempts=manifest.budget.max_attempts_per_task,
@@ -297,9 +315,7 @@ def refresh_mission(db: Session, mission_id) -> None:
         db.scalars(select(Task.status).where(Task.mission_id == mission.id)).all()
     )
     previous = mission.status
-    all_succeeded = bool(statuses) and all(
-        status == "succeeded" for status in statuses
-    )
+    all_succeeded = bool(statuses) and all(status == "succeeded" for status in statuses)
     if all_succeeded:
         mission.status = "succeeded"
         mission.completed_at = datetime.now(UTC)

@@ -343,19 +343,36 @@ function renderControls() {
 
 function renderMissions() {
   if (!state.dashboard) return;
-  let missions = groupMissions(state.dashboard.tasks || []);
-  if (state.missionFilter === "active") missions = missions.filter((item) => item.active);
-  if (state.missionFilter === "completed") missions = missions.filter((item) => !item.active && !item.failed);
-  if (state.missionFilter === "attention") missions = missions.filter((item) => item.failed);
+  const taskGroups = new Map(groupMissions(state.dashboard.tasks || []).map((item) => [item.key, item]));
+  let missions = (state.dashboard.missions || []).map((mission) => ({
+    ...mission,
+    ...(taskGroups.get(mission.id) || { total: 0, completed: 0, active: 0, failed: 0 }),
+    key: mission.id,
+    title: mission.objective,
+  }));
+  if (state.missionFilter === "active") missions = missions.filter((item) => ["active", "recovering"].includes(item.supervision_status || item.status));
+  if (state.missionFilter === "completed") missions = missions.filter((item) => item.status === "succeeded");
+  if (state.missionFilter === "attention") missions = missions.filter((item) => item.supervision_status === "attention_required" || item.status === "blocked");
   document.getElementById("mission-list").innerHTML = missions.length ? missions.map((mission) => {
     const progress = mission.total ? Math.round((mission.completed / mission.total) * 100) : 0;
+    const supervisor = mission.supervision_enabled ? mission.supervision_status : "manual";
     return `<div class="mission-row" data-mission="${escapeHtml(mission.key)}">
-      <div><h3>${escapeHtml(mission.title)}</h3><div class="entity-meta"><span class="mono">${escapeHtml(mission.key)}</span><span>${mission.total} tasks</span></div><div class="progress-track"><span style="width:${progress}%"></span></div></div>
+      <div><h3>${escapeHtml(mission.title)}</h3><div class="entity-meta"><span class="mono">${escapeHtml(mission.milestone_id || mission.key)}</span><span>${mission.total} tasks</span><span>Supervisor: ${escapeHtml(humanize(supervisor))}</span><span>${mission.recovery_count || 0} recoveries</span></div><div class="progress-track"><span style="width:${progress}%"></span></div></div>
       <div><strong>${progress}%</strong><div class="entity-meta"><span>${mission.completed} terminal</span></div></div>
       <div class="entity-meta"><span>${mission.active} active</span><span>${mission.failed} failed</span></div>
-      ${statusBadge(mission.failed ? "failed" : mission.active ? "running" : "succeeded")}
+      ${mission.supervision_status === "pending_approval" ? `<button class="command" data-mission-approve="${mission.id}">Approve plan</button>` : statusBadge(supervisor === "attention_required" ? "failed" : supervisor)}
     </div>`;
   }).join("") : empty("No missions match this view.");
+  document.querySelectorAll("[data-mission-approve]").forEach((button) => {
+    button.onclick = async () => {
+      await api(`/api/missions/${button.dataset.missionApprove}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Hermes-Intent": "founder-action" },
+        body: JSON.stringify({ reason: "Founder approved the immutable supervised mission plan." }),
+      });
+      await loadDashboard();
+    };
+  });
 }
 
 function groupMissions(tasks) {

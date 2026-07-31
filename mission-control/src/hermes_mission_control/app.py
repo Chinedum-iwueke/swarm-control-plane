@@ -104,6 +104,13 @@ def create_app(
         return await client.decide_approval(approval_id, action, payload)
 
     @app.post(
+        "/api/missions/{mission_id}/approve",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def approve_mission(mission_id: str, payload: ProposalDecision) -> dict:
+        return await client.approve_mission(mission_id, payload.reason)
+
+    @app.post(
         "/api/proposals/{proposal_id}/{action}",
         dependencies=[Depends(_mutation_intent)],
     )
@@ -114,9 +121,7 @@ def create_app(
     ) -> dict:
         if action not in {"materialize", "reject"}:
             raise HTTPException(status_code=404, detail="Unknown proposal action.")
-        return await client.decide_proposal(
-            proposal_id, action, payload
-        )
+        return await client.decide_proposal(proposal_id, action, payload)
 
     @app.post("/api/control/{action}", dependencies=[Depends(_mutation_intent)])
     async def control(
@@ -148,7 +153,10 @@ def create_app(
         q: Annotated[str, Query(min_length=2, max_length=500)],
         limit: Annotated[int, Query(ge=1, le=50)] = 12,
     ) -> dict:
-        return {"query": q, "results": [item.model_dump() for item in store.search(q, limit=limit)]}
+        return {
+            "query": q,
+            "results": [item.model_dump() for item in store.search(q, limit=limit)],
+        }
 
     @app.get("/api/knowledge/graph")
     async def graph() -> dict:

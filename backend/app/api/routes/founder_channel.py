@@ -22,6 +22,7 @@ from app.schemas import (
     ApprovalResponse,
     FounderChannelApproval,
     FounderChannelDecision,
+    FounderChannelMission,
     FounderChannelRequest,
     FounderProposalResponse,
     TaskCreate,
@@ -29,6 +30,7 @@ from app.schemas import (
 )
 from app.services.governance import approve_task, decide_task
 from app.services.proposals import materialize_proposal, reject_proposal
+from app.services.supervision import approve_supervision
 from app.services.tasks import build_task, persist_new_task, serialize_task
 
 router = APIRouter(
@@ -80,7 +82,9 @@ def create_request(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Request creation conflicted.") from exc
+        raise HTTPException(
+            status_code=409, detail="Request creation conflicted."
+        ) from exc
     db.refresh(task)
     return TaskResponse.model_validate(serialize_task(task))
 
@@ -90,9 +94,7 @@ def list_tasks(
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[TaskResponse]:
-    tasks = db.scalars(
-        select(Task).order_by(Task.updated_at.desc()).limit(limit)
-    ).all()
+    tasks = db.scalars(select(Task).order_by(Task.updated_at.desc()).limit(limit)).all()
     return [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
 
 
@@ -104,6 +106,62 @@ def list_proposals(
         select(FounderProposal).order_by(FounderProposal.created_at.desc())
     ).all()
     return [FounderProposalResponse.model_validate(item) for item in values]
+
+
+@router.get("/missions", response_model=list[FounderChannelMission])
+def list_supervised_missions(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[FounderChannelMission]:
+    missions = db.scalars(
+        select(EngineeringMission)
+        .where(EngineeringMission.supervision_enabled.is_(True))
+        .order_by(EngineeringMission.updated_at.desc())
+    ).all()
+    return [
+        FounderChannelMission(
+            id=item.id,
+            milestone_id=item.milestone_id,
+            objective=item.objective,
+            status=item.status,
+            manifest_digest=item.manifest_digest,
+            supervision_status=item.supervision_status or "unknown",
+            supervision_policy=item.supervision_policy,
+            supervision_exception=item.supervision_exception,
+            deadline_at=item.deadline_at,
+            actionable=item.supervision_status == "pending_approval",
+        )
+        for item in missions
+    ]
+
+
+@router.post("/missions/{mission_id}/approve", response_model=FounderChannelMission)
+def approve_supervised_mission(
+    mission_id: uuid.UUID,
+    payload: FounderChannelDecision,
+    db: Annotated[Session, Depends(get_db)],
+) -> FounderChannelMission:
+    mission = db.scalar(
+        select(EngineeringMission)
+        .where(EngineeringMission.id == mission_id)
+        .with_for_update()
+    )
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+    approve_supervision(db, mission, actor="founder-telegram", reason=payload.reason)
+    db.commit()
+    db.refresh(mission)
+    return FounderChannelMission(
+        id=mission.id,
+        milestone_id=mission.milestone_id,
+        objective=mission.objective,
+        status=mission.status,
+        manifest_digest=mission.manifest_digest,
+        supervision_status=mission.supervision_status or "unknown",
+        supervision_policy=mission.supervision_policy,
+        supervision_exception=mission.supervision_exception,
+        deadline_at=mission.deadline_at,
+        actionable=False,
+    )
 
 
 @router.post(
@@ -166,9 +224,7 @@ def decide_approval(
     db: Annotated[Session, Depends(get_db)],
 ) -> ApprovalResponse:
     approval = db.scalar(
-        select(TaskApproval)
-        .where(TaskApproval.id == approval_id)
-        .with_for_update()
+        select(TaskApproval).where(TaskApproval.id == approval_id).with_for_update()
     )
     if approval is None:
         raise HTTPException(status_code=404, detail="Approval not found.")
@@ -201,9 +257,7 @@ def decide_approval(
     return ApprovalResponse.model_validate(approval)
 
 
-def _founder_approval(
-    db: Session, approval: TaskApproval
-) -> FounderChannelApproval:
+def _founder_approval(db: Session, approval: TaskApproval) -> FounderChannelApproval:
     task = db.get(Task, approval.task_id)
     if task is None:
         raise HTTPException(status_code=409, detail="Approval task is unavailable.")
