@@ -102,6 +102,7 @@ groupadd --system "$backup_group"
 install -d -o root -g root -m 0700 "$state"
 printf 'vm2-postgres\n' > "$state/DISPOSABLE_REHEARSAL"
 chmod 0600 "$state/DISPOSABLE_REHEARSAL"
+rm -f "$state/consumed.json" "$state/report.json"
 install -d -o root -g root -m 0755 \
   "$state/control-plane-runtime/backups" \
   "$source_stage"

@@ -135,8 +135,20 @@ def main() -> int:
             encoding="utf-8",
         )
         return 0
+    except Exception as exc:
+        report["ended_at"] = datetime.now(UTC).isoformat()
+        report["harness_error"] = {
+            "category": type(exc).__name__,
+            "message": str(exc)[:500],
+        }
+        report_path.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        raise
     finally:
-        report_path.chmod(0o600)
+        if report_path.exists():
+            report_path.chmod(0o600)
 
 
 if __name__ == "__main__":
