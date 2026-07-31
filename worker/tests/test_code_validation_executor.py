@@ -389,6 +389,28 @@ async def test_token_not_inherited_and_working_directory_is_worktree(
 
 
 @pytest.mark.asyncio
+async def test_repository_local_src_packages_are_importable(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    package = workspace.repository / "component" / "src" / "local_component"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("VALUE = 42\n")
+    (workspace.repository / "test_local_component.py").write_text(
+        "from local_component import VALUE\n\n"
+        "def test_value():\n"
+        "    assert VALUE == 42\n"
+    )
+
+    result = await executor().execute(
+        task=make_task(),
+        workflow=make_workflow(("run-tests", ["pytest", "-q"])),
+        workspace=workspace,
+        heartbeat=heartbeat_ok,
+    )
+
+    assert result.success is True
+
+
+@pytest.mark.asyncio
 async def test_periodic_heartbeat_and_temporary_failure_recorded(
     tmp_path: Path,
 ) -> None:

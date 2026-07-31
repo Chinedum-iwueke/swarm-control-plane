@@ -103,6 +103,14 @@ class AsyncProcessRunner:
         backend_path = cwd / "backend"
         if backend_path.is_dir():
             python_paths.append(backend_path)
+        workspace_root = cwd.resolve()
+        source_candidates = [cwd / "src", *sorted(cwd.glob("*/src"))]
+        for candidate in source_candidates:
+            if not candidate.is_dir():
+                continue
+            resolved = candidate.resolve()
+            if resolved.is_relative_to(workspace_root) and resolved not in python_paths:
+                python_paths.append(resolved)
         environment["HOME"] = str(cwd.parent)
         environment["PYTHONPATH"] = os.pathsep.join(
             str(path) for path in python_paths
