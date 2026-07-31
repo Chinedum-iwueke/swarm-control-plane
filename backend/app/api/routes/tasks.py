@@ -70,9 +70,7 @@ def create_task(
 
     db.refresh(task)
 
-    return TaskResponse.model_validate(
-        serialize_task(task)
-    )
+    return TaskResponse.model_validate(serialize_task(task))
 
 
 @router.get(
@@ -88,29 +86,14 @@ def list_tasks(
     statement = select(Task)
 
     if task_status is not None:
-        statement = statement.where(
-            Task.status == task_status
-        )
+        statement = statement.where(Task.status == task_status)
 
     if project is not None:
-        statement = statement.where(
-            Task.project == project
-        )
+        statement = statement.where(Task.project == project)
 
-    tasks = db.scalars(
-        statement
-        .order_by(
-            Task.created_at.desc()
-        )
-        .limit(limit)
-    ).all()
+    tasks = db.scalars(statement.order_by(Task.created_at.desc()).limit(limit)).all()
 
-    return [
-        TaskResponse.model_validate(
-            serialize_task(task)
-        )
-        for task in tasks
-    ]
+    return [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
 
 
 @router.post(
@@ -131,6 +114,40 @@ def reap_task_leases(
 
 
 @router.post(
+    "/{task_id}/rearm-approval",
+    response_model=TaskMutationResponse,
+)
+def rearm_expired_task_approval(
+    task_id: uuid.UUID,
+    payload: TaskResumeRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> TaskMutationResponse:
+    task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    if task.status != "pending_approval" or not task.approval_required:
+        raise HTTPException(
+            status_code=409,
+            detail="Only an approval-gated task pending approval can be rearmed.",
+        )
+    rearm_task_approval(db, task, payload.reason)
+    event = append_task_event(
+        db,
+        task,
+        "task_approval_rearmed",
+        "Expired task approval returned to review.",
+        payload={"requested_by": payload.requested_by, "reason": payload.reason},
+    )
+    db.commit()
+    db.refresh(task)
+    db.refresh(event)
+    return TaskMutationResponse(
+        task=TaskResponse.model_validate(serialize_task(task)),
+        event=TaskEventResponse.model_validate(event),
+    )
+
+
+@router.post(
     "/{task_id}/resume",
     response_model=TaskMutationResponse,
 )
@@ -139,9 +156,7 @@ def resume_failed_task(
     payload: TaskResumeRequest,
     db: Annotated[Session, Depends(get_db)],
 ) -> TaskMutationResponse:
-    task = db.scalar(
-        select(Task).where(Task.id == task_id).with_for_update()
-    )
+    task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
     if task.status != "failed":
@@ -201,11 +216,6 @@ def get_task(
     ).all()
 
     return TaskDetailResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
-        events=[
-            TaskEventResponse.model_validate(event)
-            for event in events
-        ],
+        task=TaskResponse.model_validate(serialize_task(task)),
+        events=[TaskEventResponse.model_validate(event) for event in events],
     )

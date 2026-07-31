@@ -11,7 +11,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=("approvals", "approve", "reject", "revoke", "events", "artifacts"),
+        choices=(
+            "approvals",
+            "approve",
+            "reject",
+            "revoke",
+            "rearm",
+            "events",
+            "artifacts",
+        ),
     )
     parser.add_argument("--approval-id")
     parser.add_argument("--task-id")
@@ -37,6 +45,13 @@ def main() -> int:
         elif args.action == "events":
             _require(args.approval_id, "--approval-id")
             response = client.get(f"/v1/approvals/{args.approval_id}/events")
+        elif args.action == "rearm":
+            _require(args.task_id, "--task-id")
+            _require(args.reason, "--reason")
+            response = client.post(
+                f"/v1/tasks/{args.task_id}/rearm-approval",
+                json={"requested_by": args.actor, "reason": args.reason},
+            )
         else:
             _require(args.approval_id, "--approval-id")
             _require(args.reason, "--reason")
