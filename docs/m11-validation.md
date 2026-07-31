@@ -35,6 +35,11 @@ VM2 migration and operational pilot remain pending deployment of the reviewed co
 pilot must use real M8 task and artifact evidence; synthetic registry evidence is not
 acceptable.
 
+The M11 pilot also refreshes the VM1 research role package to version `1.1.0`.
+Canonical package serialization now includes the explicit empty runbook-package list;
+the new digest must be registered and deployed rather than accepting the stale M8
+attestation.
+
 ## Recommendation
 
 No-go for daily autonomous research until the VM2 migration, real one-trial pilot,
