@@ -1,0 +1,57 @@
+schema_version: 1
+milestone_id: VM2-POSTGRES-ROLLOUT-RECOVERY
+project: invariance_research
+objective: Complete backup, recovery, and readiness validation after the rehearsed VM2 Postgres rollout.
+source_references:
+- deploy/ON_PREM_POSTGRES_RUNBOOK.md
+- worker/docs/vm2-postgres-rehearsal.md
+workflow: infrastructure-runbook
+runbook: vm2-postgres-deployment
+runbook_version: 1.0.0
+target: vm2-invariance-postgres
+allowed_machines:
+- vm2-deployment
+required_capabilities:
+- deployment-architecture
+- infrastructure-observation
+- postgres-deployment
+- service-health
+budget:
+  max_tasks: 3
+  max_attempts_per_task: 2
+  max_duration_seconds: 7200
+phases:
+- id: configure-backups
+  operation: configure-invariance-backups
+  objective: Configure local backup automation and complete one restore drill.
+  depends_on: []
+  risk_level: 3
+  approval_required: true
+  acceptance_criteria:
+  - A backup passes integrity verification and a restore drill is recorded.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: verify
+  operation: verify-invariance-postgres
+  objective: Verify roles, persistence, health, backup freshness, and network exposure.
+  depends_on:
+  - configure-backups
+  risk_level: 0
+  approval_required: false
+  acceptance_criteria:
+  - All private deployment and recovery checks pass.
+  expected_outputs:
+  - infrastructure-evidence.json
+- id: prepare-cutover
+  operation: prepare-invariance-cutover
+  objective: Assess DNS, trusted TLS, Vercel access, and rollback readiness.
+  depends_on:
+  - verify
+  risk_level: 0
+  approval_required: false
+  acceptance_criteria:
+  - A bounded go or no-go determination is recorded without changing public access.
+  expected_outputs:
+  - infrastructure-evidence.json
+approved_by: founder-operator
+approval_reference: VM2-POSTGRES-ROLLOUT-RECOVERY-APPROVAL
