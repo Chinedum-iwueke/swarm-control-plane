@@ -106,6 +106,29 @@ def test_clean_structured_review_is_approved(tmp_path: Path) -> None:
     assert EngineeringMissionExecutor._review_approved(review) is True
 
 
+def test_evidence_permissions_are_forced_private(tmp_path: Path) -> None:
+    logs = tmp_path / "logs"
+    artifacts = tmp_path / "artifacts"
+    logs.mkdir(mode=0o755)
+    artifacts.mkdir(mode=0o755)
+    log = logs / "step.log"
+    artifact = artifacts / "result.json"
+    log.write_text("log")
+    artifact.write_text("{}")
+    log.chmod(0o644)
+    artifact.chmod(0o644)
+    workspace = type(
+        "Workspace", (), {"logs": logs, "artifacts": artifacts}
+    )()
+
+    EngineeringMissionExecutor._secure_evidence(workspace)
+
+    assert logs.stat().st_mode & 0o777 == 0o700
+    assert artifacts.stat().st_mode & 0o777 == 0o700
+    assert log.stat().st_mode & 0o777 == 0o600
+    assert artifact.stat().st_mode & 0o777 == 0o600
+
+
 @pytest.mark.asyncio
 async def test_engineering_executor_refuses_root(tmp_path: Path) -> None:
     executor = EngineeringMissionExecutor(

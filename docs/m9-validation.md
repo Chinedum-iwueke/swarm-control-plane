@@ -28,7 +28,7 @@ Date: 2026-07-31
 ## Automated evidence
 
 - Backend: 35 tests passed.
-- Worker: 151 tests passed.
+- Worker: 153 tests passed.
 - Telegram gateway: 9 tests passed.
 - Mission Control: 23 tests passed.
 - Ruff passed on every M9-changed Python file; repository-wide backend Ruff still
@@ -37,7 +37,8 @@ Date: 2026-07-31
 - Repository-wide isolated validation: 219 tests passed after adding direct,
   in-worktree Python `src` roots to the validation environment.
 - Alembic head: `c8e2f7a41d90`; full offline upgrade SQL generated successfully.
-- systemd unit verification: pending on VM2 after the executable is installed.
+- systemd unit verified on VM2; host verification emitted only pre-existing
+  snapd/netplan warnings unrelated to the Hermes unit.
 
 ## Operational pilot
 
@@ -48,9 +49,30 @@ attempt failed because the isolated validator omitted the Mission Control
 aborted before leasing because correcting the validator moved the symbolic
 `main` base ref; executing that changed commit under the old digest would have
 violated immutable-plan authority. The replacement pilot is pinned to the
-tested commit and is recorded below after execution.
+tested commit.
+
+The replacement mission, `7b34dfd0-5436-41f7-bba7-fa80cd00e62a`, was approved
+once through Telegram with manifest digest
+`303be02e59ba51cd3f699fc9dd862807acabfbd9c1149f97e06ea07626fbad39`.
+Task `461b73ae-d342-42c8-ae65-4733e82bb64f` succeeded on attempt one against
+the exact pinned commit `d4d0b7932ad1921ad7a8df8106c549ee4d7cf0ff`.
+Its bounded result recorded successful coding, compile, 219-test validation,
+independent review, and PR-bundle steps with no heartbeat failures. The event
+order was mission created, mission supervision approved, task leased, task
+started, task heartbeats, task completed, mission succeeded, and mission
+supervision completed. The supervisor remained active and recorded terminal
+`succeeded` with recovery count zero.
+
+The final local audit found Codex-created evidence inherited mode `0644` from
+the manual shell even though validation logs and metadata were `0600`. Existing
+pilot evidence was immediately restricted, and the executor now forces all
+log and artifact files to `0600` and their directories to `0700` independently
+of process umask. No credential value was found in result or event payloads.
 
 ## Recommendation
 
-No-go for enabling the continuous supervisor until the pending test and live
-pilot evidence above is complete.
+**Go** for M9 autonomous supervision of immutable, commit-pinned, rehearsed
+missions within explicit time, attempt, recovery, capability, and risk budgets.
+**No-go** for symbolic branch refs, scope changes, unclassified recovery,
+automatic authority expansion, or execution beyond an `attention_required`
+exception.

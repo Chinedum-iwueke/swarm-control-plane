@@ -148,6 +148,7 @@ class EngineeringMissionExecutor:
             ),
             encoding="utf-8",
         )
+        review_schema.chmod(0o600)
         review = await self._run_codex(
             name="independent-review",
             args=[
@@ -193,6 +194,7 @@ class EngineeringMissionExecutor:
         stderr_path = workspace.logs / f"{name}.stderr.log"
         prompt_path = workspace.artifacts / f"{name}.prompt.txt"
         prompt_path.write_text(prompt, encoding="utf-8")
+        prompt_path.chmod(0o600)
         started_at = datetime.now(timezone.utc)
         monotonic = time.monotonic()
         timed_out = False
@@ -202,6 +204,8 @@ class EngineeringMissionExecutor:
             stdout_path.open("xb") as stdout_file,
             stderr_path.open("xb") as stderr_file,
         ):
+            stdout_path.chmod(0o600)
+            stderr_path.chmod(0o600)
             running = await self._runner.start(
                 args,
                 cwd=workspace.repository,
@@ -235,6 +239,7 @@ class EngineeringMissionExecutor:
                         await self._runner.terminate(running, grace_seconds=5)
                         break
             return_code = running.process.returncode
+        self._secure_evidence(workspace)
         ended_at = datetime.now(timezone.utc)
         result = StepExecutionResult(
             name=name,
@@ -318,6 +323,7 @@ class EngineeringMissionExecutor:
         ).stdout
         patch_path = workspace.artifacts / "changes.patch"
         patch_path.write_text(patch, encoding="utf-8")
+        patch_path.chmod(0o600)
         bundle = {
             "milestone_id": contract.milestone_id,
             "work_item_id": contract.work_item_id,
@@ -328,14 +334,18 @@ class EngineeringMissionExecutor:
             "coder_summary": "artifacts/coder-summary.md",
             "acceptance_criteria": contract.acceptance_criteria,
         }
-        (workspace.artifacts / "pr-bundle.json").write_text(
+        bundle_path = workspace.artifacts / "pr-bundle.json"
+        bundle_path.write_text(
             json.dumps(bundle, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        bundle_path.chmod(0o600)
         stdout = workspace.logs / "pr-bundle.stdout.log"
         stderr = workspace.logs / "pr-bundle.stderr.log"
         stdout.write_text("PR bundle created without push or merge.\n", encoding="utf-8")
         stderr.write_text("", encoding="utf-8")
+        stdout.chmod(0o600)
+        stderr.chmod(0o600)
         ended = datetime.now(timezone.utc)
         return StepExecutionResult(
             name="pr-bundle",
@@ -414,3 +424,13 @@ class EngineeringMissionExecutor:
             isinstance(item, dict) and item.get("severity") == "high"
             for item in findings
         )
+
+    @staticmethod
+    def _secure_evidence(workspace: TaskWorkspace) -> None:
+        for directory in (workspace.logs, workspace.artifacts):
+            directory.chmod(0o700)
+            for path in directory.rglob("*"):
+                if path.is_dir():
+                    path.chmod(0o700)
+                elif path.is_file():
+                    path.chmod(0o600)
