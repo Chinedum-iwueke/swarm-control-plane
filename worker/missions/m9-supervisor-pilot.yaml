@@ -1,0 +1,57 @@
+schema_version: 1
+milestone_id: M9-AUTONOMOUS-MISSION-SUPERVISOR
+project: swarm-control-plane
+objective: Validate one digest-approved autonomously supervised mission from approval through evidence.
+base_ref: main
+source_references:
+- docs/m9-validation.md
+- docs/runbooks/m9-autonomous-mission-supervisor.md
+workflow: engineering-mission
+risk_level: 0
+allowed_machines:
+- vm1-developer
+required_capabilities:
+- git
+- python
+- testing
+budget:
+  max_tasks: 1
+  max_attempts_per_task: 2
+  max_duration_seconds: 1800
+  max_files_changed: 1
+  max_diff_lines: 120
+work_items:
+- id: record-supervisor-pilot
+  objective: Create docs/m9-supervisor-pilot-result.md recording the bounded M9 pilot outcome.
+  depends_on: []
+  allowed_paths:
+  - docs/m9-supervisor-pilot-result.md
+  context_paths:
+  - docs/m9-validation.md
+  - docs/runbooks/m9-autonomous-mission-supervisor.md
+  acceptance_criteria:
+  - The record identifies M9 and its immutable mission-plan approval boundary.
+  - The record states that no push, merge, deployment, or scope expansion occurred.
+  - No file outside the approved result path is changed.
+  stop_conditions:
+  - Any requested change would leave the approved path.
+  - Validation requires credentials, deployment, or primary-checkout mutation.
+deliverables:
+- patch
+- validation logs
+- independent review
+- PR bundle
+approved_by: founder-operator
+approval_reference: M9-AUTONOMOUS-SUPERVISOR-PILOT-APPROVAL
+supervision:
+  mode: autonomous
+  approval_mode: mission_plan
+  max_auto_recoveries: 1
+  retry_backoff_seconds: 30
+  retryable_categories:
+  - connection_error
+  - server_error
+  - lease_expired
+  - temporary_unavailable
+  rehearsal_evidence_sha256: 6a3710c6e64bbe01558a1e7fd267a5ebc2808c9ec07b937f1925be11678a383c
+  rehearsal_source_commit: c9aa0390184290380086a8d83f8b85dcced065a5
