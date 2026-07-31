@@ -107,3 +107,30 @@ then rehearsing the standard read-only operations and one controlled restart on 
 **No-go** for marking the package approved or deployed until that evidence is
 registered. **No-go** for the Invariance PostgreSQL application cutover, certificate
 rotation, firewall mutation, or credential rotation under M10B.
+
+## VM2 Parity Rehearsal Result
+
+The exact `vm2-platform-operations` `1.0.0` package passed its disposable VM2 parity
+rehearsal on 2026-07-31.
+
+- source commit: `3f10b483c02eb382c9a758334c46ea72b23e70a0`;
+- canonical manifest digest:
+  `2a9feadcc1afd80375cfcaf0e060d306ccb36fd2c667fa9d86daa491577bc005`;
+- raw package artifact digest:
+  `b3d581aaaeb54b4b4630cec05807c7da089366d7592fda1082ca1256fe46538b`;
+- evidence report digest:
+  `1081ac15fd3e238906ee5d143b81b347f21e53fbde1eeec35ff3c6fb81df7d60`;
+- evidence location:
+  `/var/lib/invariance-swarm-platform-rehearsal/report.json` on VM2;
+- environment: Docker `29.5.2`, Compose `5.1.4`, Python `3.10.12`, Linux
+  `5.15.0-185-generic`;
+- result: all declared read-only primitive checks passed, the normal controlled
+  restart passed, and the forced unhealthy post-check invoked the fixed recreate
+  rollback and restored a healthy service;
+- production verification: `swarm-api`, `swarm-postgres`, and `swarm-redis` remained
+  healthy; only `hermes-platform-rehearsal-*` containers were addressed;
+- registry verification: the exact package digest remained in `draft` after the run.
+
+This evidence qualifies the package for an explicit operator decision to promote it
+to `rehearsed`; the rehearsal itself deliberately performed no promotion. Approval
+and deployment remain separate later decisions.
