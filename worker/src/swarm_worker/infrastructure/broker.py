@@ -41,16 +41,6 @@ _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
 _POSTGRES_ROOT = Path("/srv/invariance/postgres")
 _RESEARCH_REPOSITORY = Path("/srv/invariance/invariance_research")
 _RUNBOOK_PACKAGES = Path(__file__).parents[3] / "runbook-packages"
-_PLATFORM_SERVICES = {
-    "api": ("api", _RUNTIME, "swarm-api"),
-    "redis": ("redis", _RUNTIME, "swarm-redis"),
-    "postgres": ("postgres", _POSTGRES_ROOT, "invariance-postgres"),
-    "pgbouncer": (
-        "pgbouncer",
-        _POSTGRES_ROOT,
-        "invariance-pgbouncer",
-    ),
-}
 UTC = timezone.utc
 
 
@@ -154,7 +144,16 @@ class InfrastructureBroker:
         self._research_repository = research_repository
         self._systemd_path = systemd_path
         self._runbook_packages_path = runbook_packages_path
-        self._platform_services = platform_services or _PLATFORM_SERVICES
+        self._platform_services = platform_services or {
+            "api": ("api", runtime_path, "swarm-api"),
+            "redis": ("redis", runtime_path, "swarm-redis"),
+            "postgres": ("postgres", postgres_root, "invariance-postgres"),
+            "pgbouncer": (
+                "pgbouncer",
+                postgres_root,
+                "invariance-pgbouncer",
+            ),
+        }
         self._backup_timer_unit = backup_timer_unit
         self._platform_health_attempts = platform_health_attempts
         self._platform_health_interval_seconds = platform_health_interval_seconds
@@ -393,7 +392,7 @@ class InfrastructureBroker:
                 )
             compose_service, cwd, _ = self._platform_service(service)
             config = self._runner.run(
-                ["docker", "compose", "config", "--quiet"],
+                self._platform_compose_args(service, ["config", "--quiet"]),
                 cwd=cwd,
                 timeout=30,
             )
@@ -408,7 +407,10 @@ class InfrastructureBroker:
                     error="Service restart preflight failed.",
                 )
             action = self._runner.run(
-                ["docker", "compose", "restart", "--timeout", "30", compose_service],
+                self._platform_compose_args(
+                    service,
+                    ["restart", "--timeout", "30", compose_service],
+                ),
                 cwd=cwd,
                 timeout=90,
             )
@@ -418,15 +420,16 @@ class InfrastructureBroker:
             rollback_state = None
             if not success:
                 rollback = self._runner.run(
-                    [
-                        "docker",
-                        "compose",
-                        "up",
-                        "-d",
-                        "--no-deps",
-                        "--force-recreate",
-                        compose_service,
-                    ],
+                    self._platform_compose_args(
+                        service,
+                        [
+                            "up",
+                            "-d",
+                            "--no-deps",
+                            "--force-recreate",
+                            compose_service,
+                        ],
+                    ),
                     cwd=cwd,
                     timeout=300,
                 )
@@ -553,6 +556,16 @@ class InfrastructureBroker:
             return self._platform_services[service]
         except KeyError as exc:
             raise BrokerError("Service is not in the compiled catalog.") from exc
+
+    def _platform_compose_args(
+        self, service: str, args: Sequence[str]
+    ) -> list[str]:
+        _, cwd, _ = self._platform_service(service)
+        command = ["docker", "compose"]
+        environment_file = cwd / ".env.postgres"
+        if environment_file.is_file():
+            command.extend(["--env-file", str(environment_file)])
+        return [*command, *args]
 
     @staticmethod
     def _platform_result(

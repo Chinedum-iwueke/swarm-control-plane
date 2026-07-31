@@ -50,8 +50,8 @@ class RollbackFaultRunner(FixedRunner):
             self._fault_armed = True
         elif (
             self._fault_armed
-            and command[:6]
-            == ("docker", "compose", "up", "-d", "--no-deps", "--force-recreate")
+            and "up" in command
+            and "--force-recreate" in command
         ):
             self._fault_armed = False
         elif (
@@ -239,7 +239,7 @@ def main() -> int:
         ("verify-storage", {}),
         ("verify-certificate", {"certificate_profile": "invariance-postgres-client"}),
         ("verify-backup", {}),
-        ("restart-docker-service", {"service": "api"}),
+        *(("restart-docker-service", {"service": name}) for name in services),
     ]
     try:
         for attempt, (operation, parameters) in enumerate(operations, 1):

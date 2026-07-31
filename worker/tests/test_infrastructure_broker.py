@@ -272,6 +272,30 @@ def test_packaged_restart_waits_for_transitional_health(tmp_path: Path) -> None:
     assert result.rollback is None
 
 
+def test_packaged_restart_loads_reviewed_compose_environment(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    rehearsal = broker(tmp_path, runner)
+    postgres_root = tmp_path / "postgres"
+    postgres_root.mkdir()
+    environment_file = postgres_root / ".env.postgres"
+    environment_file.write_text("REHEARSAL=value\n", encoding="utf-8")
+    result = rehearsal.execute(
+        ticket(
+            "restart-docker-service",
+            risk=3,
+            task_type="infrastructure_operation",
+            runbook="vm2-platform-operations",
+            target="vm2-production",
+            parameters={"service": "postgres"},
+            package_digest=platform_digest(),
+        )
+    )
+    assert result.success is True
+    prefix = ("docker", "compose", "--env-file", str(environment_file))
+    assert any(command[:4] == prefix for command in runner.commands)
+    assert any("restart" in command for command in runner.commands)
+
+
 def test_packaged_operation_rejects_digest_or_parameter_tampering(
     tmp_path: Path,
 ) -> None:

@@ -131,6 +131,9 @@ rehearsal on 2026-07-31.
   healthy; only `hermes-platform-rehearsal-*` containers were addressed;
 - registry verification: the exact package digest remained in `draft` after the run.
 
-This evidence qualifies the package for an explicit operator decision to promote it
-to `rehearsed`; the rehearsal itself deliberately performed no promotion. Approval
-and deployment remain separate later decisions.
+This first evidence run exposed that the Compose restart did not explicitly load a
+reviewed project environment file. The API-only restart succeeded, but that was not
+sufficient evidence for the package's PostgreSQL and PgBouncer restart variants. The
+package therefore remained `draft`; this report is diagnostic evidence and is
+superseded by the required all-service rerun after the environment fix. Approval and
+deployment remain separate later decisions.
