@@ -42,6 +42,22 @@ def test_stage_creates_private_digest_bound_layout(tmp_path: Path) -> None:
     assert compose["services"]["pgbouncer"]["ports"] == [
         "100.112.117.59:6432:5432"
     ]
+    tls = yaml.safe_load((root / "compose.client-tls.yaml").read_text())
+    assert tls["services"]["pgbouncer"]["environment"][
+        "CLIENT_TLS_SSLMODE"
+    ] == "verify-full"
+    assert (root / "conf/client-allowlist.json").stat().st_mode & 0o777 == 0o600
+    allowlist = json.loads(
+        (root / "conf/client-allowlist.json").read_text(encoding="utf-8")
+    )
+    assert allowlist == {
+        "schema_version": 1,
+        "default_policy": "deny",
+        "clients": [],
+    }
+    assert json.loads(
+        (root / "cutover/approval.json").read_text(encoding="utf-8")
+    )["status"] == "pending"
     assert compose["services"]["postgres"]["image"].endswith(
         "@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55"
     )
@@ -127,7 +143,7 @@ def test_stage_upgrades_static_template_without_rotating_secrets(
 
     upgraded = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert result["reused"] is True
-    assert upgraded["deployment_version"] == "1.3.0"
+    assert upgraded["deployment_version"] == "1.4.0"
     assert (root / ".env.postgres").read_bytes() == environment
     assert "invariance_owner 172.16.0.0/12" in (
         root / "conf/pg_hba.conf"
@@ -135,6 +151,8 @@ def test_stage_upgrades_static_template_without_rotating_secrets(
     assert "edoburu/pgbouncer:v1.24.1-p1@sha256:" in (
         root / "compose.yaml"
     ).read_text(encoding="utf-8")
+    assert (root / "compose.client-tls.yaml").is_file()
+    assert (root / "cutover/rollback.json").is_file()
 
 
 def test_stage_refuses_unknown_non_empty_root(tmp_path: Path) -> None:
@@ -155,6 +173,7 @@ def test_stage_accepts_exact_empty_preprovisioned_layout(tmp_path: Path) -> None
         "bin",
         "certs",
         "conf",
+        "cutover",
         "data",
         "init",
         "logs",

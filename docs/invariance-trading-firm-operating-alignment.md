@@ -128,7 +128,22 @@ multiple testing.
 
 ## Immediate Build Sequence
 
-### M10: Research contracts and registry
+### M10: Managed database cutover and runbook packages
+
+- Prepare the private PostgreSQL service used by the public Invariance Research web
+  application for trusted PgBouncer TLS, private DNS, explicit client egress, scoped
+  credentials, migration, rollback, and digest-bound cutover approval.
+- Generalize the Deployment Architect around versioned packages, typed targets and
+  parameters, mandatory preflight and rehearsal, declared rollback, and sequential
+  `draft`, `rehearsed`, `approved`, and `deployed` states.
+- Provide reusable contracts for Docker, Redis, storage, certificates, backups, and
+  service health without granting arbitrary command execution.
+- Keep any future Hermes database isolated behind its own target, roles, credentials,
+  storage, backup policy, and approval chain.
+- Exit source implementation when all contracts and inactive cutover artifacts pass;
+  exit operationally only after parity rehearsal and explicit production approval.
+
+### M11: Research contracts and registry
 
 - Define source, hypothesis, experiment, trial, result, review, and decision schemas.
 - Add immutable lineage from hypothesis through dataset snapshot, code commit,
@@ -139,7 +154,7 @@ multiple testing.
 - Exit when a hypothesis and locked manifest can be registered, approved by digest,
   executed once, reviewed independently, and retained regardless of outcome.
 
-### M11: Research knowledge foundation
+### M12: Research knowledge foundation
 
 - Ingest the PRD, selected statistics and time-series texts, chosen papers, and prior
   Invariance reports with page/section metadata.
@@ -149,7 +164,7 @@ multiple testing.
 - Exit when one question produces a traceable brief whose material claims resolve to
   source passages or are labeled as agent inference.
 
-### M12: Closed five-agent pilot
+### M13: Closed five-agent pilot
 
 - Register five separate role packages and permission profiles.
 - Require separation between proposer, executor, statistical reviewer, and
@@ -159,7 +174,7 @@ multiple testing.
 - Run one real-data, non-live signal experiment end to end with founder approval.
 - Exit when the complete positive or negative trial is reproducible and searchable.
 
-### M13: Daily supervised research
+### M14: Daily supervised research
 
 - Add one-question-per-day scheduling, compute and trial budgets, duplicate checks,
   daily digest, and weekly research-program review.

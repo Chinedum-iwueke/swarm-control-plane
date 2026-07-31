@@ -221,6 +221,7 @@ def test_postgres_preflight_accepts_exact_preprovisioned_layout(
         "bin",
         "certs",
         "conf",
+        "cutover",
         "data",
         "init",
         "logs",

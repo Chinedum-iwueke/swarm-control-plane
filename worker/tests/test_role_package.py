@@ -10,6 +10,7 @@ ROOT = Path(__file__).parents[1]
 MANIFEST = ROOT / "role-packages/vm1-engineering-worker/manifest.yaml"
 WORKFLOWS = ROOT / "workflows"
 RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
+DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.yaml"
 
 
 def test_versioned_package_and_workflow_digest_verify() -> None:
@@ -26,6 +27,35 @@ def test_research_package_is_narrow_and_digest_verified() -> None:
     assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.permission_profile.privileged_operations is False
     assert package.manifest.permission_profile.network_access == "control-plane"
+
+
+def test_deployment_architect_attests_runbook_package_digests() -> None:
+    package = load_role_package(
+        DEPLOYMENT_MANIFEST,
+        ROOT / "infrastructure-runbooks",
+        ROOT / "runbook-packages",
+    )
+    assert package.manifest.version == "1.2.0"
+    assert {item.name for item in package.manifest.runbook_packages} == {
+        "invariance-postgres-cutover",
+        "vm2-platform-operations",
+    }
+
+
+def test_tampered_runbook_package_is_rejected(tmp_path: Path) -> None:
+    source = ROOT / "runbook-packages"
+    for path in source.iterdir():
+        (tmp_path / path.name).write_bytes(path.read_bytes())
+    (tmp_path / "invariance-postgres-cutover.yaml").write_text(
+        "tampered: true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PackageVerificationError, match="digest mismatch"):
+        load_role_package(
+            DEPLOYMENT_MANIFEST,
+            ROOT / "infrastructure-runbooks",
+            tmp_path,
+        )
 
 
 def test_tampered_workflow_is_rejected(tmp_path: Path) -> None:

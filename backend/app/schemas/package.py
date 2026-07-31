@@ -39,6 +39,13 @@ class WorkflowArtifact(BaseModel):
     sha256: str = Field(pattern=_DIGEST)
 
 
+class RunbookPackageArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(pattern=_NAME)
+    file: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*\.yaml$")
+    sha256: str = Field(pattern=_DIGEST)
+
+
 class RolePackageManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1]
@@ -47,6 +54,10 @@ class RolePackageManifest(BaseModel):
     role: str = Field(min_length=1, max_length=150)
     task_types: list[str] = Field(min_length=1, max_length=50)
     workflows: list[WorkflowArtifact] = Field(default_factory=list, max_length=50)
+    runbook_packages: list[RunbookPackageArtifact] = Field(
+        default_factory=list,
+        max_length=50,
+    )
     required_capabilities: list[str] = Field(min_length=1, max_length=50)
     allowed_machines: list[str] = Field(min_length=1, max_length=50)
     risk_ceiling: int = Field(ge=0, le=5)
@@ -75,6 +86,15 @@ class RolePackageManifest(BaseModel):
         if len({workflow.name for workflow in workflows}) != len(workflows):
             raise ValueError("workflow names must be unique")
         return workflows
+
+    @field_validator("runbook_packages")
+    @classmethod
+    def unique_runbook_packages(
+        cls, packages: list[RunbookPackageArtifact]
+    ) -> list[RunbookPackageArtifact]:
+        if len({package.name for package in packages}) != len(packages):
+            raise ValueError("runbook package names must be unique")
+        return packages
 
     @model_validator(mode="after")
     def enforce_restrictions(self) -> "RolePackageManifest":

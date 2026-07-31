@@ -1,0 +1,123 @@
+schema_version: 1
+name: vm2-platform-operations
+version: 1.0.0
+description: Reusable approval-gated VM2 operations without task-supplied commands.
+target_profiles:
+- name: vm2-rehearsal
+  machine: vm2-deployment
+  environment: rehearsal
+  service_class: platform
+  writable_roots: []
+- name: vm2-production
+  machine: vm2-deployment
+  environment: production
+  service_class: platform
+  writable_roots: []
+rehearsal:
+  required: true
+  target_profile: vm2-rehearsal
+  max_evidence_age_hours: 168
+  required_evidence:
+  - environment parity report
+  - operation result digest
+  - rollback result digest
+operations:
+- name: verify-docker-service
+  category: docker
+  task_type: infrastructure_observation
+  target_profile: vm2-production
+  risk_level: 0
+  approval_required: false
+  parameters:
+    service:
+      type: string
+      allowed_values: [api, postgres, pgbouncer, redis]
+  preflight:
+    checks: [docker available, compose project registered]
+    failure_mode: block
+  evidence: [container image digest, health state, bounded recent logs]
+- name: restart-docker-service
+  category: docker
+  task_type: infrastructure_operation
+  target_profile: vm2-production
+  risk_level: 3
+  approval_required: true
+  parameters:
+    service:
+      type: string
+      allowed_values: [api, postgres, pgbouncer, redis]
+  preflight:
+    checks: [pre-state healthy, image digest pinned, rollback image available]
+    failure_mode: block
+  evidence: [pre-state, restart result, post-state]
+  rollback:
+    operation: restore-docker-service
+    triggers: [health check failure, startup timeout]
+    timeout_seconds: 300
+    required_evidence: [rollback return code, restored health state]
+- name: verify-redis
+  category: redis
+  task_type: infrastructure_observation
+  target_profile: vm2-production
+  risk_level: 0
+  approval_required: false
+  parameters: {}
+  preflight:
+    checks: [redis service registered]
+    failure_mode: block
+  evidence: [ping state, persistence state, memory state]
+- name: verify-storage
+  category: storage
+  task_type: infrastructure_observation
+  target_profile: vm2-production
+  risk_level: 0
+  approval_required: false
+  parameters: {}
+  preflight:
+    checks: [target filesystem mounted]
+    failure_mode: block
+  evidence: [capacity, free space, ownership, mount options]
+- name: rotate-certificate
+  category: certificate
+  task_type: infrastructure_operation
+  target_profile: vm2-production
+  risk_level: 4
+  approval_required: true
+  parameters:
+    certificate_profile:
+      type: string
+      allowed_values: [invariance-postgres-client]
+  preflight:
+    checks: [new certificate verified, private key protected, rollback copy present]
+    failure_mode: block
+  evidence: [certificate fingerprint, validity window, reload result]
+  rollback:
+    operation: restore-certificate
+    triggers: [reload failure, TLS probe failure]
+    timeout_seconds: 300
+    required_evidence: [restored fingerprint, successful TLS probe]
+- name: verify-backup
+  category: backup
+  task_type: infrastructure_observation
+  target_profile: vm2-production
+  risk_level: 0
+  approval_required: false
+  parameters: {}
+  preflight:
+    checks: [backup policy registered]
+    failure_mode: block
+  evidence: [latest backup digest, freshness, integrity, restore drill]
+- name: verify-service-health
+  category: health
+  task_type: infrastructure_observation
+  target_profile: vm2-production
+  risk_level: 0
+  approval_required: false
+  parameters:
+    service:
+      type: string
+      allowed_values: [api, postgres, pgbouncer, redis]
+  preflight:
+    checks: [service registered]
+    failure_mode: block
+  evidence: [service state, dependency state, bounded diagnostics]

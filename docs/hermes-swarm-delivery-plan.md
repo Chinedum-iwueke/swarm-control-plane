@@ -797,6 +797,33 @@ artifacts, and left the primary checkout unchanged. The finding is explicitly
 ineligible for production. Evidence and limitations are recorded in
 `docs/m8-validation.md`.
 
+### M9: Autonomous mission supervisor
+
+- immutable mission-plan supervision;
+- bounded automatic recovery;
+- dependency and deadline reconciliation;
+- fail-closed approval, commit, and evidence checks.
+
+**Status:** operationally complete for the bounded supervised engineering pilot.
+Evidence and limitations are recorded in `docs/m9-validation.md`.
+
+### M10: Managed database cutover and generalized runbooks
+
+- private trusted PgBouncer client TLS and DNS lifecycle;
+- explicit client-egress policy;
+- application migration, credential rotation, and rollback contracts;
+- digest-bound explicit cutover approval;
+- versioned runbook packages with typed targets and parameters;
+- mandatory preflight, parity rehearsal, evidence, and rollback;
+- sequential `draft`, `rehearsed`, `approved`, and `deployed` promotion;
+- reusable Docker, Redis, storage, certificate, backup, and health contracts.
+
+**Source status:** implemented for rehearsal. The Invariance Research database remains
+private and belongs to the public application, not Hermes. Operational completion
+requires real private DNS, trusted certificate material, immutable application egress
+CIDRs, migration and credential-store integration, a current parity rehearsal, and
+explicit cutover approval. See `docs/runbooks/m10-managed-database-cutover.md`.
+
 ## 13. Definition of Functional Swarm
 
 Hermes is operationally functional when:

@@ -1,0 +1,95 @@
+schema_version: 1
+name: invariance-postgres-cutover
+version: 1.0.0
+description: Private TLS cutover preparation for the public Invariance Research application.
+target_profiles:
+- name: invariance-postgres-rehearsal
+  machine: vm2-deployment
+  environment: rehearsal
+  service_class: postgres
+  writable_roots: [/srv/invariance/postgres-rehearsal]
+  private_endpoint: 127.0.0.1:16432
+  dns_name: db-rehearsal.invarianceresearch.internal
+- name: invariance-postgres-production
+  machine: vm2-deployment
+  environment: production
+  service_class: postgres
+  writable_roots: [/srv/invariance/postgres]
+  private_endpoint: 100.112.117.59:6432
+  dns_name: db.invarianceresearch.internal
+rehearsal:
+  required: true
+  target_profile: invariance-postgres-rehearsal
+  max_evidence_age_hours: 168
+  required_evidence:
+  - TLS handshake with hostname verification
+  - rejected untrusted client
+  - application migration dry run
+  - credential rotation drill
+  - backup restore drill
+  - rollback recovery-time evidence
+operations:
+- name: verify-invariance-cutover-readiness
+  category: postgres
+  task_type: infrastructure_observation
+  target_profile: invariance-postgres-production
+  risk_level: 1
+  approval_required: false
+  parameters:
+    dns_name: {type: string}
+    client_cidrs: {type: cidr-list}
+  preflight:
+    checks:
+    - PostgreSQL and PgBouncer healthy
+    - private endpoint only
+    - TLS certificate matches private DNS name
+    - certificate expiry exceeds rotation window
+    - every approved client has a declared egress CIDR
+    - application migration and rollback digests are approved
+    failure_mode: block
+  evidence:
+  - DNS resolution
+  - certificate chain and fingerprint
+  - TLS protocol and hostname probe
+  - client allowlist digest
+  - migration plan digest
+  - credential distribution plan digest
+  - rollback plan and rehearsal digest
+- name: cutover-invariance-application
+  category: postgres
+  task_type: infrastructure_operation
+  target_profile: invariance-postgres-production
+  risk_level: 4
+  approval_required: true
+  parameters:
+    dns_name: {type: string}
+    client_cidrs: {type: cidr-list}
+    migration_artifact: {type: string}
+    rollback_artifact: {type: string}
+  preflight:
+    checks:
+    - exact package digest approved
+    - rehearsal evidence current
+    - source backup complete and verified
+    - destination restore point complete and verified
+    - maintenance window active
+    - application credentials staged but not exposed
+    failure_mode: block
+  evidence:
+  - explicit cutover approval reference
+  - source and destination backup digests
+  - migration return code
+  - application health and data parity
+  - TLS and allowlist verification
+  rollback:
+    operation: rollback-invariance-application
+    triggers:
+    - migration failure
+    - application health failure
+    - data parity failure
+    - TLS verification failure
+    timeout_seconds: 900
+    required_evidence:
+    - traffic restored to prior database
+    - prior application health restored
+    - post-rollback data reconciliation

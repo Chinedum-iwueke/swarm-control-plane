@@ -821,35 +821,104 @@ class InfrastructureBroker:
         }
 
     def _cutover_readiness(self) -> dict[str, Any]:
+        ca = self._postgres_root / "certs" / "ca.crt"
         cert = self._postgres_root / "certs" / "server.crt"
         key = self._postgres_root / "certs" / "server.key"
-        egress = self._postgres_root / "conf" / "vercel-egress.txt"
+        allowlist = self._read_json(
+            self._postgres_root / "conf" / "client-allowlist.json"
+        )
+        migration = self._read_json(
+            self._postgres_root / "cutover" / "application-migration.json"
+        )
+        credentials = self._read_json(
+            self._postgres_root / "cutover" / "credential-rotation.json"
+        )
+        rollback = self._read_json(
+            self._postgres_root / "cutover" / "rollback.json"
+        )
+        approval = self._read_json(
+            self._postgres_root / "cutover" / "approval.json"
+        )
+        dns_name = "db.invarianceresearch.internal"
         try:
             addresses = sorted(
                 {
                     item[4][0]
                     for item in socket.getaddrinfo(
-                        "db.invarianceresearch.xyz", 6432
+                        dns_name, 6432
                     )
                 }
             )
         except OSError:
             addresses = []
+        certificate_chain = self._runner.run(
+            ["openssl", "verify", "-CAfile", str(ca), str(cert)],
+            cwd=self._postgres_root,
+            timeout=30,
+        ) if ca.is_file() and cert.is_file() else {"return_code": 1}
+        certificate_name = self._runner.run(
+            ["openssl", "x509", "-in", str(cert), "-noout", "-checkhost", dns_name],
+            cwd=self._postgres_root,
+            timeout=30,
+        ) if cert.is_file() else {"return_code": 1}
+        certificate_expiry = self._runner.run(
+            ["openssl", "x509", "-in", str(cert), "-noout", "-checkend", "2592000"],
+            cwd=self._postgres_root,
+            timeout=30,
+        ) if cert.is_file() else {"return_code": 1}
+        key_protected = key.is_file() and (key.stat().st_mode & 0o077) == 0
+        clients = allowlist.get("clients", []) if allowlist else []
+        allowlist_ready = (
+            allowlist.get("default_policy") == "deny"
+            and bool(clients)
+            and all(
+                isinstance(client, dict)
+                and client.get("approved") is True
+                and bool(client.get("cidrs"))
+                for client in clients
+            )
+        ) if allowlist else False
         checks = {
             "dns_resolves": bool(addresses),
-            "trusted_tls_material": cert.is_file() and key.is_file(),
-            "vercel_egress_policy": egress.is_file()
-            and bool(egress.read_text().strip()),
-            "pgbouncer_client_tls": False,
-            "source_migration_approved": False,
-            "rollback_plan_approved": False,
+            "trusted_tls_material": (
+                certificate_chain["return_code"] == 0
+                and certificate_name["return_code"] == 0
+                and certificate_expiry["return_code"] == 0
+                and key_protected
+            ),
+            "client_egress_allowlist": allowlist_ready,
+            "pgbouncer_client_tls_overlay": (
+                self._postgres_root / "compose.client-tls.yaml"
+            ).is_file(),
+            "application_migration_approved": (
+                migration.get("status") == "approved" if migration else False
+            ),
+            "credential_rotation_rehearsed": (
+                credentials.get("status") == "rehearsed" if credentials else False
+            ),
+            "rollback_plan_rehearsed": (
+                rollback.get("status") == "rehearsed" if rollback else False
+            ),
+            "explicit_cutover_approval": (
+                approval.get("status") == "approved" if approval else False
+            ),
         }
         return {
             "ready": all(checks.values()),
             "checks": checks,
+            "dns_name": dns_name,
             "dns_addresses": addresses[:10],
+            "approved_client_count": len(clients) if allowlist_ready else 0,
             "public_access_changed": False,
         }
+
+    @staticmethod
+    def _read_json(path: Path) -> dict[str, Any] | None:
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return document if isinstance(document, dict) else None
 
     @staticmethod
     def _postgres_result(

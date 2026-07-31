@@ -74,6 +74,23 @@ def test_manifest_has_no_command_surface() -> None:
     assert "steps" not in RolePackageManifest.model_fields
 
 
+def test_runbook_package_artifacts_are_digest_bound() -> None:
+    document = manifest().model_dump()
+    document["runbook_packages"] = [
+        {
+            "name": "vm2-platform-operations",
+            "file": "vm2-platform-operations.yaml",
+            "sha256": "b" * 64,
+        }
+    ]
+    parsed = RolePackageManifest.model_validate(document)
+    assert parsed.runbook_packages[0].sha256 == "b" * 64
+
+    document["runbook_packages"].append(document["runbook_packages"][0])
+    with pytest.raises(ValueError):
+        RolePackageManifest.model_validate(document)
+
+
 def test_workflowless_package_is_limited_to_founder_planner() -> None:
     planner = manifest().model_dump()
     planner["task_types"] = ["founder_request"]

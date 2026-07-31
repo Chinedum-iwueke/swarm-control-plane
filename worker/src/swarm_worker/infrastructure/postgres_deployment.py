@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 POSTGRES_ROOT = Path("/srv/invariance/postgres")
-DEPLOYMENT_VERSION = "1.3.0"
-_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0", "1.1.0", "1.2.0"}
+DEPLOYMENT_VERSION = "1.4.0"
+_UPGRADABLE_DEPLOYMENT_VERSIONS = {"1.0.0", "1.1.0", "1.2.0", "1.3.0"}
 UTC = timezone.utc
 
 
@@ -51,6 +51,7 @@ class PostgresDeploymentManager:
             "bin",
             "certs",
             "conf",
+            "cutover",
             "data",
             "init",
             "logs",
@@ -74,8 +75,14 @@ class PostgresDeploymentManager:
         files = {
             ".env.postgres": self._environment(),
             "compose.yaml": self._compose,
+            "compose.client-tls.yaml": _CLIENT_TLS_OVERRIDE,
             "conf/postgresql.conf": _POSTGRESQL_CONF,
             "conf/pg_hba.conf": _PG_HBA,
+            "conf/client-allowlist.json": _CLIENT_ALLOWLIST,
+            "cutover/application-migration.json": _APPLICATION_MIGRATION_PLAN,
+            "cutover/credential-rotation.json": _CREDENTIAL_ROTATION_PLAN,
+            "cutover/rollback.json": _ROLLBACK_PLAN,
+            "cutover/approval.json": _CUTOVER_APPROVAL,
             "init/001-invariance.sh": _INIT_SCRIPT,
             "schema/001-broker-marker.sql": _SCHEMA_MARKER,
             "schema/worker-network.override.yaml": _WORKER_NETWORK_OVERRIDE,
@@ -86,9 +93,11 @@ class PostgresDeploymentManager:
             mode = (
                 0o755
                 if relative.endswith(".sh")
-                else 0o644
-                if relative != ".env.postgres"
                 else 0o600
+                if relative == ".env.postgres"
+                or relative == "conf/client-allowlist.json"
+                or relative.startswith("cutover/")
+                else 0o644
             )
             path = self.root / relative
             self._write_new(path, content, mode)
@@ -158,6 +167,7 @@ class PostgresDeploymentManager:
             "bin",
             "certs",
             "conf",
+            "cutover",
             "data",
             "init",
             "logs",
@@ -223,16 +233,36 @@ class PostgresDeploymentManager:
         metadata_path: Path,
     ) -> dict[str, Any]:
         self._replace_file(self.root / "compose.yaml", self._compose, 0o644)
+        self._replace_file(
+            self.root / "compose.client-tls.yaml",
+            _CLIENT_TLS_OVERRIDE,
+            0o644,
+        )
         override_path = self.root / "schema" / "worker-network.override.yaml"
         self._replace_file(override_path, _WORKER_NETWORK_OVERRIDE, 0o644)
         backup_path = self.root / "bin" / "backup.sh"
         self._replace_file(backup_path, _BACKUP_SCRIPT, 0o755)
         hba_path = self.root / "conf" / "pg_hba.conf"
         self._replace_file(hba_path, _PG_HBA, 0o644)
+        cutover_files = {
+            "conf/client-allowlist.json": _CLIENT_ALLOWLIST,
+            "cutover/application-migration.json": _APPLICATION_MIGRATION_PLAN,
+            "cutover/credential-rotation.json": _CREDENTIAL_ROTATION_PLAN,
+            "cutover/rollback.json": _ROLLBACK_PLAN,
+            "cutover/approval.json": _CUTOVER_APPROVAL,
+        }
+        for relative, content in cutover_files.items():
+            path = self.root / relative
+            path.parent.mkdir(mode=0o700, exist_ok=True)
+            if not path.exists():
+                self._write_new(path, content, 0o600)
         metadata["deployment_version"] = DEPLOYMENT_VERSION
         metadata["updated_at"] = datetime.now(UTC).isoformat()
         metadata["files"]["compose.yaml"] = hashlib.sha256(
             self._compose.encode()
+        ).hexdigest()
+        metadata["files"]["compose.client-tls.yaml"] = hashlib.sha256(
+            _CLIENT_TLS_OVERRIDE.encode()
         ).hexdigest()
         metadata["files"]["schema/worker-network.override.yaml"] = hashlib.sha256(
             _WORKER_NETWORK_OVERRIDE.encode()
@@ -243,6 +273,8 @@ class PostgresDeploymentManager:
         metadata["files"]["conf/pg_hba.conf"] = hashlib.sha256(
             _PG_HBA.encode()
         ).hexdigest()
+        for relative, content in cutover_files.items():
+            metadata["files"][relative] = hashlib.sha256(content.encode()).hexdigest()
         rendered = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
         self._replace_file(metadata_path, rendered, 0o600)
         return metadata
@@ -380,6 +412,72 @@ services:
     logging:
       driver: json-file
       options: {max-size: 20m, max-file: "5"}
+"""
+
+# This overlay is intentionally not included by the private-start operation. It is
+# activated only by a separately approved cutover primitive after real certificate,
+# DNS, allowlist, migration, credential, and rollback evidence is registered.
+_CLIENT_TLS_OVERRIDE = """services:
+  pgbouncer:
+    environment:
+      CLIENT_TLS_SSLMODE: verify-full
+      CLIENT_TLS_CA_FILE: /etc/pgbouncer/tls/ca.crt
+      CLIENT_TLS_CERT_FILE: /etc/pgbouncer/tls/server.crt
+      CLIENT_TLS_KEY_FILE: /etc/pgbouncer/tls/server.key
+      CLIENT_TLS_PROTOCOLS: secure
+    volumes:
+    - ./certs/ca.crt:/etc/pgbouncer/tls/ca.crt:ro
+    - ./certs/server.crt:/etc/pgbouncer/tls/server.crt:ro
+    - ./certs/server.key:/etc/pgbouncer/tls/server.key:ro
+"""
+
+_CLIENT_ALLOWLIST = """{
+  "schema_version": 1,
+  "default_policy": "deny",
+  "clients": []
+}
+"""
+
+_APPLICATION_MIGRATION_PLAN = """{
+  "schema_version": 1,
+  "status": "draft",
+  "application": "invariance-research-public-web",
+  "source_database": null,
+  "migration_artifact_sha256": null,
+  "data_parity_query_set_sha256": null,
+  "maintenance_window": null
+}
+"""
+
+_CREDENTIAL_ROTATION_PLAN = """{
+  "schema_version": 1,
+  "status": "draft",
+  "distribution": "service-scoped-secret-store",
+  "application_role": "invariance_app",
+  "previous_credential_retention_minutes": 60,
+  "rotation_evidence_sha256": null
+}
+"""
+
+_ROLLBACK_PLAN = """{
+  "schema_version": 1,
+  "status": "draft",
+  "traffic_restore_target": null,
+  "maximum_recovery_time_seconds": 900,
+  "rehearsal_evidence_sha256": null,
+  "data_reconciliation_artifact_sha256": null
+}
+"""
+
+_CUTOVER_APPROVAL = """{
+  "schema_version": 1,
+  "status": "pending",
+  "package_manifest_sha256": null,
+  "plan_digest": null,
+  "approved_by": null,
+  "approved_at": null,
+  "expires_at": null
+}
 """
 
 _POSTGRESQL_CONF = """listen_addresses = '*'

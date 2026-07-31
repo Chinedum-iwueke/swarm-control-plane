@@ -32,6 +32,13 @@ class WorkflowArtifact(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class RunbookPackageArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(pattern=_NAME)
+    file: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*\.yaml$")
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class PermissionProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=_NAME)
@@ -55,6 +62,10 @@ class RolePackageManifest(BaseModel):
     role: str = Field(min_length=1, max_length=150)
     task_types: list[str] = Field(min_length=1, max_length=50)
     workflows: list[WorkflowArtifact] = Field(default_factory=list, max_length=50)
+    runbook_packages: list[RunbookPackageArtifact] = Field(
+        default_factory=list,
+        max_length=50,
+    )
     required_capabilities: list[str] = Field(min_length=1, max_length=50)
     allowed_machines: list[str] = Field(min_length=1, max_length=50)
     risk_ceiling: int = Field(ge=0, le=5)
@@ -66,6 +77,10 @@ class RolePackageManifest(BaseModel):
     def validate_profile(self) -> RolePackageManifest:
         if len({item.name for item in self.workflows}) != len(self.workflows):
             raise ValueError("workflow names must be unique")
+        if len({item.name for item in self.runbook_packages}) != len(
+            self.runbook_packages
+        ):
+            raise ValueError("runbook package names must be unique")
         if not self.workflows and self.task_types != ["founder_request"]:
             raise ValueError("only founder_request planner packages may omit workflows")
         if not self.repository_profile.repositories and self.task_types != [
@@ -92,6 +107,7 @@ def canonical_manifest(manifest: RolePackageManifest) -> bytes:
 def load_role_package(
     manifest_path: Path,
     workflow_directory: Path,
+    runbook_package_directory: Path | None = None,
 ) -> VerifiedRolePackage:
     try:
         raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
@@ -116,6 +132,25 @@ def load_role_package(
         if digest != artifact.sha256:
             raise PackageVerificationError(
                 f"Workflow digest mismatch for {artifact.name!r}."
+            )
+    package_root = (
+        runbook_package_directory
+        if runbook_package_directory is not None
+        else workflow_directory.parent / "runbook-packages"
+    ).resolve()
+    for artifact in manifest.runbook_packages:
+        path = (package_root / artifact.file).resolve()
+        if not path.is_relative_to(package_root):
+            raise PackageVerificationError("Runbook package path escapes its directory.")
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise PackageVerificationError(
+                "Declared runbook package is unavailable."
+            ) from exc
+        if digest != artifact.sha256:
+            raise PackageVerificationError(
+                f"Runbook package digest mismatch for {artifact.name!r}."
             )
     return VerifiedRolePackage(
         manifest=manifest,

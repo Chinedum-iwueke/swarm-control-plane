@@ -17,6 +17,7 @@ from swarm_worker.api_client import (
 )
 from swarm_worker.infrastructure.client import BrokerClient, BrokerClientError
 from swarm_worker.infrastructure.config import InfrastructureSettings
+from swarm_worker.infrastructure.packages import load_runbook_package
 from swarm_worker.infrastructure.runbooks import load_runbook
 from swarm_worker.models import (
     AgentHeartbeat,
@@ -66,7 +67,17 @@ class InfrastructureService:
         package = load_role_package(
             settings.swarm_infrastructure_role_manifest,
             settings.swarm_infrastructure_runbook_directory,
+            settings.swarm_infrastructure_package_directory,
         )
+        for artifact in package.manifest.runbook_packages:
+            loaded = load_runbook_package(
+                settings.swarm_infrastructure_package_directory,
+                artifact.name,
+            )
+            if loaded.source_path.name != artifact.file:
+                raise InfrastructureServiceError(
+                    "Attested runbook package filename mismatch."
+                )
         operations = {
             operation.name: operation
             for artifact in package.manifest.workflows

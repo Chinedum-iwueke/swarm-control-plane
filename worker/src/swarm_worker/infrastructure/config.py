@@ -31,6 +31,10 @@ class InfrastructureSettings(BaseSettings):
         "/srv/invariance/swarm/repositories/swarm-control-plane/"
         "worker/infrastructure-runbooks"
     )
+    swarm_infrastructure_package_directory: Path = Path(
+        "/srv/invariance/swarm/repositories/swarm-control-plane/"
+        "worker/runbook-packages"
+    )
     swarm_source_commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
 
     def prepare_directories(self) -> None:
