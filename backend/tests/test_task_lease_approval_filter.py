@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.dialects import postgresql
 
+from app.api.routes.task_runtime import lease_task
 from app.models import Agent
+from app.schemas.task import TaskLeaseRequest
 from app.services.tasks import lease_next_task
 
 
@@ -33,3 +35,20 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
     assert "task_approvals.expires_at >" in sql
     assert "tasks.approval_required IS false" in sql
     assert "FOR UPDATE SKIP LOCKED" in sql
+
+
+def test_no_work_lease_commits_approval_expiry_reconciliation() -> None:
+    db = MagicMock()
+    agent = MagicMock()
+    with (
+        patch("app.api.routes.task_runtime.matching_control_scopes", return_value=[]),
+        patch(
+            "app.api.routes.task_runtime.lease_next_task",
+            return_value=(None, None, None),
+        ),
+    ):
+        response = lease_task(TaskLeaseRequest(), agent, db)
+
+    assert response.task is None
+    db.commit.assert_called_once_with()
+    db.rollback.assert_not_called()

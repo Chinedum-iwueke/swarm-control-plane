@@ -109,7 +109,9 @@ def lease_task(
     )
 
     if task is None:
-        db.rollback()
+        # Approval expiry is reconciled before selection. Persist it even when
+        # no eligible task remains, or an expired approval stays queued forever.
+        db.commit()
 
         return TaskLeaseResponse(
             task=None,
@@ -120,9 +122,7 @@ def lease_task(
     db.refresh(task)
 
     return TaskLeaseResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         lease_token=raw_token,
     )
 
@@ -164,9 +164,7 @@ def start_task(
     db.refresh(event)
 
     return TaskMutationResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         event=TaskEventResponse.model_validate(event),
     )
 
@@ -191,9 +189,7 @@ def heartbeat_task(
     )
 
     task.last_execution_heartbeat_at = now
-    task.lease_expires_at = now + timedelta(
-        seconds=payload.lease_seconds
-    )
+    task.lease_expires_at = now + timedelta(seconds=payload.lease_seconds)
 
     event = append_task_event(
         db,
@@ -203,9 +199,7 @@ def heartbeat_task(
         agent_id=agent.id,
         payload={
             "progress": payload.progress,
-            "lease_expires_at": (
-                task.lease_expires_at.isoformat()
-            ),
+            "lease_expires_at": (task.lease_expires_at.isoformat()),
         },
     )
 
@@ -214,9 +208,7 @@ def heartbeat_task(
     db.refresh(event)
 
     return TaskMutationResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         event=TaskEventResponse.model_validate(event),
     )
 
@@ -265,9 +257,7 @@ def complete_task(
     db.refresh(event)
 
     return TaskMutationResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         event=TaskEventResponse.model_validate(event),
     )
 
@@ -338,9 +328,7 @@ def fail_task(
     db.refresh(event)
 
     return TaskMutationResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         event=TaskEventResponse.model_validate(event),
     )
 
@@ -367,16 +355,12 @@ def release_task(
     previous_status = task.status
     task.status = "queued" if task.attempt_count < task.max_attempts else "failed"
     if task.status == "queued":
-        rearm_task_approval(
-            db, task, "A new approval is required after lease release."
-        )
+        rearm_task_approval(db, task, "A new approval is required after lease release.")
 
     if task.status == "failed":
         task.failure = {
             "reason": "lease_released",
-            "message": (
-                "Maximum attempts reached when lease was released."
-            ),
+            "message": ("Maximum attempts reached when lease was released."),
         }
         task.completed_at = now
 
@@ -409,8 +393,6 @@ def release_task(
     db.refresh(event)
 
     return TaskMutationResponse(
-        task=TaskResponse.model_validate(
-            serialize_task(task)
-        ),
+        task=TaskResponse.model_validate(serialize_task(task)),
         event=TaskEventResponse.model_validate(event),
     )
