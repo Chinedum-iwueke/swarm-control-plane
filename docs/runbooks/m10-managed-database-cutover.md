@@ -51,8 +51,8 @@ ranges, command fields, mutations without approval, and mutations without rollba
 are rejected.
 
 The initial generic package covers reviewed operation contracts for Docker, Redis,
-storage, certificates, backups, and service health. A declaration does not itself
-grant execution. Each mutating operation still requires an audited fixed broker
+storage, certificate verification, backups, and service health. A declaration does
+not itself grant execution. Each mutating operation still requires an audited fixed broker
 primitive before it can be deployed.
 
 ## Promotion Lifecycle

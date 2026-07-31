@@ -47,7 +47,7 @@ operations:
       type: string
       allowed_values: [api, postgres, pgbouncer, redis]
   preflight:
-    checks: [pre-state healthy, image digest pinned, rollback image available]
+    checks: [service registered, pre-state healthy, compose configuration valid]
     failure_mode: block
   evidence: [pre-state, restart result, post-state]
   rollback:
@@ -77,25 +77,20 @@ operations:
     checks: [target filesystem mounted]
     failure_mode: block
   evidence: [capacity, free space, ownership, mount options]
-- name: rotate-certificate
+- name: verify-certificate
   category: certificate
-  task_type: infrastructure_operation
+  task_type: infrastructure_observation
   target_profile: vm2-production
-  risk_level: 4
-  approval_required: true
+  risk_level: 0
+  approval_required: false
   parameters:
     certificate_profile:
       type: string
       allowed_values: [invariance-postgres-client]
   preflight:
-    checks: [new certificate verified, private key protected, rollback copy present]
+    checks: [certificate profile registered]
     failure_mode: block
-  evidence: [certificate fingerprint, validity window, reload result]
-  rollback:
-    operation: restore-certificate
-    triggers: [reload failure, TLS probe failure]
-    timeout_seconds: 300
-    required_evidence: [restored fingerprint, successful TLS probe]
+  evidence: [certificate fingerprint, validity window, hostname verification]
 - name: verify-backup
   category: backup
   task_type: infrastructure_observation

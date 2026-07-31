@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from swarm_worker.api_client import AuthenticationError, ConnectionError, ServerError
 from swarm_worker.infrastructure.config import InfrastructureSettings
+from swarm_worker.infrastructure.packages import load_runbook_package
 from swarm_worker.infrastructure.runbooks import load_runbook
 from swarm_worker.infrastructure.service import InfrastructureService
 from swarm_worker.role_package import load_role_package
@@ -39,11 +40,19 @@ async def _run(command: str, level: str) -> int:
             package = load_role_package(
                 settings.swarm_infrastructure_role_manifest,
                 settings.swarm_infrastructure_runbook_directory,
+                settings.swarm_infrastructure_package_directory,
             )
             for artifact in package.manifest.workflows:
                 load_runbook(
                     settings.swarm_infrastructure_runbook_directory / artifact.file
                 )
+            for artifact in package.manifest.runbook_packages:
+                loaded = load_runbook_package(
+                    settings.swarm_infrastructure_package_directory,
+                    artifact.name,
+                )
+                if loaded.source_path.name != artifact.file:
+                    raise RuntimeError("Runbook package filename mismatch.")
             if not settings.swarm_broker_socket.exists():
                 raise RuntimeError("Broker socket is unavailable.")
             api = service._api_factory(settings)

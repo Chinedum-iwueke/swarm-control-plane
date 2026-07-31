@@ -1,11 +1,14 @@
 import hashlib
 import hmac
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
+import yaml
 from fastapi import HTTPException
 from pydantic import ValidationError
 
@@ -122,3 +125,123 @@ def test_risk_mismatch_is_rejected() -> None:
     candidate.risk_level = 0
     with pytest.raises(HTTPException, match="risk three"):
         issue_broker_ticket(MagicMock(), candidate, agent(), secret=SECRET, now=NOW)
+
+
+def test_packaged_ticket_requires_registered_approved_exact_digest() -> None:
+    manifest = yaml.safe_load(
+        (
+            Path(__file__).parents[2]
+            / "worker/runbook-packages/vm2-platform-operations.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    digest = hashlib.sha256(
+        json.dumps(
+            manifest,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    candidate = task()
+    candidate.input_contract = {
+        "runbook": "vm2-platform-operations",
+        "runbook_version": "1.0.0",
+        "operation": "verify-docker-service",
+        "target": "vm2-production",
+        "parameters": {"service": "api"},
+        "package_name": "vm2-platform-operations",
+        "package_version": "1.0.0",
+        "package_digest": digest,
+    }
+    package = SimpleNamespace(id=UUID(int=3), manifest=manifest)
+    db = MagicMock()
+    db.scalar.side_effect = [
+        package,
+        SimpleNamespace(state="approved"),
+        SimpleNamespace(recorded_at=NOW - timedelta(hours=1)),
+    ]
+
+    signed = issue_broker_ticket(db, candidate, agent(), secret=SECRET, now=NOW)
+
+    assert signed.payload.contract.package_digest == digest
+    assert signed.payload.contract.parameters == {"service": "api"}
+
+
+def test_packaged_ticket_rejects_unapproved_or_unknown_parameter() -> None:
+    candidate = task()
+    candidate.input_contract = {
+        "runbook": "vm2-platform-operations",
+        "runbook_version": "1.0.0",
+        "operation": "verify-docker-service",
+        "target": "vm2-production",
+        "parameters": {"service": "api", "command": "id"},
+        "package_name": "vm2-platform-operations",
+        "package_version": "1.0.0",
+        "package_digest": "b" * 64,
+    }
+    package = SimpleNamespace(
+        id=UUID(int=3),
+        manifest={
+            "rehearsal": {"max_evidence_age_hours": 168},
+            "operations": [
+                {
+                    "name": "verify-docker-service",
+                    "target_profile": "vm2-production",
+                    "task_type": "infrastructure_observation",
+                    "risk_level": 0,
+                    "parameters": {
+                        "service": {
+                            "type": "string",
+                            "required": True,
+                            "allowed_values": ["api"],
+                        }
+                    },
+                }
+            ]
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [
+        package,
+        SimpleNamespace(state="approved"),
+        SimpleNamespace(recorded_at=NOW - timedelta(hours=1)),
+    ]
+    with pytest.raises(HTTPException, match="Unknown operation parameter"):
+        issue_broker_ticket(db, candidate, agent(), secret=SECRET, now=NOW)
+
+
+def test_packaged_ticket_rejects_stale_rehearsal() -> None:
+    candidate = task()
+    candidate.input_contract = {
+        "runbook": "vm2-platform-operations",
+        "runbook_version": "1.0.0",
+        "operation": "verify-redis",
+        "target": "vm2-production",
+        "parameters": {},
+        "package_name": "vm2-platform-operations",
+        "package_version": "1.0.0",
+        "package_digest": "b" * 64,
+    }
+    package = SimpleNamespace(
+        id=UUID(int=3),
+        manifest={
+            "rehearsal": {"max_evidence_age_hours": 24},
+            "operations": [
+                {
+                    "name": "verify-redis",
+                    "target_profile": "vm2-production",
+                    "task_type": "infrastructure_observation",
+                    "risk_level": 0,
+                    "parameters": {},
+                }
+            ],
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [
+        package,
+        SimpleNamespace(state="approved"),
+        SimpleNamespace(recorded_at=NOW - timedelta(hours=25)),
+    ]
+    with pytest.raises(HTTPException, match="rehearsal is stale"):
+        issue_broker_ticket(db, candidate, agent(), secret=SECRET, now=NOW)

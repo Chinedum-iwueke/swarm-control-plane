@@ -11,7 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class InfrastructureContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    runbook: Literal["vm2-infrastructure", "vm2-postgres-deployment"]
+    runbook: Literal[
+        "vm2-infrastructure",
+        "vm2-postgres-deployment",
+        "vm2-platform-operations",
+    ]
     runbook_version: Literal["1.0.0"]
     operation: Literal[
         "observe-control-plane",
@@ -23,14 +27,42 @@ class InfrastructureContract(BaseModel):
         "configure-invariance-backups",
         "verify-invariance-postgres",
         "prepare-invariance-cutover",
+        "verify-docker-service",
+        "restart-docker-service",
+        "verify-redis",
+        "verify-storage",
+        "verify-certificate",
+        "verify-backup",
+        "verify-service-health",
     ]
-    target: Literal["vm2-control-plane", "vm2-invariance-postgres"]
+    target: Literal[
+        "vm2-control-plane",
+        "vm2-invariance-postgres",
+        "vm2-production",
+    ]
     parameters: dict[str, Any] = Field(default_factory=dict)
+    package_name: str | None = Field(default=None, pattern=r"^[a-z0-9-]+$")
+    package_version: str | None = Field(
+        default=None, pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$"
+    )
+    package_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def operation_has_no_untyped_parameters(self) -> InfrastructureContract:
-        if self.parameters:
+        if self.runbook != "vm2-platform-operations" and self.parameters:
             raise ValueError("This operation does not accept parameters.")
+        package_values = (
+            self.package_name,
+            self.package_version,
+            self.package_digest,
+        )
+        if self.runbook == "vm2-platform-operations":
+            if not all(package_values):
+                raise ValueError("Packaged operations require package attestation.")
+            if self.package_name != self.runbook:
+                raise ValueError("Package name must match runbook.")
+        elif any(package_values):
+            raise ValueError("Legacy operations cannot claim a package attestation.")
         return self
 
 
@@ -49,7 +81,7 @@ class BrokerTicketPayload(BaseModel):
     agent_id: uuid.UUID
     machine: Literal["vm2-deployment"]
     task_type: Literal["infrastructure_observation", "infrastructure_operation"]
-    risk_level: int = Field(ge=0, le=3)
+    risk_level: int = Field(ge=0, le=5)
     plan_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     contract: InfrastructureContract
     nonce: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -70,6 +102,12 @@ class BrokerTicketPayload(BaseModel):
             "preflight-invariance-postgres",
             "verify-invariance-postgres",
             "prepare-invariance-cutover",
+            "verify-docker-service",
+            "verify-redis",
+            "verify-storage",
+            "verify-certificate",
+            "verify-backup",
+            "verify-service-health",
         }
         expected = (
             "infrastructure_observation"

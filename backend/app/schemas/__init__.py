@@ -59,6 +59,14 @@ from app.schemas.proposal import (
     FounderProposalResponse,
     ProposedTask,
 )
+from app.schemas.runbook_package import (
+    RunbookPackageCreate,
+    RunbookPackageDetail,
+    RunbookPackageManifest,
+    RunbookPackageResponse,
+    RunbookPromotionCreate,
+    RunbookPromotionResponse,
+)
 from app.schemas.task import (
     ExpiredLeaseReapResponse,
     TaskCompleteRequest,
@@ -123,6 +131,12 @@ __all__ = [
     "RolePackageCreate",
     "RolePackageManifest",
     "RolePackageResponse",
+    "RunbookPackageCreate",
+    "RunbookPackageDetail",
+    "RunbookPackageManifest",
+    "RunbookPackageResponse",
+    "RunbookPromotionCreate",
+    "RunbookPromotionResponse",
     "TaskCompleteRequest",
     "TaskCreate",
     "TaskDetailResponse",

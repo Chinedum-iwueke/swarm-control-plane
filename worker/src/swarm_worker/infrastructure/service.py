@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 
 from pydantic import ValidationError
@@ -17,7 +18,10 @@ from swarm_worker.api_client import (
 )
 from swarm_worker.infrastructure.client import BrokerClient, BrokerClientError
 from swarm_worker.infrastructure.config import InfrastructureSettings
-from swarm_worker.infrastructure.packages import load_runbook_package
+from swarm_worker.infrastructure.packages import (
+    load_runbook_package,
+    validate_parameters,
+)
 from swarm_worker.infrastructure.runbooks import load_runbook
 from swarm_worker.models import (
     AgentHeartbeat,
@@ -69,6 +73,7 @@ class InfrastructureService:
             settings.swarm_infrastructure_runbook_directory,
             settings.swarm_infrastructure_package_directory,
         )
+        packaged_operations = {}
         for artifact in package.manifest.runbook_packages:
             loaded = load_runbook_package(
                 settings.swarm_infrastructure_package_directory,
@@ -78,6 +83,12 @@ class InfrastructureService:
                 raise InfrastructureServiceError(
                     "Attested runbook package filename mismatch."
                 )
+            packaged_operations.update(
+                {
+                    operation.name: (operation, loaded)
+                    for operation in loaded.manifest.operations
+                }
+            )
         operations = {
             operation.name: operation
             for artifact in package.manifest.workflows
@@ -133,7 +144,11 @@ class InfrastructureService:
             lease_token = lease.lease_token
             try:
                 contract = self._validate_task(
-                    task, manifest, operations, identity
+                    task,
+                    manifest,
+                    operations,
+                    packaged_operations,
+                    identity,
                 )
             except InfrastructureServiceError as exc:
                 await api.release_task(
@@ -275,7 +290,7 @@ class InfrastructureService:
 
     @staticmethod
     def _validate_task(
-        task, manifest, operations, identity
+        task, manifest, operations, packaged_operations, identity
     ) -> InfrastructureContract:
         if task.task_type not in manifest.task_types:
             raise InfrastructureServiceError("Task type is not in role package.")
@@ -285,7 +300,7 @@ class InfrastructureService:
             raise InfrastructureServiceError(
                 "Infrastructure contract is invalid."
             ) from exc
-        expected = {
+        legacy_expected = {
             "observe-control-plane": ("infrastructure_observation", 0),
             "restart-control-plane-api": ("infrastructure_operation", 3),
             "preflight-invariance-postgres": (
@@ -307,8 +322,44 @@ class InfrastructureService:
                 "infrastructure_observation",
                 0,
             ),
-        }[contract.operation]
+        }
+        if contract.runbook == "vm2-platform-operations":
+            packaged = packaged_operations.get(contract.operation)
+            if packaged is None:
+                raise InfrastructureServiceError("Packaged operation is unavailable.")
+            definition, package = packaged
+            if (
+                contract.package_name != package.manifest.name
+                or contract.package_version != package.manifest.version
+                or contract.package_digest != package.manifest_digest
+                or contract.target != definition.target_profile
+                or task.task_type != definition.task_type
+                or task.risk_level != definition.risk_level
+            ):
+                raise InfrastructureServiceError(
+                    "Task does not match packaged operation policy."
+                )
+            try:
+                validate_parameters(definition, contract.parameters)
+            except Exception as exc:
+                raise InfrastructureServiceError(
+                    "Packaged operation parameters are invalid."
+                ) from exc
+            expected = (definition.task_type, definition.risk_level)
+        else:
+            try:
+                expected = legacy_expected[contract.operation]
+            except KeyError as exc:
+                raise InfrastructureServiceError(
+                    "Operation requires an attested runbook package."
+                ) from exc
         definition = operations.get(contract.operation)
+        if contract.runbook == "vm2-platform-operations":
+            definition = SimpleNamespace(
+                task_type=expected[0],
+                risk_level=expected[1],
+                target=contract.target,
+            )
         if (
             definition is None
             or definition.task_type != expected[0]

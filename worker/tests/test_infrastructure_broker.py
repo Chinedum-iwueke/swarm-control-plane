@@ -15,6 +15,7 @@ from swarm_worker.infrastructure.broker import (
     FixedRunner,
     InfrastructureBroker,
 )
+from swarm_worker.infrastructure.packages import load_runbook_package
 from swarm_worker.infrastructure.postgres_deployment import (
     PostgresDeploymentManager,
 )
@@ -39,6 +40,21 @@ class FakeRunner:
         self.commands.append(command)
         if command[:4] == ("docker", "compose", "restart", "--timeout"):
             self.restarted = True
+        if command[:2] == ("docker", "inspect"):
+            unhealthy = self.unhealthy_after_restart and self.restarted
+            return {
+                "args": list(args),
+                "return_code": 0,
+                "stdout": "exited unhealthy" if unhealthy else "running healthy",
+                "stderr": "",
+            }
+        if command[:4] == ("docker", "exec", "swarm-redis", "redis-cli"):
+            return {
+                "args": list(args),
+                "return_code": 0,
+                "stdout": "PONG\n",
+                "stderr": "",
+            }
         if command[:2] == ("docker", "compose") and command[-2:] == ("up", "-d"):
             return {"args": list(args), "return_code": 0, "stdout": "", "stderr": ""}
         failed = (
@@ -61,6 +77,8 @@ def ticket(
     task_type: str,
     runbook: str = "vm2-infrastructure",
     target: str = "vm2-control-plane",
+    parameters: dict | None = None,
+    package_digest: str | None = None,
 ) -> dict:
     now = datetime.now(UTC)
     payload = BrokerTicketPayload(
@@ -78,7 +96,16 @@ def ticket(
             "runbook_version": "1.0.0",
             "operation": operation,
             "target": target,
-            "parameters": {},
+            "parameters": parameters or {},
+            **(
+                {
+                    "package_name": runbook,
+                    "package_version": "1.0.0",
+                    "package_digest": package_digest,
+                }
+                if package_digest is not None
+                else {}
+            ),
         },
         nonce=hashlib.sha256(operation.encode()).hexdigest(),
         issued_at=now,
@@ -114,6 +141,89 @@ def broker(tmp_path: Path, runner: FakeRunner) -> InfrastructureBroker:
         systemd_path=tmp_path / "systemd",
         sleep=lambda _: None,
     )
+
+
+def platform_digest() -> str:
+    root = Path(__file__).parents[1]
+    return load_runbook_package(
+        root / "runbook-packages", "vm2-platform-operations"
+    ).manifest_digest
+
+
+def test_packaged_health_uses_fixed_service_catalog(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    result = broker(tmp_path, runner).execute(
+        ticket(
+            "verify-docker-service",
+            risk=0,
+            task_type="infrastructure_observation",
+            runbook="vm2-platform-operations",
+            target="vm2-production",
+            parameters={"service": "api"},
+            package_digest=platform_digest(),
+        )
+    )
+    assert result.success is True
+    assert result.post_state == {
+        "service": "api",
+        "container": "swarm-api",
+        "healthy": True,
+        "state": "running healthy",
+    }
+    assert runner.commands == [
+        (
+            "docker",
+            "inspect",
+            "swarm-api",
+            "--format",
+            "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+        )
+    ]
+
+
+def test_packaged_restart_rolls_back_with_fixed_compose_command(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(unhealthy_after_restart=True)
+    result = broker(tmp_path, runner).execute(
+        ticket(
+            "restart-docker-service",
+            risk=3,
+            task_type="infrastructure_operation",
+            runbook="vm2-platform-operations",
+            target="vm2-production",
+            parameters={"service": "redis"},
+            package_digest=platform_digest(),
+        )
+    )
+    assert result.success is False
+    assert result.rollback is not None
+    assert (
+        "docker",
+        "compose",
+        "up",
+        "-d",
+        "--no-deps",
+        "--force-recreate",
+        "redis",
+    ) in runner.commands
+
+
+def test_packaged_operation_rejects_digest_or_parameter_tampering(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(BrokerError):
+        broker(tmp_path, FakeRunner()).execute(
+            ticket(
+                "verify-docker-service",
+                risk=0,
+                task_type="infrastructure_observation",
+                runbook="vm2-platform-operations",
+                target="vm2-production",
+                parameters={"service": "api"},
+                package_digest="0" * 64,
+            )
+        )
 
 
 def test_observation_is_read_only_and_replay_is_rejected(tmp_path: Path) -> None:

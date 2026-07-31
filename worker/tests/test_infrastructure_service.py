@@ -9,8 +9,12 @@ import pytest
 
 from swarm_worker.api_client import ConflictError
 from swarm_worker.infrastructure.config import InfrastructureSettings
+from swarm_worker.infrastructure.packages import load_runbook_package
 from swarm_worker.infrastructure.runbooks import OperationDefinition
-from swarm_worker.infrastructure.service import InfrastructureService
+from swarm_worker.infrastructure.service import (
+    InfrastructureService,
+    InfrastructureServiceError,
+)
 from swarm_worker.models import (
     AgentIdentity,
     BrokerExecutionResult,
@@ -350,7 +354,54 @@ def test_deployment_phases_match_closed_service_policy(
         leased_task,
         manifest,
         {operation: definition},
+        {},
         identity(),
     )
 
     assert contract.operation == operation
+
+
+def test_packaged_operation_requires_exact_local_attestation() -> None:
+    package = load_runbook_package(
+        ROOT / "runbook-packages", "vm2-platform-operations"
+    )
+    definition = next(
+        item
+        for item in package.manifest.operations
+        if item.name == "verify-docker-service"
+    )
+    leased_task = task(
+        input_contract={
+            "runbook": package.manifest.name,
+            "runbook_version": package.manifest.version,
+            "operation": definition.name,
+            "target": definition.target_profile,
+            "parameters": {"service": "api"},
+            "package_name": package.manifest.name,
+            "package_version": package.manifest.version,
+            "package_digest": package.manifest_digest,
+        }
+    )
+    manifest = SimpleNamespace(
+        task_types=["infrastructure_observation", "infrastructure_operation"]
+    )
+
+    contract = InfrastructureService._validate_task(
+        leased_task,
+        manifest,
+        {},
+        {definition.name: (definition, package)},
+        identity(),
+    )
+
+    assert contract.parameters == {"service": "api"}
+    changed = leased_task.model_copy(deep=True)
+    changed.input_contract["package_digest"] = "0" * 64
+    with pytest.raises(InfrastructureServiceError, match="packaged operation policy"):
+        InfrastructureService._validate_task(
+            changed,
+            manifest,
+            {},
+            {definition.name: (definition, package)},
+            identity(),
+        )

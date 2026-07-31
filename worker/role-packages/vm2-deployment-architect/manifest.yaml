@@ -12,7 +12,7 @@ workflows:
 runbook_packages:
 - name: vm2-platform-operations
   file: vm2-platform-operations.yaml
-  sha256: f5ad1f88c6368a51f28743c68742972a913dee4b014b3e004e11178dd6f34050
+  sha256: b3d581aaaeb54b4b4630cec05807c7da089366d7592fda1082ca1256fe46538b
 - name: invariance-postgres-cutover
   file: invariance-postgres-cutover.yaml
   sha256: 040dc8371f91559dbb6a94834fe963b62d173856e9cb499029a46ed94463527a
@@ -20,7 +20,6 @@ required_capabilities:
 - deployment-architecture
 - infrastructure-observation
 - postgres-deployment
-- runbook-packages
 - service-health
 allowed_machines:
 - vm2-deployment

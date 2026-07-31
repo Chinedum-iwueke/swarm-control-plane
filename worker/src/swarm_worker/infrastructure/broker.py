@@ -20,6 +20,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from swarm_worker.infrastructure.packages import (
+    RunbookPackageError,
+    load_runbook_package,
+    validate_parameters,
+)
 from swarm_worker.infrastructure.postgres_deployment import (
     PostgresDeploymentManager,
 )
@@ -35,6 +40,7 @@ _MAX_OUTPUT = 16_000
 _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
 _POSTGRES_ROOT = Path("/srv/invariance/postgres")
 _RESEARCH_REPOSITORY = Path("/srv/invariance/invariance_research")
+_RUNBOOK_PACKAGES = Path(__file__).parents[3] / "runbook-packages"
 UTC = timezone.utc
 
 
@@ -163,6 +169,30 @@ class InfrastructureBroker:
     def _validate_operation(self, ticket: BrokerTicketResponse) -> None:
         payload = ticket.payload
         operation = payload.contract.operation
+        if payload.contract.runbook == "vm2-platform-operations":
+            try:
+                package = load_runbook_package(
+                    _RUNBOOK_PACKAGES,
+                    payload.contract.package_name or "",
+                )
+                definition = next(
+                    item
+                    for item in package.manifest.operations
+                    if item.name == operation
+                )
+                validate_parameters(definition, payload.contract.parameters)
+            except (RunbookPackageError, StopIteration) as exc:
+                raise BrokerError("Packaged operation is not locally approved.") from exc
+            if (
+                payload.contract.package_version != package.manifest.version
+                or payload.contract.package_digest != package.manifest_digest
+                or payload.contract.target != definition.target_profile
+                or payload.machine != "vm2-deployment"
+                or payload.task_type != definition.task_type
+                or payload.risk_level != definition.risk_level
+            ):
+                raise BrokerError("Ticket does not match packaged operation policy.")
+            return
         expected = {
             "observe-control-plane": ("infrastructure_observation", 0),
             "restart-control-plane-api": ("infrastructure_operation", 3),
@@ -201,6 +231,14 @@ class InfrastructureBroker:
     ) -> BrokerExecutionResult:
         payload = ticket.payload
         operation = payload.contract.operation
+        if payload.contract.runbook == "vm2-platform-operations":
+            return self._execute_platform_operation(
+                operation,
+                payload.contract.parameters,
+                payload.task_id,
+                payload.attempt_number,
+                started_at,
+            )
         if operation == "stage-invariance-postgres":
             manager = PostgresDeploymentManager(
                 self._postgres_root,
@@ -299,6 +337,223 @@ class InfrastructureBroker:
             rollback=rollback,
             rollback_state=rollback_state,
             error=None if success else "Restart transaction verification failed.",
+        )
+
+    def _execute_platform_operation(
+        self,
+        operation: str,
+        parameters: dict[str, Any],
+        task_id: Any,
+        attempt_number: int,
+        started_at: datetime,
+    ) -> BrokerExecutionResult:
+        if operation in {"verify-docker-service", "verify-service-health"}:
+            state = self._platform_service_state(parameters["service"])
+            return self._platform_result(
+                operation,
+                task_id,
+                attempt_number,
+                started_at,
+                success=state["healthy"],
+                post_state=state,
+                error=None if state["healthy"] else "Service health check failed.",
+            )
+        if operation == "restart-docker-service":
+            service = parameters["service"]
+            pre = self._platform_service_state(service)
+            if not pre["healthy"]:
+                return self._platform_result(
+                    operation,
+                    task_id,
+                    attempt_number,
+                    started_at,
+                    success=False,
+                    post_state=pre,
+                    error="Service restart preflight failed.",
+                )
+            compose_service, cwd, _ = self._platform_service(service)
+            config = self._runner.run(
+                ["docker", "compose", "config", "--quiet"],
+                cwd=cwd,
+                timeout=30,
+            )
+            if config["return_code"] != 0:
+                return self._platform_result(
+                    operation,
+                    task_id,
+                    attempt_number,
+                    started_at,
+                    success=False,
+                    post_state={"healthy": False, "compose_config": config},
+                    error="Service restart preflight failed.",
+                )
+            action = self._runner.run(
+                ["docker", "compose", "restart", "--timeout", "30", compose_service],
+                cwd=cwd,
+                timeout=90,
+            )
+            post = self._platform_service_state(service)
+            success = action["return_code"] == 0 and post["healthy"]
+            rollback = None
+            rollback_state = None
+            if not success:
+                rollback = self._runner.run(
+                    [
+                        "docker",
+                        "compose",
+                        "up",
+                        "-d",
+                        "--no-deps",
+                        "--force-recreate",
+                        compose_service,
+                    ],
+                    cwd=cwd,
+                    timeout=300,
+                )
+                rollback_state = self._platform_service_state(service)
+            return BrokerExecutionResult(
+                success=success,
+                operation=operation,
+                task_id=task_id,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=datetime.now(UTC),
+                pre_state=pre,
+                action=action,
+                post_state=post,
+                rollback=rollback,
+                rollback_state=rollback_state,
+                error=None if success else "Service restart verification failed.",
+            )
+        if operation == "verify-redis":
+            command = self._runner.run(
+                ["docker", "exec", "swarm-redis", "redis-cli", "PING"],
+                timeout=30,
+            )
+            healthy = command["return_code"] == 0 and command["stdout"].strip() == "PONG"
+            return self._platform_result(
+                operation,
+                task_id,
+                attempt_number,
+                started_at,
+                success=healthy,
+                post_state={"healthy": healthy, "probe": command},
+                error=None if healthy else "Redis verification failed.",
+            )
+        if operation == "verify-storage":
+            paths = [self._runtime_path, self._postgres_root]
+            state = {
+                str(path): {
+                    "exists": path.is_dir(),
+                    "free_bytes": shutil.disk_usage(path).free if path.is_dir() else None,
+                }
+                for path in paths
+            }
+            healthy = all(
+                item["exists"] and (item["free_bytes"] or 0) >= 10 * 1024**3
+                for item in state.values()
+            )
+            return self._platform_result(
+                operation,
+                task_id,
+                attempt_number,
+                started_at,
+                success=healthy,
+                post_state={"healthy": healthy, "filesystems": state},
+                error=None if healthy else "Storage verification failed.",
+            )
+        if operation == "verify-certificate":
+            profile = parameters["certificate_profile"]
+            if profile != "invariance-postgres-client":
+                raise BrokerError("Certificate profile is not compiled.")
+            cert = self._postgres_root / "certs" / "server.crt"
+            probe = self._runner.run(
+                ["openssl", "x509", "-in", str(cert), "-noout", "-checkend", "2592000"],
+                cwd=self._postgres_root,
+                timeout=30,
+            ) if cert.is_file() else {"return_code": 1, "stdout": "", "stderr": ""}
+            healthy = probe["return_code"] == 0
+            return self._platform_result(
+                operation,
+                task_id,
+                attempt_number,
+                started_at,
+                success=healthy,
+                post_state={"healthy": healthy, "profile": profile, "probe": probe},
+                error=None if healthy else "Certificate verification failed.",
+            )
+        if operation == "verify-backup":
+            state = self._backup_state()
+            healthy = bool(state["integrity_ok"] and state["timer_enabled"])
+            return self._platform_result(
+                operation,
+                task_id,
+                attempt_number,
+                started_at,
+                success=healthy,
+                post_state={"healthy": healthy, "backup": state},
+                error=None if healthy else "Backup verification failed.",
+            )
+        raise BrokerError("Packaged operation has no compiled broker primitive.")
+
+    def _platform_service_state(self, service: str) -> dict[str, Any]:
+        _, _, container = self._platform_service(service)
+        inspect = self._runner.run(
+            [
+                "docker",
+                "inspect",
+                container,
+                "--format",
+                "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            ],
+            timeout=30,
+        )
+        value = inspect["stdout"].strip()
+        return {
+            "service": service,
+            "container": container,
+            "healthy": inspect["return_code"] == 0
+            and value in {"running healthy", "running"},
+            "state": value[:100],
+        }
+
+    def _platform_service(self, service: str) -> tuple[str, Path, str]:
+        services = {
+            "api": ("api", self._runtime_path, "swarm-api"),
+            "redis": ("redis", self._runtime_path, "swarm-redis"),
+            "postgres": ("postgres", self._postgres_root, "invariance-postgres"),
+            "pgbouncer": (
+                "pgbouncer",
+                self._postgres_root,
+                "invariance-pgbouncer",
+            ),
+        }
+        try:
+            return services[service]
+        except KeyError as exc:
+            raise BrokerError("Service is not in the compiled catalog.") from exc
+
+    @staticmethod
+    def _platform_result(
+        operation: str,
+        task_id: Any,
+        attempt_number: int,
+        started_at: datetime,
+        *,
+        success: bool,
+        post_state: dict[str, Any],
+        error: str | None,
+    ) -> BrokerExecutionResult:
+        return BrokerExecutionResult(
+            success=success,
+            operation=operation,
+            task_id=task_id,
+            attempt_number=attempt_number,
+            started_at=started_at,
+            ended_at=datetime.now(UTC),
+            pre_state={},
+            post_state=post_state,
+            error=error,
         )
 
     def _execute_postgres_operation(
