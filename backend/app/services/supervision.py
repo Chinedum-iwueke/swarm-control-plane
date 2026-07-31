@@ -46,6 +46,53 @@ def approve_supervision(
     )
 
 
+def abort_supervision(
+    db: Session,
+    mission: EngineeringMission,
+    *,
+    actor: str,
+    reason: str,
+) -> None:
+    if not mission.supervision_enabled:
+        raise HTTPException(status_code=409, detail="Mission is not supervised.")
+    tasks = db.scalars(
+        select(Task).where(Task.mission_id == mission.id).with_for_update()
+    ).all()
+    if any(task.status in {"leased", "running"} for task in tasks):
+        raise HTTPException(
+            status_code=409,
+            detail="Running mission checkpoints must stop before abort.",
+        )
+    now = datetime.now(UTC)
+    for task in tasks:
+        if task.status in {"queued", "pending_approval", "failed"}:
+            task.status = "cancelled"
+            task.completed_at = now
+            append_task_event(
+                db,
+                task,
+                "task_cancelled",
+                "Task cancelled by supervised mission abort.",
+                payload={"actor": actor, "reason": reason},
+            )
+    mission.status = "cancelled"
+    mission.supervision_status = "aborted"
+    mission.supervision_exception = {
+        "category": "operator_abort",
+        "reason": reason,
+    }
+    mission.next_reconcile_at = None
+    mission.completed_at = now
+    append_mission_event(
+        db,
+        mission,
+        "mission_supervision_aborted",
+        actor,
+        reason,
+        {"manifest_digest": mission.manifest_digest},
+    )
+
+
 def reconcile_mission(
     db: Session,
     mission: EngineeringMission,

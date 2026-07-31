@@ -13,7 +13,9 @@ import yaml
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("create", "list", "status", "resume"))
+    parser.add_argument(
+        "action", choices=("create", "list", "status", "resume", "abort")
+    )
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--mission-id")
     parser.add_argument("--task-id")
@@ -45,6 +47,13 @@ def main() -> int:
                     "requested_by": args.actor,
                     "reason": args.reason,
                 },
+            )
+        elif args.action == "abort":
+            if not args.mission_id or not args.reason:
+                parser.error("abort requires --mission-id and --reason")
+            response = client.post(
+                f"/v1/missions/{args.mission_id}/supervision/abort",
+                json={"actor": args.actor, "reason": args.reason},
             )
         else:
             if not args.manifest:

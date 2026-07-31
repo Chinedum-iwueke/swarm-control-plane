@@ -34,14 +34,21 @@ Date: 2026-07-31
 - Ruff passed on every M9-changed Python file; repository-wide backend Ruff still
   reports 14 pre-existing findings in untouched files.
 - Compileall passed for all four application source trees.
+- Repository-wide isolated validation: 219 tests passed after adding direct,
+  in-worktree Python `src` roots to the validation environment.
 - Alembic head: `c8e2f7a41d90`; full offline upgrade SQL generated successfully.
 - systemd unit verification: pending on VM2 after the executable is installed.
 
 ## Operational pilot
 
-Pending deployment of the API migration, dedicated secret, supervisor service,
-and one digest-bound supervised mission. Pilot identifiers and event order will
-be recorded here after live verification.
+The first pilot mission, `1f580c76-07cf-43dc-b6dc-989e37f1d179`, proved the
+single Telegram plan approval and bounded recovery transition. Its first
+attempt failed because the isolated validator omitted the Mission Control
+`src` root. M9 rearmed it once without another approval. The retry was then
+aborted before leasing because correcting the validator moved the symbolic
+`main` base ref; executing that changed commit under the old digest would have
+violated immutable-plan authority. The replacement pilot is pinned to the
+tested commit and is recorded below after execution.
 
 ## Recommendation
 

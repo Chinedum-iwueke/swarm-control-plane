@@ -4,7 +4,11 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from app.services.supervision import approve_supervision, reconcile_mission
+from app.services.supervision import (
+    abort_supervision,
+    approve_supervision,
+    reconcile_mission,
+)
 from fastapi import HTTPException
 
 
@@ -131,3 +135,44 @@ def test_expired_mission_escalates_without_recovery() -> None:
     assert action == "attention_required"
     assert task_id is None
     assert value.supervision_exception["category"] == "mission_deadline_exhausted"
+
+
+def test_abort_preserves_history_and_cancels_queued_checkpoint() -> None:
+    value = mission(supervision_status="recovering", status="active")
+    task = SimpleNamespace(
+        status="queued",
+        completed_at=None,
+        id=uuid4(),
+        attempt_count=1,
+    )
+    rows = MagicMock()
+    rows.all.return_value = [task]
+    db = MagicMock()
+    db.scalars.return_value = rows
+
+    abort_supervision(
+        db,
+        value,
+        actor="founder-operator",
+        reason="Plan base commit changed after validation correction.",
+    )
+
+    assert task.status == "cancelled"
+    assert value.status == "cancelled"
+    assert value.supervision_status == "aborted"
+    assert value.supervision_exception["category"] == "operator_abort"
+
+
+def test_abort_refuses_running_checkpoint() -> None:
+    value = mission(supervision_status="active", status="active")
+    rows = MagicMock()
+    rows.all.return_value = [SimpleNamespace(status="running")]
+    db = MagicMock()
+    db.scalars.return_value = rows
+    with pytest.raises(HTTPException, match="Running"):
+        abort_supervision(
+            db,
+            value,
+            actor="founder-operator",
+            reason="Operator requested a bounded abort.",
+        )

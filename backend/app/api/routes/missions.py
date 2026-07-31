@@ -22,7 +22,11 @@ from app.services.missions import (
     refresh_mission,
     verify_mission_approval,
 )
-from app.services.supervision import approve_supervision, reconcile_mission
+from app.services.supervision import (
+    abort_supervision,
+    approve_supervision,
+    reconcile_mission,
+)
 from app.services.tasks import serialize_task
 
 router = APIRouter(
@@ -86,6 +90,28 @@ def approve_mission_supervision(
     if mission is None:
         raise HTTPException(status_code=404, detail="Mission not found.")
     approve_supervision(db, mission, actor=payload.actor, reason=payload.reason)
+    db.commit()
+    db.refresh(mission)
+    return MissionResponse.model_validate(mission)
+
+
+@router.post(
+    "/{mission_id}/supervision/abort",
+    response_model=MissionResponse,
+)
+def abort_mission_supervision(
+    mission_id: UUID,
+    payload: MissionSupervisionDecision,
+    db: Annotated[Session, Depends(get_db)],
+) -> MissionResponse:
+    mission = db.scalar(
+        select(EngineeringMission)
+        .where(EngineeringMission.id == mission_id)
+        .with_for_update()
+    )
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+    abort_supervision(db, mission, actor=payload.actor, reason=payload.reason)
     db.commit()
     db.refresh(mission)
     return MissionResponse.model_validate(mission)
