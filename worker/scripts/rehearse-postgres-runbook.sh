@@ -12,6 +12,7 @@ source_root=/home/omenka/Projects
 state=/var/lib/invariance-swarm-rehearsal
 postgres_root=/srv/invariance/postgres
 source_stage=/srv/invariance/rehearsal-source
+runtime=/srv/invariance/swarm/control-plane-runtime
 unit=invariance-postgres-rehearsal
 broker_group=swarm-rehearsal
 backup_group=swarm-rehearsal-bak
@@ -20,6 +21,10 @@ legacy_broker_group=invariance-swarm-rehearsal
 guard_rehearsal() {
   test -f "$state/DISPOSABLE_REHEARSAL"
   test "$(cat "$state/DISPOSABLE_REHEARSAL")" = vm2-postgres
+  if [[ -e $runtime ]]; then
+    test -f "$runtime/REHEARSAL_ONLY"
+    test "$(cat "$runtime/REHEARSAL_ONLY")" = vm2-postgres
+  fi
   if [[ ! -e $postgres_root ]]; then
     return
   fi
@@ -53,6 +58,11 @@ cleanup() {
     /etc/systemd/system/timers.target.wants/invariance-postgres-backup.timer
   systemctl daemon-reload
   rm -rf "$postgres_root" "$source_stage"
+  if [[ -f $runtime/REHEARSAL_ONLY ]] &&
+    [[ $(cat "$runtime/REHEARSAL_ONLY") == vm2-postgres ]]
+  then
+    rm -rf /srv/invariance/swarm
+  fi
   groupdel "$backup_group" 2>/dev/null || true
   groupdel "$broker_group" 2>/dev/null || true
 }
@@ -75,6 +85,11 @@ if [[ -e $postgres_root ]]; then
     printf '%s already exists; refusing to touch it.\n' "$postgres_root" >&2
     exit 1
   fi
+fi
+if [[ -e $runtime && ! -f $runtime/REHEARSAL_ONLY ]]; then
+  printf '%s already exists without a rehearsal marker; refusing.\n' \
+    "$runtime" >&2
+  exit 1
 fi
 test -d "$source_root/invariance_research/.git"
 test -d "$source_root/bulletproof_bt/.git"
@@ -105,7 +120,10 @@ chmod 0600 "$state/DISPOSABLE_REHEARSAL"
 rm -f "$state/consumed.json" "$state/report.json"
 install -d -o root -g root -m 0755 \
   "$state/control-plane-runtime/backups" \
-  "$source_stage"
+  "$source_stage" \
+  "$runtime"
+printf 'vm2-postgres\n' > "$runtime/REHEARSAL_ONLY"
+chmod 0600 "$runtime/REHEARSAL_ONLY"
 git clone --quiet --local --no-hardlinks \
   "$source_root/invariance_research" "$source_stage/invariance_research"
 git clone --quiet --local --no-hardlinks \
@@ -167,6 +185,7 @@ systemd-run \
   --property=RuntimeDirectory=invariance-swarm-infrastructure \
   --property=RuntimeDirectoryMode=0750 \
   --property="ReadOnlyPaths=$source_stage" \
+  --property="ReadOnlyPaths=$runtime" \
   --property="ReadWritePaths=$state" \
   --property="ReadWritePaths=$postgres_root" \
   --property=ReadWritePaths=/etc/systemd/system/invariance-postgres-backup.service \
