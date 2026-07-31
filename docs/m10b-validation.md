@@ -76,6 +76,30 @@ require the protected orchestrator environment. Registration additionally requir
 the package-signing secret. Rehearsal, approval, and deployment must use real evidence
 digests; placeholder evidence is prohibited.
 
+The VM2 parity harness is `worker/scripts/rehearse-platform-runbook.sh`. It creates a
+marked disposable Compose project and maps the package's four logical service names
+only to rehearsal containers. It exercises every read-only primitive, a successful
+controlled restart, and a forced post-check failure that must invoke the broker's real
+fixed recreate rollback. The report records the canonical manifest digest, raw package
+artifact digest, source commit, VM2 runtime versions, sandbox controls, per-operation
+result digests, and rollback result digest.
+
+Run on VM2 only after the exact source commit is deployed:
+
+```bash
+cd /srv/invariance/swarm/repositories/swarm-control-plane
+sudo worker/scripts/rehearse-platform-runbook.sh run
+```
+
+The report is retained at
+`/var/lib/invariance-swarm-platform-rehearsal/report.json`. The harness does not call
+the registry or change package promotion state. Preserve and inspect the report before
+cleanup:
+
+```bash
+sudo worker/scripts/rehearse-platform-runbook.sh cleanup
+```
+
 ## Recommendation
 
 **Go** for deploying the registry migration and updated Deployment Architect package,

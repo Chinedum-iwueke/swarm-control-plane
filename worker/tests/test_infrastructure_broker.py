@@ -181,6 +181,28 @@ def test_packaged_health_uses_fixed_service_catalog(tmp_path: Path) -> None:
     ]
 
 
+def test_packaged_health_supports_rehearsal_service_catalog(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    rehearsal = broker(tmp_path, runner)
+    rehearsal._platform_services = {
+        "api": ("api", tmp_path / "rehearsal", "hermes-rehearsal-api")
+    }
+    result = rehearsal.execute(
+        ticket(
+            "verify-docker-service",
+            risk=0,
+            task_type="infrastructure_observation",
+            runbook="vm2-platform-operations",
+            target="vm2-production",
+            parameters={"service": "api"},
+            package_digest=platform_digest(),
+        )
+    )
+    assert result.success is True
+    assert result.post_state["container"] == "hermes-rehearsal-api"
+    assert runner.commands[0][2] == "hermes-rehearsal-api"
+
+
 def test_packaged_restart_rolls_back_with_fixed_compose_command(
     tmp_path: Path,
 ) -> None:
@@ -207,6 +229,47 @@ def test_packaged_restart_rolls_back_with_fixed_compose_command(
         "--force-recreate",
         "redis",
     ) in runner.commands
+
+
+def test_packaged_restart_waits_for_transitional_health(tmp_path: Path) -> None:
+    class TransitionalRunner(FakeRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.post_restart_checks = 0
+
+        def run(self, args, **kwargs):
+            command = tuple(args)
+            if command[:2] == ("docker", "inspect") and self.restarted:
+                self.commands.append(command)
+                self.post_restart_checks += 1
+                state = (
+                    "running starting"
+                    if self.post_restart_checks == 1
+                    else "running healthy"
+                )
+                return {
+                    "args": list(args),
+                    "return_code": 0,
+                    "stdout": state,
+                    "stderr": "",
+                }
+            return super().run(args, **kwargs)
+
+    runner = TransitionalRunner()
+    result = broker(tmp_path, runner).execute(
+        ticket(
+            "restart-docker-service",
+            risk=3,
+            task_type="infrastructure_operation",
+            runbook="vm2-platform-operations",
+            target="vm2-production",
+            parameters={"service": "api"},
+            package_digest=platform_digest(),
+        )
+    )
+    assert result.success is True
+    assert runner.post_restart_checks == 2
+    assert result.rollback is None
 
 
 def test_packaged_operation_rejects_digest_or_parameter_tampering(

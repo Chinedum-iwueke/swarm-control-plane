@@ -41,6 +41,16 @@ _MAX_BACKUP_AGE_SECONDS = 7 * 24 * 60 * 60
 _POSTGRES_ROOT = Path("/srv/invariance/postgres")
 _RESEARCH_REPOSITORY = Path("/srv/invariance/invariance_research")
 _RUNBOOK_PACKAGES = Path(__file__).parents[3] / "runbook-packages"
+_PLATFORM_SERVICES = {
+    "api": ("api", _RUNTIME, "swarm-api"),
+    "redis": ("redis", _RUNTIME, "swarm-redis"),
+    "postgres": ("postgres", _POSTGRES_ROOT, "invariance-postgres"),
+    "pgbouncer": (
+        "pgbouncer",
+        _POSTGRES_ROOT,
+        "invariance-pgbouncer",
+    ),
+}
 UTC = timezone.utc
 
 
@@ -123,6 +133,11 @@ class InfrastructureBroker:
         postgres_bind_address: str = "100.112.117.59",
         research_repository: Path = _RESEARCH_REPOSITORY,
         systemd_path: Path = Path("/etc/systemd/system"),
+        runbook_packages_path: Path = _RUNBOOK_PACKAGES,
+        platform_services: dict[str, tuple[str, Path, str]] | None = None,
+        backup_timer_unit: str = "invariance-postgres-backup.timer",
+        platform_health_attempts: int = 30,
+        platform_health_interval_seconds: float = 2.0,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if len(secret) < 32:
@@ -138,6 +153,11 @@ class InfrastructureBroker:
         self._postgres_bind_address = postgres_bind_address
         self._research_repository = research_repository
         self._systemd_path = systemd_path
+        self._runbook_packages_path = runbook_packages_path
+        self._platform_services = platform_services or _PLATFORM_SERVICES
+        self._backup_timer_unit = backup_timer_unit
+        self._platform_health_attempts = platform_health_attempts
+        self._platform_health_interval_seconds = platform_health_interval_seconds
         self._sleep = sleep
         self._consumed = self._load_ledger()
 
@@ -172,7 +192,7 @@ class InfrastructureBroker:
         if payload.contract.runbook == "vm2-platform-operations":
             try:
                 package = load_runbook_package(
-                    _RUNBOOK_PACKAGES,
+                    self._runbook_packages_path,
                     payload.contract.package_name or "",
                 )
                 definition = next(
@@ -392,7 +412,7 @@ class InfrastructureBroker:
                 cwd=cwd,
                 timeout=90,
             )
-            post = self._platform_service_state(service)
+            post = self._platform_service_state_until_healthy(service)
             success = action["return_code"] == 0 and post["healthy"]
             rollback = None
             rollback_state = None
@@ -410,7 +430,7 @@ class InfrastructureBroker:
                     cwd=cwd,
                     timeout=300,
                 )
-                rollback_state = self._platform_service_state(service)
+                rollback_state = self._platform_service_state_until_healthy(service)
             return BrokerExecutionResult(
                 success=success,
                 operation=operation,
@@ -426,8 +446,9 @@ class InfrastructureBroker:
                 error=None if success else "Service restart verification failed.",
             )
         if operation == "verify-redis":
+            _, _, container = self._platform_service("redis")
             command = self._runner.run(
-                ["docker", "exec", "swarm-redis", "redis-cli", "PING"],
+                ["docker", "exec", container, "redis-cli", "PING"],
                 timeout=30,
             )
             healthy = command["return_code"] == 0 and command["stdout"].strip() == "PONG"
@@ -517,19 +538,19 @@ class InfrastructureBroker:
             "state": value[:100],
         }
 
+    def _platform_service_state_until_healthy(self, service: str) -> dict[str, Any]:
+        state: dict[str, Any] = {}
+        for attempt in range(self._platform_health_attempts):
+            state = self._platform_service_state(service)
+            if state["healthy"]:
+                return state
+            if attempt + 1 < self._platform_health_attempts:
+                self._sleep(self._platform_health_interval_seconds)
+        return state
+
     def _platform_service(self, service: str) -> tuple[str, Path, str]:
-        services = {
-            "api": ("api", self._runtime_path, "swarm-api"),
-            "redis": ("redis", self._runtime_path, "swarm-redis"),
-            "postgres": ("postgres", self._postgres_root, "invariance-postgres"),
-            "pgbouncer": (
-                "pgbouncer",
-                self._postgres_root,
-                "invariance-pgbouncer",
-            ),
-        }
         try:
-            return services[service]
+            return self._platform_services[service]
         except KeyError as exc:
             raise BrokerError("Service is not in the compiled catalog.") from exc
 
@@ -959,7 +980,7 @@ class InfrastructureBroker:
             [
                 "systemctl",
                 "is-enabled",
-                "invariance-postgres-backup.timer",
+                self._backup_timer_unit,
             ],
             timeout=30,
         )
