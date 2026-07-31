@@ -13,6 +13,7 @@ from app.api.routes import (
     missions_router,
     packages_router,
     proposals_router,
+    research_router,
     runbook_packages_router,
     supervisor_router,
     task_runtime_router,
@@ -40,6 +41,7 @@ app.include_router(governance_router)
 app.include_router(agent_runtime_router)
 app.include_router(tasks_router)
 app.include_router(proposals_router)
+app.include_router(research_router)
 app.include_router(runbook_packages_router)
 app.include_router(task_runtime_router)
 app.include_router(supervisor_router)

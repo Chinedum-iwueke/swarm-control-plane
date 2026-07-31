@@ -824,6 +824,27 @@ requires real private DNS, trusted certificate material, immutable application e
 CIDRs, migration and credential-store integration, a current parity rehearsal, and
 explicit cutover approval. See `docs/runbooks/m10-managed-database-cutover.md`.
 
+### M10C: On-premises Invariance application boundary
+
+- keep the VM2 PostgreSQL and PgBouncer endpoint private;
+- do not connect Vercel Free directly to the Tailscale-only database;
+- define separate application-deployment and application-management roles;
+- implement their authority later through a reviewed container deployment runbook;
+- issue service-scoped database URLs only after rehearsal;
+- initially expose the application only to approved Tailscale clients.
+
+**Decision status:** topology selected and production cutover deferred. No database
+port, credential, Vercel variable, or application runtime was changed.
+
+### M11: Immutable research contracts and trial registry
+
+- strict source, hypothesis, experiment, trial, result, review, and decision schemas;
+- canonical SHA-256 lineage across each transition;
+- independent digest approval before hypothesis or experiment execution;
+- global trial-family counting, including failed and rejected attempts;
+- database-level rejection of updates and deletes;
+- complete lineage retrieval for Mission Control and Telegram summaries.
+
 ## 13. Definition of Functional Swarm
 
 Hermes is operationally functional when:

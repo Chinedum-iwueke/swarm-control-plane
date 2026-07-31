@@ -714,6 +714,8 @@ workspaces, logs, and repositories are preserved by worker uninstall tooling.
 | Recurring jobs and dead-letter queue | VM2 control plane | Designed, not implemented |
 | General automatic retry orchestration | VM2 control plane | Bounded M4 task retry only |
 | Deployment worker | VM2 | Designed, not implemented |
+| Invariance application deployment agent | VM2 | Role boundary defined; awaits a reviewed container runbook |
+| Invariance application manager | VM2 | Role boundary defined; awaits application operations runbooks |
 | Backup/restore worker | VM2 | Designed, not implemented |
 | Research and experiment workers | VM1 | First bounded synthetic pilot implemented |
 | Founder/business/content workers | Mac | Designed, not implemented |
@@ -757,6 +759,29 @@ package containing:
 
 This makes role introduction a configuration and packaging operation rather
 than a new trust model.
+
+### 13.2.1 Invariance application roles
+
+Moving from Vercel Free to an initially private VM2 deployment introduces two
+separate future roles. Neither role is deployed and neither receives arbitrary shell
+or `sudo` authority before its versioned runbooks exist.
+
+The **Invariance Application Deployment Agent** executes an approved, digest-bound
+container deployment from a pinned `invariance_research` commit through build,
+configuration validation, database migration, private start, health verification,
+domain/TLS activation, rollback rehearsal, and an explicit public-cutover gate. It
+may write only the application deployment root and brokered deployment evidence.
+
+The **Invariance Application Manager** owns steady-state health and synthetic-user
+checks, bounded restarts, log and metric inspection, backup coordination,
+certificate-expiry alerts, release verification, rollback invocation, and incident
+escalation. It cannot deploy unapproved commits, run migrations, rotate credentials,
+widen network access, or change configuration without the corresponding runbook.
+
+The deployment role proves a release reaches a usable domain end to end; the manager
+keeps that exact release healthy. Database ownership remains with the database
+broker, and application roles receive only scoped runtime credentials. The initial
+endpoint remains private to approved Tailscale clients.
 
 ### 13.3 Declared roadmap order
 
