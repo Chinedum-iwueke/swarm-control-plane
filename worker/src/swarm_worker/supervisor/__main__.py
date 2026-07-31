@@ -66,7 +66,7 @@ async def _run(command: str, log_level: str) -> int:
                 delay = min(120, max(delay * 2, 5))
             try:
                 await asyncio.wait_for(stop.wait(), timeout=delay)
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 pass
         return 0
     finally:
