@@ -164,3 +164,87 @@ class ResearchDecision(Base):
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ResearchDocument(Base):
+    __tablename__ = "research_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    document_key: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    evidence_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(150), nullable=False)
+    source_uri: Mapped[str] = mapped_column(String(1000), nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
+    ingested_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchChunk(Base):
+    __tablename__ = "research_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "ordinal"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_documents.id"),
+        nullable=False,
+        index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section: Mapped[str] = mapped_column(String(500), nullable=False)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    line_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
+
+
+class ResearchRetrievalEvaluation(Base):
+    __tablename__ = "research_retrieval_evaluations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    evaluation_key: Mapped[str] = mapped_column(
+        String(150), nullable=False, unique=True
+    )
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    question_set_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    passed: Mapped[bool] = mapped_column(nullable=False)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    evaluated_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchBrief(Base):
+    __tablename__ = "research_briefs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_retrieval_evaluations.id"),
+        nullable=False,
+    )
+    brief: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -230,3 +230,148 @@ class ResearchLineageResponse(StrictModel):
     reviews: list[ResearchReviewResponse]
     decisions: list[ResearchDecisionResponse]
     trial_family_count: int
+
+
+class ResearchDocumentCreate(StrictModel):
+    document_key: str = Field(pattern=_KEY, max_length=150)
+    title: str = Field(min_length=1, max_length=300)
+    document_type: Literal["prd", "textbook", "paper", "prior_report", "runbook"]
+    evidence_type: Literal[
+        "governing_requirement",
+        "method",
+        "empirical_evidence",
+        "prior_result",
+        "operational_record",
+    ]
+    version: str = Field(min_length=1, max_length=150)
+    source_uri: str = Field(min_length=1, max_length=1000)
+    content_digest: str = Field(pattern=_DIGEST)
+    metadata: dict[str, str | int | list[str]] = Field(default_factory=dict)
+    ingested_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class ResearchDocumentResponse(ResearchDocumentCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    ingested_at: datetime
+
+
+class ResearchChunkCreate(StrictModel):
+    ordinal: int = Field(ge=0)
+    section: str = Field(min_length=1, max_length=500)
+    page: int | None = Field(default=None, ge=1)
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=20000)
+    text_digest: str = Field(pattern=_DIGEST)
+    metadata: dict[str, str | int | list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def lines_are_ordered(self) -> ResearchChunkCreate:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end cannot precede line_start")
+        return self
+
+
+class ResearchChunkResponse(ResearchChunkCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    document_id: uuid.UUID
+
+
+class KnowledgeSearchRequest(StrictModel):
+    query: str = Field(min_length=3, max_length=1000)
+    limit: int = Field(default=8, ge=1, le=25)
+    evidence_types: list[str] = Field(default_factory=list, max_length=10)
+
+
+class KnowledgeSearchHit(StrictModel):
+    chunk_id: uuid.UUID
+    document_key: str
+    title: str
+    evidence_type: str
+    section: str
+    page: int | None
+    line_start: int
+    line_end: int
+    text: str
+    text_digest: str
+    score: float
+    citation: str
+
+
+class SimilarHypothesisHit(StrictModel):
+    hypothesis_id: uuid.UUID
+    hypothesis_key: str
+    trial_family: str
+    research_question: str
+    score: float
+    outcomes: list[str]
+    decisions: list[str]
+
+
+class KnowledgeSearchResponse(StrictModel):
+    query: str
+    corpus_digest: str
+    passages: list[KnowledgeSearchHit]
+    similar_hypotheses: list[SimilarHypothesisHit]
+    prior_failures: list[SimilarHypothesisHit]
+
+
+class EvaluationCase(StrictModel):
+    question: str = Field(min_length=3, max_length=1000)
+    expected_document_keys: list[str] = Field(min_length=1, max_length=20)
+    expected_terms: list[str] = Field(min_length=1, max_length=30)
+
+
+class RetrievalEvaluationCreate(StrictModel):
+    evaluation_key: str = Field(pattern=_KEY, max_length=150)
+    cases: list[EvaluationCase] = Field(min_length=1, max_length=100)
+    minimum_recall: float = Field(default=1.0, ge=0, le=1)
+    evaluated_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class RetrievalEvaluationResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    evaluation_key: str
+    corpus_digest: str
+    question_set_digest: str
+    report: dict
+    passed: bool
+    record_digest: str
+    evaluated_by: str
+    evaluated_at: datetime
+
+
+class BriefClaim(StrictModel):
+    text: str = Field(min_length=1, max_length=2000)
+    evidence_class: Literal["source_passage", "prior_result", "agent_inference"]
+    citation_chunk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def citations_match_class(self) -> BriefClaim:
+        if self.evidence_class == "agent_inference" and self.citation_chunk_ids:
+            raise ValueError("agent inference cannot masquerade as a citation")
+        if self.evidence_class != "agent_inference" and not self.citation_chunk_ids:
+            raise ValueError("material source claims require citations")
+        return self
+
+
+class ResearchBriefCreate(StrictModel):
+    question: str = Field(min_length=3, max_length=1000)
+    summary: str = Field(min_length=1, max_length=4000)
+    claims: list[BriefClaim] = Field(min_length=1, max_length=50)
+    created_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class ResearchBriefResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    question: str
+    corpus_digest: str
+    evaluation_id: uuid.UUID
+    brief: dict
+    record_digest: str
+    created_by: str
+    created_at: datetime

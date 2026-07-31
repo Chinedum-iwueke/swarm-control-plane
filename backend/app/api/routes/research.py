@@ -16,8 +16,16 @@ from app.models import (
     ResearchTrial,
 )
 from app.schemas.research import (
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
+    ResearchBriefCreate,
+    ResearchBriefResponse,
+    ResearchChunkCreate,
+    ResearchChunkResponse,
     ResearchDecisionCreate,
     ResearchDecisionResponse,
+    ResearchDocumentCreate,
+    ResearchDocumentResponse,
     ResearchExperimentCreate,
     ResearchExperimentResponse,
     ResearchHypothesisCreate,
@@ -31,15 +39,22 @@ from app.schemas.research import (
     ResearchSourceResponse,
     ResearchTrialCreate,
     ResearchTrialResponse,
+    RetrievalEvaluationCreate,
+    RetrievalEvaluationResponse,
 )
 from app.services.research import (
     add_review,
+    create_brief,
+    evaluate_retrieval,
+    register_chunk,
     register_decision,
+    register_document,
     register_experiment,
     register_hypothesis,
     register_result,
     register_source,
     register_trial,
+    search_knowledge,
 )
 
 router = APIRouter(
@@ -47,6 +62,86 @@ router = APIRouter(
     tags=["research-registry"],
     dependencies=[Depends(require_orchestrator)],
 )
+
+
+def _document_response(record) -> ResearchDocumentResponse:
+    return ResearchDocumentResponse(
+        id=record.id,
+        document_key=record.document_key,
+        title=record.title,
+        document_type=record.document_type,
+        evidence_type=record.evidence_type,
+        version=record.version,
+        source_uri=record.source_uri,
+        content_digest=record.content_digest,
+        metadata=record.metadata_,
+        ingested_by=record.ingested_by,
+        ingested_at=record.ingested_at,
+    )
+
+
+def _chunk_response(record) -> ResearchChunkResponse:
+    return ResearchChunkResponse(
+        id=record.id,
+        document_id=record.document_id,
+        ordinal=record.ordinal,
+        section=record.section,
+        page=record.page,
+        line_start=record.line_start,
+        line_end=record.line_end,
+        text=record.text,
+        text_digest=record.text_digest,
+        metadata=record.metadata_,
+    )
+
+
+@router.post(
+    "/knowledge/documents", response_model=ResearchDocumentResponse, status_code=201
+)
+def create_document(
+    payload: ResearchDocumentCreate, db: Annotated[Session, Depends(get_db)]
+):
+    return _document_response(register_document(db, payload))
+
+
+@router.post(
+    "/knowledge/documents/{document_id}/chunks",
+    response_model=ResearchChunkResponse,
+    status_code=201,
+)
+def create_chunk(
+    document_id: UUID,
+    payload: ResearchChunkCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return _chunk_response(register_chunk(db, document_id, payload))
+
+
+@router.post("/knowledge/search", response_model=KnowledgeSearchResponse)
+def knowledge_search(
+    payload: KnowledgeSearchRequest, db: Annotated[Session, Depends(get_db)]
+):
+    return KnowledgeSearchResponse.model_validate(
+        search_knowledge(db, payload.query, payload.limit, payload.evidence_types)
+    )
+
+
+@router.post(
+    "/knowledge/evaluations",
+    response_model=RetrievalEvaluationResponse,
+    status_code=201,
+)
+def create_evaluation(
+    payload: RetrievalEvaluationCreate, db: Annotated[Session, Depends(get_db)]
+):
+    return RetrievalEvaluationResponse.model_validate(evaluate_retrieval(db, payload))
+
+
+@router.post("/knowledge/briefs", response_model=ResearchBriefResponse, status_code=201)
+def create_research_brief(
+    payload: ResearchBriefCreate, db: Annotated[Session, Depends(get_db)]
+):
+    return ResearchBriefResponse.model_validate(create_brief(db, payload))
 
 
 @router.post("/sources", response_model=ResearchSourceResponse, status_code=201)

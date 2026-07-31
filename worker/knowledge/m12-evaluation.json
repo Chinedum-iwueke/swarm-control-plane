@@ -1,0 +1,21 @@
+{
+  "evaluation_key": "M12-FIXED-QUESTIONS-V1",
+  "minimum_recall": 1.0,
+  "cases": [
+    {
+      "question": "Why must research hypotheses be registered before results are observed?",
+      "expected_document_keys": ["invariance-trading-firm-prd-v1"],
+      "expected_terms": ["registered", "results"]
+    },
+    {
+      "question": "What prevents an experiment author from approving their own research record?",
+      "expected_document_keys": ["m11-registry-validation", "m11-registry-runbook"],
+      "expected_terms": ["approval", "independent"]
+    },
+    {
+      "question": "How are negative research outcomes retained and audited?",
+      "expected_document_keys": ["invariance-trading-firm-prd-v1", "m11-registry-validation"],
+      "expected_terms": ["negative", "result"]
+    }
+  ]
+}

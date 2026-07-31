@@ -1,0 +1,41 @@
+{
+  "documents": [
+    {
+      "document_key": "invariance-trading-firm-prd-v1",
+      "path": "docs/Invariance_Agentic_Systematic_Trading_Firm_PRD.pdf",
+      "title": "Invariance Agentic Systematic Trading Firm PRD",
+      "document_type": "prd",
+      "evidence_type": "governing_requirement",
+      "format": "pdf"
+    },
+    {
+      "document_key": "m8-research-validation",
+      "path": "docs/m8-validation.md",
+      "title": "M8 Research Pilot Validation",
+      "document_type": "prior_report",
+      "evidence_type": "prior_result",
+      "format": "markdown"
+    },
+    {
+      "document_key": "m11-registry-validation",
+      "path": "docs/m11-validation.md",
+      "title": "M11 Immutable Registry Validation",
+      "document_type": "prior_report",
+      "evidence_type": "prior_result",
+      "format": "markdown"
+    },
+    {
+      "document_key": "m11-registry-runbook",
+      "path": "docs/runbooks/m11-research-registry.md",
+      "title": "M11 Research Registry Runbook",
+      "document_type": "runbook",
+      "evidence_type": "operational_record",
+      "format": "markdown"
+    }
+  ],
+  "deferred_sources": [
+    "licensed statistics text with page metadata",
+    "licensed time-series text with page metadata",
+    "founder-approved papers with stable identifiers and usage rights"
+  ]
+}
