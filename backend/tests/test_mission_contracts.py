@@ -5,15 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas import EngineeringMilestoneManifest, InfrastructureRunbookManifest
 from app.services.missions import (
     canonical_manifest,
     refresh_mission,
     verify_mission_approval,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 
 def manifest_document() -> dict:
@@ -144,6 +143,23 @@ def test_task_budget_is_enforced() -> None:
     document["budget"]["max_tasks"] = 1
     with pytest.raises(ValidationError, match="budget"):
         EngineeringMilestoneManifest.model_validate(document)
+
+
+def test_supervised_engineering_mission_requires_pinned_commit() -> None:
+    document = manifest_document()
+    document["supervision"] = {
+        "mode": "autonomous",
+        "approval_mode": "mission_plan",
+        "max_auto_recoveries": 1,
+        "retry_backoff_seconds": 30,
+        "retryable_categories": ["connection_error"],
+        "rehearsal_evidence_sha256": "a" * 64,
+        "rehearsal_source_commit": "b" * 40,
+    }
+    with pytest.raises(ValidationError, match="commit-pinned"):
+        EngineeringMilestoneManifest.model_validate(document)
+    document["base_ref"] = "c" * 40
+    assert EngineeringMilestoneManifest.model_validate(document).base_ref == "c" * 40
 
 
 def test_infrastructure_manifest_enforces_dag_and_phase_policy() -> None:

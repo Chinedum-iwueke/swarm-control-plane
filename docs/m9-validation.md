@@ -27,7 +27,7 @@ Date: 2026-07-31
 
 ## Automated evidence
 
-- Backend: 35 tests passed.
+- Backend: 38 tests passed.
 - Worker: 153 tests passed.
 - Telegram gateway: 9 tests passed.
 - Mission Control: 23 tests passed.

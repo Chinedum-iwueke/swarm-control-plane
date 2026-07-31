@@ -82,6 +82,12 @@ class EngineeringMilestoneManifest(BaseModel):
 
     @model_validator(mode="after")
     def valid_dag(self) -> "EngineeringMilestoneManifest":
+        if self.supervision is not None and not __import__("re").fullmatch(
+            r"[0-9a-f]{40,64}", self.base_ref
+        ):
+            raise ValueError(
+                "supervised engineering missions require a commit-pinned base_ref"
+            )
         ids = [item.id for item in self.work_items]
         if len(ids) != len(set(ids)):
             raise ValueError("work item IDs must be unique")
