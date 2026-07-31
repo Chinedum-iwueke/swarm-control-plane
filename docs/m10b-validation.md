@@ -110,30 +110,30 @@ rotation, firewall mutation, or credential rotation under M10B.
 
 ## VM2 Parity Rehearsal Result
 
-The exact `vm2-platform-operations` `1.0.0` package passed its disposable VM2 parity
-rehearsal on 2026-07-31.
+The exact `vm2-platform-operations` `1.0.0` package passed its final disposable VM2
+parity rehearsal on 2026-07-31.
 
-- source commit: `3f10b483c02eb382c9a758334c46ea72b23e70a0`;
+- source commit: `7b659783da5394b540af771ea668201594f34bba`;
 - canonical manifest digest:
   `2a9feadcc1afd80375cfcaf0e060d306ccb36fd2c667fa9d86daa491577bc005`;
 - raw package artifact digest:
   `b3d581aaaeb54b4b4630cec05807c7da089366d7592fda1082ca1256fe46538b`;
 - evidence report digest:
-  `1081ac15fd3e238906ee5d143b81b347f21e53fbde1eeec35ff3c6fb81df7d60`;
+  `6f1533cf8a8df955122f4f6a843bd232b3fb13e8c026246a383106e79bac50e7`;
 - evidence location:
   `/var/lib/invariance-swarm-platform-rehearsal/report.json` on VM2;
 - environment: Docker `29.5.2`, Compose `5.1.4`, Python `3.10.12`, Linux
   `5.15.0-185-generic`;
-- result: all declared read-only primitive checks passed, the normal controlled
-  restart passed, and the forced unhealthy post-check invoked the fixed recreate
-  rollback and restored a healthy service;
+- result: all nine declared read-only primitive checks passed, controlled restarts
+  passed for `api`, `postgres`, `pgbouncer`, and `redis`, and the forced unhealthy
+  API post-check invoked the fixed recreate rollback and restored a healthy service;
 - production verification: `swarm-api`, `swarm-postgres`, and `swarm-redis` remained
   healthy; only `hermes-platform-rehearsal-*` containers were addressed;
 - registry verification: the exact package digest remained in `draft` after the run.
 
-This first evidence run exposed that the Compose restart did not explicitly load a
-reviewed project environment file. The API-only restart succeeded, but that was not
-sufficient evidence for the package's PostgreSQL and PgBouncer restart variants. The
-package therefore remained `draft`; this report is diagnostic evidence and is
-superseded by the required all-service rerun after the environment fix. Approval and
-deployment remain separate later decisions.
+The earlier API-only report at source commit `3f10b483c02eb382c9a758334c46ea72b23e70a0`
+is superseded because it exposed an environment-file and mutation-coverage gap. The
+final report proves the corrected environment handling across every allowlisted
+mutation target. The package remained `draft` after rehearsal. This final evidence
+qualifies it for a separate explicit promotion to `rehearsed`; approval and deployment
+remain later decisions.
