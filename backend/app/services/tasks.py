@@ -14,7 +14,14 @@ from app.core.security import (
     digest_task_lease_token,
     extract_task_lease_token_prefix,
 )
-from app.models import Agent, EngineeringMission, Task, TaskDependency, TaskEvent
+from app.models import (
+    Agent,
+    EngineeringMission,
+    Task,
+    TaskApproval,
+    TaskDependency,
+    TaskEvent,
+)
 from app.schemas.task import TaskCreate
 from app.services.governance import (
     consume_task_approval,
@@ -188,10 +195,7 @@ def verify_task_lease(
             detail="This task lease belongs to another agent.",
         )
 
-    if (
-        task.lease_expires_at is None
-        or task.lease_expires_at <= current_time
-    ):
+    if task.lease_expires_at is None or task.lease_expires_at <= current_time:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Task lease has expired.",
@@ -242,6 +246,18 @@ def lease_next_task(
             predecessor.status != "succeeded",
         )
     )
+    valid_approval = or_(
+        Task.approval_required.is_(False),
+        exists(
+            select(TaskApproval.id).where(
+                TaskApproval.task_id == Task.id,
+                TaskApproval.status == "approved",
+                TaskApproval.plan_digest == Task.plan_digest,
+                TaskApproval.expires_at.is_not(None),
+                TaskApproval.expires_at > now,
+            )
+        ),
+    )
 
     task = db.scalar(
         select(Task)
@@ -249,9 +265,8 @@ def lease_next_task(
             Task.status == "queued",
             Task.attempt_count < Task.max_attempts,
             Task.risk_level <= agent.risk_ceiling,
-            Task.required_capabilities.contained_by(
-                agent.capabilities
-            ),
+            Task.required_capabilities.contained_by(agent.capabilities),
+            valid_approval,
             or_(
                 Task.mission_id.is_(None),
                 exists(
@@ -264,12 +279,8 @@ def lease_next_task(
             ),
             ~exists(blocked_dependency),
             or_(
-                func.jsonb_array_length(
-                    Task.allowed_machines
-                ) == 0,
-                Task.allowed_machines.contains(
-                    [agent.machine]
-                ),
+                func.jsonb_array_length(Task.allowed_machines) == 0,
+                Task.allowed_machines.contains([agent.machine]),
             ),
         )
         .order_by(
@@ -291,9 +302,7 @@ def lease_next_task(
     task.assigned_agent_id = agent.id
     task.attempt_count += 1
     task.leased_at = now
-    task.lease_expires_at = now + timedelta(
-        seconds=lease_seconds
-    )
+    task.lease_expires_at = now + timedelta(seconds=lease_seconds)
     task.lease_token_prefix = generated.prefix
     task.lease_token_digest = generated.digest
     task.last_execution_heartbeat_at = now
@@ -306,9 +315,7 @@ def lease_next_task(
         "Task leased to agent.",
         agent_id=agent.id,
         payload={
-            "lease_expires_at": (
-                task.lease_expires_at.isoformat()
-            ),
+            "lease_expires_at": (task.lease_expires_at.isoformat()),
             "lease_seconds": lease_seconds,
         },
     )
@@ -320,11 +327,7 @@ def lock_task(
     db: Session,
     task_id: uuid.UUID,
 ) -> Task:
-    task = db.scalar(
-        select(Task)
-        .where(Task.id == task_id)
-        .with_for_update()
-    )
+    task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
 
     if task is None:
         raise HTTPException(
@@ -368,9 +371,7 @@ def reap_expired_leases(
             payload={
                 "previous_status": previous_status,
                 "lease_expires_at": (
-                    expired_at.isoformat()
-                    if expired_at is not None
-                    else None
+                    expired_at.isoformat() if expired_at is not None else None
                 ),
             },
         )
@@ -379,9 +380,7 @@ def reap_expired_leases(
             task.status = "failed"
             task.failure = {
                 "reason": "lease_expired",
-                "message": (
-                    "Maximum attempts reached after lease expiry."
-                ),
+                "message": ("Maximum attempts reached after lease expiry."),
             }
             task.completed_at = now
 
