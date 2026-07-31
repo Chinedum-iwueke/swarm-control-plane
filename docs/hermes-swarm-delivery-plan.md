@@ -845,6 +845,12 @@ port, credential, Vercel variable, or application runtime was changed.
 - database-level rejection of updates and deletes;
 - complete lineage retrieval for Mission Control and Telegram summaries.
 
+**Status:** operationally complete for one prospectively registered synthetic trial.
+The exact hypothesis and experiment digests were independently approved before the
+trial was reserved and before the task became leaseable. The result, independent
+review, and retain decision are immutable and the family count is one. This validates
+the research process, not the hypothesis for production trading.
+
 ## 13. Definition of Functional Swarm
 
 Hermes is operationally functional when:
