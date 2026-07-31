@@ -1454,4 +1454,83 @@ What the firm is building
 Not an agent that always finds an edge, but a closed autonomous research institution in which one agent proposes, another
 formalizes, another executes, another attacks, another controls selection bias, another observes live behavior, another governs
 promotion, every action is recorded, and no agent can alter the rules used to judge itself.
+### Appendix E - Open-source patterns to adapt
+
+#### Review method and decision rule
+
+This review was performed on 2026-07-31 against the upstream repositories and their
+current documentation. Popularity is a discovery signal, not validation evidence. We
+will borrow contracts, interfaces, testing ideas, and bounded components only after
+license review, security review, point-in-time correctness tests, reproducibility
+tests, and comparison against `bulletproof_bt`. We will not import an upstream
+agent's authority model, live-trading permissions, performance claims, secrets
+handling, or autonomous package-install behavior.
+
+Every adopted component must enter Hermes as one of:
+
+- a versioned, digest-pinned research skill that produces a typed artifact;
+- a replaceable data or compute adapter behind an Invariance-owned interface;
+- a deterministic engine evaluated by an independent benchmark suite; or
+- a user-interface pattern with no power to bypass task, approval, or promotion
+  state machines.
+
+Raw prompts, agent debate, votes, reputation, backtest scores, and generated code are
+never promotion evidence by themselves.
+
+#### Repository findings
+
+| Source | What is worth adapting | Hermes placement | What not to copy |
+|---|---|---|---|
+| [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | Specialist analyst roles, explicit bull/bear debate, a risk-management challenge stage, graph checkpoint/resume, structured manager outputs, and persistent decision logs | Use as an interaction pattern for hypothesis proposer, domain analyst, falsifier, statistical reviewer, and research governor. Persist every argument as evidence linked to a hypothesis and experiment, then require deterministic tests | Do not let debate consensus produce an order or promotion. Do not treat LLM personas as independent statistical evidence. Provider/model/temperature changes must be versioned because they change results |
+| [HKUDS/AI-Trader](https://github.com/HKUDS/AI-Trader) | Agent-facing OpenAPI/skill onboarding, experiment/challenge tracking, background-worker separation, paper accounts, mark-to-market leaderboards, and measured agent participation | Adapt the low-friction agent capability handshake, experiment console, and paper/shadow competition telemetry. Score agents on calibrated, prospective, risk-adjusted evidence rather than social popularity | Reject one-click copy trading, follower/reputation incentives, and any self-registration that grants execution rights. Community signals are untrusted research inputs, not executable instructions |
+| [K-Dense scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | A readable `SKILL.md` convention; local deterministic helpers; explicit prerequisites, boundaries, provenance, and version metadata; strong hypothesis, critical-thinking, statistics, review, and visualization workflows | Create an Invariance skill registry with source commit, content digest, license, allowed tools/network, dependency lock, input/output schema, evaluation suite, and approval state. Convert selected methods into typed research stages | Never bulk-install the catalog or allow a skill to install packages, call arbitrary networks, choose hypotheses, or read secrets at runtime. Upstream itself warns that skills can execute code and should be individually reviewed |
+| [ZhuLinsen/daily_stock_analysis](https://github.com/ZhuLinsen/daily_stock_analysis) | Scheduled daily briefs, multi-source provider fallback, provider capability boundaries, progress/history views, templated decision reports, and multi-channel delivery including Telegram | Adapt daily research-intelligence briefs, source-health telemetry, explicit stale/missing-data labels, and founder notification summaries. Store the underlying evidence and data timestamps, not only prose | Do not turn technical indicators plus news summaries into trade decisions. Silent source fallback is forbidden: every fallback must preserve provider identity, as-of time, transformations, and quality flags |
+| [brokermr810/QuantDinger](https://github.com/brokermr810/QuantDinger) | Separation of ingestion, strategy/backtest compute, and venue execution; Python strategy interfaces; strategy snapshots; background order workers; self-hosted Postgres/Redis operations; notification adapters | Use its separation as a reference for distinct research, shadow, and live planes. Evaluate its UI and adapter boundaries, while retaining Hermes approval, risk, reconciliation, and secret domains | Do not adopt its end-to-end live path wholesale or store exchange credentials in the research plane. AI code generation and post-backtest suggestions cannot mutate a promoted strategy |
+| [HKUDS/Vibe-Trading](https://github.com/HKUDS/Vibe-Trading) | Natural-language planning into tools, skill discovery, run cards, persistent research memory, data-loader registry and fallback chains, walk-forward/Monte Carlo/bootstrap validation, cross-market composite tests, alpha-zoo benchmarking, and inspectable artifacts | This is the closest interaction reference for Founder Intake -> structured hypothesis -> deterministic experiment -> validation -> report. Borrow run-card and tool-trace concepts and benchmark candidate factors against a pinned alpha zoo | Do not adopt self-evolving skills into production without review. Natural-language strategy generation stays in proposal state. Alpha-zoo mining must count the full search family and apply multiple-testing and selection-bias controls |
+| [QuantConnect LEAN](https://github.com/QuantConnect/Lean) | Mature event-driven engine, unified backtest/live algorithm model, brokerage and data-provider interfaces, multi-asset modeling, reporting, optimization workers, and extensive regression tests | Evaluate LEAN as an optional deterministic execution-parity and independent-replication engine behind a versioned adapter. Use it to cross-check `bulletproof_bt`, especially order, fill, fee, corporate-action, and market-hours semantics | Do not make LEAN the research registry, governor, or source of truth. Cloud/live commands remain unavailable to research agents. Engine agreement does not cure bad data, leakage, overfitting, or an unregistered trial family |
+| [NVIDIA portfolio-optimization](https://github.com/NVIDIA-AI-Blueprints/portfolio-optimization) | Scenario generation, Mean-CVaR and mean-variance formulations, GPU dataframe/ML acceleration, cuOpt solving, and fast repeated portfolio stress analysis | Benchmark as a future portfolio-construction backend after CPU reference correctness exists. Preserve scenario seeds, constraints, solver/version metadata, infeasibility certificates, and CPU parity cases | Do not introduce GPU complexity before portfolio contracts and reference solutions are stable. Claimed speedups are hardware/workload-specific; optimizer output never bypasses exposure, liquidity, turnover, concentration, or human risk gates |
+
+#### Scientific skills shortlist
+
+The initial skill intake should be deliberately small. Each item below is a design
+reference first; adoption requires a reviewed, pinned local package and an Invariance
+wrapper that fails closed.
+
+| Priority | Upstream skill patterns | Adaptation into the systematic research loop |
+|---|---|---|
+| P0 | `hypothesis-generation`, `scientific-critical-thinking` | Separate observation, question, mechanism, prediction, rival explanations, null, negative controls, and analysis plan. Emit a preregistration-ready hypothesis object; an agent may propose but cannot score or accept its own hypothesis |
+| P0 | `statistical-analysis`, `statistical-power`, `statsmodels` | Require test selection before result access, assumption checks, effect sizes and intervals, power/MDE, diagnostics, and prespecified fallback rules. Extend with financial dependence, purging, embargo, HAC/bootstrap methods, deflated Sharpe, PBO, and false-discovery control |
+| P0 | `exploratory-data-analysis` | Treat files and metadata as untrusted; prohibit embedded instruction execution, unsafe serialization, silent cleaning, and raw-row leakage. Produce bounded schema, missingness, timestamp, survivorship, and leakage reports before modeling |
+| P1 | `literature-review`, `paper-lookup`, `citation-management`, `scholar-evaluation` | Build reproducible search logs, verified identifiers, claim-source links, evidence grades, and gap maps for literature-led discovery. Remove any mandatory cosmetic generation and prohibit confidential material from external services |
+| P1 | `peer-review` | Adapt its intake gate, conflict declaration, claim-evidence checks, reproducibility review, and human-accountability boundary for independent strategy review. The reviewer must not share the proposer/executor context or hidden holdout access |
+| P1 | `pymc` | Use prior predictive checks, convergence diagnostics, posterior predictive checks, and model comparison for hierarchical alpha, regime, fill, and cost uncertainty. Pin a compatible isolated runtime because current upstream requirements exceed the worker's Python 3.10 floor |
+| P2 | `timesfm-forecasting` | Admit only as a registered baseline/challenger with resource preflight, fixed model digest, calibrated interval evaluation, temporal splits, cost-aware downstream utility, and no direct trading authority |
+| P2 | `scientific-visualization`, `polars`, `dask`, `database-lookup` | Produce truthful uncertainty-aware figures, scalable immutable transformations, and bounded provenance-rich retrievals. Finance adapters must additionally enforce point-in-time availability, vendor licensing, rate limits, and revision history |
+
+#### Recommended composite architecture
+
+The smart combination is not a larger conversational swarm. It is a narrow early
+team operating over deterministic shared contracts:
+
+1. **Research Intelligence Agent** uses reviewed retrieval/literature skills to create
+   claim-source evidence and candidate observations.
+2. **Hypothesis Architect** converts one observation into a preregistered hypothesis,
+   alternatives, failure conditions, trial-family identity, and compute budget.
+3. **Research Execution Agent** invokes only registered `bulletproof_bt` experiments
+   over point-in-time datasets and emits immutable run cards and artifacts.
+4. **Statistical and Leakage Auditor** independently checks timing, multiplicity,
+   assumptions, robustness, costs, and sensitivity; debate transcripts are supporting
+   context, never the verdict.
+5. **Portfolio and Risk Agent** evaluates incremental portfolio contribution with a
+   deterministic CPU reference optimizer; accelerated or alternate engines are
+   challengers until parity is demonstrated.
+6. **Research Governor** advances the existing promotion state machine only when all
+   required evidence is present. Shadow and live execution remain separate systems
+   with deterministic pre-trade risk and human approval.
+
+This yields the practical near-term build order: immutable hypothesis/trial registry,
+point-in-time data contracts, run cards and tool traces, independent audit contracts,
+daily research briefs, alpha-family benchmark harness, optional LEAN replication, and
+only then accelerated portfolio optimization. Agent count should grow only when a new
+permission boundary or separation-of-duties requirement justifies another identity.
 END OF PRODUCT REQUIREMENTS DOCUMENT
