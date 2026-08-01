@@ -109,7 +109,8 @@ def prepare(admin: httpx.Client, roles: dict, commit: str) -> dict:
                 "question": question,
                 "summary": (
                     "Test one atomic lagged-return signal on a pinned historical BTC "
-                    "snapshot; retain the result regardless of sign."
+                    "snapshot; retain the result regardless of sign. "
+                    f"Preparation run: {stamp}."
                 ),
                 "claims": [
                     {
