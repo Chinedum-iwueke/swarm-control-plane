@@ -623,6 +623,8 @@ function renderResearch() {
   const domains = state.dashboard.research_domains || [];
   const intelligenceRuns = state.dashboard.research_intelligence_runs || [];
   const memoryExports = state.dashboard.research_memory_exports || [];
+  const datasetManifests = state.dashboard.research_dataset_manifests || [];
+  const datasetBuilds = state.dashboard.research_dataset_builds || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
   const latestMemoryTask = memoryTasks[0];
   const latestMemory = memoryExports[0];
@@ -647,6 +649,14 @@ function renderResearch() {
       ${statusBadge(cycle.status)}
     </div>
   `).join("") : empty("No supervised daily research cycle has been scheduled.");
+  document.getElementById("research-datasets").innerHTML = datasetManifests.length ? datasetManifests.map((item) => {
+    const builds = datasetBuilds.filter((build) => build.manifest_id === item.id);
+    const latest = builds[0];
+    return `<div class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(item.manifest_key)}</strong><div class="entity-meta"><span>${escapeHtml(item.manifest.provider.name)}</span><span>${escapeHtml(item.manifest.instruments.join(", "))}</span><span>${escapeHtml(item.manifest.timeframe)}</span><span>as of ${formatDate(item.manifest.as_of)}</span></div><div class="entity-meta"><span class="mono">manifest ${shortHash(item.manifest_digest)}</span><span class="mono">data ${shortHash(latest?.content_digest)}</span><span>${latest?.rows ?? 0} rows</span></div></div>
+      ${statusBadge(latest && latest.content_digest === latest.rebuild_content_digest ? "verified" : "pending")}
+    </div>`;
+  }).join("") : empty("No point-in-time dataset build is registered.");
   document.getElementById("research-domains").innerHTML = domains.length ? domains.map((domain) => {
     const latestRun = intelligenceRuns.find((run) => run.domain_profile_id === domain.id);
     const selected = latestRun?.selected_candidate;

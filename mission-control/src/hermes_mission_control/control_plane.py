@@ -53,6 +53,12 @@ class ControlPlaneClient:
         )
         memory_exports = await self._optional_collection("/v1/research/memory-exports")
         operational_notes = await self._optional_collection("/v1/operational-notes")
+        dataset_manifests = await self._optional_collection(
+            "/v1/research/data-contracts/manifests"
+        )
+        dataset_builds = await self._optional_collection(
+            "/v1/research/data-contracts/builds"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -69,6 +75,8 @@ class ControlPlaneClient:
             "research_intelligence_runs": intelligence_runs,
             "research_memory_exports": memory_exports,
             "operational_notes": operational_notes,
+            "research_dataset_manifests": dataset_manifests,
+            "research_dataset_builds": dataset_builds,
         }
 
     async def transition_operational_note(

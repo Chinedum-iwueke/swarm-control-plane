@@ -1,6 +1,7 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
+from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.governance import ApprovalEvent, Artifact, TaskApproval
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
@@ -42,6 +43,8 @@ __all__ = [
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
+    "ResearchDatasetBuild",
+    "ResearchDatasetManifest",
     "ResearchBrief",
     "ResearchChunk",
     "ResearchDailyCycle",

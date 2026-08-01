@@ -39,6 +39,10 @@ storage-efficiency note has an approved audit task or an explicit deferral date.
 
 ## M15: Point-in-time data and feature contracts
 
+Implementation status: source-complete; production migration and the two-dataset
+digest-bound pilot remain operational exit gates. See
+[the M15 design and rehearsal](m15-point-in-time-data-contracts.md).
+
 Create provider-aware data manifests, as-of semantics, quality flags, corporate-action
 handling, feature lineage, and deterministic dataset builds. No silent provider
 fallbacks.
