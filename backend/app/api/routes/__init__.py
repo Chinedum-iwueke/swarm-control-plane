@@ -12,6 +12,7 @@ from app.api.routes.packages import router as packages_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
 from app.api.routes.research import router as research_router
+from app.api.routes.research_programs import router as research_programs_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.supervisor import router as supervisor_router
 from app.api.routes.task_runtime import router as task_runtime_router
@@ -31,6 +32,7 @@ __all__ = [
     "missions_router",
     "packages_router",
     "proposals_router",
+    "research_programs_router",
     "research_router",
     "runbook_packages_router",
     "supervisor_router",

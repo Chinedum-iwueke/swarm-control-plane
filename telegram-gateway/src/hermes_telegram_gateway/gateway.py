@@ -38,12 +38,13 @@ class RestrictedTelegramGateway:
             await self.run_once()
 
     async def run_once(self) -> None:
-        updates, _, _, _, _ = await asyncio.gather(
+        updates, _, _, _, _, _ = await asyncio.gather(
             self._telegram.updates(self._offset, self._settings.poll_timeout_seconds),
             self._notify_proposals(),
             self._notify_tasks(),
             self._notify_approvals(),
             self._notify_missions(),
+            self._notify_research_cycles(),
         )
         for update in updates:
             self._offset = max(self._offset, int(update["update_id"]) + 1)
@@ -67,6 +68,9 @@ class RestrictedTelegramGateway:
         if text == "/approvals":
             await self._send_approvals()
             return
+        if text == "/research":
+            await self._send_research_status()
+            return
         if text.startswith("/start review_"):
             await self._review_handoff(text.removeprefix("/start review_"))
             return
@@ -81,7 +85,7 @@ class RestrictedTelegramGateway:
         if text.startswith("/"):
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                "Supported: plain-English request, /status, /approvals, "
+                "Supported: plain-English request, /status, /approvals, /research, "
                 "approval links.",
             )
             return
@@ -187,6 +191,38 @@ class RestrictedTelegramGateway:
                     f"Checkpoint: {exception.get('task_number', 'unknown')}\n"
                     f"Category: {exception.get('category', 'unknown')}",
                 )
+
+    async def _notify_research_cycles(self) -> None:
+        for cycle in await self._channel.research_cycles():
+            if cycle["status"] not in {
+                "awaiting_brief",
+                "duplicate_avoided",
+                "completed",
+                "attention_required",
+            }:
+                continue
+            state = f"{cycle['status']}:{cycle['question_digest']}"
+            if not self._store.changed(f"research-cycle:{cycle['id']}", _digest(state)):
+                continue
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Daily research · {cycle['status']}\n{cycle['question']}\n"
+                f"Question: {cycle['question_digest'][:12]}",
+            )
+
+    async def _send_research_status(self) -> None:
+        cycles = await self._channel.research_cycles()
+        if not cycles:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "No daily research cycles recorded."
+            )
+            return
+        lines = ["Hermes daily research"]
+        for cycle in cycles[:7]:
+            lines.append(
+                f"{cycle['cycle_date']} · {cycle['status']} · {cycle['question_key']}"
+            )
+        await self._telegram.send(self._settings.founder_chat_id, "\n".join(lines))
 
     async def _send_approvals(self) -> None:
         missions = [

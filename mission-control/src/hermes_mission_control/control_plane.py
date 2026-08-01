@@ -45,6 +45,8 @@ class ControlPlaneClient:
         deployments = await self._request("GET", "/v1/packages/deployments")
         proposals = await self._request("GET", "/v1/proposals")
         missions = await self._request("GET", "/v1/missions")
+        research_programs = await self._request("GET", "/v1/research-programs")
+        research_cycles = await self._request("GET", "/v1/research-programs/cycles")
         return {
             "health": health,
             "tasks": tasks,
@@ -55,6 +57,8 @@ class ControlPlaneClient:
             "package_deployments": deployments,
             "proposals": proposals,
             "missions": missions,
+            "research_programs": research_programs,
+            "research_cycles": research_cycles,
         }
 
     async def create_intake(self, request: IntakeRequest) -> dict[str, Any]:

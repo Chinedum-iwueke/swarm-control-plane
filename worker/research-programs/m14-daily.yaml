@@ -1,0 +1,37 @@
+program_key: M14-DAILY-SUPERVISED-RESEARCH
+title: Invariance daily supervised signal discovery
+mandate:
+- question_key: btc-hourly-lagged-return
+  question: Does hourly BTC return sign predict the next hourly return after costs?
+  rationale: The first scheduled cycle must prove that the registry prevents repetition of the completed M13 trial.
+  source: prior_failure
+  tags: [btc, momentum, duplicate-control]
+- question_key: btc-funding-extremes
+  question: Do extreme BTC perpetual funding rates predict short-horizon residual returns after costs?
+  rationale: Funding pressure may reveal crowded positioning while remaining an atomic signal-level question.
+  source: founder_priority
+  tags: [btc, funding, positioning]
+- question_key: btc-volume-shock
+  question: Do abnormal BTC spot-volume shocks predict next-day volatility after controlling for recent volatility?
+  rationale: Volume shocks may contain information about subsequent uncertainty without implying a complete strategy.
+  source: literature
+  tags: [btc, volume, volatility]
+- question_key: btc-weekend-liquidity
+  question: Does the BTC weekend liquidity regime alter the net predictive value of short-horizon momentum?
+  rationale: Calendar-dependent liquidity is a plausible rival explanation for unstable momentum evidence.
+  source: prior_failure
+  tags: [btc, liquidity, regime]
+- question_key: cross-asset-risk-off
+  question: Do equity risk-off shocks predict next-day BTC residual returns after controlling for BTC trend?
+  rationale: Cross-asset risk transmission may explain apparent crypto-specific predictability.
+  source: portfolio_gap
+  tags: [btc, cross-asset, hidden-beta]
+schedule:
+  weekdays_utc: [0, 1, 2, 3, 4, 5, 6]
+  hour_utc: 0
+budget:
+  max_cycles_per_week: 7
+  max_trials_per_cycle: 1
+  max_compute_seconds_per_cycle: 1800
+active: true
+created_by: founder-operator

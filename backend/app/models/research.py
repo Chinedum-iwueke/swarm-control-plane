@@ -1,7 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -36,6 +38,61 @@ class ResearchDataSnapshot(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+
+class ResearchProgram(Base):
+    __tablename__ = "research_programs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    program_key: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    mandate: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    schedule: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    budget: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchDailyCycle(Base):
+    __tablename__ = "research_daily_cycles"
+    __table_args__ = (UniqueConstraint("program_id", "cycle_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    program_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_programs.id"),
+        nullable=False,
+        index=True,
+    )
+    cycle_date: Mapped[date] = mapped_column(Date, nullable=False)
+    question_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    question_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    budget: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    duplicate_hypothesis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_hypotheses.id"), nullable=True
+    )
+    hypothesis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_hypotheses.id"), nullable=True
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True
+    )
+    digest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     snapshot_key: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
     source_id: Mapped[uuid.UUID] = mapped_column(

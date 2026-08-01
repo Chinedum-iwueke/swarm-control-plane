@@ -43,6 +43,9 @@ class FounderChannelClient:
     async def missions(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/missions")
 
+    async def research_cycles(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/v1/founder-channel/research-cycles")
+
     async def approve_mission(self, mission_id: str, reason: str) -> dict[str, Any]:
         return await self._request(
             "POST",

@@ -9,6 +9,7 @@ from app.core.security import require_mission_supervisor
 from app.db.session import get_db
 from app.models import EngineeringMission
 from app.schemas import MissionReconcileResponse, MissionResponse
+from app.services.daily_research import reconcile_programs
 from app.services.supervision import reconcile_mission
 
 router = APIRouter(
@@ -22,6 +23,7 @@ router = APIRouter(
 def reconcile_supervised_missions(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[MissionReconcileResponse]:
+    reconcile_programs(db)
     missions = db.scalars(
         select(EngineeringMission)
         .where(

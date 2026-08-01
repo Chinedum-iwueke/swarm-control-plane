@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models import (
     EngineeringMission,
     FounderProposal,
+    ResearchDailyCycle,
     Task,
     TaskApproval,
     TaskDependency,
@@ -28,6 +29,7 @@ from app.schemas import (
     TaskCreate,
     TaskResponse,
 )
+from app.schemas.research_program import ResearchDailyCycleResponse
 from app.services.governance import approve_task, decide_task
 from app.services.proposals import materialize_proposal, reject_proposal
 from app.services.supervision import approve_supervision
@@ -96,6 +98,19 @@ def list_tasks(
 ) -> list[TaskResponse]:
     tasks = db.scalars(select(Task).order_by(Task.updated_at.desc()).limit(limit)).all()
     return [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+
+
+@router.get("/research-cycles", response_model=list[ResearchDailyCycleResponse])
+def list_research_cycles(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=30)] = 7,
+) -> list[ResearchDailyCycleResponse]:
+    cycles = db.scalars(
+        select(ResearchDailyCycle)
+        .order_by(ResearchDailyCycle.created_at.desc())
+        .limit(limit)
+    ).all()
+    return [ResearchDailyCycleResponse.model_validate(item) for item in cycles]
 
 
 @router.get("/proposals", response_model=list[FounderProposalResponse])
