@@ -496,12 +496,19 @@ function renderInfrastructure() {
 function renderResearch() {
   if (!state.dashboard) return;
   const tasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_experiment");
+  const cycles = state.dashboard.research_cycles || [];
   const accepted = tasks.filter((task) => task.result?.summary?.verdict === "accepted").length;
   document.getElementById("research-gate").innerHTML = `
     <span class="gate-symbol">G</span>
     <div><strong>Research promotion gate enforced</strong><div class="entity-meta"><span>${accepted} synthetic findings accepted</span><span>Live deployment requires a separate approval path</span></div></div>
     ${statusBadge("active")}
   `;
+  document.getElementById("research-cycles").innerHTML = cycles.length ? cycles.map((cycle) => `
+    <div class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(cycle.question)}</strong><div class="entity-meta"><span>${escapeHtml(cycle.cycle_date)}</span><span>${escapeHtml(cycle.question_key)}</span><span class="mono">${shortHash(cycle.question_digest)}</span></div></div>
+      ${statusBadge(cycle.status)}
+    </div>
+  `).join("") : empty("No supervised daily research cycle has been scheduled.");
   document.getElementById("research-list").innerHTML = tasks.length ? tasks.map((task) => {
     const summary = task.result?.summary || {};
     const oos = summary.out_of_sample || {};
