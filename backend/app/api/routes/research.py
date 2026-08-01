@@ -8,10 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models import (
+    ResearchBrief,
+    ResearchChunk,
     ResearchDecision,
+    ResearchDocument,
     ResearchExperiment,
     ResearchHypothesis,
     ResearchResult,
+    ResearchRetrievalEvaluation,
     ResearchReview,
     ResearchTrial,
 )
@@ -117,6 +121,32 @@ def create_chunk(
     return _chunk_response(register_chunk(db, document_id, payload))
 
 
+@router.get(
+    "/knowledge/documents/by-key/{document_key}",
+    response_model=ResearchDocumentResponse,
+)
+def get_document_by_key(document_key: str, db: Annotated[Session, Depends(get_db)]):
+    record = db.scalar(
+        select(ResearchDocument).where(ResearchDocument.document_key == document_key)
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return _document_response(record)
+
+
+@router.get(
+    "/knowledge/documents/{document_id}/chunks",
+    response_model=list[ResearchChunkResponse],
+)
+def list_document_chunks(document_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    records = db.scalars(
+        select(ResearchChunk)
+        .where(ResearchChunk.document_id == document_id)
+        .order_by(ResearchChunk.ordinal)
+    ).all()
+    return [_chunk_response(record) for record in records]
+
+
 @router.post("/knowledge/search", response_model=KnowledgeSearchResponse)
 def knowledge_search(
     payload: KnowledgeSearchRequest, db: Annotated[Session, Depends(get_db)]
@@ -137,11 +167,39 @@ def create_evaluation(
     return RetrievalEvaluationResponse.model_validate(evaluate_retrieval(db, payload))
 
 
+@router.get(
+    "/knowledge/evaluations/by-key/{evaluation_key}",
+    response_model=RetrievalEvaluationResponse,
+)
+def get_evaluation_by_key(evaluation_key: str, db: Annotated[Session, Depends(get_db)]):
+    record = db.scalar(
+        select(ResearchRetrievalEvaluation).where(
+            ResearchRetrievalEvaluation.evaluation_key == evaluation_key
+        )
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Evaluation not found.")
+    return RetrievalEvaluationResponse.model_validate(record)
+
+
 @router.post("/knowledge/briefs", response_model=ResearchBriefResponse, status_code=201)
 def create_research_brief(
     payload: ResearchBriefCreate, db: Annotated[Session, Depends(get_db)]
 ):
     return ResearchBriefResponse.model_validate(create_brief(db, payload))
+
+
+@router.get(
+    "/knowledge/briefs/by-digest/{record_digest}",
+    response_model=ResearchBriefResponse,
+)
+def get_brief_by_digest(record_digest: str, db: Annotated[Session, Depends(get_db)]):
+    record = db.scalar(
+        select(ResearchBrief).where(ResearchBrief.record_digest == record_digest)
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Brief not found.")
+    return ResearchBriefResponse.model_validate(record)
 
 
 @router.post("/sources", response_model=ResearchSourceResponse, status_code=201)

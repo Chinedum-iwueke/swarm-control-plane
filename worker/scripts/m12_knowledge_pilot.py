@@ -20,6 +20,13 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def record_digest(document: Any) -> str:
+    canonical = json.dumps(
+        document, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode()
+    return digest(canonical)
+
+
 def chunks(text: str) -> list[dict[str, Any]]:
     lines = text.splitlines()
     sections: list[dict[str, Any]] = []
@@ -123,12 +130,34 @@ def ingest(api: httpx.Client) -> dict[str, Any]:
             "ingested_by": "research-librarian",
         }
         response = api.post("/v1/research/knowledge/documents", json=payload)
+        if response.status_code == 409:
+            response = api.get(
+                f"/v1/research/knowledge/documents/by-key/{item['document_key']}"
+            )
         response.raise_for_status()
         document = response.json()
+        if document["content_digest"] != payload["content_digest"]:
+            raise RuntimeError(
+                f"Existing document {item['document_key']} has a different digest"
+            )
         passages = (
             pdf_chunks(path) if item["format"] == "pdf" else chunks(content.decode())
         )
+        existing_response = api.get(
+            f"/v1/research/knowledge/documents/{document['id']}/chunks"
+        )
+        existing_response.raise_for_status()
+        existing = {passage["ordinal"]: passage for passage in existing_response.json()}
         for passage in passages:
+            if passage["ordinal"] in existing:
+                if (
+                    existing[passage["ordinal"]]["text_digest"]
+                    != passage["text_digest"]
+                ):
+                    raise RuntimeError(
+                        f"Existing passage {item['document_key']}#{passage['ordinal']} has a different digest"
+                    )
+                continue
             chunk_response = api.post(
                 f"/v1/research/knowledge/documents/{document['id']}/chunks",
                 json=passage,
@@ -148,6 +177,10 @@ def evaluate(api: httpx.Client) -> dict[str, Any]:
     payload = json.loads((WORKER / "knowledge/m12-evaluation.json").read_text())
     payload["evaluated_by"] = "retrieval-evaluator"
     response = api.post("/v1/research/knowledge/evaluations", json=payload)
+    if response.status_code == 409:
+        response = api.get(
+            f"/v1/research/knowledge/evaluations/by-key/{payload['evaluation_key']}"
+        )
     response.raise_for_status()
     result = response.json()
     if not result["passed"]:
@@ -179,7 +212,9 @@ def pilot(api: httpx.Client) -> dict[str, Any]:
         None,
     )
     if governing is None or prior is None:
-        raise RuntimeError("Pilot retrieval did not return both required evidence classes")
+        raise RuntimeError(
+            "Pilot retrieval did not return both required evidence classes"
+        )
     payload = {
         "question": question,
         "summary": "Negative evidence must remain part of institutional memory, and research promotion requires review separated from execution.",
@@ -203,6 +238,24 @@ def pilot(api: httpx.Client) -> dict[str, Any]:
         "created_by": "research-intelligence-agent",
     }
     response = api.post("/v1/research/knowledge/briefs", json=payload)
+    if response.status_code == 409:
+        evaluation = api.get(
+            "/v1/research/knowledge/evaluations/by-key/M12-FIXED-QUESTIONS-V1"
+        )
+        evaluation.raise_for_status()
+        brief_document = {
+            "question": payload["question"],
+            "corpus_digest": result["corpus_digest"],
+            "evaluation_id": evaluation.json()["id"],
+            "brief": {
+                "summary": payload["summary"],
+                "claims": payload["claims"],
+            },
+            "created_by": payload["created_by"],
+        }
+        response = api.get(
+            f"/v1/research/knowledge/briefs/by-digest/{record_digest(brief_document)}"
+        )
     response.raise_for_status()
     return {"search": result, "brief": response.json()}
 
