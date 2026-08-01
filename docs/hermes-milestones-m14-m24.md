@@ -16,6 +16,10 @@ babysitting.
 
 ## M14C: Operational Memory Steward
 
+Implementation status: source-complete; production migration, signed identity
+bootstrap, first-note pilot, and Mac/Telegram deployment evidence remain operational
+exit gates.
+
 Add a non-executing note-taking agent that records durable observations from the
 founder and other agents using an immutable structured contract: subject, finding,
 evidence, affected systems, urgency, proposed owner, deferral reason, status, and

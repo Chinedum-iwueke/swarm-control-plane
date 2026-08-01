@@ -42,6 +42,7 @@
       <div class="nav-group">
         <p class="nav-label">Intelligence</p>
         <button class="nav-item" data-view="knowledge"><span class="nav-glyph">⌕</span>Knowledge</button>
+        <button class="nav-item" data-view="notes"><span class="nav-glyph">▤</span>Notes <span class="nav-count" id="note-count">0</span></button>
         <button class="nav-item" data-view="evidence"><span class="nav-glyph">□</span>Evidence</button>
       </div>
       <div class="nav-footer">
@@ -249,6 +250,13 @@
           <select id="artifact-type-filter" aria-label="Filter artifact type"><option value="">All types</option></select>
         </div>
         <div id="artifact-list" class="artifact-list"></div>
+      </section>
+
+      <section id="notes" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Durable operating memory</p><h1>Notes</h1><p class="heading-context">Findings, ownership, deferrals, and resolution evidence</p></div>
+        </div>
+        <div id="note-list" class="proposal-list"></div>
       </section>
     </main>
   </div>

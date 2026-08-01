@@ -71,6 +71,9 @@ class RestrictedTelegramGateway:
         if text == "/research":
             await self._send_research_status()
             return
+        if text == "/notes" or text.startswith("/notes "):
+            await self._send_notes(text.removeprefix("/notes").strip() or None)
+            return
         if text.startswith("/start review_"):
             await self._review_handoff(text.removeprefix("/start review_"))
             return
@@ -85,7 +88,7 @@ class RestrictedTelegramGateway:
         if text.startswith("/"):
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                "Supported: plain-English request, /status, /approvals, /research, "
+                "Supported: plain-English request, /status, /approvals, /research, /notes, "
                 "approval links.",
             )
             return
@@ -221,6 +224,21 @@ class RestrictedTelegramGateway:
         for cycle in cycles[:7]:
             lines.append(
                 f"{cycle['cycle_date']} · {cycle['status']} · {cycle['question_key']}"
+            )
+        await self._telegram.send(self._settings.founder_chat_id, "\n".join(lines))
+
+    async def _send_notes(self, query: str | None) -> None:
+        notes = await self._channel.operational_notes(query)
+        if not notes:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "No matching operational notes."
+            )
+            return
+        lines = ["Hermes operational notes"]
+        for note in notes[:10]:
+            lines.append(
+                f"{note['note_key']} · {note['status']} · {note['urgency']}\n"
+                f"{note['subject']}"
             )
         await self._telegram.send(self._settings.founder_chat_id, "\n".join(lines))
 

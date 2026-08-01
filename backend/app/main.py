@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.routes import (
+    agent_notes_router,
     agent_packages_router,
     agent_proposals_router,
     agent_research_router,
@@ -12,6 +13,7 @@ from app.api.routes import (
     health_router,
     metrics_router,
     missions_router,
+    operational_notes_router,
     packages_router,
     proposals_router,
     research_programs_router,
@@ -33,6 +35,7 @@ app = FastAPI(
 app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(missions_router)
+app.include_router(operational_notes_router)
 app.include_router(packages_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)
@@ -42,6 +45,7 @@ app.include_router(founder_channel_router)
 app.include_router(governance_router)
 app.include_router(agent_runtime_router)
 app.include_router(agent_research_router)
+app.include_router(agent_notes_router)
 app.include_router(tasks_router)
 app.include_router(proposals_router)
 app.include_router(research_router)

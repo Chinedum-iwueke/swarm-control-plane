@@ -7,6 +7,8 @@ from app.api.routes.governance import router as governance_router
 from app.api.routes.health import router as health_router
 from app.api.routes.metrics import router as metrics_router
 from app.api.routes.missions import router as missions_router
+from app.api.routes.operational_notes import agent_router as agent_notes_router
+from app.api.routes.operational_notes import router as operational_notes_router
 from app.api.routes.packages import agent_router as agent_packages_router
 from app.api.routes.packages import router as packages_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
@@ -19,6 +21,7 @@ from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
 
 __all__ = [
+    "agent_notes_router",
     "agent_packages_router",
     "agent_proposals_router",
     "agent_research_router",
@@ -30,6 +33,7 @@ __all__ = [
     "health_router",
     "metrics_router",
     "missions_router",
+    "operational_notes_router",
     "packages_router",
     "proposals_router",
     "research_programs_router",

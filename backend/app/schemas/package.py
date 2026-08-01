@@ -104,7 +104,11 @@ class RolePackageManifest(BaseModel):
             raise ValueError("primary checkout writes are forbidden")
         if self.repository_profile.remote_write:
             raise ValueError("remote repository writes are forbidden")
-        non_executing = {"founder_request", "research_intelligence"}
+        non_executing = {
+            "founder_request",
+            "operational_memory",
+            "research_intelligence",
+        }
         if not self.workflows and set(self.task_types) - non_executing:
             raise ValueError("only non-executing reasoning packages may omit workflows")
         if (

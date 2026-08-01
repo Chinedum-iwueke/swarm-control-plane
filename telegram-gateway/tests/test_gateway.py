@@ -50,6 +50,7 @@ class Channel:
         self.approval_values: list[dict] = []
         self.mission_values: list[dict] = []
         self.mission_approvals: list[tuple[str, str]] = []
+        self.note_values: list[dict] = []
 
     async def create_request(self, payload):
         self.created.append(payload)
@@ -66,6 +67,15 @@ class Channel:
 
     async def missions(self):
         return self.mission_values
+
+    async def operational_notes(self, query=None):
+        if not query:
+            return self.note_values
+        return [
+            note
+            for note in self.note_values
+            if query.lower() in f"{note['note_key']} {note['subject']}".lower()
+        ]
 
     async def approve_mission(self, mission_id, reason):
         self.mission_approvals.append((mission_id, reason))
@@ -148,6 +158,39 @@ def test_domain_classification_is_bounded() -> None:
     assert classify_request("Run a research hypothesis") == ("bulletproof_bt", 1)
     assert classify_request("Restart the API") == ("swarm-control-plane", 3)
     assert classify_request("Index my knowledge notes") == ("knowledge", 0)
+
+
+@pytest.mark.asyncio
+async def test_notes_command_searches_operational_memory(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.note_values = [
+        {
+            "note_key": "system-wide-storage-efficiency",
+            "subject": "Audit system-wide storage efficiency",
+            "status": "deferred",
+            "urgency": "medium",
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway._handle_update(
+        {
+            "message": {
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "/notes storage",
+            }
+        }
+    )
+    assert len(telegram.sent) == 1
+    assert "system-wide-storage-efficiency" in telegram.sent[0][1]
 
 
 @pytest.mark.asyncio

@@ -186,3 +186,31 @@ async def test_proposal_materialization_is_an_explicit_founder_action(
             "reason": "Founder reviewed the complete bounded proposal.",
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_note_remediation_enters_founder_intake_planning(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"task_type": "founder_request"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.request_operational_note_proposal(
+            "note-id", "Measure storage growth before proposing remediation."
+        )
+    finally:
+        await client.close()
+    assert result["task_type"] == "founder_request"
+    assert captured == {
+        "path": "/v1/operational-notes/note-id/proposal-request",
+        "body": {
+            "requested_by": "founder-mission-control",
+            "objective": "Measure storage growth before proposing remediation.",
+        },
+    }

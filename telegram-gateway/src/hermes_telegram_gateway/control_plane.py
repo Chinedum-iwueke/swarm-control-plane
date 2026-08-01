@@ -46,6 +46,12 @@ class FounderChannelClient:
     async def research_cycles(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/research-cycles")
 
+    async def operational_notes(self, query: str | None = None) -> list[dict[str, Any]]:
+        params = {"query": query} if query else None
+        return await self._request(
+            "GET", "/v1/founder-channel/operational-notes", params=params
+        )
+
     async def approve_mission(self, mission_id: str, reason: str) -> dict[str, Any]:
         return await self._request(
             "POST",

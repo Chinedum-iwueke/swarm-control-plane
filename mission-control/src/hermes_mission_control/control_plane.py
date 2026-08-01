@@ -51,9 +51,8 @@ class ControlPlaneClient:
         intelligence_runs = await self._optional_collection(
             "/v1/research/intelligence/runs"
         )
-        memory_exports = await self._optional_collection(
-            "/v1/research/memory-exports"
-        )
+        memory_exports = await self._optional_collection("/v1/research/memory-exports")
+        operational_notes = await self._optional_collection("/v1/operational-notes")
         return {
             "health": health,
             "tasks": tasks,
@@ -69,7 +68,32 @@ class ControlPlaneClient:
             "research_domains": research_domains,
             "research_intelligence_runs": intelligence_runs,
             "research_memory_exports": memory_exports,
+            "operational_notes": operational_notes,
         }
+
+    async def transition_operational_note(
+        self, note_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        allowed = {"action", "reason", "assigned_to", "deferred_until", "evidence"}
+        if set(payload) - allowed:
+            raise ValueError("Unsupported operational-note fields.")
+        return await self._request(
+            "POST",
+            f"/v1/operational-notes/{note_id}/transitions",
+            json={"actor": "founder-mission-control", **payload},
+        )
+
+    async def request_operational_note_proposal(
+        self, note_id: str, objective: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/operational-notes/{note_id}/proposal-request",
+            json={
+                "requested_by": "founder-mission-control",
+                "objective": objective,
+            },
+        )
 
     async def propose_research_memory_sync(self) -> dict[str, Any]:
         return await self._request(

@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models import (
     EngineeringMission,
     FounderProposal,
+    OperationalNote,
     ResearchDailyCycle,
     Task,
     TaskApproval,
@@ -29,6 +30,7 @@ from app.schemas import (
     TaskCreate,
     TaskResponse,
 )
+from app.schemas.operational_note import OperationalNoteResponse
 from app.schemas.research_program import ResearchDailyCycleResponse
 from app.services.governance import approve_task, decide_task
 from app.services.proposals import materialize_proposal, reject_proposal
@@ -98,6 +100,26 @@ def list_tasks(
 ) -> list[TaskResponse]:
     tasks = db.scalars(select(Task).order_by(Task.updated_at.desc()).limit(limit)).all()
     return [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+
+
+@router.get("/operational-notes", response_model=list[OperationalNoteResponse])
+def list_operational_notes(
+    db: Annotated[Session, Depends(get_db)],
+    query: Annotated[str | None, Query(max_length=200)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> list[OperationalNoteResponse]:
+    statement = select(OperationalNote)
+    if query:
+        pattern = f"%{query}%"
+        statement = statement.where(
+            OperationalNote.subject.ilike(pattern)
+            | OperationalNote.finding.ilike(pattern)
+            | OperationalNote.note_key.ilike(pattern)
+        )
+    notes = db.scalars(
+        statement.order_by(OperationalNote.updated_at.desc()).limit(limit)
+    ).all()
+    return [OperationalNoteResponse.model_validate(item) for item in notes]
 
 
 @router.get("/research-cycles", response_model=list[ResearchDailyCycleResponse])

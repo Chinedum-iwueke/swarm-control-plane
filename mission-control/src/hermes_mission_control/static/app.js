@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "evidence"]);
+const allowedViews = new Set(["command", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const state = {
   dashboard: null,
@@ -228,7 +228,74 @@ function renderAll() {
   renderAgents();
   renderInfrastructure();
   renderResearch();
+  renderNotes();
   renderArtifacts();
+}
+
+function renderNotes() {
+  const notes = state.dashboard?.operational_notes || [];
+  document.getElementById("note-count").textContent = notes.filter((item) => item.status !== "resolved").length;
+  document.getElementById("note-list").innerHTML = notes.length ? notes.map((note) => `
+    <article class="proposal-row" data-note-id="${note.id}">
+      <div class="proposal-main">
+        <div class="proposal-eyebrow">${escapeHtml(humanize(note.urgency))} · ${escapeHtml(note.proposed_owner)}</div>
+        <h2>${escapeHtml(note.subject)}</h2>
+        <p>${escapeHtml(note.finding)}</p>
+        <div class="entity-meta"><span class="mono">${escapeHtml(note.note_key)}</span><span>${(note.affected_systems || []).map(escapeHtml).join(", ")}</span><span>${relativeTime(note.updated_at)}</span></div>
+      </div>
+      <div class="proposal-side">${statusBadge(note.status)}<span class="row-open">›</span></div>
+    </article>`).join("") : empty("No operational notes recorded.");
+  document.querySelectorAll("[data-note-id]").forEach((element) => {
+    element.onclick = () => openNote(element.dataset.noteId);
+  });
+}
+
+function openNote(id) {
+  const note = (state.dashboard?.operational_notes || []).find((item) => String(item.id) === String(id));
+  if (!note) return;
+  const actions = note.status === "resolved"
+    ? '<button class="secondary" data-note-action="reopen">Reopen</button>'
+    : '<button class="secondary" data-note-action="assign">Assign</button><button class="secondary" data-note-action="defer">Defer</button><button class="secondary" data-note-proposal>Plan remediation</button><button class="command" data-note-action="resolve">Resolve with evidence</button>';
+  openInspector("Operational note", note.subject, `
+    <dl><dt>Status</dt><dd>${escapeHtml(humanize(note.status))}</dd><dt>Urgency</dt><dd>${escapeHtml(humanize(note.urgency))}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(note.record_digest)}</dd><dt>Owner</dt><dd>${escapeHtml(note.assigned_to || note.proposed_owner)}</dd></dl>
+    <section class="detail-section"><h3>Finding</h3><p>${escapeHtml(note.finding)}</p></section>
+    <section class="detail-section"><h3>Evidence</h3>${bulletList(note.evidence, "No evidence recorded.")}</section>
+    <section class="detail-actions">${actions}</section>`);
+  document.querySelectorAll("[data-note-action]").forEach((button) => {
+    button.onclick = () => transitionNote(note, button.dataset.noteAction);
+  });
+  const proposalButton = document.querySelector("[data-note-proposal]");
+  if (proposalButton) proposalButton.onclick = () => requestNoteProposal(note);
+}
+
+async function requestNoteProposal(note) {
+  if (state.demo) return toast("Actions are disabled in demonstration mode.");
+  const objective = window.prompt("What bounded outcome should the planner propose?");
+  if (!objective || objective.trim().length < 10) return toast("An objective of at least 10 characters is required.");
+  await mutate(`/api/operational-notes/${note.id}/proposal-request`, { objective: objective.trim() }, "Planning request queued for founder review.");
+  closeInspector();
+  await loadDashboard();
+}
+
+async function transitionNote(note, action) {
+  if (state.demo) return toast("Actions are disabled in demonstration mode.");
+  const reason = window.prompt(`Reason to ${action} this note:`);
+  if (!reason || reason.trim().length < 10) return toast("A reason of at least 10 characters is required.");
+  const payload = { action, reason: reason.trim(), evidence: [] };
+  if (action === "assign") payload.assigned_to = note.proposed_owner;
+  if (action === "defer") {
+    const until = window.prompt("Defer until (ISO date/time):");
+    if (!until) return;
+    payload.deferred_until = new Date(until).toISOString();
+  }
+  if (action === "resolve") {
+    const evidence = window.prompt("Resolution evidence reference:");
+    if (!evidence) return toast("Resolution evidence is required.");
+    payload.evidence = [evidence.trim()];
+  }
+  await mutate(`/api/operational-notes/${note.id}/transitions`, payload, `Note ${action} recorded.`);
+  closeInspector();
+  await loadDashboard();
 }
 
 function renderCommand() {

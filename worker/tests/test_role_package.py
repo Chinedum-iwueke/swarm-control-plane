@@ -12,6 +12,9 @@ WORKFLOWS = ROOT / "workflows"
 RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
 MEMORY_MANIFEST = ROOT / "role-packages/vm1-research-memory-steward/manifest.yaml"
 DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.yaml"
+OPERATIONAL_MEMORY_MANIFEST = (
+    ROOT / "role-packages/vm1-operational-memory-steward/manifest.yaml"
+)
 
 
 def test_versioned_package_and_workflow_digest_verify() -> None:
@@ -41,6 +44,16 @@ def test_memory_steward_is_read_only_and_single_purpose() -> None:
     assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.repository_profile.primary_checkout_write is False
     assert package.manifest.repository_profile.remote_write is False
+
+
+def test_operational_memory_steward_is_non_executing() -> None:
+    package = load_role_package(OPERATIONAL_MEMORY_MANIFEST, WORKFLOWS)
+    assert package.manifest.task_types == ["operational_memory"]
+    assert package.manifest.workflows == []
+    assert package.manifest.required_capabilities == ["operational-memory"]
+    assert package.manifest.permission_profile.writable_roots == []
+    assert package.manifest.repository_profile.repositories == []
+    assert package.manifest.permission_profile.privileged_operations is False
 
 
 def test_deployment_architect_attests_runbook_package_digests() -> None:

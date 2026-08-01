@@ -1,0 +1,24 @@
+schema_version: 1
+name: vm1-operational-memory-steward
+version: 1.0.0
+role: Non-executing operational observation and evidence steward
+task_types:
+- operational_memory
+workflows: []
+required_capabilities:
+- operational-memory
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: operational-memory-recording
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots: []
+repository_profile:
+  repositories: []
+  primary_checkout_write: false
+  remote_write: false

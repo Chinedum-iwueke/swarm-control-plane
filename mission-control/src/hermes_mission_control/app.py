@@ -172,6 +172,33 @@ def create_app(
             reason=payload["reason"],
         )
 
+    @app.post(
+        "/api/operational-notes/{note_id}/transitions",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def transition_operational_note(note_id: str, payload: dict) -> dict:
+        action = payload.get("action")
+        reason = payload.get("reason")
+        if action not in {"assign", "defer", "resolve", "reopen"}:
+            raise HTTPException(status_code=422, detail="Invalid note action.")
+        if not isinstance(reason, str) or len(reason) < 10:
+            raise HTTPException(
+                status_code=422, detail="A decision reason is required."
+            )
+        return await client.transition_operational_note(note_id, payload)
+
+    @app.post(
+        "/api/operational-notes/{note_id}/proposal-request",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def request_operational_note_proposal(note_id: str, payload: dict) -> dict:
+        if set(payload) != {"objective"}:
+            raise HTTPException(status_code=422, detail="Invalid proposal request.")
+        objective = payload["objective"]
+        if not isinstance(objective, str) or len(objective) < 10:
+            raise HTTPException(status_code=422, detail="An objective is required.")
+        return await client.request_operational_note_proposal(note_id, objective)
+
     @app.post("/api/knowledge/ingest", dependencies=[Depends(_mutation_intent)])
     async def ingest(payload: KnowledgeIngestRequest) -> dict:
         return store.ingest(

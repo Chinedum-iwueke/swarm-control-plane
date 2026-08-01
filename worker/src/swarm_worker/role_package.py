@@ -81,7 +81,11 @@ class RolePackageManifest(BaseModel):
             self.runbook_packages
         ):
             raise ValueError("runbook package names must be unique")
-        non_executing = {"founder_request", "research_intelligence"}
+        non_executing = {
+            "founder_request",
+            "operational_memory",
+            "research_intelligence",
+        }
         if not self.workflows and set(self.task_types) - non_executing:
             raise ValueError("only non-executing reasoning packages may omit workflows")
         if (
@@ -145,7 +149,9 @@ def load_role_package(
     for artifact in manifest.runbook_packages:
         path = (package_root / artifact.file).resolve()
         if not path.is_relative_to(package_root):
-            raise PackageVerificationError("Runbook package path escapes its directory.")
+            raise PackageVerificationError(
+                "Runbook package path escapes its directory."
+            )
         try:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError as exc:
