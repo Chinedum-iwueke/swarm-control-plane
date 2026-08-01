@@ -56,7 +56,7 @@ set +a
 invariance-research-memory-sync \
   --repository /home/omenka/Projects/bulletproof_bt \
   --database /home/omenka/Projects/bulletproof_bt/research_db/research.sqlite \
-  --output /home/omenka/Projects/bulletproof_bt/research/memory/hermes-export.json
+  --output /home/omenka/Projects/swarm-agent-workspaces/research-memory-exports/hermes-export.json
 ```
 
 The bridge fails closed when a WAL writer is active or the database changes while

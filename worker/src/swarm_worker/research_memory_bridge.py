@@ -389,9 +389,11 @@ def main() -> int:
     export = document.model_dump(mode="json")
     export_digest = canonical_digest(export)
     if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         args.output.write_text(
             json.dumps(export, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        args.output.chmod(0o600)
     if args.dry_run:
         result = {
             "export_digest": export_digest,
