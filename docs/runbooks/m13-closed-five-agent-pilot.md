@@ -74,6 +74,8 @@ exec .venv/bin/python scripts/m13_closed_loop.py prepare \
 ```
 
 Approve exactly the returned approval ID and plan digest in Mission Control or Telegram.
+The `execute` command waits up to two minutes for that specific task to become queued;
+an early invocation cannot silently exit as successful `no_work`.
 
 ## Execute and finalize
 

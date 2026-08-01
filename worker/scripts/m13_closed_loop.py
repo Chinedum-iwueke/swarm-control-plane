@@ -7,6 +7,7 @@ import math
 import os
 import statistics
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -394,7 +395,34 @@ def prepare(admin: httpx.Client, roles: dict, commit: str) -> dict:
     }
 
 
-def execute(role_state_document: dict) -> dict:
+def execute(
+    admin: httpx.Client,
+    role_state_document: dict,
+    state: dict,
+    *,
+    readiness_timeout_seconds: float = 120.0,
+) -> dict:
+    deadline = time.monotonic() + readiness_timeout_seconds
+    while True:
+        task = call(admin, "GET", f"/v1/tasks/{state['task_id']}")["task"]
+        if task["status"] == "succeeded":
+            return {
+                "return_code": 0,
+                "task_status": "succeeded",
+                "already_completed": True,
+                "stdout": "",
+                "stderr": "",
+            }
+        if task["status"] == "queued":
+            break
+        if task["status"] not in {"pending_approval"}:
+            raise RuntimeError(
+                f"M13 task cannot execute from status {task['status']!r}."
+            )
+        if time.monotonic() >= deadline:
+            raise RuntimeError("M13 task did not become leaseable before timeout.")
+        time.sleep(2.0)
+
     role = role_state_document["roles"]["execution"]
     environment = {
         "HOME": "/home/omenka",
@@ -427,8 +455,17 @@ def execute(role_state_document: dict) -> dict:
         text=True,
         timeout=1900,
     )
+    task = call(admin, "GET", f"/v1/tasks/{state['task_id']}")["task"]
+    if task["status"] != "succeeded":
+        raise RuntimeError(
+            "M13 worker returned without completing its approved task; "
+            f"task status is {task['status']!r}."
+        )
     return {
         "return_code": completed.returncode,
+        "task_status": task["status"],
+        "attempt_count": task["attempt_count"],
+        "already_completed": False,
         "stdout": completed.stdout[-2000:],
         "stderr": completed.stderr[-2000:],
     }
@@ -595,10 +632,14 @@ def main() -> int:
     parser.add_argument("--repository-commit")
     args = parser.parse_args()
     roles = role_state(args.roles)["roles"]
-    if args.command == "execute":
-        result = execute({"roles": roles})
-    else:
-        with api(os.environ["SWARM_ORCHESTRATOR_TOKEN"]) as admin:
+    with api(os.environ["SWARM_ORCHESTRATOR_TOKEN"]) as admin:
+        if args.command == "execute":
+            result = execute(
+                admin,
+                {"roles": roles},
+                json.loads(args.state.read_text(encoding="utf-8")),
+            )
+        else:
             if args.command == "prepare":
                 if not args.repository_commit or len(args.repository_commit) != 40:
                     raise RuntimeError("prepare requires a full repository commit")
