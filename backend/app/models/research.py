@@ -39,6 +39,17 @@ class ResearchDataSnapshot(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    snapshot_key: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_sources.id"), nullable=False
+    )
+    specification: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    registered_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class ResearchProgram(Base):
@@ -93,17 +104,6 @@ class ResearchDailyCycle(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )
-    snapshot_key: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
-    source_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("research_sources.id"), nullable=False
-    )
-    specification: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    content_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    registered_by: Mapped[str] = mapped_column(String(150), nullable=False)
-    registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

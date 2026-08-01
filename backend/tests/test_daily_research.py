@@ -4,10 +4,11 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from app.models import ResearchDailyCycle
+from pydantic import ValidationError
+
+from app.models import ResearchDailyCycle, ResearchDataSnapshot
 from app.schemas.research_program import ResearchProgramCreate
 from app.services.daily_research import question_digest, reconcile_programs
-from pydantic import ValidationError
 
 NOW = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
 
@@ -51,6 +52,16 @@ def test_question_digest_is_case_and_punctuation_stable() -> None:
     assert question_digest("Does BTC predict returns?") == question_digest(
         "  DOES btc predict returns  "
     )
+
+
+def test_daily_cycle_and_snapshot_orm_columns_do_not_overlap() -> None:
+    cycle_columns = set(ResearchDailyCycle.__table__.columns.keys())
+    snapshot_columns = set(ResearchDataSnapshot.__table__.columns.keys())
+
+    assert "snapshot_key" not in cycle_columns
+    assert "content_digest" not in cycle_columns
+    assert "question_digest" not in snapshot_columns
+    assert "snapshot_key" in snapshot_columns
 
 
 def test_reconcile_creates_only_one_budgeted_daily_cycle() -> None:
