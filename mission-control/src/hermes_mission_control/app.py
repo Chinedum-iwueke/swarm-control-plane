@@ -5,7 +5,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -18,6 +27,12 @@ from .models import (
     IntakeRequest,
     KnowledgeIngestRequest,
     ProposalDecision,
+)
+from .research_upload import (
+    ResearchUploadError,
+    digest,
+    extract_passages,
+    safe_filename,
 )
 
 _STATIC = Path(__file__).parent / "static"
@@ -64,6 +79,12 @@ def create_app(
 
     @app.exception_handler(KnowledgePolicyError)
     async def knowledge_error(_, exc: KnowledgePolicyError):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(ResearchUploadError)
+    async def upload_error(_, exc: ResearchUploadError):
         from fastapi.responses import JSONResponse
 
         return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -147,6 +168,72 @@ def create_app(
         return store.ingest(
             payload.path, confidentiality=payload.confidentiality
         ).model_dump()
+
+    @app.post("/api/research/sources/upload", dependencies=[Depends(_mutation_intent)])
+    async def upload_research_source(
+        file: Annotated[UploadFile, File()],
+        title: Annotated[str, Form(min_length=3, max_length=300)],
+        domain: Annotated[str, Form(pattern=r"^[a-z0-9][a-z0-9_-]{1,149}$")],
+        document_type: Annotated[
+            str, Form(pattern=r"^(textbook|paper|prior_report|prd)$")
+        ],
+        evidence_type: Annotated[
+            str,
+            Form(
+                pattern=r"^(method|empirical_evidence|prior_result|governing_requirement)$"
+            ),
+        ],
+    ) -> dict:
+        filename = safe_filename(file.filename or "")
+        content = await file.read(settings.upload_max_bytes + 1)
+        if len(content) > settings.upload_max_bytes:
+            raise ResearchUploadError("The source exceeds the configured upload limit.")
+        content_digest = digest(content)
+        passages = extract_passages(filename, content)
+        source_root = settings.data_root / "research-sources"
+        source_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        source_path = source_root / f"{content_digest}-{filename}"
+        source_path.write_bytes(content)
+        source_path.chmod(0o600)
+        document_key = f"upload-{content_digest[:24]}"
+        document_payload = {
+            "document_key": document_key,
+            "title": title,
+            "document_type": document_type,
+            "evidence_type": evidence_type,
+            "version": content_digest[:12],
+            "source_uri": f"mission-control-upload://{content_digest}/{filename}",
+            "content_digest": content_digest,
+            "metadata": {"domains": [domain], "original_filename": filename},
+            "ingested_by": "founder-mission-control",
+        }
+        bundle = await client.register_research_bundle(
+            {
+                "document": document_payload,
+                "chunks": [
+                    {
+                        "ordinal": passage.ordinal,
+                        "section": passage.section,
+                        "page": passage.page,
+                        "line_start": passage.line_start,
+                        "line_end": passage.line_end,
+                        "text": passage.text,
+                        "text_digest": digest(passage.text.encode()),
+                        "metadata": {"domain": domain},
+                    }
+                    for passage in passages
+                ],
+            }
+        )
+        document = bundle["document"]
+        return {
+            "document_id": document["id"],
+            "document_key": document_key,
+            "content_digest": content_digest,
+            "passages": len(passages),
+            "domain": domain,
+            "original_retained": True,
+        }
 
     @app.get("/api/knowledge/search")
     async def search(

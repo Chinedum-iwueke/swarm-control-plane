@@ -81,12 +81,16 @@ class RolePackageManifest(BaseModel):
             self.runbook_packages
         ):
             raise ValueError("runbook package names must be unique")
-        if not self.workflows and self.task_types != ["founder_request"]:
-            raise ValueError("only founder_request planner packages may omit workflows")
-        if not self.repository_profile.repositories and self.task_types != [
-            "founder_request"
-        ]:
-            raise ValueError("only founder_request planners may omit repositories")
+        non_executing = {"founder_request", "research_intelligence"}
+        if not self.workflows and set(self.task_types) - non_executing:
+            raise ValueError("only non-executing reasoning packages may omit workflows")
+        if (
+            not self.repository_profile.repositories
+            and set(self.task_types) - non_executing
+        ):
+            raise ValueError(
+                "only non-executing reasoning packages may omit repositories"
+            )
         return self
 
 

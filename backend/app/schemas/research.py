@@ -324,6 +324,16 @@ class ResearchChunkResponse(ResearchChunkCreate):
     document_id: uuid.UUID
 
 
+class ResearchDocumentBundleCreate(StrictModel):
+    document: ResearchDocumentCreate
+    chunks: list[ResearchChunkCreate] = Field(min_length=1, max_length=5000)
+
+
+class ResearchDocumentBundleResponse(StrictModel):
+    document: ResearchDocumentResponse
+    chunk_count: int
+
+
 class KnowledgeSearchRequest(StrictModel):
     query: str = Field(min_length=3, max_length=1000)
     limit: int = Field(default=8, ge=1, le=25)
@@ -408,6 +418,56 @@ class ResearchBriefCreate(StrictModel):
     summary: str = Field(min_length=1, max_length=4000)
     claims: list[BriefClaim] = Field(min_length=1, max_length=50)
     created_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class DomainProfileCreate(StrictModel):
+    domain_key: str = Field(pattern=_KEY, max_length=150)
+    version: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=3, max_length=300)
+    description: str = Field(min_length=10, max_length=4000)
+    document_keys: list[str] = Field(min_length=1, max_length=200)
+    evaluation_id: uuid.UUID
+    qualified_roles: list[str] = Field(min_length=1, max_length=20)
+    created_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class DomainProfileResponse(DomainProfileCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    corpus_digest: str
+    status: Literal["active"]
+    record_digest: str
+    created_at: datetime
+
+
+class IntelligenceCandidate(StrictModel):
+    question: str = Field(min_length=10, max_length=1000)
+    rationale: str = Field(min_length=10, max_length=2000)
+    mechanism: str = Field(min_length=3, max_length=1000)
+    data_requirements: list[str] = Field(min_length=1, max_length=20)
+    falsification_conditions: list[str] = Field(min_length=1, max_length=20)
+    citation_chunk_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
+    information_value: float = Field(ge=0, le=1)
+    feasibility: float = Field(ge=0, le=1)
+
+
+class IntelligenceRunCreate(StrictModel):
+    domain_profile_id: uuid.UUID
+    objective: str = Field(min_length=10, max_length=2000)
+    candidates: list[IntelligenceCandidate] = Field(min_length=2, max_length=10)
+    created_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class IntelligenceRunResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    domain_profile_id: uuid.UUID
+    objective: str
+    candidates: list[dict]
+    selected_candidate: dict
+    record_digest: str
+    created_by: str
+    created_at: datetime
 
 
 class AgentResearchBriefCreate(StrictModel):

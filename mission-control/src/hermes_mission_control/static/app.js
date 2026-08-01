@@ -113,6 +113,23 @@ document.getElementById("ingest-form").addEventListener("submit", async (event) 
   await loadGraph();
 });
 
+document.getElementById("research-upload-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (state.demo) return toast("Uploads are disabled in demonstration mode.");
+  const response = await fetch("/api/research/sources/upload", {
+    method: "POST",
+    headers: { "X-Hermes-Intent": "founder-action" },
+    body: new FormData(event.target),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: "Upload failed." }));
+    return toast(typeof body.detail === "string" ? body.detail : "Upload failed.");
+  }
+  const result = await response.json();
+  toast(`Research source registered with ${result.passages} cited passages.`);
+  event.target.reset();
+});
+
 document.getElementById("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = document.getElementById("search-query").value;
@@ -497,6 +514,8 @@ function renderResearch() {
   if (!state.dashboard) return;
   const tasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_experiment");
   const cycles = state.dashboard.research_cycles || [];
+  const domains = state.dashboard.research_domains || [];
+  const intelligenceRuns = state.dashboard.research_intelligence_runs || [];
   const accepted = tasks.filter((task) => task.result?.summary?.verdict === "accepted").length;
   document.getElementById("research-gate").innerHTML = `
     <span class="gate-symbol">G</span>
@@ -509,6 +528,14 @@ function renderResearch() {
       ${statusBadge(cycle.status)}
     </div>
   `).join("") : empty("No supervised daily research cycle has been scheduled.");
+  document.getElementById("research-domains").innerHTML = domains.length ? domains.map((domain) => {
+    const latestRun = intelligenceRuns.find((run) => run.domain_profile_id === domain.id);
+    const selected = latestRun?.selected_candidate;
+    return `<div class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(domain.title)}</strong><div class="entity-meta"><span>${escapeHtml(domain.domain_key)} v${escapeHtml(domain.version)}</span><span>${domain.document_keys.length} immutable sources</span><span class="mono">${shortHash(domain.corpus_digest)}</span></div>${selected ? `<p>${escapeHtml(selected.question)}</p>` : ""}</div>
+      ${statusBadge(domain.status)}
+    </div>`;
+  }).join("") : empty("No domain has passed its retrieval qualification exam.");
   document.getElementById("research-list").innerHTML = tasks.length ? tasks.map((task) => {
     const summary = task.result?.summary || {};
     const oos = summary.out_of_sample || {};

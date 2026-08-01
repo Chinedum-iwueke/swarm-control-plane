@@ -2,10 +2,9 @@ import hashlib
 import hmac
 
 import pytest
-from fastapi import HTTPException
-
 from app.schemas.package import RolePackageCreate, RolePackageManifest
 from app.services.packages import canonical_manifest, verify_package
+from fastapi import HTTPException
 
 
 def manifest() -> RolePackageManifest:
@@ -91,13 +90,17 @@ def test_runbook_package_artifacts_are_digest_bound() -> None:
         RolePackageManifest.model_validate(document)
 
 
-def test_workflowless_package_is_limited_to_founder_planner() -> None:
+def test_workflowless_package_is_limited_to_non_executing_roles() -> None:
     planner = manifest().model_dump()
     planner["task_types"] = ["founder_request"]
     planner["workflows"] = []
     planner["repository_profile"]["repositories"] = []
     parsed = RolePackageManifest.model_validate(planner)
     assert parsed.workflows == []
+
+    planner["task_types"] = ["research_intelligence"]
+    parsed = RolePackageManifest.model_validate(planner)
+    assert parsed.repository_profile.repositories == []
 
     planner["task_types"] = ["code_validation"]
     with pytest.raises(ValueError):

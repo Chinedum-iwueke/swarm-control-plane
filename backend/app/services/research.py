@@ -15,8 +15,10 @@ from app.models import (
     ResearchDataSnapshot,
     ResearchDecision,
     ResearchDocument,
+    ResearchDomainProfile,
     ResearchExperiment,
     ResearchHypothesis,
+    ResearchIntelligenceRun,
     ResearchResult,
     ResearchRetrievalEvaluation,
     ResearchReview,
@@ -108,6 +110,8 @@ def register_data_snapshot(
         ),
         "Snapshot key, content digest, or record digest already exists.",
     )
+
+
 def register_hypothesis(
     db: Session, payload: ResearchHypothesisCreate
 ) -> ResearchHypothesis:
@@ -368,6 +372,132 @@ def corpus_digest(db: Session) -> str:
     return hashlib.sha256("\n".join(digests).encode()).hexdigest()
 
 
+def domain_corpus_digest(db: Session, document_keys: list[str]) -> str:
+    records = db.execute(
+        select(ResearchDocument.document_key, ResearchDocument.content_digest).where(
+            ResearchDocument.document_key.in_(document_keys)
+        )
+    ).all()
+    if {key for key, _ in records} != set(document_keys):
+        raise HTTPException(
+            status_code=422, detail="Domain contains unknown documents."
+        )
+    material = "\n".join(f"{key}:{digest}" for key, digest in sorted(records))
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+def register_domain_profile(db: Session, payload):
+    evaluation = db.get(ResearchRetrievalEvaluation, payload.evaluation_id)
+    if evaluation is None or not evaluation.passed:
+        raise HTTPException(
+            status_code=409, detail="A passing retrieval exam is required."
+        )
+    if evaluation.corpus_digest != corpus_digest(db):
+        raise HTTPException(
+            status_code=409, detail="Retrieval exam is stale for the corpus."
+        )
+    keys = sorted(set(payload.document_keys))
+    cases = evaluation.report.get("cases", [])
+    if not cases or any(
+        not set(case.get("expected_document_keys", [])).issubset(keys)
+        or not case.get("passed", False)
+        for case in cases
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Retrieval exam is not bound to the selected domain documents.",
+        )
+    domain_digest = domain_corpus_digest(db, keys)
+    specification = {
+        "description": payload.description,
+        "document_keys": keys,
+        "qualified_roles": sorted(set(payload.qualified_roles)),
+    }
+    document = {
+        "domain_key": payload.domain_key,
+        "version": payload.version,
+        "title": payload.title,
+        "specification": specification,
+        "corpus_digest": domain_digest,
+        "evaluation_id": str(evaluation.id),
+        "status": "active",
+        "created_by": payload.created_by,
+    }
+    return _commit(
+        db,
+        ResearchDomainProfile(**document, record_digest=record_digest(document)),
+        "Domain profile version or digest already exists.",
+    )
+
+
+def register_intelligence_run(db: Session, payload):
+    profile = db.get(ResearchDomainProfile, payload.domain_profile_id)
+    if profile is None or profile.status != "active":
+        raise HTTPException(
+            status_code=409, detail="An active domain profile is required."
+        )
+    evaluation = db.get(ResearchRetrievalEvaluation, profile.evaluation_id)
+    if evaluation is None or evaluation.corpus_digest != corpus_digest(db):
+        raise HTTPException(
+            status_code=409, detail="The domain qualification is stale."
+        )
+    if profile.corpus_digest != domain_corpus_digest(
+        db, profile.specification["document_keys"]
+    ):
+        raise HTTPException(status_code=409, detail="The domain corpus has changed.")
+    allowed_documents = set(profile.specification["document_keys"])
+    scored = []
+    for candidate in payload.candidates:
+        chunks = db.execute(
+            select(ResearchChunk, ResearchDocument)
+            .join(ResearchDocument, ResearchChunk.document_id == ResearchDocument.id)
+            .where(ResearchChunk.id.in_(candidate.citation_chunk_ids))
+        ).all()
+        if len(chunks) != len(set(candidate.citation_chunk_ids)) or any(
+            document.document_key not in allowed_documents for _, document in chunks
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Candidate citations must belong to the active domain corpus.",
+            )
+        duplicate = max(
+            [hit["score"] for hit in _hypothesis_hits(db, candidate.question)] or [0.0]
+        )
+        rank_score = (
+            0.45 * candidate.information_value
+            + 0.35 * candidate.feasibility
+            + 0.20 * (1.0 - min(1.0, duplicate))
+        )
+        scored.append(
+            candidate.model_dump(mode="json")
+            | {
+                "duplicate_score": round(duplicate, 6),
+                "rank_score": round(rank_score, 6),
+            }
+        )
+    scored.sort(key=lambda item: (-item["rank_score"], item["question"]))
+    selected = scored[0]
+    document = {
+        "domain_profile_id": str(profile.id),
+        "objective": payload.objective,
+        "candidates": scored,
+        "selected_candidate": selected,
+        "created_by": payload.created_by,
+    }
+    return _commit(
+        db,
+        ResearchIntelligenceRun(
+            domain_profile_id=profile.id,
+            objective=payload.objective,
+            candidates=scored,
+            selected_candidate=selected,
+            record_digest=record_digest(document),
+            created_by=payload.created_by,
+        ),
+        "Intelligence run digest already exists.",
+    )
+
+
 def register_document(db: Session, payload: ResearchDocumentCreate) -> ResearchDocument:
     return _commit(
         db,
@@ -408,6 +538,56 @@ def register_chunk(
         ),
         "Passage ordinal or digest already exists.",
     )
+
+
+def register_document_bundle(db: Session, payload):
+    document = ResearchDocument(
+        document_key=payload.document.document_key,
+        title=payload.document.title,
+        document_type=payload.document.document_type,
+        evidence_type=payload.document.evidence_type,
+        version=payload.document.version,
+        source_uri=payload.document.source_uri,
+        content_digest=payload.document.content_digest,
+        metadata_=payload.document.metadata,
+        ingested_by=payload.document.ingested_by,
+    )
+    db.add(document)
+    try:
+        db.flush()
+        ordinals: set[int] = set()
+        for passage in payload.chunks:
+            actual = hashlib.sha256(passage.text.encode()).hexdigest()
+            _require_digest(actual, passage.text_digest, "Passage")
+            if passage.ordinal in ordinals:
+                raise HTTPException(
+                    status_code=422, detail="Duplicate passage in bundle."
+                )
+            ordinals.add(passage.ordinal)
+            db.add(
+                ResearchChunk(
+                    document_id=document.id,
+                    ordinal=passage.ordinal,
+                    section=passage.section,
+                    page=passage.page,
+                    line_start=passage.line_start,
+                    line_end=passage.line_end,
+                    text=passage.text,
+                    text_digest=passage.text_digest,
+                    metadata_=passage.metadata,
+                )
+            )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Document bundle already exists."
+        ) from exc
+    db.refresh(document)
+    return document
 
 
 def _tokens(text: str) -> set[str]:
@@ -521,6 +701,8 @@ def evaluate_retrieval(
             {
                 "question": case.question,
                 "passed": passed,
+                "expected_document_keys": case.expected_document_keys,
+                "expected_terms": case.expected_terms,
                 "returned_document_keys": sorted(keys),
             }
         )

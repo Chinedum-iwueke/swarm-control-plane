@@ -197,6 +197,10 @@
         </div>
         <div id="research-gate" class="research-gate"></div>
         <section class="operational-band">
+          <div class="band-heading"><div><p class="section-kicker">Research intelligence</p><h2>Qualified domain brains</h2></div></div>
+          <div id="research-domains" class="entity-list"></div>
+        </section>
+        <section class="operational-band">
           <div class="band-heading"><div><p class="section-kicker">Daily mandate</p><h2>Supervised research cycle</h2></div></div>
           <div id="research-cycles" class="entity-list"></div>
         </section>
@@ -214,6 +218,14 @@
           <form id="search-form" class="search-field knowledge-search"><span>⌕</span><input id="search-query" required minlength="2" placeholder="Ask your indexed knowledge"></form>
           <form id="ingest-form" class="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/…/source.md"><button class="secondary">Index source</button></form>
         </div>
+        <form id="research-upload-form" class="research-upload-form">
+          <label>Book or paper<input name="file" type="file" accept=".pdf,.md,.markdown,.txt" required></label>
+          <label>Title<input name="title" minlength="3" maxlength="300" required></label>
+          <label>Domain<input name="domain" value="systematic-research" pattern="[a-z0-9][a-z0-9_-]{1,149}" required></label>
+          <label>Source type<select name="document_type"><option value="paper">Paper</option><option value="textbook">Book</option><option value="prior_report">Prior report</option><option value="prd">Governing PRD</option></select></label>
+          <label>Evidence class<select name="evidence_type"><option value="empirical_evidence">Empirical evidence</option><option value="method">Method</option><option value="prior_result">Prior result</option><option value="governing_requirement">Governing requirement</option></select></label>
+          <button class="secondary">Add to research corpus</button>
+        </form>
         <div class="knowledge-layout">
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Retrieval</p><h2>Cited results</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Relationships</p><h2>Knowledge graph</h2></div></div><div id="graph"></div></section>

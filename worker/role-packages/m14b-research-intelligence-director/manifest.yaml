@@ -1,0 +1,25 @@
+schema_version: 1
+name: m14b-research-intelligence-director
+version: 1.0.0
+role: Cited research question discovery and ranking
+task_types: [research_intelligence]
+workflows: []
+required_capabilities:
+- research-intelligence
+- knowledge-retrieval
+- candidate-ranking
+- duplicate-analysis
+allowed_machines: [vm1-developer]
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: research-intelligence-read-only
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots: []
+repository_profile:
+  repositories: []
+  primary_checkout_write: false
+  remote_write: false

@@ -1,0 +1,36 @@
+schema_version: 1
+domain_key: systematic-research
+version: 1.0.0
+title: Systematic Research Methodology
+description: >-
+  Prospectively specified, reproducible systematic trading research with explicit
+  controls for leakage, selection bias, transaction costs, robustness, and
+  independent review.
+qualified_roles:
+- m13-senior-research-specialist
+- m14b-research-intelligence-director
+required_source_classes:
+- governing_requirement
+- method
+- empirical_evidence
+- prior_result
+activation_policy:
+  minimum_recall: 1.0
+  require_current_corpus: true
+  require_page_citations_for_pdf: true
+evaluation_cases:
+- question: What controls prevent selection bias and multiple-testing inflation?
+  expected_terms: [selection, bias]
+- question: What evidence is required before a finding may advance?
+  expected_terms: [evidence, review]
+- question: How must transaction costs and out-of-sample performance be tested?
+  expected_terms: [cost, out-of-sample]
+director_policy:
+  candidate_count: 5
+  maximum_duplicate_score: 0.8
+  weights:
+    information_value: 0.45
+    feasibility: 0.35
+    novelty: 0.20
+  execution_authority: false
+  approval_authority: false

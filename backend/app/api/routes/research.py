@@ -20,6 +20,10 @@ from app.models import (
     ResearchTrial,
 )
 from app.schemas.research import (
+    DomainProfileCreate,
+    DomainProfileResponse,
+    IntelligenceRunCreate,
+    IntelligenceRunResponse,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     ResearchBriefCreate,
@@ -30,6 +34,8 @@ from app.schemas.research import (
     ResearchDataSnapshotResponse,
     ResearchDecisionCreate,
     ResearchDecisionResponse,
+    ResearchDocumentBundleCreate,
+    ResearchDocumentBundleResponse,
     ResearchDocumentCreate,
     ResearchDocumentResponse,
     ResearchExperimentCreate,
@@ -56,8 +62,11 @@ from app.services.research import (
     register_data_snapshot,
     register_decision,
     register_document,
+    register_document_bundle,
+    register_domain_profile,
     register_experiment,
     register_hypothesis,
+    register_intelligence_run,
     register_result,
     register_source,
     register_trial,
@@ -69,6 +78,80 @@ router = APIRouter(
     tags=["research-registry"],
     dependencies=[Depends(require_orchestrator)],
 )
+
+
+@router.post("/domains", response_model=DomainProfileResponse, status_code=201)
+def create_domain_profile(
+    payload: DomainProfileCreate, db: Annotated[Session, Depends(get_db)]
+):
+    record = register_domain_profile(db, payload)
+    return DomainProfileResponse(
+        id=record.id,
+        domain_key=record.domain_key,
+        version=record.version,
+        title=record.title,
+        description=record.specification["description"],
+        document_keys=record.specification["document_keys"],
+        evaluation_id=record.evaluation_id,
+        qualified_roles=record.specification["qualified_roles"],
+        created_by=record.created_by,
+        corpus_digest=record.corpus_digest,
+        status=record.status,
+        record_digest=record.record_digest,
+        created_at=record.created_at,
+    )
+
+
+@router.get("/domains", response_model=list[DomainProfileResponse])
+def list_domain_profiles(db: Annotated[Session, Depends(get_db)]):
+    from app.models import ResearchDomainProfile
+
+    records = db.scalars(
+        select(ResearchDomainProfile).order_by(ResearchDomainProfile.created_at.desc())
+    ).all()
+    return [
+        DomainProfileResponse(
+            id=item.id,
+            domain_key=item.domain_key,
+            version=item.version,
+            title=item.title,
+            description=item.specification["description"],
+            document_keys=item.specification["document_keys"],
+            evaluation_id=item.evaluation_id,
+            qualified_roles=item.specification["qualified_roles"],
+            created_by=item.created_by,
+            corpus_digest=item.corpus_digest,
+            status=item.status,
+            record_digest=item.record_digest,
+            created_at=item.created_at,
+        )
+        for item in records
+    ]
+
+
+@router.post(
+    "/intelligence/runs", response_model=IntelligenceRunResponse, status_code=201
+)
+def create_intelligence_run(
+    payload: IntelligenceRunCreate, db: Annotated[Session, Depends(get_db)]
+):
+    return IntelligenceRunResponse.model_validate(
+        register_intelligence_run(db, payload)
+    )
+
+
+@router.get("/intelligence/runs", response_model=list[IntelligenceRunResponse])
+def list_intelligence_runs(db: Annotated[Session, Depends(get_db)]):
+    from app.models import ResearchIntelligenceRun
+
+    return [
+        IntelligenceRunResponse.model_validate(item)
+        for item in db.scalars(
+            select(ResearchIntelligenceRun).order_by(
+                ResearchIntelligenceRun.created_at.desc()
+            )
+        ).all()
+    ]
 
 
 def _document_response(record) -> ResearchDocumentResponse:
@@ -99,6 +182,20 @@ def _chunk_response(record) -> ResearchChunkResponse:
         text=record.text,
         text_digest=record.text_digest,
         metadata=record.metadata_,
+    )
+
+
+@router.post(
+    "/knowledge/document-bundles",
+    response_model=ResearchDocumentBundleResponse,
+    status_code=201,
+)
+def create_document_bundle(
+    payload: ResearchDocumentBundleCreate, db: Annotated[Session, Depends(get_db)]
+):
+    record = register_document_bundle(db, payload)
+    return ResearchDocumentBundleResponse(
+        document=_document_response(record), chunk_count=len(payload.chunks)
     )
 
 

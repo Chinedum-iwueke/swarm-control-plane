@@ -11,6 +11,7 @@ from hermes_mission_control.config import MissionControlSettings
 class FakeControlPlane:
     def __init__(self) -> None:
         self.intake: Any = None
+        self.bundle: Any = None
         self.closed = False
 
     async def close(self) -> None:
@@ -45,6 +46,13 @@ class FakeControlPlane:
             "reason": decision.reason,
         }
 
+    async def register_research_bundle(self, payload) -> dict:
+        self.bundle = payload
+        return {
+            "document": {"id": "document-id"},
+            "chunk_count": len(payload["chunks"]),
+        }
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,
@@ -71,6 +79,7 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/intake" in paths
     assert "/api/proposals/{proposal_id}/{action}" in paths
     assert "/api/knowledge/search" in paths
+    assert "/api/research/sources/upload" in paths
 
 
 def test_mutations_require_founder_intent_header(
@@ -117,3 +126,26 @@ def test_unknown_intake_fields_are_rejected(
             headers={"X-Hermes-Intent": "founder-action"},
         )
     assert response.status_code == 422
+
+
+def test_research_upload_is_atomic_and_citation_preserving(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.post(
+            "/api/research/sources/upload",
+            headers={"X-Hermes-Intent": "founder-action"},
+            files={"file": ("paper.txt", b"first line\nsecond line", "text/plain")},
+            data={
+                "title": "A bounded research paper",
+                "domain": "systematic-research",
+                "document_type": "paper",
+                "evidence_type": "empirical_evidence",
+            },
+        )
+    assert response.status_code == 200
+    assert fake.bundle is not None
+    assert fake.bundle["document"]["metadata"]["domains"] == ["systematic-research"]
+    assert fake.bundle["chunks"][0]["line_start"] == 1
+    assert fake.bundle["chunks"][0]["line_end"] == 2

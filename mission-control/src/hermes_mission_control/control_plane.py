@@ -47,6 +47,8 @@ class ControlPlaneClient:
         missions = await self._request("GET", "/v1/missions")
         research_programs = await self._request("GET", "/v1/research-programs")
         research_cycles = await self._request("GET", "/v1/research-programs/cycles")
+        research_domains = await self._request("GET", "/v1/research/domains")
+        intelligence_runs = await self._request("GET", "/v1/research/intelligence/runs")
         return {
             "health": health,
             "tasks": tasks,
@@ -59,6 +61,8 @@ class ControlPlaneClient:
             "missions": missions,
             "research_programs": research_programs,
             "research_cycles": research_cycles,
+            "research_domains": research_domains,
+            "research_intelligence_runs": intelligence_runs,
         }
 
     async def create_intake(self, request: IntakeRequest) -> dict[str, Any]:
@@ -151,6 +155,27 @@ class ControlPlaneClient:
                 "reason": reason,
                 "actor": "founder-mission-control",
             },
+        )
+
+    async def register_research_document(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/knowledge/documents", json=payload
+        )
+
+    async def register_research_bundle(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/knowledge/document-bundles", json=payload
+        )
+
+    async def register_research_chunk(
+        self, document_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/research/knowledge/documents/{document_id}/chunks",
+            json=payload,
         )
 
     async def _request(

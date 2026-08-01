@@ -493,6 +493,9 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .knowledge-toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .knowledge-search { max-width: none; }
 .ingest-form { display: flex; gap: 7px; }
+.research-upload-form { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 18px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.research-upload-form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.research-upload-form input, .research-upload-form select { min-width: 0; }
 .knowledge-layout { display: grid; grid-template-columns: 1.1fr .9fr; gap: 16px; }
 .result { padding: 12px 0; border-top: 1px solid var(--line-soft); }
 .result:first-child { padding-top: 0; border-top: 0; }
@@ -711,6 +714,7 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
   .research-row .research-stat { display: none; }
   .knowledge-toolbar { grid-template-columns: 1fr; }
   .ingest-form { flex-direction: column; }
+  .research-upload-form { grid-template-columns: 1fr; }
   .artifact-row { grid-template-columns: 1fr auto; }
   .artifact-row > :not(:first-child):not(:last-child) { display: none; }
   .form-grid { grid-template-columns: 1fr; gap: 0; }

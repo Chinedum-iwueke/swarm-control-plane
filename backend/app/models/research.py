@@ -286,7 +286,7 @@ class ResearchChunk(Base):
     line_start: Mapped[int] = mapped_column(Integer, nullable=False)
     line_end: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    text_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    text_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
 
 
@@ -324,6 +324,53 @@ class ResearchBrief(Base):
         nullable=False,
     )
     brief: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchDomainProfile(Base):
+    __tablename__ = "research_domain_profiles"
+    __table_args__ = (UniqueConstraint("domain_key", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    domain_key: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    specification: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_retrieval_evaluations.id"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchIntelligenceRun(Base):
+    __tablename__ = "research_intelligence_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    domain_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("research_domain_profiles.id"),
+        nullable=False,
+        index=True,
+    )
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    candidates: Mapped[list] = mapped_column(JSONB, nullable=False)
+    selected_candidate: Mapped[dict] = mapped_column(JSONB, nullable=False)
     record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_by: Mapped[str] = mapped_column(String(150), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
