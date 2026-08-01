@@ -190,31 +190,34 @@ def evaluate(api: httpx.Client) -> dict[str, Any]:
 
 def pilot(api: httpx.Client) -> dict[str, Any]:
     question = "Why must Invariance retain negative trials and use independent review?"
-    search = api.post(
-        "/v1/research/knowledge/search", json={"query": question, "limit": 8}
+    governing_search = api.post(
+        "/v1/research/knowledge/search",
+        json={
+            "query": "failed negative results immutable auditable retain",
+            "limit": 8,
+            "evidence_types": ["governing_requirement"],
+        },
     )
-    search.raise_for_status()
-    result = search.json()
-    governing = next(
-        (
-            passage
-            for passage in result["passages"]
-            if passage["evidence_type"] == "governing_requirement"
-        ),
-        None,
+    prior_search = api.post(
+        "/v1/research/knowledge/search",
+        json={
+            "query": "M11 independent review result decision",
+            "limit": 8,
+            "evidence_types": ["prior_result"],
+        },
     )
-    prior = next(
-        (
-            passage
-            for passage in result["passages"]
-            if passage["evidence_type"] == "prior_result"
-        ),
-        None,
-    )
-    if governing is None or prior is None:
+    governing_search.raise_for_status()
+    prior_search.raise_for_status()
+    governing_result = governing_search.json()
+    prior_result = prior_search.json()
+    if governing_result["corpus_digest"] != prior_result["corpus_digest"]:
+        raise RuntimeError("Corpus changed between pilot retrievals")
+    if not governing_result["passages"] or not prior_result["passages"]:
         raise RuntimeError(
             "Pilot retrieval did not return both required evidence classes"
         )
+    governing = governing_result["passages"][0]
+    prior = prior_result["passages"][0]
     payload = {
         "question": question,
         "summary": "Negative evidence must remain part of institutional memory, and research promotion requires review separated from execution.",
@@ -245,7 +248,7 @@ def pilot(api: httpx.Client) -> dict[str, Any]:
         evaluation.raise_for_status()
         brief_document = {
             "question": payload["question"],
-            "corpus_digest": result["corpus_digest"],
+            "corpus_digest": governing_result["corpus_digest"],
             "evaluation_id": evaluation.json()["id"],
             "brief": {
                 "summary": payload["summary"],
@@ -257,7 +260,11 @@ def pilot(api: httpx.Client) -> dict[str, Any]:
             f"/v1/research/knowledge/briefs/by-digest/{record_digest(brief_document)}"
         )
     response.raise_for_status()
-    return {"search": result, "brief": response.json()}
+    return {
+        "governing_search": governing_result,
+        "prior_result_search": prior_result,
+        "brief": response.json(),
+    }
 
 
 def main() -> int:
