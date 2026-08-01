@@ -47,8 +47,10 @@ class ControlPlaneClient:
         missions = await self._request("GET", "/v1/missions")
         research_programs = await self._request("GET", "/v1/research-programs")
         research_cycles = await self._request("GET", "/v1/research-programs/cycles")
-        research_domains = await self._request("GET", "/v1/research/domains")
-        intelligence_runs = await self._request("GET", "/v1/research/intelligence/runs")
+        research_domains = await self._optional_collection("/v1/research/domains")
+        intelligence_runs = await self._optional_collection(
+            "/v1/research/intelligence/runs"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -197,6 +199,22 @@ class ControlPlaneClient:
             raise ControlPlaneError("Control plane is currently unreachable.") from exc
         if response.is_success:
             return response.json()
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
+        )
+
+    async def _optional_collection(self, path: str) -> list[dict[str, Any]]:
+        try:
+            response = await self._client.get(path)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return []
+        if response.is_success:
+            value = response.json()
+            if isinstance(value, list):
+                return value
         detail = _safe_detail(response)
         raise ControlPlaneError(
             f"Control plane returned HTTP {response.status_code}: {detail}"
