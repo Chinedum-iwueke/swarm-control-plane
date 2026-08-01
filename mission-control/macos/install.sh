@@ -36,6 +36,7 @@ python="${HERMES_PYTHON:-$(command -v python3)}"
 install -d -m 0700 \
   "$app_root" \
   "${app_root}/data/sources" \
+  "${app_root}/data/research-inbox" \
   "${HOME}/Library/LaunchAgents"
 if [[ ! -f "$env_file" || ! -f "$token_file" ]]; then
   cat >&2 <<EOF

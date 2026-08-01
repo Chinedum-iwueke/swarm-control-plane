@@ -13,9 +13,9 @@ artifact visibility, and a private cited-search pilot.
 - Intake creates a structured `founder_request`; it cannot carry commands.
 - Requests target the future `control-plane-planner` capability and cannot be
   leased by current engineering or infrastructure workers.
-- Knowledge documents remain in a Mac-local SQLite database.
-- Only UTF-8 Markdown and text files beneath explicitly configured roots can be
-  indexed.
+- Private Knowledge Explorer documents remain in the Mac-local SQLite database.
+- Research-intelligence PDF, Markdown, and text sources are retained privately on
+  the Mac and registered centrally as immutable, citation-preserving passages.
 - Symlink escapes, relative paths, unsupported files, and files above 5 MiB are
   rejected.
 - Search is deterministic full-text retrieval. Every result includes the
@@ -43,6 +43,7 @@ HERMES_DATA_ROOT="/Users/ice/Library/Application Support/Hermes Mission Control/
 HERMES_KNOWLEDGE_ROOTS="/Users/ice/Library/Application Support/Hermes Mission Control/data/sources:/Users/ice/Projects/swarm-control-plane/docs"
 HERMES_HOST=127.0.0.1
 HERMES_PORT=8790
+HERMES_RESEARCH_INBOX_DIRECTORY="/Users/ice/Hermes Research Inbox"
 EOF
 chmod 0600 "$HOME/Library/Application Support/Hermes Mission Control/mission-control.env"
 ```
@@ -50,6 +51,18 @@ chmod 0600 "$HOME/Library/Application Support/Hermes Mission Control/mission-con
 Multiple knowledge roots use the macOS path separator (`:`). The private
 application-data source directory is the default. This avoids granting the
 launch agent Full Disk Access for `~/Documents`.
+
+The research inbox defaults to
+`~/Library/Application Support/Hermes Mission Control/data/research-inbox` when
+the explicit setting is omitted. It contains optional classification folders:
+
+- `books`: textbook / method
+- `papers`: paper / empirical evidence
+- `prior-results`: prior report / prior result
+- `governing`: PRD / governing requirement
+
+Supported files directly in the inbox default to paper / empirical evidence.
+Every inbox source is assigned to `systematic-research`.
 
 ## Install
 
@@ -105,6 +118,19 @@ directory, then index it by entering its absolute path in Knowledge Explorer.
 Repository documentation may be indexed read-only when its directory is
 explicitly listed in `HERMES_KNOWLEDGE_ROOTS`. Symlink escapes are rejected.
 
+Use **Refresh inbox** in Knowledge Explorer, or run the equivalent command:
+
+```bash
+set -a
+source "$HOME/Library/Application Support/Hermes Mission Control/mission-control.env"
+set +a
+"$HOME/Library/Application Support/Hermes Mission Control/venv/bin/hermes-mission-control" \
+  sync --inbox "/Users/ice/Hermes Research Inbox"
+```
+
+Sync is digest-idempotent. It reports added, unchanged, rejected, and failed
+files and never moves or deletes originals.
+
 ## Token rotation
 
 1. Stage the replacement token without printing it.
@@ -126,10 +152,11 @@ The uninstall script removes only the launchd definition. It preserves
 credentials, the private database, logs, and the virtual environment. Restore
 an earlier reviewed Git revision and rerun the installer to roll back software.
 
-## Pilot limitations
+## Current limitations
 
-- The knowledge pilot supports local Markdown and text, not PDF, email, cloud
-  drives, embeddings, OCR, or model-generated answers.
+- Research intake supports text-bearing PDFs, Markdown, and UTF-8 text. Scanned
+  PDFs require a future sandboxed OCR stage. Email, cloud drives, and archives
+  are not accepted.
 - The graph is explicit and deterministic: document titles, `[[wiki links]]`,
   and `#tags`.
 - Artifact metadata is visible, but workspace artifact bytes are not remotely

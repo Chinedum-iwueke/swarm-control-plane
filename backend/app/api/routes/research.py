@@ -237,6 +237,23 @@ def get_document_by_key(document_key: str, db: Annotated[Session, Depends(get_db
 
 
 @router.get(
+    "/knowledge/documents/by-digest/{content_digest}",
+    response_model=ResearchDocumentResponse,
+)
+def get_document_by_digest(
+    content_digest: str, db: Annotated[Session, Depends(get_db)]
+):
+    record = db.scalar(
+        select(ResearchDocument).where(
+            ResearchDocument.content_digest == content_digest
+        )
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return _document_response(record)
+
+
+@router.get(
     "/knowledge/documents/{document_id}/chunks",
     response_model=list[ResearchChunkResponse],
 )

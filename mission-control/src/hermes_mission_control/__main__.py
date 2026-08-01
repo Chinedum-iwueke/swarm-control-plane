@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from pathlib import Path
 
 import uvicorn
 
@@ -10,22 +11,28 @@ from .app import create_app
 from .config import MissionControlSettings
 from .control_plane import ControlPlaneClient
 from .knowledge import KnowledgeStore
+from .research_inbox import sync_research_inbox
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="hermes-mission-control")
-    parser.add_argument("command", choices=("run", "check"))
+    parser.add_argument("command", choices=("run", "check", "sync"))
+    parser.add_argument("--inbox")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
     try:
         settings = MissionControlSettings()
+        if args.inbox:
+            settings = settings.model_copy(
+                update={"research_inbox_directory": Path(args.inbox)}
+            )
         settings.prepare()
-        store = KnowledgeStore(
-            settings.database_path, settings.allowed_knowledge_roots
-        )
+        store = KnowledgeStore(settings.database_path, settings.allowed_knowledge_roots)
         store.initialize()
         if args.command == "check":
             return asyncio.run(_check(settings, store))
+        if args.command == "sync":
+            return asyncio.run(_sync(settings))
         uvicorn.run(
             create_app(settings),
             host=settings.host,
@@ -39,9 +46,7 @@ def main() -> int:
         return 2
 
 
-async def _check(
-    settings: MissionControlSettings, store: KnowledgeStore
-) -> int:
+async def _check(settings: MissionControlSettings, store: KnowledgeStore) -> int:
     client = ControlPlaneClient(settings)
     try:
         dashboard = await client.dashboard()
@@ -61,6 +66,15 @@ async def _check(
     return 0
 
 
+async def _sync(settings: MissionControlSettings) -> int:
+    client = ControlPlaneClient(settings)
+    try:
+        report = await sync_research_inbox(settings, client)
+    finally:
+        await client.close()
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return int(bool(report["counts"]["failed"] or report["counts"]["rejected"]))
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
-

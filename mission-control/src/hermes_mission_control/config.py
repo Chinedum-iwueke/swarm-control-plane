@@ -23,6 +23,7 @@ class MissionControlSettings(BaseSettings):
     port: int = Field(default=8790, ge=1024, le=65535)
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     upload_max_bytes: int = Field(default=52_428_800, ge=1024, le=104_857_600)
+    research_inbox_directory: Path | None = None
 
     @property
     def normalized_api_url(self) -> str:
@@ -40,6 +41,14 @@ class MissionControlSettings(BaseSettings):
     def database_path(self) -> Path:
         return self.data_root / "knowledge.sqlite3"
 
+    @property
+    def research_inbox(self) -> Path:
+        return (
+            (self.research_inbox_directory or self.data_root / "research-inbox")
+            .expanduser()
+            .resolve()
+        )
+
     def prepare(self) -> None:
         if self.host not in {"127.0.0.1", "::1", "localhost"}:
             raise ValueError("Mission Control must bind to a loopback address.")
@@ -52,6 +61,10 @@ class MissionControlSettings(BaseSettings):
             raise ValueError("The orchestrator token file is empty or invalid.")
         self.data_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.data_root.chmod(0o700)
+        self.research_inbox.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.research_inbox.chmod(0o700)
+        for category in ("books", "papers", "prior-results", "governing"):
+            (self.research_inbox / category).mkdir(exist_ok=True, mode=0o700)
         if not self.knowledge_roots:
             self.allowed_knowledge_roots[0].mkdir(
                 parents=True, exist_ok=True, mode=0o700
@@ -61,6 +74,8 @@ class MissionControlSettings(BaseSettings):
                 raise ValueError(f"Knowledge root is unavailable: {root}")
 
     def read_token(self) -> str:
-        return self.orchestrator_token_file.expanduser().read_text(
-            encoding="utf-8"
-        ).strip()
+        return (
+            self.orchestrator_token_file.expanduser()
+            .read_text(encoding="utf-8")
+            .strip()
+        )

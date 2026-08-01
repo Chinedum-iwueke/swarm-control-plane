@@ -28,6 +28,7 @@ from .models import (
     KnowledgeIngestRequest,
     ProposalDecision,
 )
+from .research_inbox import sync_research_inbox
 from .research_upload import (
     ResearchUploadError,
     digest,
@@ -99,6 +100,7 @@ def create_app(
             "service": "Hermes Mission Control",
             "scope": "loopback-only",
             "knowledge": store.stats(),
+            "research_inbox": str(settings.research_inbox),
         }
 
     @app.get("/api/dashboard")
@@ -234,6 +236,10 @@ def create_app(
             "domain": domain,
             "original_retained": True,
         }
+
+    @app.post("/api/research/inbox/sync", dependencies=[Depends(_mutation_intent)])
+    async def sync_inbox() -> dict:
+        return await sync_research_inbox(settings, client)
 
     @app.get("/api/knowledge/search")
     async def search(

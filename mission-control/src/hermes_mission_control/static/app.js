@@ -130,6 +130,25 @@ document.getElementById("research-upload-form").addEventListener("submit", async
   event.target.reset();
 });
 
+document.getElementById("sync-research-inbox").addEventListener("click", async () => {
+  if (state.demo) return toast("Inbox sync is disabled in demonstration mode.");
+  const button = document.getElementById("sync-research-inbox");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/research/inbox/sync", {
+      method: "POST",
+      headers: { "X-Hermes-Intent": "founder-action" },
+    });
+    const report = await response.json();
+    if (!response.ok) return toast(report.detail || "Inbox sync failed.");
+    const counts = report.counts;
+    document.getElementById("inbox-sync-status").textContent = `${report.inbox} · ${counts.added} added · ${counts.unchanged} unchanged · ${counts.rejected + counts.failed} need attention`;
+    toast(`Research inbox synced: ${counts.added} added, ${counts.unchanged} unchanged.`);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = document.getElementById("search-query").value;

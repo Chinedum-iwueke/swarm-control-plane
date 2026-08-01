@@ -53,6 +53,9 @@ class FakeControlPlane:
             "chunk_count": len(payload["chunks"]),
         }
 
+    async def research_document_by_digest(self, content_digest):
+        return None
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,

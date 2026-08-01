@@ -171,6 +171,24 @@ class ControlPlaneClient:
             "POST", "/v1/research/knowledge/document-bundles", json=payload
         )
 
+    async def research_document_by_digest(
+        self, content_digest: str
+    ) -> dict[str, Any] | None:
+        try:
+            response = await self._client.get(
+                f"/v1/research/knowledge/documents/by-digest/{content_digest}"
+            )
+        except httpx.TransportError as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return None
+        if response.is_success:
+            return response.json()
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
+        )
+
     async def register_research_chunk(
         self, document_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
