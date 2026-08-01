@@ -151,30 +151,45 @@ def prepare(admin: httpx.Client, roles: dict, commit: str) -> dict:
             ],
             "maximum_trials": 1,
         }
-        hypothesis = call(
-            senior,
+        hypothesis_digest = digest(hypothesis_spec)
+        registered_hypotheses = call(admin, "GET", "/v1/research/hypotheses")
+        hypothesis = next(
+            (
+                item
+                for item in registered_hypotheses
+                if item["record_digest"] == hypothesis_digest
+            ),
+            None,
+        )
+        hypothesis_reused = hypothesis is not None
+        if hypothesis is None:
+            hypothesis = call(
+                senior,
+                "POST",
+                "/v1/agent/research/hypotheses",
+                {
+                    "hypothesis_key": f"M13-H1-{stamp}",
+                    "trial_family": f"M13-BTC-HOURLY-MOMENTUM-{stamp}",
+                    "specification": hypothesis_spec,
+                    "record_digest": hypothesis_digest,
+                },
+            )
+
+    if not hypothesis_reused:
+        call(
+            admin,
             "POST",
-            "/v1/agent/research/hypotheses",
+            f"/v1/research/hypothesis/{hypothesis['id']}/reviews",
             {
-                "hypothesis_key": f"M13-H1-{stamp}",
-                "trial_family": f"M13-BTC-HOURLY-MOMENTUM-{stamp}",
-                "specification": hypothesis_spec,
-                "record_digest": digest(hypothesis_spec),
+                "subject_digest": hypothesis["record_digest"],
+                "review_kind": "approval",
+                "verdict": "approved",
+                "review": {
+                    "summary": "Founder approved one prospective real-data trial."
+                },
+                "reviewer": "founder-operator",
             },
         )
-
-    call(
-        admin,
-        "POST",
-        f"/v1/research/hypothesis/{hypothesis['id']}/reviews",
-        {
-            "subject_digest": hypothesis["record_digest"],
-            "review_kind": "approval",
-            "verdict": "approved",
-            "review": {"summary": "Founder approved one prospective real-data trial."},
-            "reviewer": "founder-operator",
-        },
-    )
     source_spec = {
         "title": "M13 Binance BTCUSDT canonical hourly snapshot",
         "source_type": "dataset",
