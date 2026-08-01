@@ -195,7 +195,7 @@ class ControlPlaneClient:
             response = await self._client.request(
                 method, path, headers=headers, **kwargs
             )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except httpx.TransportError as exc:
             raise ControlPlaneError("Control plane is currently unreachable.") from exc
         if response.is_success:
             return response.json()
@@ -207,7 +207,7 @@ class ControlPlaneClient:
     async def _optional_collection(self, path: str) -> list[dict[str, Any]]:
         try:
             response = await self._client.get(path)
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except httpx.TransportError as exc:
             raise ControlPlaneError("Control plane is currently unreachable.") from exc
         if response.status_code == 404:
             return []
