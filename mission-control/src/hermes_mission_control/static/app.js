@@ -126,7 +126,7 @@ document.getElementById("research-upload-form").addEventListener("submit", async
     return toast(typeof body.detail === "string" ? body.detail : "Upload failed.");
   }
   const result = await response.json();
-  toast(`Research source registered with ${result.passages} cited passages.`);
+  toast(`${result.document_key} registered with ${result.passages} cited passages.`);
   event.target.reset();
 });
 
