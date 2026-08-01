@@ -1,8 +1,13 @@
 from uuid import uuid4
 
 import pytest
-from app.schemas.research import DomainProfileCreate, IntelligenceRunCreate
 from pydantic import ValidationError
+
+from app.schemas.research import (
+    DomainProfileCreate,
+    IntelligenceRunCreate,
+    ResearchMemoryExportCreate,
+)
 
 
 def test_domain_profile_rejects_unknown_fields() -> None:
@@ -58,4 +63,32 @@ def test_candidate_scores_are_bounded() -> None:
             objective="Find the next bounded question.",
             candidates=[candidate, candidate],
             created_by="m14b-research-intelligence-director",
+        )
+
+
+def test_memory_export_rejects_unknown_nested_fields() -> None:
+    with pytest.raises(ValidationError):
+        ResearchMemoryExportCreate(
+            export={
+                "schema_version": 1,
+                "repository": "bulletproof_bt",
+                "repository_commit": "a" * 40,
+                "database_digest": "b" * 64,
+                "counts": {
+                    "trades": 1,
+                    "invalid_trades": 0,
+                    "state_buckets": 0,
+                    "candidates": 0,
+                    "recommendations": 0,
+                    "unknown": 1,
+                },
+                "run_ids": [],
+                "hypothesis_ids": [],
+                "strongest_states": [],
+                "weakest_states": [],
+                "candidates": [],
+                "recommendations": [],
+            },
+            export_digest="c" * 64,
+            registered_by="bulletproof-memory-bridge",
         )

@@ -20,6 +20,50 @@ Duplicate content is immutable and rejected by digest. A changed edition is a ne
 document version. Scanned PDFs without embedded text are rejected; OCR is outside
 M14B because it requires a separately sandboxed parser pipeline.
 
+The Mac folder named `imported-prior-results` is only for legacy or external
+reports that do not already exist in Hermes or Bulletproof. Routine quantitative
+results must not be copied into that folder.
+
+## Bulletproof research-memory bridge
+
+`bulletproof_bt` on VM1 remains the authoritative computational memory. Hermes
+does not write to its SQLite database. The `invariance-research-memory-sync`
+command opens that database read-only and creates a `ResearchMemoryExportV1`
+projection containing:
+
+- the Bulletproof repository commit and complete quiescent SQLite SHA-256;
+- trade, invalid-trade, state-bucket, candidate, and recommendation counts;
+- bounded strongest and weakest state summaries;
+- bounded candidate verdicts and human-approval state;
+- bounded recommendations plus run and hypothesis identifiers.
+
+The control plane independently verifies the canonical export digest and stores
+the structured record immutably. A compact prior-result document is also indexed
+for Director retrieval. Full trade rows remain in Bulletproof; successful,
+rejected, invalid, and negative evidence are represented without turning the
+knowledge index into a second execution database. Repeating a sync resolves both
+records by digest and creates no duplicate.
+
+After deploying the API migration, synchronize from VM1 with:
+
+```bash
+cd /home/omenka/Projects/swarm-control-plane/worker
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+invariance-research-memory-sync \
+  --repository /home/omenka/Projects/bulletproof_bt \
+  --database /home/omenka/Projects/bulletproof_bt/research_db/research.sqlite \
+  --output /home/omenka/Projects/bulletproof_bt/research/memory/hermes-export.json
+```
+
+The bridge fails closed when a WAL writer is active or the database changes while
+being read. The database is currently large, so the full content digest is
+intentionally a periodic synchronization operation rather than a per-query
+operation.
+
 ## Domain brains
 
 A Senior Quantitative Research Specialist gains a domain brain through a

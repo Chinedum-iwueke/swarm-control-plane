@@ -58,11 +58,13 @@ the explicit setting is omitted. It contains optional classification folders:
 
 - `books`: textbook / method
 - `papers`: paper / empirical evidence
-- `prior-results`: prior report / prior result
+- `imported-prior-results`: legacy or external prior report / prior result
 - `governing`: PRD / governing requirement
 
 Supported files directly in the inbox default to paper / empirical evidence.
 Every inbox source is assigned to `systematic-research`.
+Routine `bulletproof_bt` results do not pass through this folder. They are
+synchronized from VM1 through the digest-bound structured research-memory bridge.
 
 ## Install
 

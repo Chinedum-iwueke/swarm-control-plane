@@ -19,6 +19,7 @@ from app.models import (
     ResearchExperiment,
     ResearchHypothesis,
     ResearchIntelligenceRun,
+    ResearchMemoryExport,
     ResearchResult,
     ResearchRetrievalEvaluation,
     ResearchReview,
@@ -33,6 +34,7 @@ from app.schemas.research import (
     ResearchDocumentCreate,
     ResearchExperimentCreate,
     ResearchHypothesisCreate,
+    ResearchMemoryExportCreate,
     ResearchResultCreate,
     ResearchReviewCreate,
     ResearchSourceCreate,
@@ -508,6 +510,25 @@ def register_intelligence_run(db: Session, payload):
             created_by=payload.created_by,
         ),
         "Intelligence run digest already exists.",
+    )
+
+
+def register_memory_export(
+    db: Session, payload: ResearchMemoryExportCreate
+) -> ResearchMemoryExport:
+    document = payload.export.model_dump(mode="json")
+    _require_digest(record_digest(document), payload.export_digest, "Memory export")
+    return _commit(
+        db,
+        ResearchMemoryExport(
+            repository=payload.export.repository,
+            repository_commit=payload.export.repository_commit,
+            database_digest=payload.export.database_digest,
+            export=document,
+            export_digest=payload.export_digest,
+            registered_by=payload.registered_by,
+        ),
+        "Research-memory export digest already exists.",
     )
 
 

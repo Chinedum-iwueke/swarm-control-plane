@@ -76,3 +76,33 @@ async def test_root_files_default_to_empirical_papers(
 
     assert report["files"][0]["document_type"] == "paper"
     assert report["files"][0]["evidence_type"] == "empirical_evidence"
+
+
+@pytest.mark.asyncio
+async def test_imported_prior_results_are_explicitly_classified(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "imported-prior-results" / "legacy.md"
+    source.write_text("# Legacy result\nRejected after costs.", encoding="utf-8")
+    client = FakeResearchClient()
+
+    report = await sync_research_inbox(settings, client)
+
+    assert report["files"][0]["document_type"] == "prior_report"
+    assert report["files"][0]["evidence_type"] == "prior_result"
+
+
+@pytest.mark.asyncio
+async def test_deprecated_prior_results_folder_is_rejected(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    legacy = settings.research_inbox / "prior-results"
+    legacy.mkdir()
+    (legacy / "result.md").write_text("Old ambiguous lane", encoding="utf-8")
+
+    report = await sync_research_inbox(settings, FakeResearchClient())
+
+    assert report["counts"]["rejected"] == 1
+    assert "imported-prior-results" in report["files"][0]["error"]

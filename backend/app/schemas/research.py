@@ -477,6 +477,88 @@ class IntelligenceRunResponse(StrictModel):
     created_at: datetime
 
 
+class ResearchMemoryCounts(StrictModel):
+    trades: int = Field(ge=0)
+    invalid_trades: int = Field(ge=0)
+    state_buckets: int = Field(ge=0)
+    candidates: int = Field(ge=0)
+    recommendations: int = Field(ge=0)
+
+
+class ResearchMemoryState(StrictModel):
+    state_key: str = Field(min_length=1, max_length=150)
+    bucket: str = Field(min_length=1, max_length=150)
+    setup_class: str | None = Field(default=None, max_length=150)
+    hypothesis_name: str | None = Field(default=None, max_length=300)
+    n_trades: int = Field(ge=0)
+    ev_r_net: float | None = None
+    avg_cost_drag_r: float | None = None
+    finding_type: str | None = Field(default=None, max_length=100)
+    confidence_score: float | None = Field(default=None, ge=0, le=1)
+
+
+class ResearchMemoryCandidate(StrictModel):
+    candidate_id: str = Field(min_length=1, max_length=150)
+    hypothesis_name: str | None = Field(default=None, max_length=300)
+    run_id: str | None = Field(default=None, max_length=150)
+    candidate_status: str | None = Field(default=None, max_length=100)
+    rank_score: float | None = None
+    promotion_score: float | None = None
+    ev_r_net: float | None = None
+    n_trades: int | None = Field(default=None, ge=0)
+    recommended_action: str | None = Field(default=None, max_length=2000)
+
+
+class ResearchMemoryRecommendation(StrictModel):
+    recommendation_type: str = Field(min_length=1, max_length=100)
+    target_type: str = Field(min_length=1, max_length=100)
+    target_id: str | None = Field(default=None, max_length=150)
+    hypothesis_name: str | None = Field(default=None, max_length=300)
+    setup_class: str | None = Field(default=None, max_length=150)
+    recommendation: str = Field(min_length=1, max_length=4000)
+    evidence_score: float | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    status: str = Field(min_length=1, max_length=100)
+    human_approved: bool
+
+
+class ResearchMemoryExportDocument(StrictModel):
+    schema_version: Literal[1]
+    repository: Literal["bulletproof_bt"]
+    repository_commit: str = Field(pattern=_COMMIT)
+    database_digest: str = Field(pattern=_DIGEST)
+    counts: ResearchMemoryCounts
+    run_ids: list[str] = Field(default_factory=list, max_length=500)
+    hypothesis_ids: list[str] = Field(default_factory=list, max_length=500)
+    strongest_states: list[ResearchMemoryState] = Field(
+        default_factory=list, max_length=100
+    )
+    weakest_states: list[ResearchMemoryState] = Field(
+        default_factory=list, max_length=100
+    )
+    candidates: list[ResearchMemoryCandidate] = Field(
+        default_factory=list, max_length=100
+    )
+    recommendations: list[ResearchMemoryRecommendation] = Field(
+        default_factory=list, max_length=100
+    )
+
+
+class ResearchMemoryExportCreate(StrictModel):
+    export: ResearchMemoryExportDocument
+    export_digest: str = Field(pattern=_DIGEST)
+    registered_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class ResearchMemoryExportResponse(ResearchMemoryExportCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    repository: str
+    repository_commit: str
+    database_digest: str
+    registered_at: datetime
+
+
 class AgentResearchBriefCreate(StrictModel):
     question: str = Field(min_length=3, max_length=1000)
     summary: str = Field(min_length=1, max_length=4000)

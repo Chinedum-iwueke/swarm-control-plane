@@ -14,6 +14,7 @@ from app.models import (
     ResearchDocument,
     ResearchExperiment,
     ResearchHypothesis,
+    ResearchMemoryExport,
     ResearchResult,
     ResearchRetrievalEvaluation,
     ResearchReview,
@@ -43,6 +44,8 @@ from app.schemas.research import (
     ResearchHypothesisCreate,
     ResearchHypothesisResponse,
     ResearchLineageResponse,
+    ResearchMemoryExportCreate,
+    ResearchMemoryExportResponse,
     ResearchResultCreate,
     ResearchResultResponse,
     ResearchReviewCreate,
@@ -67,6 +70,7 @@ from app.services.research import (
     register_experiment,
     register_hypothesis,
     register_intelligence_run,
+    register_memory_export,
     register_result,
     register_source,
     register_trial,
@@ -154,6 +158,34 @@ def list_intelligence_runs(db: Annotated[Session, Depends(get_db)]):
             )
         ).all()
     ]
+
+
+@router.post(
+    "/memory-exports", response_model=ResearchMemoryExportResponse, status_code=201
+)
+def create_memory_export(
+    payload: ResearchMemoryExportCreate, db: Annotated[Session, Depends(get_db)]
+):
+    return ResearchMemoryExportResponse.model_validate(
+        register_memory_export(db, payload)
+    )
+
+
+@router.get(
+    "/memory-exports/by-digest/{export_digest}",
+    response_model=ResearchMemoryExportResponse,
+)
+def get_memory_export_by_digest(
+    export_digest: str, db: Annotated[Session, Depends(get_db)]
+):
+    record = db.scalar(
+        select(ResearchMemoryExport).where(
+            ResearchMemoryExport.export_digest == export_digest
+        )
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Research-memory export not found.")
+    return ResearchMemoryExportResponse.model_validate(record)
 
 
 def _document_response(record) -> ResearchDocumentResponse:

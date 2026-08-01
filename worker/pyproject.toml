@@ -25,6 +25,7 @@ invariance-swarm-infrastructure-worker = "swarm_worker.infrastructure.__main__:m
 invariance-swarm-infrastructure-broker = "swarm_worker.infrastructure.broker:main"
 invariance-swarm-founder-planner = "swarm_worker.planner.__main__:main"
 invariance-swarm-mission-supervisor = "swarm_worker.supervisor.__main__:main"
+invariance-research-memory-sync = "swarm_worker.research_memory_bridge:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 [tool.pytest.ini_options]

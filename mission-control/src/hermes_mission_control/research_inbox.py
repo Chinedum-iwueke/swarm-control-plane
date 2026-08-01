@@ -15,7 +15,7 @@ SUPPORTED = {".pdf", ".md", ".markdown", ".txt"}
 CLASSIFICATIONS = {
     "books": ("textbook", "method"),
     "papers": ("paper", "empirical_evidence"),
-    "prior-results": ("prior_report", "prior_result"),
+    "imported-prior-results": ("prior_report", "prior_result"),
     "governing": ("prd", "governing_requirement"),
 }
 
@@ -36,6 +36,12 @@ async def sync_research_inbox(
             resolved = path.resolve()
             if not resolved.is_relative_to(root):
                 raise ResearchUploadError("Inbox source escapes the configured folder.")
+            if relative.parts[0] == "prior-results":
+                raise ResearchUploadError(
+                    "Move legacy or external reports to imported-prior-results. "
+                    "Bulletproof results are synchronized through the structured "
+                    "research-memory bridge."
+                )
             if path.stat().st_size > settings.upload_max_bytes:
                 raise ResearchUploadError(
                     "The source exceeds the configured upload limit."

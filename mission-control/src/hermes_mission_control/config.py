@@ -64,7 +64,12 @@ class MissionControlSettings(BaseSettings):
         self.data_root.chmod(0o700)
         self.research_inbox.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.research_inbox.chmod(0o700)
-        for category in ("books", "papers", "prior-results", "governing"):
+        for category in (
+            "books",
+            "papers",
+            "imported-prior-results",
+            "governing",
+        ):
             (self.research_inbox / category).mkdir(exist_ok=True, mode=0o700)
         if not self.knowledge_roots:
             self.allowed_knowledge_roots[0].mkdir(
