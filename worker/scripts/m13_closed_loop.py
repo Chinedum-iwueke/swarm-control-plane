@@ -36,8 +36,22 @@ def call(
     client: httpx.Client, method: str, path: str, payload: dict | None = None
 ) -> Any:
     response = client.request(method, path, json=payload)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = response.text[:1000].replace("\n", " ")
+        raise RuntimeError(
+            f"{method} {path} returned HTTP {response.status_code}: {detail}"
+        ) from exc
     return response.json()
+
+
+def canonical_utc(value: str) -> str:
+    """Match Pydantic's JSON representation before computing registry digests."""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise RuntimeError("Registry timestamps must include a UTC offset.")
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def api(token: str) -> httpx.Client:
@@ -170,7 +184,7 @@ def prepare(admin: httpx.Client, roles: dict, commit: str) -> dict:
             f"store; source digest {snapshot_manifest['source_sha256']}."
         ),
         "point_in_time": True,
-        "observed_at": snapshot_manifest["date_end"],
+        "observed_at": canonical_utc(snapshot_manifest["date_end"]),
     }
     source = call(
         admin,
@@ -187,8 +201,8 @@ def prepare(admin: httpx.Client, roles: dict, commit: str) -> dict:
         "provider": "binance",
         "instrument": "BTCUSDT",
         "timeframe": "1h",
-        "date_start": snapshot_manifest["date_start"],
-        "date_end": snapshot_manifest["date_end"],
+        "date_start": canonical_utc(snapshot_manifest["date_start"]),
+        "date_end": canonical_utc(snapshot_manifest["date_end"]),
         "rows": snapshot_manifest["rows"],
         "format": "csv",
         "storage_uri": "worker/research-data/m13/binance-btcusdt-1h-2025.csv",
