@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     ResearchBrief,
     ResearchChunk,
+    ResearchDataSnapshot,
     ResearchDecision,
     ResearchDocument,
     ResearchExperiment,
@@ -25,6 +26,7 @@ from app.models import (
 from app.schemas.research import (
     ResearchBriefCreate,
     ResearchChunkCreate,
+    ResearchDataSnapshotCreate,
     ResearchDecisionCreate,
     ResearchDocumentCreate,
     ResearchExperimentCreate,
@@ -68,6 +70,34 @@ def register_source(db: Session, payload: ResearchSourceCreate) -> ResearchSourc
     _require_digest(
         record_digest(payload.specification), payload.record_digest, "Source"
     )
+
+
+def register_data_snapshot(
+    db: Session, payload: ResearchDataSnapshotCreate
+) -> ResearchDataSnapshot:
+    source = db.get(ResearchSource, payload.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Research source not found.")
+    document = {
+        "snapshot_key": payload.snapshot_key,
+        "source_id": str(payload.source_id),
+        "specification": payload.specification.model_dump(mode="json"),
+        "content_digest": payload.content_digest,
+        "registered_by": payload.registered_by,
+    }
+    _require_digest(record_digest(document), payload.record_digest, "Data snapshot")
+    return _commit(
+        db,
+        ResearchDataSnapshot(
+            snapshot_key=payload.snapshot_key,
+            source_id=payload.source_id,
+            specification=payload.specification.model_dump(mode="json"),
+            content_digest=payload.content_digest,
+            record_digest=payload.record_digest,
+            registered_by=payload.registered_by,
+        ),
+        "Snapshot key, content digest, or record digest already exists.",
+    )
     return _commit(
         db,
         ResearchSource(
@@ -107,6 +137,20 @@ def register_experiment(
         raise HTTPException(status_code=404, detail="Hypothesis not found.")
     if db.get(ResearchSource, payload.source_id) is None:
         raise HTTPException(status_code=404, detail="Source not found.")
+    if payload.snapshot_id is not None:
+        snapshot = db.get(ResearchDataSnapshot, payload.snapshot_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Data snapshot not found.")
+        _require_digest(
+            snapshot.content_digest,
+            payload.manifest.data_snapshot_digest or "",
+            "Data snapshot",
+        )
+        if snapshot.source_id != payload.source_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Data snapshot does not belong to the experiment source.",
+            )
     hypothesis_approved = db.scalar(
         select(ResearchReview.id).where(
             ResearchReview.subject_type == "hypothesis",
@@ -127,6 +171,7 @@ def register_experiment(
             experiment_key=payload.experiment_key,
             hypothesis_id=payload.hypothesis_id,
             source_id=payload.source_id,
+            snapshot_id=payload.snapshot_id,
             manifest=payload.manifest.model_dump(mode="json"),
             manifest_digest=payload.manifest_digest,
             registered_by=payload.registered_by,
@@ -282,8 +327,8 @@ def register_decision(
     if result is None:
         raise HTTPException(status_code=404, detail="Result not found.")
     _require_digest(result.record_digest, payload.result_digest, "Result")
-    independent_review = db.scalar(
-        select(ResearchReview.id).where(
+    reviews = db.execute(
+        select(ResearchReview.review_kind, ResearchReview.reviewer).where(
             ResearchReview.subject_type == "result",
             ResearchReview.subject_id == result.id,
             ResearchReview.subject_digest == result.record_digest,
@@ -291,10 +336,17 @@ def register_decision(
                 ("independent_review", "adversarial_review")
             ),
         )
-    )
-    if independent_review is None:
+    ).all()
+    reviewers = {kind: reviewer for kind, reviewer in reviews}
+    if set(reviewers) != {"independent_review", "adversarial_review"}:
         raise HTTPException(
-            status_code=409, detail="Independent result review required."
+            status_code=409,
+            detail="Statistical and adversarial result reviews are required.",
+        )
+    if len(set(reviewers.values())) != 2:
+        raise HTTPException(
+            status_code=409,
+            detail="Statistical and adversarial reviewers must be different agents.",
         )
     document = payload.model_dump(mode="json") | {"result_id": str(result_id)}
     return _commit(

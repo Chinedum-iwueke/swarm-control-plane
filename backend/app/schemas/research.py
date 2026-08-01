@@ -33,6 +33,40 @@ class ResearchSourceCreate(StrictModel):
     registered_by: str = Field(pattern=_ACTOR, max_length=150)
 
 
+class DataSnapshotSpecification(StrictModel):
+    provider: str = Field(min_length=1, max_length=150)
+    instrument: str = Field(min_length=1, max_length=150)
+    timeframe: str = Field(min_length=1, max_length=100)
+    date_start: datetime
+    date_end: datetime
+    rows: int = Field(ge=100, le=100_000_000)
+    format: Literal["csv", "parquet"]
+    storage_uri: str = Field(min_length=1, max_length=1000)
+    transformation: str = Field(min_length=1, max_length=4000)
+    point_in_time: bool
+
+    @model_validator(mode="after")
+    def snapshot_dates_are_ordered(self) -> DataSnapshotSpecification:
+        if self.date_end <= self.date_start:
+            raise ValueError("snapshot date_end must be after date_start")
+        return self
+
+
+class ResearchDataSnapshotCreate(StrictModel):
+    snapshot_key: str = Field(pattern=_KEY, max_length=150)
+    source_id: uuid.UUID
+    specification: DataSnapshotSpecification
+    content_digest: str = Field(pattern=_DIGEST)
+    record_digest: str = Field(pattern=_DIGEST)
+    registered_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class ResearchDataSnapshotResponse(ResearchDataSnapshotCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    registered_at: datetime
+
+
 class HypothesisSpecification(StrictModel):
     research_question: str = Field(min_length=10, max_length=2000)
     rationale: str = Field(min_length=10, max_length=4000)
@@ -75,6 +109,7 @@ class ExperimentManifest(StrictModel):
     success_criteria: list[str] = Field(min_length=1, max_length=30)
     rejection_criteria: list[str] = Field(min_length=1, max_length=30)
     engine_version: str = Field(min_length=1, max_length=150)
+    data_snapshot_digest: str | None = Field(default=None, pattern=_DIGEST)
 
     @model_validator(mode="after")
     def dates_are_ordered(self) -> ExperimentManifest:
@@ -91,9 +126,18 @@ class ResearchExperimentCreate(StrictModel):
     experiment_key: str = Field(pattern=_KEY, max_length=150)
     hypothesis_id: uuid.UUID
     source_id: uuid.UUID
+    snapshot_id: uuid.UUID | None = None
     manifest: ExperimentManifest
     manifest_digest: str = Field(pattern=_DIGEST)
     registered_by: str = Field(pattern=_ACTOR, max_length=150)
+
+    @model_validator(mode="after")
+    def snapshot_is_digest_bound(self) -> ResearchExperimentCreate:
+        if (self.snapshot_id is None) != (self.manifest.data_snapshot_digest is None):
+            raise ValueError(
+                "snapshot_id and data_snapshot_digest are required together"
+            )
+        return self
 
 
 class ResearchReviewCreate(StrictModel):
@@ -178,6 +222,7 @@ class ResearchExperimentResponse(BaseModel):
     experiment_key: str
     hypothesis_id: uuid.UUID
     source_id: uuid.UUID
+    snapshot_id: uuid.UUID | None
     manifest: ExperimentManifest
     manifest_digest: str
     registered_by: str
@@ -363,6 +408,41 @@ class ResearchBriefCreate(StrictModel):
     summary: str = Field(min_length=1, max_length=4000)
     claims: list[BriefClaim] = Field(min_length=1, max_length=50)
     created_by: str = Field(pattern=_ACTOR, max_length=150)
+
+
+class AgentResearchBriefCreate(StrictModel):
+    question: str = Field(min_length=3, max_length=1000)
+    summary: str = Field(min_length=1, max_length=4000)
+    claims: list[BriefClaim] = Field(min_length=1, max_length=50)
+
+
+class AgentResearchHypothesisCreate(StrictModel):
+    hypothesis_key: str = Field(pattern=_KEY, max_length=150)
+    trial_family: str = Field(pattern=_KEY, max_length=150)
+    specification: HypothesisSpecification
+    record_digest: str = Field(pattern=_DIGEST)
+
+
+class AgentResearchExperimentCreate(StrictModel):
+    experiment_key: str = Field(pattern=_KEY, max_length=150)
+    hypothesis_id: uuid.UUID
+    source_id: uuid.UUID
+    snapshot_id: uuid.UUID
+    manifest: ExperimentManifest
+    manifest_digest: str = Field(pattern=_DIGEST)
+
+
+class AgentResearchReviewCreate(StrictModel):
+    subject_digest: str = Field(pattern=_DIGEST)
+    verdict: Literal["approved", "rejected", "needs_changes"]
+    review: dict[str, str | int | float | bool | list[str]]
+
+
+class AgentResearchResultCreate(StrictModel):
+    trial_digest: str = Field(pattern=_DIGEST)
+    outcome: Literal["accepted", "rejected", "failed", "inconclusive"]
+    result: ResultDocument
+    record_digest: str = Field(pattern=_DIGEST)
 
 
 class ResearchBriefResponse(StrictModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
@@ -9,6 +10,8 @@ import statistics
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from itertools import pairwise
+from pathlib import Path
 from typing import Any
 
 from swarm_worker import __version__
@@ -27,6 +30,11 @@ from swarm_worker.workflows import WorkflowDefinition
 from swarm_worker.workspace import TaskWorkspace
 
 _ANNUALIZATION = math.sqrt(252)
+_HOURLY_ANNUALIZATION = math.sqrt(365 * 24)
+_M13_SNAPSHOT = (
+    Path(__file__).resolve().parents[3]
+    / "research-data/m13/binance-btcusdt-1h-2025.csv"
+)
 
 
 class ResearchExecutionError(RuntimeError):
@@ -83,7 +91,7 @@ class ResearchExperimentExecutor:
         await self._heartbeat(
             heartbeat, contract, steps, total_steps, started, phase_names[0]
         )
-        returns, dataset_digest = self._generate_dataset(contract)
+        returns, dataset_digest, dataset_kind = self._load_dataset(contract)
         steps.append(
             self._record_phase(
                 workspace,
@@ -93,6 +101,7 @@ class ResearchExperimentExecutor:
                     "observations": len(returns),
                     "seed": contract.seed,
                     "dataset_digest": dataset_digest,
+                    "dataset_kind": dataset_kind,
                 },
             )
         )
@@ -101,13 +110,22 @@ class ResearchExperimentExecutor:
             heartbeat, contract, steps, total_steps, started, phase_names[1]
         )
         split = int(len(returns) * contract.train_fraction)
+        annualization = (
+            _HOURLY_ANNUALIZATION
+            if dataset_kind == "immutable_market_snapshot"
+            else _ANNUALIZATION
+        )
         train = self._evaluate(
-            returns[:split], contract.transaction_cost_bps, lag=1
+            returns[:split],
+            contract.transaction_cost_bps,
+            lag=1,
+            annualization=annualization,
         )
         out_of_sample = self._evaluate(
             returns[split - 1 :],
             contract.transaction_cost_bps,
             lag=1,
+            annualization=annualization,
         )
         steps.append(
             self._record_phase(
@@ -120,7 +138,9 @@ class ResearchExperimentExecutor:
         await self._heartbeat(
             heartbeat, contract, steps, total_steps, started, phase_names[2]
         )
-        audit = self._audit(contract, returns, split, out_of_sample)
+        audit = self._audit(
+            contract, returns, split, out_of_sample, annualization=annualization
+        )
         steps.append(self._record_phase(workspace, phase_names[2], audit))
 
         await self._heartbeat(
@@ -131,6 +151,7 @@ class ResearchExperimentExecutor:
             contract,
             workspace,
             dataset_digest,
+            dataset_kind,
             train,
             out_of_sample,
             audit,
@@ -195,9 +216,41 @@ class ResearchExperimentExecutor:
         )
 
     @staticmethod
-    def _generate_dataset(
+    def _load_dataset(
         contract: ResearchExperimentContract,
-    ) -> tuple[list[float], str]:
+    ) -> tuple[list[float], str, str]:
+        if contract.dataset == "binance-btcusdt-1h-2025":
+            root = (Path(__file__).resolve().parents[3] / "research-data/m13").resolve()
+            path = _M13_SNAPSHOT.resolve()
+            if not path.is_relative_to(root) or path.is_symlink():
+                raise ResearchExecutionError("Research snapshot path is unsafe.")
+            content = path.read_bytes()
+            actual_digest = hashlib.sha256(content).hexdigest()
+            if actual_digest != contract.dataset_digest:
+                raise ResearchExecutionError("Research snapshot digest mismatch.")
+            closes: list[float] = []
+            with path.open(encoding="utf-8", newline="") as stream:
+                reader = csv.DictReader(stream)
+                if reader.fieldnames != [
+                    "ts",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                ]:
+                    raise ResearchExecutionError("Research snapshot schema is invalid.")
+                for row in reader:
+                    closes.append(float(row["close"]))
+            if len(closes) < 500:
+                raise ResearchExecutionError("Research snapshot is too small.")
+            returns = [
+                round((current / previous) - 1.0, 12)
+                for previous, current in pairwise(closes)
+                if previous > 0
+            ]
+            return returns, actual_digest, "immutable_market_snapshot"
+
         rng = random.Random(contract.seed)
         sign = 1.0
         values: list[float] = []
@@ -207,11 +260,23 @@ class ResearchExperimentExecutor:
             magnitude = max(0.0001, abs(rng.gauss(0.004, 0.0015)))
             values.append(round(sign * magnitude, 12))
         digest = hashlib.sha256(_canonical_json(values)).hexdigest()
+        return values, digest, "synthetic"
+
+    @staticmethod
+    def _generate_dataset(
+        contract: ResearchExperimentContract,
+    ) -> tuple[list[float], str]:
+        """Compatibility helper for deterministic synthetic-regime tests."""
+        values, digest, _ = ResearchExperimentExecutor._load_dataset(contract)
         return values, digest
 
     @staticmethod
     def _evaluate(
-        returns: list[float], cost_bps: float, *, lag: int
+        returns: list[float],
+        cost_bps: float,
+        *,
+        lag: int,
+        annualization: float = _ANNUALIZATION,
     ) -> dict[str, float | int]:
         cost = cost_bps / 10_000
         strategy: list[float] = []
@@ -229,7 +294,7 @@ class ResearchExperimentExecutor:
             raise ResearchExecutionError("Experiment produced insufficient returns.")
         mean = statistics.fmean(strategy)
         deviation = statistics.stdev(strategy)
-        sharpe = _ANNUALIZATION * mean / deviation if deviation else 0.0
+        sharpe = annualization * mean / deviation if deviation else 0.0
         equity = 1.0
         peak = 1.0
         maximum_drawdown = 0.0
@@ -254,16 +319,20 @@ class ResearchExperimentExecutor:
         returns: list[float],
         split: int,
         out_of_sample: dict[str, float | int],
+        *,
+        annualization: float = _ANNUALIZATION,
     ) -> dict[str, Any]:
         cost_stress = self._evaluate(
             returns[split - 1 :],
             contract.transaction_cost_bps * 2,
             lag=1,
+            annualization=annualization,
         )
         lag_stress = self._evaluate(
             returns[split - 2 :],
             contract.transaction_cost_bps,
             lag=2,
+            annualization=annualization,
         )
         checks = {
             "temporal_split_no_overlap": split > 1,
@@ -273,10 +342,12 @@ class ResearchExperimentExecutor:
             "cost_stress_finite": math.isfinite(
                 float(cost_stress["annualized_sharpe"])
             ),
-            "lag_stress_finite": math.isfinite(
-                float(lag_stress["annualized_sharpe"])
+            "lag_stress_finite": math.isfinite(float(lag_stress["annualized_sharpe"])),
+            "data_kind_disclosed": True,
+            "real_snapshot_digest_bound": (
+                contract.dataset != "binance-btcusdt-1h-2025"
+                or contract.dataset_digest is not None
             ),
-            "synthetic_data_disclosed": True,
             "production_promotion_blocked": True,
         }
         return {
@@ -286,7 +357,11 @@ class ResearchExperimentExecutor:
             "lag_stress": lag_stress,
             "selection_count": 1,
             "limitations": [
-                "Synthetic returns do not establish live-market validity.",
+                (
+                    "A single historical BTC period does not establish live-market validity."
+                    if contract.dataset == "binance-btcusdt-1h-2025"
+                    else "Synthetic returns do not establish live-market validity."
+                ),
                 "No parameter search or multiple-hypothesis selection was performed.",
                 "The pilot does not model liquidity, latency, or market impact.",
             ],
@@ -305,8 +380,7 @@ class ResearchExperimentExecutor:
             >= acceptance.minimum_out_of_sample_sharpe
             and float(out_of_sample["maximum_drawdown"])
             <= acceptance.maximum_out_of_sample_drawdown
-            and int(out_of_sample["trades"])
-            >= acceptance.minimum_out_of_sample_trades
+            and int(out_of_sample["trades"]) >= acceptance.minimum_out_of_sample_trades
             and float(audit["cost_stress"]["annualized_sharpe"])
             >= acceptance.minimum_cost_stress_sharpe
         )
@@ -316,6 +390,7 @@ class ResearchExperimentExecutor:
         contract: ResearchExperimentContract,
         workspace: TaskWorkspace,
         dataset_digest: str,
+        dataset_kind: str,
         train: dict[str, float | int],
         out_of_sample: dict[str, float | int],
         audit: dict[str, Any],
@@ -328,8 +403,8 @@ class ResearchExperimentExecutor:
             "hypothesis": contract.hypothesis,
             "dataset": {
                 "name": contract.dataset,
-                "kind": "synthetic",
-                "seed": contract.seed,
+                "kind": dataset_kind,
+                "seed": contract.seed if dataset_kind == "synthetic" else None,
                 "observations": contract.observations,
                 "digest": dataset_digest,
             },
@@ -341,6 +416,10 @@ class ResearchExperimentExecutor:
             "parameters": {
                 "train_fraction": contract.train_fraction,
                 "transaction_cost_bps": contract.transaction_cost_bps,
+            },
+            "registry": {
+                "experiment_digest": contract.experiment_digest,
+                "trial_digest": contract.trial_digest,
             },
             "metrics": {"train": train, "out_of_sample": out_of_sample},
             "acceptance": contract.acceptance.model_dump(mode="json"),
@@ -378,12 +457,8 @@ class ResearchExperimentExecutor:
             started_at=started_at,
             ended_at=ended_at,
             duration_seconds=max(0.0, time.monotonic() - started),
-            stdout_log=stdout.relative_to(
-                workspace.plan.attempt_directory
-            ).as_posix(),
-            stderr_log=stderr.relative_to(
-                workspace.plan.attempt_directory
-            ).as_posix(),
+            stdout_log=stdout.relative_to(workspace.plan.attempt_directory).as_posix(),
+            stderr_log=stderr.relative_to(workspace.plan.attempt_directory).as_posix(),
         )
 
     @staticmethod

@@ -1,7 +1,14 @@
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from swarm_worker.models import AgentIdentity, Task
 from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
@@ -112,13 +119,29 @@ class ResearchExperimentContract(BaseModel):
     base_ref: str = Field(min_length=1, max_length=255)
     program_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
     hypothesis_id: str = Field(pattern=_SAFE_WORKFLOW.pattern, max_length=100)
-    hypothesis: Literal["lagged-return-momentum"]
-    dataset: Literal["synthetic-regime-v1"]
+    hypothesis: Literal["lagged-return-momentum", "btc-hourly-lagged-return"]
+    dataset: Literal["synthetic-regime-v1", "binance-btcusdt-1h-2025"]
+    dataset_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    experiment_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    trial_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     seed: int = Field(ge=0, le=2_147_483_647)
     observations: int = Field(ge=500, le=10000)
     train_fraction: float = Field(ge=0.5, le=0.8)
     transaction_cost_bps: float = Field(ge=0, le=100)
     acceptance: ResearchAcceptanceCriteria
+
+    @model_validator(mode="after")
+    def real_data_is_registry_bound(self) -> "ResearchExperimentContract":
+        if self.dataset == "binance-btcusdt-1h-2025":
+            if self.hypothesis != "btc-hourly-lagged-return":
+                raise ValueError(
+                    "real-data snapshot requires the approved M13 hypothesis"
+                )
+            if not all((self.dataset_digest, self.experiment_digest)):
+                raise ValueError(
+                    "real-data execution requires snapshot and experiment digests"
+                )
+        return self
 
     @field_validator("base_ref")
     @classmethod
@@ -128,9 +151,7 @@ class ResearchExperimentContract(BaseModel):
 
 class ValidatedTaskPolicy(BaseModel):
     contract: (
-        CodeValidationContract
-        | EngineeringMissionContract
-        | ResearchExperimentContract
+        CodeValidationContract | EngineeringMissionContract | ResearchExperimentContract
     )
     workflow: WorkflowDefinition
 

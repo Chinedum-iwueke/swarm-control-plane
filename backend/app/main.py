@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.api.routes import (
     agent_packages_router,
     agent_proposals_router,
+    agent_research_router,
     agent_runtime_router,
     agents_router,
     controls_router,
@@ -39,6 +40,7 @@ app.include_router(controls_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
 app.include_router(agent_runtime_router)
+app.include_router(agent_research_router)
 app.include_router(tasks_router)
 app.include_router(proposals_router)
 app.include_router(research_router)

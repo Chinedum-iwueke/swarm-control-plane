@@ -1,3 +1,4 @@
+from app.api.routes.agent_research import router as agent_research_router
 from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.controls import router as controls_router
@@ -19,6 +20,7 @@ from app.api.routes.tasks import router as tasks_router
 __all__ = [
     "agent_packages_router",
     "agent_proposals_router",
+    "agent_research_router",
     "agent_runtime_router",
     "agents_router",
     "controls_router",

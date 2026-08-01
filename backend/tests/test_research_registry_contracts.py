@@ -6,12 +6,12 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas.research import (
+    DataSnapshotSpecification,
     ExperimentManifest,
     HypothesisSpecification,
+    ResearchDataSnapshotCreate,
+    ResearchDecisionCreate,
     ResearchHypothesisCreate,
     ResearchResultCreate,
     ResearchReviewCreate,
@@ -22,10 +22,14 @@ from app.schemas.research import (
 from app.services.research import (
     add_review,
     record_digest,
+    register_data_snapshot,
+    register_decision,
     register_hypothesis,
     register_result,
     register_trial,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 DIGEST = "a" * 64
 ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -110,6 +114,33 @@ def test_hypothesis_digest_is_verified_before_registration() -> None:
         register_hypothesis(MagicMock(), payload)
 
 
+def test_data_snapshot_is_source_bound_and_digest_verified() -> None:
+    specification = DataSnapshotSpecification(
+        provider="binance",
+        instrument="BTCUSDT",
+        timeframe="1h",
+        date_start=NOW,
+        date_end=datetime(2026, 8, 1, tzinfo=UTC),
+        rows=8760,
+        format="csv",
+        storage_uri="worker/research-data/m13/snapshot.csv",
+        transformation="Pinned UTC hourly aggregation.",
+        point_in_time=True,
+    )
+    payload = ResearchDataSnapshotCreate(
+        snapshot_key="M13-BTC-1H",
+        source_id=ID,
+        specification=specification,
+        content_digest="b" * 64,
+        record_digest="0" * 64,
+        registered_by="research-registry",
+    )
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(id=ID)
+    with pytest.raises(HTTPException, match="digest mismatch"):
+        register_data_snapshot(db, payload)
+
+
 def test_trial_requires_exact_approved_manifest() -> None:
     experiment = SimpleNamespace(
         id=ID,
@@ -191,6 +222,24 @@ def test_result_review_must_be_independent() -> None:
     )
     with pytest.raises(HTTPException, match="independent"):
         add_review(db, "result", ID, review)
+
+
+def test_decision_requires_two_distinct_reviewers() -> None:
+    result = SimpleNamespace(id=ID, record_digest=DIGEST)
+    db = MagicMock()
+    db.get.return_value = result
+    db.execute.return_value.all.return_value = [
+        ("independent_review", "same-reviewer"),
+        ("adversarial_review", "same-reviewer"),
+    ]
+    payload = ResearchDecisionCreate(
+        result_digest=DIGEST,
+        decision="retain",
+        rationale="Retain the complete result as institutional evidence.",
+        decided_by="founder-operator",
+    )
+    with pytest.raises(HTTPException, match="different agents"):
+        register_decision(db, ID, payload)
 
 
 def test_migration_enforces_database_level_append_only_records() -> None:

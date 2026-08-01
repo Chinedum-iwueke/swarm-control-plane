@@ -8,6 +8,7 @@ from app.models.proposal import FounderProposal
 from app.models.research import (
     ResearchBrief,
     ResearchChunk,
+    ResearchDataSnapshot,
     ResearchDecision,
     ResearchDocument,
     ResearchExperiment,
@@ -35,6 +36,7 @@ __all__ = [
     "PackageDeployment",
     "ResearchBrief",
     "ResearchChunk",
+    "ResearchDataSnapshot",
     "ResearchDecision",
     "ResearchDocument",
     "ResearchExperiment",

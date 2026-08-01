@@ -1,0 +1,24 @@
+schema_version: 1
+name: m13-statistical-reviewer
+version: 1.0.0
+role: Independent clean-workspace statistical reviewer
+task_types: [research_experiment]
+workflows:
+- name: research-experiment
+  file: research-experiment.yaml
+  sha256: e508a9fff88e0fff5cc00e30de7540371efe0acf78ca4cba04d82421a418e5f3
+required_capabilities: [statistical-review, reproduction, trial-aware-analysis]
+allowed_machines: [vm1-developer]
+risk_ceiling: 1
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: independent-statistical-review
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots: [workspace]
+repository_profile:
+  repositories: [bulletproof_bt]
+  primary_checkout_write: false
+  remote_write: false

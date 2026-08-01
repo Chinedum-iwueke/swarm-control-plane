@@ -26,6 +26,8 @@ from app.schemas.research import (
     ResearchBriefResponse,
     ResearchChunkCreate,
     ResearchChunkResponse,
+    ResearchDataSnapshotCreate,
+    ResearchDataSnapshotResponse,
     ResearchDecisionCreate,
     ResearchDecisionResponse,
     ResearchDocumentCreate,
@@ -51,6 +53,7 @@ from app.services.research import (
     create_brief,
     evaluate_retrieval,
     register_chunk,
+    register_data_snapshot,
     register_decision,
     register_document,
     register_experiment,
@@ -207,6 +210,20 @@ def create_source(
     payload: ResearchSourceCreate, db: Annotated[Session, Depends(get_db)]
 ):
     return ResearchSourceResponse.model_validate(register_source(db, payload))
+
+
+@router.post(
+    "/data-snapshots",
+    response_model=ResearchDataSnapshotResponse,
+    status_code=201,
+)
+def create_data_snapshot(
+    payload: ResearchDataSnapshotCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return ResearchDataSnapshotResponse.model_validate(
+        register_data_snapshot(db, payload)
+    )
 
 
 @router.post("/hypotheses", response_model=ResearchHypothesisResponse, status_code=201)

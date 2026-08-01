@@ -209,9 +209,10 @@ async def test_evidence_digest_and_artifact_permissions(tmp_path: Path) -> None:
     )
     evidence = target.artifacts / "research-evidence.json"
     report = target.artifacts / "research-report.md"
-    assert hashlib.sha256(evidence.read_bytes()).hexdigest() == result.summary[
-        "evidence_sha256"
-    ]
+    assert (
+        hashlib.sha256(evidence.read_bytes()).hexdigest()
+        == result.summary["evidence_sha256"]
+    )
     assert evidence.stat().st_mode & 0o777 == 0o600
     assert report.stat().st_mode & 0o777 == 0o600
     assert "Production eligible:** no" in report.read_text(encoding="utf-8")
@@ -231,6 +232,52 @@ def test_contract_rejects_commands_unknown_fields_and_unsafe_variants() -> None:
         contract(dataset="live-market")
     with pytest.raises(ValidationError):
         contract(base_ref="-dangerous")
+
+
+@pytest.mark.asyncio
+async def test_real_snapshot_is_digest_bound_and_non_live(tmp_path: Path) -> None:
+    snapshot = (
+        Path(__file__).parents[1] / "research-data/m13/binance-btcusdt-1h-2025.csv"
+    )
+    real = contract(
+        program_id="M13-CLOSED-FIVE",
+        hypothesis_id="M13-H1-BTC-HOURLY",
+        hypothesis="btc-hourly-lagged-return",
+        dataset="binance-btcusdt-1h-2025",
+        dataset_digest=hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+        experiment_digest="e" * 64,
+        trial_digest="f" * 64,
+        observations=8760,
+    )
+    target = workspace(tmp_path, "real-data")
+    executor = ResearchExperimentExecutor(
+        heartbeat_interval_seconds=1,
+        validation_executor=SuccessfulValidation(),
+        effective_uid=lambda: 1000,
+    )
+    result = await executor.execute(
+        task=task(input_contract=real.model_dump(mode="json")),
+        workflow=workflow(),
+        workspace=target,
+        heartbeat=heartbeat,
+    )
+    evidence = json.loads(
+        (target.artifacts / "research-evidence.json").read_text(encoding="utf-8")
+    )
+    assert result.success is True
+    assert result.summary["production_eligible"] is False
+    assert evidence["dataset"]["kind"] == "immutable_market_snapshot"
+    assert evidence["dataset"]["digest"] == real.dataset_digest
+    assert evidence["registry"]["experiment_digest"] == "e" * 64
+    assert evidence["registry"]["trial_digest"] == "f" * 64
+
+
+def test_real_snapshot_contract_requires_all_registry_digests() -> None:
+    with pytest.raises(ValidationError, match="snapshot and experiment digests"):
+        contract(
+            hypothesis="btc-hourly-lagged-return",
+            dataset="binance-btcusdt-1h-2025",
+        )
 
 
 def test_rejected_hypothesis_is_still_a_valid_research_outcome() -> None:

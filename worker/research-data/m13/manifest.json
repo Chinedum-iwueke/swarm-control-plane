@@ -1,0 +1,16 @@
+{
+  "content_sha256": "87ccd7a65daccae64bdea86a321cf9f114370e5857e61cfcaa5306bb5a1bdbf1",
+  "created_from_existing_vm1_canonical_store": true,
+  "date_end": "2025-12-31T23:00:00+00:00",
+  "date_start": "2025-01-01T00:00:00+00:00",
+  "instrument": "BTCUSDT",
+  "network_fetch_performed": false,
+  "provider": "binance",
+  "rows": 8760,
+  "schema_version": 1,
+  "snapshot_key": "M13-BINANCE-BTCUSDT-1H-2025",
+  "source_kind": "canonical_market_data",
+  "source_path": "research_data/canonical/binance/BTCUSDT/timeframe=1m/ohlcv.parquet",
+  "source_sha256": "b9b000b6dd0307dfb6bdb195b2aafe863f5b3b45ba05d950b3e089ccfaa3b096",
+  "transformation": "UTC one-hour OHLCV aggregation; first open, maximum high, minimum low, last close, summed volume; complete rows only"
+}
