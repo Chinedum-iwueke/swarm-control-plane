@@ -459,6 +459,12 @@ class IntelligenceRunCreate(StrictModel):
     created_by: str = Field(pattern=_ACTOR, max_length=150)
 
 
+class AgentIntelligenceRunCreate(StrictModel):
+    domain_profile_id: uuid.UUID
+    objective: str = Field(min_length=10, max_length=2000)
+    candidates: list[IntelligenceCandidate] = Field(min_length=2, max_length=10)
+
+
 class IntelligenceRunResponse(StrictModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

@@ -7,13 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_current_agent
 from app.db.session import get_db
-from app.models import Agent, PackageDeployment, RolePackage
+from app.models import Agent, PackageDeployment, ResearchDomainProfile, RolePackage
 from app.schemas.research import (
+    AgentIntelligenceRunCreate,
     AgentResearchBriefCreate,
     AgentResearchExperimentCreate,
     AgentResearchHypothesisCreate,
     AgentResearchResultCreate,
     AgentResearchReviewCreate,
+    DomainProfileResponse,
+    IntelligenceRunCreate,
+    IntelligenceRunResponse,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     ResearchBriefCreate,
@@ -32,11 +36,31 @@ from app.services.research import (
     create_brief,
     register_experiment,
     register_hypothesis,
+    register_intelligence_run,
     register_result,
     search_knowledge,
 )
 
 router = APIRouter(prefix="/v1/agent/research", tags=["agent-research"])
+
+
+def _domain_response(record: ResearchDomainProfile) -> DomainProfileResponse:
+    return DomainProfileResponse(
+        id=record.id,
+        domain_key=record.domain_key,
+        version=record.version,
+        title=record.title,
+        description=record.specification["description"],
+        document_keys=record.specification["document_keys"],
+        required_evidence_types=record.specification["required_evidence_types"],
+        evaluation_id=record.evaluation_id,
+        qualified_roles=record.specification["qualified_roles"],
+        created_by=record.created_by,
+        corpus_digest=record.corpus_digest,
+        status=record.status,
+        record_digest=record.record_digest,
+        created_at=record.created_at,
+    )
 
 
 def _require_role(
@@ -76,6 +100,63 @@ def agent_knowledge_search(
     )
     return KnowledgeSearchResponse.model_validate(
         search_knowledge(db, payload.query, payload.limit, payload.evidence_types)
+    )
+
+
+@router.get("/intelligence/domains/{profile_id}", response_model=DomainProfileResponse)
+def director_domain_profile(
+    profile_id: UUID,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _require_role(
+        db,
+        agent,
+        capability="research-intelligence",
+        package_name="m14b-research-intelligence-director",
+    )
+    record = db.get(ResearchDomainProfile, profile_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Domain profile not found.")
+    return _domain_response(record)
+
+
+@router.post("/intelligence/search", response_model=KnowledgeSearchResponse)
+def director_knowledge_search(
+    payload: KnowledgeSearchRequest,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _require_role(
+        db,
+        agent,
+        capability="knowledge-retrieval",
+        package_name="m14b-research-intelligence-director",
+    )
+    return KnowledgeSearchResponse.model_validate(
+        search_knowledge(db, payload.query, payload.limit, payload.evidence_types)
+    )
+
+
+@router.post(
+    "/intelligence/runs", response_model=IntelligenceRunResponse, status_code=201
+)
+def create_director_intelligence_run(
+    payload: AgentIntelligenceRunCreate,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _require_role(
+        db,
+        agent,
+        capability="candidate-ranking",
+        package_name="m14b-research-intelligence-director",
+    )
+    return IntelligenceRunResponse.model_validate(
+        register_intelligence_run(
+            db,
+            IntelligenceRunCreate(**payload.model_dump(), created_by=agent.slug),
+        )
     )
 
 

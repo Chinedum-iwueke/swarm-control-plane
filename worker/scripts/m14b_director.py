@@ -30,9 +30,9 @@ class CandidateBatch(BaseModel):
     candidates: list[Candidate] = Field(min_length=2, max_length=10)
 
 
-def api_client() -> httpx.Client:
+def api_client(token_name: str) -> httpx.Client:
     api_url = os.environ["SWARM_API_URL"].rstrip("/")
-    token = os.environ["SWARM_ORCHESTRATOR_TOKEN"]
+    token = os.environ[token_name]
     return httpx.Client(
         base_url=api_url,
         headers={"Authorization": f"Bearer {token}"},
@@ -52,7 +52,7 @@ def qualify(args: argparse.Namespace) -> dict:
         for case in profile["evaluation_cases"]
     ]
     suffix = hashlib.sha256("\n".join(document_keys).encode()).hexdigest()[:12]
-    with api_client() as api:
+    with api_client("SWARM_ORCHESTRATOR_TOKEN") as api:
         evaluation = api.post(
             "/v1/research/knowledge/evaluations",
             json={
@@ -87,17 +87,16 @@ def qualify(args: argparse.Namespace) -> dict:
 
 
 def propose(args: argparse.Namespace) -> dict:
-    with api_client() as api:
-        profiles = api.get("/v1/research/domains")
-        profiles.raise_for_status()
-        profile = next(
-            (item for item in profiles.json() if item["id"] == args.domain_profile_id),
-            None,
+    with api_client("SWARM_AGENT_TOKEN") as api:
+        profile_response = api.get(
+            f"/v1/agent/research/intelligence/domains/{args.domain_profile_id}"
         )
-        if profile is None or profile["status"] != "active":
+        profile_response.raise_for_status()
+        profile = profile_response.json()
+        if profile["status"] != "active":
             raise RuntimeError("The selected domain profile is not active.")
         search = api.post(
-            "/v1/research/knowledge/search",
+            "/v1/agent/research/intelligence/search",
             json={"query": args.objective, "limit": 20, "evidence_types": []},
         )
         search.raise_for_status()
@@ -110,14 +109,13 @@ def propose(args: argparse.Namespace) -> dict:
             raise RuntimeError("Insufficient cited domain evidence for Director run.")
         batch = invoke_codex(profile, args.objective, evidence, passages)
         response = api.post(
-            "/v1/research/intelligence/runs",
+            "/v1/agent/research/intelligence/runs",
             json={
                 "domain_profile_id": profile["id"],
                 "objective": args.objective,
                 "candidates": [
                     item.model_dump(mode="json") for item in batch.candidates
                 ],
-                "created_by": "m14b-research-intelligence-director",
             },
         )
         response.raise_for_status()
