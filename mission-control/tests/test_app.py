@@ -13,6 +13,7 @@ class FakeControlPlane:
         self.intake: Any = None
         self.bundle: Any = None
         self.closed = False
+        self.memory_sync_requested = False
 
     async def close(self) -> None:
         self.closed = True
@@ -56,6 +57,10 @@ class FakeControlPlane:
     async def research_document_by_digest(self, content_digest):
         return None
 
+    async def propose_research_memory_sync(self) -> dict:
+        self.memory_sync_requested = True
+        return {"id": "memory-proposal-id", "status": "proposed"}
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,
@@ -83,6 +88,23 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/proposals/{proposal_id}/{action}" in paths
     assert "/api/knowledge/search" in paths
     assert "/api/research/sources/upload" in paths
+    assert "/api/research/memory-sync/proposals" in paths
+
+
+def test_memory_sync_requires_founder_intent_and_creates_proposal(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        denied = client.post("/api/research/memory-sync/proposals")
+        accepted = client.post(
+            "/api/research/memory-sync/proposals",
+            headers={"X-Hermes-Intent": "founder-action"},
+        )
+    assert denied.status_code == 403
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "proposed"
+    assert fake.memory_sync_requested is True
 
 
 def test_mutations_require_founder_intent_header(

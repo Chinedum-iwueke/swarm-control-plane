@@ -10,6 +10,7 @@ ROOT = Path(__file__).parents[1]
 MANIFEST = ROOT / "role-packages/vm1-engineering-worker/manifest.yaml"
 WORKFLOWS = ROOT / "workflows"
 RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
+MEMORY_MANIFEST = ROOT / "role-packages/vm1-research-memory-steward/manifest.yaml"
 DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.yaml"
 
 
@@ -27,6 +28,19 @@ def test_research_package_is_narrow_and_digest_verified() -> None:
     assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.permission_profile.privileged_operations is False
     assert package.manifest.permission_profile.network_access == "control-plane"
+
+
+def test_memory_steward_is_read_only_and_single_purpose() -> None:
+    package = load_role_package(MEMORY_MANIFEST, WORKFLOWS)
+    assert package.manifest.task_types == ["research_memory_sync"]
+    assert package.manifest.required_capabilities == [
+        "git",
+        "python",
+        "research-memory-sync",
+    ]
+    assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
+    assert package.manifest.repository_profile.primary_checkout_write is False
+    assert package.manifest.repository_profile.remote_write is False
 
 
 def test_deployment_architect_attests_runbook_package_digests() -> None:

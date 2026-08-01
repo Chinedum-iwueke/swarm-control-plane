@@ -1,11 +1,13 @@
 from pathlib import Path
 
+from swarm_worker.config import WorkerSettings
 from swarm_worker.executors.code_validation import (
     CodeValidationExecutor,
     HeartbeatCallback,
 )
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
 from swarm_worker.executors.research_experiment import ResearchExperimentExecutor
+from swarm_worker.executors.research_memory_sync import ResearchMemorySyncExecutor
 from swarm_worker.models import Task, WorkflowExecutionResult
 from swarm_worker.workflows import WorkflowDefinition
 from swarm_worker.workspace import TaskWorkspace
@@ -19,6 +21,7 @@ class RestrictedExecutor:
         codex_model: str,
         engineering_timeout_seconds: float,
         heartbeat_interval_seconds: float,
+        settings: WorkerSettings | None = None,
     ) -> None:
         self._validation = CodeValidationExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds
@@ -34,6 +37,9 @@ class RestrictedExecutor:
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             validation_executor=self._validation,
         )
+        self._memory_sync = (
+            ResearchMemorySyncExecutor(settings) if settings is not None else None
+        )
 
     async def execute(
         self,
@@ -47,8 +53,11 @@ class RestrictedExecutor:
             "code_validation": self._validation,
             "engineering_mission": self._engineering,
             "research_experiment": self._research,
+            "research_memory_sync": self._memory_sync,
         }
         executor = executors[task.task_type]
+        if executor is None:
+            raise RuntimeError("Research-memory synchronization is not configured.")
         return await executor.execute(
             task=task,
             workflow=workflow,

@@ -18,6 +18,7 @@ SupportedTaskType = Literal[
     "infrastructure_observation",
     "infrastructure_operation",
     "research_experiment",
+    "research_memory_sync",
 ]
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")

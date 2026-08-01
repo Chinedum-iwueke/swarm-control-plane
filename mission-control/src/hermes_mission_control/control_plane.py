@@ -51,6 +51,9 @@ class ControlPlaneClient:
         intelligence_runs = await self._optional_collection(
             "/v1/research/intelligence/runs"
         )
+        memory_exports = await self._optional_collection(
+            "/v1/research/memory-exports"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -65,7 +68,13 @@ class ControlPlaneClient:
             "research_cycles": research_cycles,
             "research_domains": research_domains,
             "research_intelligence_runs": intelligence_runs,
+            "research_memory_exports": memory_exports,
         }
+
+    async def propose_research_memory_sync(self) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/memory-sync/proposals", json={}
+        )
 
     async def create_intake(self, request: IntakeRequest) -> dict[str, Any]:
         now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")

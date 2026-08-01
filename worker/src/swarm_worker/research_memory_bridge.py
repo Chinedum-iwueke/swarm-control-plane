@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Literal
 
@@ -84,10 +85,12 @@ def canonical_digest(document: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def file_digest(path: Path) -> str:
+def file_digest(path: Path, stop_event: threading.Event | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
         for block in iter(lambda: source.read(1024 * 1024), b""):
+            if stop_event is not None and stop_event.is_set():
+                raise InterruptedError("Research-memory export was cancelled.")
             digest.update(block)
     return digest.hexdigest()
 
@@ -113,7 +116,12 @@ def _rows(connection: sqlite3.Connection, query: str) -> list[dict[str, Any]]:
     return [dict(row) for row in connection.execute(query).fetchall()]
 
 
-def build_export(repository: Path, database: Path) -> MemoryExport:
+def build_export(
+    repository: Path,
+    database: Path,
+    *,
+    stop_event: threading.Event | None = None,
+) -> MemoryExport:
     repository = repository.resolve(strict=True)
     database_input = database.expanduser()
     if database_input.is_symlink():
@@ -232,7 +240,7 @@ def build_export(repository: Path, database: Path) -> MemoryExport:
         "recommendations": recommendations,
     }
     MemoryExport.model_validate(payload)
-    payload["database_digest"] = file_digest(database)
+    payload["database_digest"] = file_digest(database, stop_event)
     final_stat = database.stat()
     if (
         (initial_stat.st_ino, initial_stat.st_size, initial_stat.st_mtime_ns)

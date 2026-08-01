@@ -20,6 +20,8 @@ from swarm_worker.models import (
     FounderProposalCreate,
     FounderProposalResponse,
     LeaseResponse,
+    ResearchMemoryRegistrationRequest,
+    ResearchMemoryRegistrationResponse,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
     TaskFailRequest,
@@ -193,6 +195,16 @@ class SwarmAPIClient:
             FounderProposalResponse,
             payload=request,
             secrets=(request.lease_token,),
+        )
+
+    async def register_research_memory(
+        self, request: ResearchMemoryRegistrationRequest
+    ) -> ResearchMemoryRegistrationResponse:
+        return await self._request(
+            "POST",
+            "/v1/agent/research/memory-exports",
+            ResearchMemoryRegistrationResponse,
+            payload=request,
         )
 
     async def _task_mutation(

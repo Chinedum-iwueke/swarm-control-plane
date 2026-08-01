@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models import (
+    Agent,
+    FounderProposal,
     ResearchBrief,
     ResearchChunk,
     ResearchDecision,
@@ -19,7 +22,9 @@ from app.models import (
     ResearchRetrievalEvaluation,
     ResearchReview,
     ResearchTrial,
+    Task,
 )
+from app.schemas import FounderProposalDocument, FounderProposalResponse, TaskCreate
 from app.schemas.research import (
     DomainProfileCreate,
     DomainProfileResponse,
@@ -57,6 +62,7 @@ from app.schemas.research import (
     RetrievalEvaluationCreate,
     RetrievalEvaluationResponse,
 )
+from app.services.proposals import create_proposal
 from app.services.research import (
     add_review,
     create_brief,
@@ -76,6 +82,7 @@ from app.services.research import (
     register_trial,
     search_knowledge,
 )
+from app.services.tasks import append_task_event, build_task
 
 router = APIRouter(
     prefix="/v1/research",
@@ -186,6 +193,148 @@ def get_memory_export_by_digest(
     if record is None:
         raise HTTPException(status_code=404, detail="Research-memory export not found.")
     return ResearchMemoryExportResponse.model_validate(record)
+
+
+@router.get("/memory-exports", response_model=list[ResearchMemoryExportResponse])
+def list_memory_exports(db: Annotated[Session, Depends(get_db)]):
+    records = db.scalars(
+        select(ResearchMemoryExport)
+        .order_by(ResearchMemoryExport.registered_at.desc())
+        .limit(25)
+    ).all()
+    return [ResearchMemoryExportResponse.model_validate(item) for item in records]
+
+
+@router.post(
+    "/memory-sync/proposals", response_model=FounderProposalResponse, status_code=201
+)
+def propose_memory_sync(db: Annotated[Session, Depends(get_db)]):
+    active_task = db.scalar(
+        select(Task).where(
+            Task.task_type == "research_memory_sync",
+            Task.status.in_({"queued", "leased", "running", "pending_approval"}),
+        )
+    )
+    if active_task is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A research-memory synchronization task is already active.",
+        )
+    proposed = db.scalars(
+        select(FounderProposal).where(FounderProposal.status == "proposed")
+    ).all()
+    for item in proposed:
+        task = item.proposal.get("proposed_task") or {}
+        if task.get("task_type") == "research_memory_sync":
+            raise HTTPException(
+                status_code=409,
+                detail="A research-memory synchronization proposal is pending.",
+            )
+    planners = db.scalars(
+        select(Agent).where(Agent.is_enabled.is_(True)).order_by(Agent.created_at)
+    ).all()
+    planner = next(
+        (agent for agent in planners if "founder-intake" in agent.capabilities), None
+    )
+    if planner is None:
+        raise HTTPException(status_code=409, detail="Founder planner is unavailable.")
+    now = datetime.now(UTC)
+    source = build_task(
+        TaskCreate(
+            task_number=f"MEMORY-SYNC-REQUEST-{now:%Y%m%dT%H%M%S%fZ}",
+            project="bulletproof_bt",
+            task_type="founder_request",
+            title="Synchronize Bulletproof research memory",
+            objective=(
+                "Create a governed proposal for one read-only, digest-bound "
+                "Bulletproof research-memory synchronization."
+            ),
+            priority=60,
+            risk_level=0,
+            created_by="founder-mission-control",
+            input_contract={"schema_version": 1, "request_kind": "task"},
+            expected_outputs=["reviewable memory synchronization proposal"],
+            acceptance_criteria=["No primary checkout or research database is modified."],
+            approval_policy={"kind": "proposal_review", "risk": 0},
+            approval_required=False,
+            required_capabilities=[],
+            allowed_machines=["vm1-developer"],
+            max_attempts=1,
+        )
+    )
+    source.status = "succeeded"
+    source.completed_at = now
+    db.add(source)
+    db.flush()
+    append_task_event(
+        db,
+        source,
+        "task_created",
+        "Founder requested a bounded research-memory synchronization proposal.",
+        payload={"created_by": "founder-mission-control", "risk_level": 0},
+    )
+    document = FounderProposalDocument.model_validate(
+        {
+            "schema_version": 1,
+            "summary": "Synchronize Bulletproof research memory into Hermes.",
+            "interpretation": (
+                "Read the fixed VM1 Bulletproof research-memory database, create a "
+                "bounded digest-bound projection, and register it with Hermes."
+            ),
+            "recommended_action": "create_task",
+            "assumptions": ["The VM1 Bulletproof memory database is available."],
+            "clarification_questions": [],
+            "target_role": "VM1 Research Memory Steward",
+            "target_role_reason": (
+                "This dedicated read-only role is colocated with the authoritative "
+                "Bulletproof database on VM1."
+            ),
+            "safety_constraints": [
+                "Read-only database access.",
+                "No primary-checkout writes.",
+                "No arbitrary task paths or commands.",
+            ],
+            "proposed_task": {
+                "project": "bulletproof_bt",
+                "task_type": "research_memory_sync",
+                "title": "Sync Bulletproof research memory",
+                "objective": (
+                    "Register one current, bounded and digest-bound Bulletproof "
+                    "research-memory export in Hermes."
+                ),
+                "priority": 60,
+                "risk_level": 0,
+                "input_contract": {
+                    "repository": "bulletproof_bt",
+                    "workflow": "research-memory-sync",
+                    "base_ref": "main",
+                },
+                "expected_outputs": [
+                    "structured memory export",
+                    "searchable bounded summary",
+                ],
+                "acceptance_criteria": [
+                    "Export and summary digests are verified by the control plane.",
+                    "The source database and primary checkout remain unchanged.",
+                ],
+                "approval_policy": {"kind": "proposal_review", "risk": 0},
+                "approval_required": False,
+                "required_capabilities": [
+                    "git",
+                    "python",
+                    "research-memory-sync",
+                ],
+                "allowed_machines": ["vm1-developer"],
+                "max_attempts": 1,
+            },
+        }
+    )
+    proposal = create_proposal(
+        db, source_task=source, planner=planner, document=document
+    )
+    db.commit()
+    db.refresh(proposal)
+    return FounderProposalResponse.model_validate(proposal)
 
 
 def _document_response(record) -> ResearchDocumentResponse:

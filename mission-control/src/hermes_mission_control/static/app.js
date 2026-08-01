@@ -149,6 +149,26 @@ document.getElementById("sync-research-inbox").addEventListener("click", async (
   }
 });
 
+document.getElementById("sync-research-memory").addEventListener("click", async () => {
+  if (state.demo) return toast("Memory sync is disabled in demonstration mode.");
+  const button = document.getElementById("sync-research-memory");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/research/memory-sync/proposals", {
+      method: "POST",
+      headers: { "X-Hermes-Intent": "founder-action" },
+    });
+    const proposal = await response.json();
+    if (!response.ok) return toast(proposal.detail || "Memory sync proposal failed.");
+    toast("Memory sync proposal is ready for founder review.");
+    await loadDashboard();
+    navigate("proposals");
+    openProposal(proposal.id);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = document.getElementById("search-query").value;
@@ -535,6 +555,19 @@ function renderResearch() {
   const cycles = state.dashboard.research_cycles || [];
   const domains = state.dashboard.research_domains || [];
   const intelligenceRuns = state.dashboard.research_intelligence_runs || [];
+  const memoryExports = state.dashboard.research_memory_exports || [];
+  const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
+  const latestMemoryTask = memoryTasks[0];
+  const latestMemory = memoryExports[0];
+  const memoryStatus = document.getElementById("memory-sync-status");
+  if (latestMemoryTask && ["queued", "leased", "running", "pending_approval"].includes(latestMemoryTask.status)) {
+    memoryStatus.textContent = `${latestMemoryTask.task_number} · ${humanize(latestMemoryTask.status)}`;
+  } else if (latestMemory) {
+    const counts = latestMemory.export?.counts || {};
+    memoryStatus.textContent = `${shortHash(latestMemory.export_digest)} · ${counts.trades ?? 0} trades · ${relativeTime(latestMemory.registered_at)}`;
+  } else {
+    memoryStatus.textContent = "No structured Bulletproof memory export registered.";
+  }
   const accepted = tasks.filter((task) => task.result?.summary?.verdict === "accepted").length;
   document.getElementById("research-gate").innerHTML = `
     <span class="gate-symbol">G</span>
@@ -1117,4 +1150,10 @@ function demoDeployment(agentId, name, role, taskTypes, workflows, repositories,
 
 updateClock();
 window.setInterval(updateClock, 30000);
+window.setInterval(() => {
+  const activeMemoryTask = (state.dashboard?.tasks || []).some(
+    (task) => task.task_type === "research_memory_sync" && activeStatuses.has(task.status),
+  );
+  if (!state.demo && activeMemoryTask) loadDashboard();
+}, 15000);
 loadDashboard();

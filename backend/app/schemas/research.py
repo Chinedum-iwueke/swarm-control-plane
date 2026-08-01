@@ -550,6 +550,13 @@ class ResearchMemoryExportCreate(StrictModel):
     registered_by: str = Field(pattern=_ACTOR, max_length=150)
 
 
+class AgentResearchMemoryExportCreate(StrictModel):
+    export: ResearchMemoryExportDocument
+    export_digest: str = Field(pattern=_DIGEST)
+    summary: str = Field(min_length=1, max_length=19000)
+    summary_digest: str = Field(pattern=_DIGEST)
+
+
 class ResearchMemoryExportResponse(ResearchMemoryExportCreate):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -557,6 +564,12 @@ class ResearchMemoryExportResponse(ResearchMemoryExportCreate):
     repository_commit: str
     database_digest: str
     registered_at: datetime
+
+
+class ResearchMemorySyncResponse(StrictModel):
+    export: ResearchMemoryExportResponse
+    document_key: str
+    unchanged: bool
 
 
 class AgentResearchBriefCreate(StrictModel):

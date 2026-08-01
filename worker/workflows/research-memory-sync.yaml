@@ -1,0 +1,6 @@
+name: research-memory-sync
+task_type: research_memory_sync
+timeout_seconds: 900
+allowed_repositories:
+- bulletproof_bt
+steps: []

@@ -1,0 +1,31 @@
+schema_version: 1
+name: vm1-research-memory-steward
+version: 1.0.0
+role: Read-only Bulletproof research-memory synchronization
+task_types:
+- research_memory_sync
+workflows:
+- name: research-memory-sync
+  file: research-memory-sync.yaml
+  sha256: 7f92fe3d9751cbfe76c2423998416c9148d88531baffe0db667c2265a3e4b898
+required_capabilities:
+- git
+- python
+- research-memory-sync
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: research-memory-read-only
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false

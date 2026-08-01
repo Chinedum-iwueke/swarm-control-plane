@@ -149,9 +149,25 @@ class ResearchExperimentContract(BaseModel):
         return validate_base_ref(value)
 
 
+class ResearchMemorySyncContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["research-memory-sync"]
+    base_ref: str = Field(min_length=1, max_length=255)
+
+    @field_validator("base_ref")
+    @classmethod
+    def safe_base_ref(cls, value: str) -> str:
+        return validate_base_ref(value)
+
+
 class ValidatedTaskPolicy(BaseModel):
     contract: (
-        CodeValidationContract | EngineeringMissionContract | ResearchExperimentContract
+        CodeValidationContract
+        | EngineeringMissionContract
+        | ResearchExperimentContract
+        | ResearchMemorySyncContract
     )
     workflow: WorkflowDefinition
 
@@ -182,6 +198,7 @@ def validate_task_policy(
         "code_validation",
         "engineering_mission",
         "research_experiment",
+        "research_memory_sync",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -215,12 +232,18 @@ def validate_task_policy(
 
 def _parse_contract(
     task_type: str, input_contract: dict[str, Any]
-) -> CodeValidationContract | EngineeringMissionContract | ResearchExperimentContract:
+) -> (
+    CodeValidationContract
+    | EngineeringMissionContract
+    | ResearchExperimentContract
+    | ResearchMemorySyncContract
+):
     try:
         models = {
             "code_validation": CodeValidationContract,
             "engineering_mission": EngineeringMissionContract,
             "research_experiment": ResearchExperimentContract,
+            "research_memory_sync": ResearchMemorySyncContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)

@@ -65,6 +65,28 @@ def test_non_task_recommendations_cannot_smuggle_a_task() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
+def test_memory_sync_proposal_has_no_path_or_command_surface() -> None:
+    payload = valid_document()
+    payload["proposed_task"].update(
+        {
+            "project": "bulletproof_bt",
+            "task_type": "research_memory_sync",
+            "input_contract": {
+                "repository": "bulletproof_bt",
+                "workflow": "research-memory-sync",
+                "base_ref": "main",
+            },
+        }
+    )
+    document = FounderProposalDocument.model_validate(payload)
+    assert document.proposed_task.task_type == "research_memory_sync"
+    assert set(document.proposed_task.input_contract) == {
+        "repository",
+        "workflow",
+        "base_ref",
+    }
+
+
 def test_materialization_is_exactly_once() -> None:
     proposal = SimpleNamespace(
         status="materialized",

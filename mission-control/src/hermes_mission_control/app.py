@@ -114,6 +114,13 @@ def create_app(
         return await client.create_intake(payload)
 
     @app.post(
+        "/api/research/memory-sync/proposals",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def propose_research_memory_sync() -> dict:
+        return await client.propose_research_memory_sync()
+
+    @app.post(
         "/api/approvals/{approval_id}/{action}",
         dependencies=[Depends(_mutation_intent)],
     )

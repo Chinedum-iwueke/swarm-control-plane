@@ -13,6 +13,7 @@ from app.schemas.research import (
     AgentResearchBriefCreate,
     AgentResearchExperimentCreate,
     AgentResearchHypothesisCreate,
+    AgentResearchMemoryExportCreate,
     AgentResearchResultCreate,
     AgentResearchReviewCreate,
     DomainProfileResponse,
@@ -26,6 +27,8 @@ from app.schemas.research import (
     ResearchExperimentResponse,
     ResearchHypothesisCreate,
     ResearchHypothesisResponse,
+    ResearchMemoryExportResponse,
+    ResearchMemorySyncResponse,
     ResearchResultCreate,
     ResearchResultResponse,
     ResearchReviewCreate,
@@ -34,6 +37,7 @@ from app.schemas.research import (
 from app.services.research import (
     add_review,
     create_brief,
+    register_agent_memory_export,
     register_experiment,
     register_hypothesis,
     register_intelligence_run,
@@ -42,6 +46,30 @@ from app.services.research import (
 )
 
 router = APIRouter(prefix="/v1/agent/research", tags=["agent-research"])
+
+
+@router.post(
+    "/memory-exports", response_model=ResearchMemorySyncResponse, status_code=201
+)
+def create_agent_memory_export(
+    payload: AgentResearchMemoryExportCreate,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _require_role(
+        db,
+        agent,
+        capability="research-memory-sync",
+        package_name="vm1-research-memory-steward",
+    )
+    export, document, unchanged = register_agent_memory_export(
+        db, payload, agent_slug=agent.slug
+    )
+    return ResearchMemorySyncResponse(
+        export=ResearchMemoryExportResponse.model_validate(export),
+        document_key=document.document_key,
+        unchanged=unchanged,
+    )
 
 
 def _domain_response(record: ResearchDomainProfile) -> DomainProfileResponse:

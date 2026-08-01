@@ -172,6 +172,7 @@ class ProposedTask(StrictModel):
         "infrastructure_observation",
         "infrastructure_operation",
         "research_experiment",
+        "research_memory_sync",
     ]
     title: str = Field(min_length=3, max_length=300)
     objective: str = Field(min_length=10, max_length=8000)
@@ -283,6 +284,19 @@ class ArtifactResponse(BaseModel):
     expires_at: datetime | None
     metadata_json: dict[str, Any]
     created_at: datetime
+
+
+class ResearchMemoryRegistrationRequest(StrictModel):
+    export: dict[str, Any]
+    export_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    summary: str = Field(min_length=1, max_length=19000)
+    summary_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ResearchMemoryRegistrationResponse(StrictModel):
+    export: dict[str, Any]
+    document_key: str
+    unchanged: bool
 
 
 class InfrastructureContract(BaseModel):

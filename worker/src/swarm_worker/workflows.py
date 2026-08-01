@@ -17,6 +17,7 @@ WORKFLOW_FILES = {
     "code-validation": "code-validation.yaml",
     "engineering-mission": "engineering-mission.yaml",
     "research-experiment": "research-experiment.yaml",
+    "research-memory-sync": "research-memory-sync.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -154,6 +155,7 @@ class WorkflowDefinition(BaseModel):
         "code_validation",
         "engineering_mission",
         "research_experiment",
+        "research_memory_sync",
     ]
     timeout_seconds: int = Field(ge=1, le=3600)
     allowed_repositories: Annotated[
@@ -165,7 +167,7 @@ class WorkflowDefinition(BaseModel):
         ],
         Field(min_length=1),
     ]
-    steps: Annotated[list[WorkflowStep], Field(min_length=1, max_length=50)]
+    steps: Annotated[list[WorkflowStep], Field(max_length=50)]
 
     @field_validator("allowed_repositories")
     @classmethod
@@ -173,6 +175,16 @@ class WorkflowDefinition(BaseModel):
         if len(repositories) != len(set(repositories)):
             raise ValueError("allowed repositories must be unique")
         return repositories
+
+    @field_validator("steps")
+    @classmethod
+    def steps_match_workflow(cls, steps: list[WorkflowStep], info) -> list[WorkflowStep]:
+        task_type = info.data.get("task_type")
+        if task_type == "research_memory_sync" and steps:
+            raise ValueError("research-memory sync is implemented by a fixed executor")
+        if task_type != "research_memory_sync" and not steps:
+            raise ValueError("executable workflows require at least one step")
+        return steps
 
 
 class WorkflowLoader:

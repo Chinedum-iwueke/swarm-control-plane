@@ -27,10 +27,12 @@ from app.models import (
     ResearchTrial,
 )
 from app.schemas.research import (
+    AgentResearchMemoryExportCreate,
     ResearchBriefCreate,
     ResearchChunkCreate,
     ResearchDataSnapshotCreate,
     ResearchDecisionCreate,
+    ResearchDocumentBundleCreate,
     ResearchDocumentCreate,
     ResearchExperimentCreate,
     ResearchHypothesisCreate,
@@ -530,6 +532,73 @@ def register_memory_export(
         ),
         "Research-memory export digest already exists.",
     )
+
+
+def register_agent_memory_export(
+    db: Session, payload: AgentResearchMemoryExportCreate, *, agent_slug: str
+) -> tuple[ResearchMemoryExport, ResearchDocument, bool]:
+    existing = db.scalar(
+        select(ResearchMemoryExport).where(
+            ResearchMemoryExport.export_digest == payload.export_digest
+        )
+    )
+    unchanged = existing is not None
+    if existing is None:
+        existing = register_memory_export(
+            db,
+            ResearchMemoryExportCreate(
+                export=payload.export,
+                export_digest=payload.export_digest,
+                registered_by=agent_slug,
+            ),
+        )
+    _require_digest(
+        hashlib.sha256(payload.summary.encode()).hexdigest(),
+        payload.summary_digest,
+        "Memory summary",
+    )
+    document = db.scalar(
+        select(ResearchDocument).where(
+            ResearchDocument.content_digest == payload.summary_digest
+        )
+    )
+    if document is None:
+        bundle = ResearchDocumentBundleCreate.model_validate(
+            {
+                "document": {
+                    "document_key": (
+                        f"bulletproof-memory-{payload.export_digest[:24]}"
+                    ),
+                    "title": "Bulletproof Research Memory",
+                    "document_type": "prior_report",
+                    "evidence_type": "prior_result",
+                    "version": payload.export_digest[:12],
+                    "source_uri": f"bulletproof-memory://{payload.export_digest}",
+                    "content_digest": payload.summary_digest,
+                    "metadata": {
+                        "domains": ["systematic-research"],
+                        "export_digest": payload.export_digest,
+                        "repository_commit": payload.export.repository_commit,
+                        "database_digest": payload.export.database_digest,
+                    },
+                    "ingested_by": agent_slug,
+                },
+                "chunks": [
+                    {
+                        "ordinal": 0,
+                        "section": "Research memory summary",
+                        "page": None,
+                        "line_start": 1,
+                        "line_end": len(payload.summary.splitlines()),
+                        "text": payload.summary,
+                        "text_digest": payload.summary_digest,
+                        "metadata": {"domain": "systematic-research"},
+                    }
+                ],
+            }
+        )
+        document = register_document_bundle(db, bundle)
+    return existing, document, unchanged
 
 
 def register_document(db: Session, payload: ResearchDocumentCreate) -> ResearchDocument:

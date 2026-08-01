@@ -44,6 +44,26 @@ rejected, invalid, and negative evidence are represented without turning the
 knowledge index into a second execution database. Repeating a sync resolves both
 records by digest and creates no duplicate.
 
+Mission Control exposes **Request sync** beside the Bulletproof research-memory
+status. The control is deliberately governed rather than an immediate remote
+execution button:
+
+1. Mission Control creates one exact `research_memory_sync` proposal. It accepts
+   no path, command, database, or repository value from the browser.
+2. The founder reviews and confirms the proposal using the existing proposal
+   inspector.
+3. The control plane materializes one task for the dedicated
+   `vm1-research-memory-steward` identity.
+4. That worker reads only the fixed `bulletproof_bt/research_db/research.sqlite`
+   source, creates the bounded projection, and registers it through its own
+   capability-scoped agent endpoint.
+5. Mission Control shows the queued/running task and then the immutable export
+   digest, record counts, registration time, and task result.
+
+Only one pending proposal or active synchronization task may exist at a time.
+The dedicated role has no arbitrary-command, remote-write, primary-checkout-write,
+or orchestrator authority.
+
 After deploying the API migration, synchronize from VM1 with:
 
 ```bash
@@ -63,6 +83,28 @@ The bridge fails closed when a WAL writer is active or the database changes whil
 being read. The database is currently large, so the full content digest is
 intentionally a periodic synchronization operation rather than a per-query
 operation.
+
+Bootstrap and install the dedicated VM1 worker after deploying the API and
+registering the committed role package:
+
+```bash
+cd /home/omenka/Projects/swarm-control-plane/worker
+sudo bash -c '
+set -euo pipefail
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+exec .venv/bin/python scripts/memory_steward_bootstrap.py \
+  --state /etc/invariance-swarm/vm1-memory-steward-state.json \
+  --env-file /etc/invariance-swarm/vm1-memory-steward.env \
+  --source-commit <FULL_COMMITTED_SHA>
+'
+sudo ./systemd/install-memory-steward.sh
+sudo systemctl enable --now invariance-swarm-research-memory-steward.service
+```
+
+The bootstrap emits only non-secret identifiers. The new credential is written
+directly to the root-owned `0600` environment file and is never printed.
 
 ## Domain brains
 

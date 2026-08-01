@@ -65,6 +65,10 @@ Supported files directly in the inbox default to paper / empirical evidence.
 Every inbox source is assigned to `systematic-research`.
 Routine `bulletproof_bt` results do not pass through this folder. They are
 synchronized from VM1 through the digest-bound structured research-memory bridge.
+In the Research view, **Request sync** creates an exact proposal for founder
+review; confirming that proposal queues the fixed read-only workflow for the
+dedicated VM1 Research Memory Steward. Mission Control then displays active task
+state and the latest immutable export digest and counts.
 
 ## Install
 

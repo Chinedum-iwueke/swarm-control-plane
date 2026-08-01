@@ -232,6 +232,7 @@ def _default_executor(settings: WorkerSettings) -> RestrictedExecutor:
         codex_model=settings.swarm_codex_model,
         engineering_timeout_seconds=settings.swarm_engineering_timeout_seconds,
         heartbeat_interval_seconds=settings.swarm_task_heartbeat_seconds,
+        settings=settings,
     )
 
 
