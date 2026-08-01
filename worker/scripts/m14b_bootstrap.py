@@ -27,6 +27,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap the M14B Director identity")
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--recover-existing", action="store_true")
     args = parser.parse_args()
     if args.state.exists():
         raise RuntimeError(
@@ -45,20 +46,6 @@ def main() -> int:
         headers={"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
         timeout=30,
     ) as api:
-        registration = request(
-            api,
-            "POST",
-            "/v1/agents",
-            {
-                "slug": "vm1-research-intelligence-director",
-                "display_name": "Research Intelligence Director",
-                "role": "Cited domain-qualified research question discovery",
-                "machine": "vm1-developer",
-                "hermes_profile": PACKAGE,
-                "capabilities": manifest.required_capabilities,
-                "risk_ceiling": 0,
-            },
-        )
         packages = request(api, "GET", "/v1/packages")
         package = next(
             (
@@ -86,6 +73,47 @@ def main() -> int:
             )
         if package["manifest_digest"] != manifest_digest:
             raise RuntimeError("Existing Director package digest differs.")
+        agent_document = {
+            "slug": "vm1-research-intelligence-director",
+            "display_name": "Research Intelligence Director",
+            "role": "Cited domain-qualified research question discovery",
+            "machine": "vm1-developer",
+            "hermes_profile": PACKAGE,
+            "capabilities": manifest.required_capabilities,
+            "risk_ceiling": 0,
+        }
+        agents = request(api, "GET", "/v1/agents")
+        existing_agent = next(
+            (item for item in agents if item["slug"] == agent_document["slug"]),
+            None,
+        )
+        if existing_agent is None:
+            registration = request(api, "POST", "/v1/agents", agent_document)
+        else:
+            expected = {
+                "machine": agent_document["machine"],
+                "hermes_profile": agent_document["hermes_profile"],
+                "capabilities": sorted(agent_document["capabilities"]),
+                "risk_ceiling": agent_document["risk_ceiling"],
+            }
+            actual = {
+                "machine": existing_agent["machine"],
+                "hermes_profile": existing_agent["hermes_profile"],
+                "capabilities": sorted(existing_agent["capabilities"]),
+                "risk_ceiling": existing_agent["risk_ceiling"],
+            }
+            if actual != expected:
+                raise RuntimeError("Existing Director identity does not match policy.")
+            if not args.recover_existing:
+                raise RuntimeError(
+                    "Director identity already exists; use --recover-existing to "
+                    "rotate the unavailable credential after verifying the failed run."
+                )
+            registration = request(
+                api,
+                "POST",
+                f"/v1/agents/{existing_agent['id']}/credentials/rotate",
+            )
         deployment = request(
             api,
             "POST",
