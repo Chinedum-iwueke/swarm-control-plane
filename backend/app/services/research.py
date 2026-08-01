@@ -70,6 +70,16 @@ def register_source(db: Session, payload: ResearchSourceCreate) -> ResearchSourc
     _require_digest(
         record_digest(payload.specification), payload.record_digest, "Source"
     )
+    return _commit(
+        db,
+        ResearchSource(
+            source_key=payload.source_key,
+            specification=payload.specification.model_dump(mode="json"),
+            record_digest=payload.record_digest,
+            registered_by=payload.registered_by,
+        ),
+        "Source key or digest already exists.",
+    )
 
 
 def register_data_snapshot(
@@ -98,18 +108,6 @@ def register_data_snapshot(
         ),
         "Snapshot key, content digest, or record digest already exists.",
     )
-    return _commit(
-        db,
-        ResearchSource(
-            source_key=payload.source_key,
-            specification=payload.specification.model_dump(mode="json"),
-            record_digest=payload.record_digest,
-            registered_by=payload.registered_by,
-        ),
-        "Source key or digest already exists.",
-    )
-
-
 def register_hypothesis(
     db: Session, payload: ResearchHypothesisCreate
 ) -> ResearchHypothesis:

@@ -6,6 +6,9 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 from app.schemas.research import (
     DataSnapshotSpecification,
     ExperimentManifest,
@@ -15,8 +18,10 @@ from app.schemas.research import (
     ResearchHypothesisCreate,
     ResearchResultCreate,
     ResearchReviewCreate,
+    ResearchSourceCreate,
     ResearchTrialCreate,
     ResultDocument,
+    SourceSpecification,
     TrialPlan,
 )
 from app.services.research import (
@@ -26,10 +31,9 @@ from app.services.research import (
     register_decision,
     register_hypothesis,
     register_result,
+    register_source,
     register_trial,
 )
-from fastapi import HTTPException
-from pydantic import ValidationError
 
 DIGEST = "a" * 64
 ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -139,6 +143,33 @@ def test_data_snapshot_is_source_bound_and_digest_verified() -> None:
     db.get.return_value = SimpleNamespace(id=ID)
     with pytest.raises(HTTPException, match="digest mismatch"):
         register_data_snapshot(db, payload)
+
+
+def test_valid_source_is_committed_and_returned() -> None:
+    specification = SourceSpecification(
+        title="Pinned M13 BTC snapshot",
+        source_type="dataset",
+        version="M13-BINANCE-BTCUSDT-1H-2025",
+        content_sha256="b" * 64,
+        provenance="Derived from the canonical point-in-time market-data store.",
+        point_in_time=True,
+        observed_at=NOW,
+    )
+    payload = ResearchSourceCreate(
+        source_key="M13-BTC-SOURCE-1",
+        specification=specification,
+        record_digest=record_digest(specification),
+        registered_by="research-registry",
+    )
+    db = MagicMock()
+
+    record = register_source(db, payload)
+
+    assert record.source_key == payload.source_key
+    assert record.record_digest == payload.record_digest
+    db.add.assert_called_once_with(record)
+    db.commit.assert_called_once_with()
+    db.refresh.assert_called_once_with(record)
 
 
 def test_trial_requires_exact_approved_manifest() -> None:
