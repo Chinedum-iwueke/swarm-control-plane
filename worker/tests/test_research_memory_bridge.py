@@ -72,12 +72,23 @@ def _memory(repository: Path) -> Path:
 
 
 def test_build_export_preserves_bounded_negative_and_positive_memory(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = tmp_path / "bulletproof_bt"
     repository.mkdir()
     database = _memory(repository)
 
+    secret = "operator-secret-must-not-reach-git"
+    monkeypatch.setenv("SWARM_ORCHESTRATOR_TOKEN", secret)
+    original_run = subprocess.run
+
+    def checked_run(*args, **kwargs):
+        assert secret not in kwargs.get("env", {}).values()
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "swarm_worker.research_memory_bridge.subprocess.run", checked_run
+    )
     document = build_export(repository, database)
 
     assert document.counts.model_dump() == {

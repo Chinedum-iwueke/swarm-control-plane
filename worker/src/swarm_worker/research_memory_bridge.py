@@ -93,12 +93,18 @@ def file_digest(path: Path) -> str:
 
 
 def repository_commit(repository: Path) -> str:
+    environment = {
+        key: os.environ[key]
+        for key in ("PATH", "HOME", "LANG", "LC_ALL")
+        if key in os.environ
+    }
     completed = subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"],
         check=True,
         capture_output=True,
         text=True,
         timeout=30,
+        env=environment,
     )
     return completed.stdout.strip()
 
