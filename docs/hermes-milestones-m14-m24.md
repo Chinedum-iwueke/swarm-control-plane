@@ -14,6 +14,24 @@ Exit: source, deployment, and a first duplicate-control pilot pass. Operational 
 requires multiple weeks of complete records without gate bypasses or terminal
 babysitting.
 
+## M14C: Operational Memory Steward
+
+Add a non-executing note-taking agent that records durable observations from the
+founder and other agents using an immutable structured contract: subject, finding,
+evidence, affected systems, urgency, proposed owner, deferral reason, status, and
+resolution evidence. Notes must be searchable in Mission Control and Telegram,
+deduplicated by digest, linked to milestones or repositories, and convertible into
+proposals only through the normal founder approval boundary. The Steward cannot edit
+repositories, dispatch tasks, approve work, or silently close its own notes.
+
+First note: [system-wide storage efficiency](notes/system-wide-storage-efficiency.md),
+starting with the unexpectedly large Bulletproof research-memory database observed
+during the M14B bridge validation.
+
+Exit: one dedicated role-package identity can create, deduplicate, search, assign,
+defer, and close notes through an audited API and Mission Control view; the first
+storage-efficiency note has an approved audit task or an explicit deferral date.
+
 ## M15: Point-in-time data and feature contracts
 
 Create provider-aware data manifests, as-of semantics, quality flags, corporate-action
