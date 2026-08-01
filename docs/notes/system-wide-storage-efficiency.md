@@ -2,8 +2,11 @@
 
 ## Note
 
-- Status: source note recorded; governed M14C record will be explicitly deferred for
-  30 days pending a bounded measurement and restore-drill proposal
+- Status: deferred until `2026-08-31T23:12:57.945086Z` pending a bounded measurement
+  and restore-drill proposal
+- Governed note ID: `3a7a53dc-6182-4a11-b7e0-eb9f9309ef8c`
+- Record digest:
+  `1cec21b1b177855ebe5bc583da6dd7c369869035e8960fe2b0e71426342a0d8f`
 - Recorded during: M14B Research Intelligence Director
 - Affected system: `bulletproof_bt` research memory on VM1
 - Proposed owner: Operational Memory Steward

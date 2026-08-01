@@ -90,3 +90,27 @@ Mission Control, and a matching `/notes storage` Telegram response.
 - A deferred note does not automatically schedule work when its date arrives. Mission
   supervision should surface overdue notes in a later milestone.
 - Notes never authorize repository edits, cleanup, deployments, or data deletion.
+
+## Validation Record: 2026-08-01
+
+M14C passed its operational exit gate against control-plane source commit
+`c0d8a2ba617cbb98b406a058ac923cd5b5afedf5` and database migration head
+`e1c4a7b92d60`.
+
+- Steward agent: `a159cd80-391c-4a71-bf38-17399043ae05`
+- Signed package: `d369d625-7929-42e1-a234-1c38c1f0b772`
+- Active deployment: `9eaa33e2-ca1a-4c34-a176-b3da8bc381c1`
+- Manifest digest:
+  `b1be68f0210fc0f8bede76207a1aba562ef8df314f12147d439a8ef9eb184f6b`
+- First note: `3a7a53dc-6182-4a11-b7e0-eb9f9309ef8c`
+- Record digest:
+  `1cec21b1b177855ebe5bc583da6dd7c369869035e8960fe2b0e71426342a0d8f`
+- Lifecycle: `created`, then `defer`
+- Deferral end: `2026-08-31T23:12:57.945086Z`
+- Credential state: root-owned mode `0600`; credential content was not logged.
+- Mission Control: deployed on Mac at the source commit above and confirmed to
+  retrieve the exact note ID, deferred status, and record digest.
+- Telegram gateway: deployed on VM2 and active after the API migration restart.
+
+No cleanup, compaction, repository edit, task dispatch, or data mutation was
+authorized by this pilot.
