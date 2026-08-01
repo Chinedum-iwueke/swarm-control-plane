@@ -13,6 +13,7 @@ def test_domain_profile_rejects_unknown_fields() -> None:
             title="Systematic Research",
             description="A measured systematic research curriculum.",
             document_keys=["one-paper"],
+            required_evidence_types=["method"],
             evaluation_id=uuid4(),
             qualified_roles=["senior-quant"],
             created_by="founder-operator",

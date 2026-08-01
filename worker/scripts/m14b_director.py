@@ -76,6 +76,7 @@ def qualify(args: argparse.Namespace) -> dict:
                 "title": profile["title"],
                 "description": profile["description"],
                 "document_keys": document_keys,
+                "required_evidence_types": profile["required_source_classes"],
                 "evaluation_id": evaluation_document["id"],
                 "qualified_roles": profile["qualified_roles"],
                 "created_by": "founder-operator",

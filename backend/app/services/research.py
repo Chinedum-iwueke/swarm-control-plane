@@ -397,6 +397,18 @@ def register_domain_profile(db: Session, payload):
             status_code=409, detail="Retrieval exam is stale for the corpus."
         )
     keys = sorted(set(payload.document_keys))
+    evidence_types = set(
+        db.scalars(
+            select(ResearchDocument.evidence_type).where(
+                ResearchDocument.document_key.in_(keys)
+            )
+        ).all()
+    )
+    if not set(payload.required_evidence_types).issubset(evidence_types):
+        raise HTTPException(
+            status_code=409,
+            detail="Domain corpus does not contain every required evidence class.",
+        )
     cases = evaluation.report.get("cases", [])
     if not cases or any(
         not set(case.get("expected_document_keys", [])).issubset(keys)
@@ -411,6 +423,7 @@ def register_domain_profile(db: Session, payload):
     specification = {
         "description": payload.description,
         "document_keys": keys,
+        "required_evidence_types": sorted(set(payload.required_evidence_types)),
         "qualified_roles": sorted(set(payload.qualified_roles)),
     }
     document = {

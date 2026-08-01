@@ -426,6 +426,7 @@ class DomainProfileCreate(StrictModel):
     title: str = Field(min_length=3, max_length=300)
     description: str = Field(min_length=10, max_length=4000)
     document_keys: list[str] = Field(min_length=1, max_length=200)
+    required_evidence_types: list[str] = Field(min_length=1, max_length=10)
     evaluation_id: uuid.UUID
     qualified_roles: list[str] = Field(min_length=1, max_length=20)
     created_by: str = Field(pattern=_ACTOR, max_length=150)
