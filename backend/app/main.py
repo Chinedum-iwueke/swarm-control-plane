@@ -9,6 +9,7 @@ from app.api.routes import (
     agents_router,
     controls_router,
     data_contracts_router,
+    evidence_router,
     founder_channel_router,
     governance_router,
     health_router,
@@ -43,6 +44,7 @@ app.include_router(agent_proposals_router)
 app.include_router(agents_router)
 app.include_router(controls_router)
 app.include_router(data_contracts_router)
+app.include_router(evidence_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
 app.include_router(agent_runtime_router)
