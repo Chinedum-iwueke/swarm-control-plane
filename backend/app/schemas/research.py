@@ -570,6 +570,9 @@ class ResearchMemorySyncResponse(StrictModel):
     export: ResearchMemoryExportResponse
     document_key: str
     unchanged: bool
+    canonical_ingestion_job_id: uuid.UUID
+    canonical_object_ids: list[uuid.UUID]
+    corpus_sync_run_id: uuid.UUID
 
 
 class AgentResearchBriefCreate(StrictModel):

@@ -12,6 +12,8 @@ class FakeControlPlane:
     def __init__(self) -> None:
         self.intake: Any = None
         self.bundle: Any = None
+        self.ingestion: Any = None
+        self.reconciliation: Any = None
         self.closed = False
         self.memory_sync_requested = False
         self.dossier_requested: str | None = None
@@ -58,6 +60,29 @@ class FakeControlPlane:
 
     async def research_document_by_digest(self, content_digest):
         return None
+
+    async def create_scientific_ingestion(self, payload) -> dict:
+        self.ingestion = payload
+        return {
+            "id": "ingestion-id",
+            "status": "quarantined",
+            "published_object_ids": [],
+        }
+
+    async def process_scientific_ingestion(self, job_id) -> dict:
+        assert job_id == "ingestion-id"
+        return {
+            "id": job_id,
+            "status": "published",
+            "published_object_ids": ["source", "edition", "artifact", "passage"],
+        }
+
+    async def reconcile_corpus(self, payload) -> dict:
+        self.reconciliation = payload
+        return {"id": "sync-id"}
+
+    async def rebuild_corpus_projections(self, project) -> dict:
+        return {"evidence": {"project": project, "status": "rebuilt"}}
 
     async def propose_research_memory_sync(self) -> dict:
         self.memory_sync_requested = True
@@ -192,7 +217,7 @@ def test_unknown_intake_fields_are_rejected(
     assert response.status_code == 422
 
 
-def test_research_upload_is_atomic_and_citation_preserving(
+def test_research_upload_is_canonical_and_reconciled(
     settings: MissionControlSettings,
 ) -> None:
     fake = FakeControlPlane()
@@ -209,7 +234,7 @@ def test_research_upload_is_atomic_and_citation_preserving(
             },
         )
     assert response.status_code == 200
-    assert fake.bundle is not None
-    assert fake.bundle["document"]["metadata"]["domains"] == ["systematic-research"]
-    assert fake.bundle["chunks"][0]["line_start"] == 1
-    assert fake.bundle["chunks"][0]["line_end"] == 2
+    assert fake.ingestion["project"] == "systematic-research"
+    assert fake.ingestion["source"]["title"] == "A bounded research paper"
+    assert fake.reconciliation["items"][0]["disposition"] == "canonical"
+    assert response.json()["passages"] == 1

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import base64
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .config import MissionControlSettings
 from .control_plane import ControlPlaneClient, ControlPlaneError
-from .research_upload import (
-    ResearchUploadError,
-    digest,
-    extract_passages,
-    safe_filename,
-)
+from .research_upload import ResearchUploadError, digest, safe_filename
 
 SUPPORTED = {".pdf", ".md", ".markdown", ".txt"}
 CLASSIFICATIONS = {
@@ -48,66 +46,65 @@ async def sync_research_inbox(
                 )
             content = path.read_bytes()
             content_digest = digest(content)
-            existing = await client.research_document_by_digest(content_digest)
-            if existing is not None:
-                item.update(
-                    status="unchanged",
-                    document_key=existing["document_key"],
-                    content_digest=content_digest,
-                )
-            else:
-                category = relative.parts[0] if len(relative.parts) > 1 else "papers"
-                document_type, evidence_type = CLASSIFICATIONS.get(
-                    category, CLASSIFICATIONS["papers"]
-                )
-                passages = extract_passages(path.name, content)
-                filename = safe_filename(path.name)
-                document_key = f"research-{content_digest[:24]}"
-                bundle = await client.register_research_bundle(
-                    {
-                        "document": {
-                            "document_key": document_key,
-                            "title": path.stem.replace("_", " ").replace("-", " "),
-                            "document_type": document_type,
-                            "evidence_type": evidence_type,
-                            "version": content_digest[:12],
-                            "source_uri": f"mission-control-inbox://{relative.as_posix()}",
-                            "content_digest": content_digest,
-                            "metadata": {
-                                "domains": ["systematic-research"],
-                                "original_filename": filename,
-                                "inbox_category": category,
-                            },
-                            "ingested_by": "founder-mission-control",
-                        },
-                        "chunks": [
-                            {
-                                "ordinal": passage.ordinal,
-                                "section": passage.section,
-                                "page": passage.page,
-                                "line_start": passage.line_start,
-                                "line_end": passage.line_end,
-                                "text": passage.text,
-                                "text_digest": digest(passage.text.encode()),
-                                "metadata": {"domain": "systematic-research"},
-                            }
-                            for passage in passages
-                        ],
-                    }
-                )
-                item.update(
-                    status="added",
-                    document_key=bundle["document"]["document_key"],
-                    content_digest=content_digest,
-                    passages=len(passages),
-                    document_type=document_type,
-                    evidence_type=evidence_type,
-                )
+            category = relative.parts[0] if len(relative.parts) > 1 else "papers"
+            document_type, evidence_type = CLASSIFICATIONS.get(
+                category, CLASSIFICATIONS["papers"]
+            )
+            job = await client.create_scientific_ingestion(
+                {
+                    "schema_version": "scientific-ingestion-v1.0.0",
+                    "project": "systematic-research",
+                    "filename": safe_filename(path.name),
+                    "media_type": _media_type(path),
+                    "content_base64": base64.b64encode(content).decode("ascii"),
+                    "content_digest": content_digest,
+                    "access_class": "internal",
+                    "source": {
+                        "title": path.stem.replace("_", " ").replace("-", " "),
+                        "origin": f"mission-control-inbox://{relative.as_posix()}",
+                        "rights": "founder-provided research source",
+                        "acquired_at": datetime.fromtimestamp(
+                            path.stat().st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                        "edition_label": content_digest[:12],
+                    },
+                    "requested_by": "founder-mission-control",
+                }
+            )
+            was_published = job["status"] == "published"
+            if not was_published:
+                job = await client.process_scientific_ingestion(job["id"])
+            disposition = (
+                "canonical" if job["status"] == "published" else "quarantined"
+            )
+            item.update(
+                status="unchanged" if was_published else (
+                    "added" if disposition == "canonical" else "rejected"
+                ),
+                content_digest=content_digest,
+                document_type=document_type,
+                evidence_type=evidence_type,
+                ingestion_job_id=job["id"],
+                disposition=disposition,
+                canonical_object_ids=job["published_object_ids"],
+                stage_report=job["stage_report"] if disposition == "quarantined" else None,
+            )
         except (OSError, ResearchUploadError) as exc:
             item.update(status="rejected", error=str(exc))
         except ControlPlaneError as exc:
-            item.update(status="failed", error=str(exc))
+            item.update(status="failed", disposition="failed", error=str(exc))
         results.append(item)
+    reconciliation = await client.reconcile_corpus(
+        {
+            "schema_version": "corpus-sync-v1.0.0",
+            "project": "systematic-research",
+            "source_kind": "founder_inbox",
+            "source_root": "mission-control-inbox",
+            "requested_by": "founder-mission-control",
+            "items": [_inventory_item(item) for item in results],
+        }
+    )
+    projection = await client.rebuild_corpus_projections("systematic-research")
     counts = {
         status: sum(item["status"] == status for item in results)
         for status in ("added", "unchanged", "rejected", "failed")
@@ -117,4 +114,39 @@ async def sync_research_inbox(
         "domain": "systematic-research",
         "counts": counts,
         "files": results,
+        "coverage": {
+            "run_id": reconciliation["id"],
+            "status": reconciliation["status"],
+            "counts": reconciliation["counts"],
+            "digest": reconciliation["coverage_digest"],
+            "projection": projection["evidence"],
+        },
+    }
+
+
+def _media_type(path: Path) -> str:
+    return {
+        ".pdf": "application/pdf",
+        ".md": "text/markdown",
+        ".markdown": "text/markdown",
+        ".txt": "text/plain",
+    }[path.suffix.lower()]
+
+
+def _inventory_item(item: dict[str, Any]) -> dict[str, Any]:
+    disposition = item.get("disposition")
+    if disposition is None:
+        disposition = "excluded" if item["status"] == "rejected" else "failed"
+    return {
+        "source_locator": item["path"],
+        "content_digest": item.get("content_digest"),
+        "classification": {
+            key: item[key]
+            for key in ("document_type", "evidence_type")
+            if key in item
+        },
+        "access_class": "internal",
+        "disposition": disposition,
+        "ingestion_job_id": item.get("ingestion_job_id"),
+        "detail": item.get("error"),
     }

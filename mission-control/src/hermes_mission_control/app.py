@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -32,7 +34,6 @@ from .research_inbox import sync_research_inbox
 from .research_upload import (
     ResearchUploadError,
     digest,
-    extract_passages,
     safe_filename,
 )
 
@@ -236,51 +237,77 @@ def create_app(
         content = await file.read(settings.upload_max_bytes + 1)
         if len(content) > settings.upload_max_bytes:
             raise ResearchUploadError("The source exceeds the configured upload limit.")
+        media_type = {
+            ".pdf": "application/pdf",
+            ".md": "text/markdown",
+            ".markdown": "text/markdown",
+            ".txt": "text/plain",
+        }.get(Path(filename).suffix.lower())
+        if media_type is None:
+            raise ResearchUploadError(
+                "Only PDF, Markdown, and text sources are accepted."
+            )
         content_digest = digest(content)
-        passages = extract_passages(filename, content)
         source_root = settings.data_root / "research-sources"
         source_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         source_path = source_root / f"{content_digest}-{filename}"
         source_path.write_bytes(content)
         source_path.chmod(0o600)
-        document_key = f"upload-{content_digest[:24]}"
-        document_payload = {
-            "document_key": document_key,
-            "title": title,
-            "document_type": document_type,
-            "evidence_type": evidence_type,
-            "version": content_digest[:12],
-            "source_uri": f"mission-control-upload://{content_digest}/{filename}",
-            "content_digest": content_digest,
-            "metadata": {"domains": [domain], "original_filename": filename},
-            "ingested_by": "founder-mission-control",
-        }
-        bundle = await client.register_research_bundle(
+        job = await client.create_scientific_ingestion(
             {
-                "document": document_payload,
-                "chunks": [
+                "schema_version": "scientific-ingestion-v1.0.0",
+                "project": domain,
+                "filename": filename,
+                "media_type": media_type,
+                "content_base64": base64.b64encode(content).decode("ascii"),
+                "content_digest": content_digest,
+                "access_class": "internal",
+                "source": {
+                    "title": title,
+                    "origin": f"mission-control-upload://{content_digest}/{filename}",
+                    "rights": "founder-provided research source",
+                    "acquired_at": datetime.now(timezone.utc).isoformat(),
+                    "edition_label": content_digest[:12],
+                },
+                "requested_by": "founder-mission-control",
+            }
+        )
+        if job["status"] != "published":
+            job = await client.process_scientific_ingestion(job["id"])
+        disposition = "canonical" if job["status"] == "published" else "quarantined"
+        sync = await client.reconcile_corpus(
+            {
+                "schema_version": "corpus-sync-v1.0.0",
+                "project": domain,
+                "source_kind": "founder_inbox",
+                "source_root": "mission-control-upload",
+                "requested_by": "founder-mission-control",
+                "items": [
                     {
-                        "ordinal": passage.ordinal,
-                        "section": passage.section,
-                        "page": passage.page,
-                        "line_start": passage.line_start,
-                        "line_end": passage.line_end,
-                        "text": passage.text,
-                        "text_digest": digest(passage.text.encode()),
-                        "metadata": {"domain": domain},
+                        "source_locator": f"{content_digest}/{filename}",
+                        "content_digest": content_digest,
+                        "classification": {
+                            "document_type": document_type,
+                            "evidence_type": evidence_type,
+                        },
+                        "access_class": "internal",
+                        "disposition": disposition,
+                        "ingestion_job_id": job["id"],
                     }
-                    for passage in passages
                 ],
             }
         )
-        document = bundle["document"]
+        projection = await client.rebuild_corpus_projections(domain)
         return {
-            "document_id": document["id"],
-            "document_key": document_key,
+            "document_id": job["published_object_ids"][0] if disposition == "canonical" else None,
+            "document_key": f"canonical-{content_digest[:24]}",
             "content_digest": content_digest,
-            "passages": len(passages),
+            "passages": max(0, len(job["published_object_ids"]) - 3),
             "domain": domain,
             "original_retained": True,
+            "disposition": disposition,
+            "corpus_sync_run_id": sync["id"],
+            "projection": projection["evidence"],
         }
 
     @app.post("/api/research/inbox/sync", dependencies=[Depends(_mutation_intent)])

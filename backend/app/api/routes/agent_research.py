@@ -1,3 +1,5 @@
+import base64
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -5,9 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.routes.ingestion import _pipeline, _store
 from app.core.security import get_current_agent
 from app.db.session import get_db
 from app.models import Agent, PackageDeployment, ResearchDomainProfile, RolePackage
+from app.schemas.corpus_sync import CorpusSyncRunCreate
+from app.schemas.ingestion import ScientificIngestionCreate
 from app.schemas.research import (
     AgentIntelligenceRunCreate,
     AgentResearchBriefCreate,
@@ -34,6 +39,7 @@ from app.schemas.research import (
     ResearchReviewCreate,
     ResearchReviewResponse,
 )
+from app.services.corpus_sync import reconcile_corpus
 from app.services.research import (
     add_review,
     create_brief,
@@ -44,6 +50,8 @@ from app.services.research import (
     register_result,
     search_knowledge,
 )
+from app.services.retrieval import build_projections
+from app.services.scientific_ingestion import process_ingestion, quarantine_ingestion
 
 router = APIRouter(prefix="/v1/agent/research", tags=["agent-research"])
 
@@ -65,10 +73,69 @@ def create_agent_memory_export(
     export, document, unchanged = register_agent_memory_export(
         db, payload, agent_slug=agent.slug
     )
+    content = payload.summary.encode("utf-8")
+    ingestion = quarantine_ingestion(
+        db,
+        ScientificIngestionCreate(
+            schema_version="scientific-ingestion-v1.0.0",
+            project="systematic-research",
+            filename=f"bulletproof-memory-{payload.export_digest[:24]}.txt",
+            media_type="text/plain",
+            content_base64=base64.b64encode(content).decode("ascii"),
+            content_digest=payload.summary_digest,
+            access_class="internal",
+            source={
+                "title": "Bulletproof bounded research-memory projection",
+                "origin": f"bulletproof-memory://{payload.export_digest}",
+                "rights": "internal bounded read-only projection",
+                "acquired_at": datetime.now(UTC),
+                "edition_label": payload.export_digest[:12],
+            },
+            requested_by=agent.slug,
+        ),
+        _store(),
+        max_bytes=len(content) + 1,
+    )
+    ingestion = process_ingestion(db, ingestion.id, _store(), _pipeline())
+    if ingestion.status != "published":
+        raise HTTPException(
+            status_code=409,
+            detail="Bounded research-memory projection did not pass canonical ingestion.",
+        )
+    sync_run = reconcile_corpus(
+        db,
+        CorpusSyncRunCreate.model_validate(
+            {
+                "schema_version": "corpus-sync-v1.0.0",
+                "project": "systematic-research",
+                "source_kind": "bulletproof_projection",
+                "source_root": "bulletproof-memory",
+                "requested_by": agent.slug,
+                "items": [
+                    {
+                        "source_locator": f"export/{payload.export_digest}",
+                        "content_digest": payload.summary_digest,
+                        "classification": {
+                            "document_type": "prior_report",
+                            "evidence_type": "prior_result",
+                            "raw_lake_copied": "false",
+                        },
+                        "access_class": "internal",
+                        "disposition": "canonical",
+                        "ingestion_job_id": str(ingestion.id),
+                    }
+                ],
+            }
+        ),
+    )
+    build_projections(db)
     return ResearchMemorySyncResponse(
         export=ResearchMemoryExportResponse.model_validate(export),
         document_key=document.document_key,
         unchanged=unchanged,
+        canonical_ingestion_job_id=ingestion.id,
+        canonical_object_ids=ingestion.published_object_ids,
+        corpus_sync_run_id=sync_run.id,
     )
 
 

@@ -195,7 +195,9 @@ class ProposedTask(StrictModel):
             if isinstance(value, dict):
                 for key, nested in value.items():
                     if str(key).lower() in forbidden:
-                        raise ValueError("proposal contains an execution command surface")
+                        raise ValueError(
+                            "proposal contains an execution command surface"
+                        )
                     inspect(nested)
             elif isinstance(value, list):
                 for nested in value:
@@ -209,9 +211,7 @@ class FounderProposalDocument(StrictModel):
     schema_version: Literal[1]
     summary: str = Field(min_length=10, max_length=1000)
     interpretation: str = Field(min_length=10, max_length=4000)
-    recommended_action: Literal[
-        "create_task", "needs_clarification", "decline"
-    ]
+    recommended_action: Literal["create_task", "needs_clarification", "decline"]
     assumptions: list[str] = Field(default_factory=list, max_length=20)
     clarification_questions: list[str] = Field(default_factory=list, max_length=20)
     target_role: str | None = Field(default=None, max_length=150)
@@ -297,6 +297,9 @@ class ResearchMemoryRegistrationResponse(StrictModel):
     export: dict[str, Any]
     document_key: str
     unchanged: bool
+    canonical_ingestion_job_id: UUID
+    canonical_object_ids: list[UUID]
+    corpus_sync_run_id: UUID
 
 
 class InfrastructureContract(BaseModel):

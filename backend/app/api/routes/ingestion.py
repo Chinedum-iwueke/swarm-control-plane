@@ -3,6 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -57,6 +58,21 @@ def create_ingestion_job(
             max_bytes=get_settings().scientific_ingestion_max_bytes,
         )
     )
+
+
+@router.get("/jobs/by-digest/{content_digest}", response_model=ScientificIngestionResponse)
+def get_ingestion_job_by_digest(
+    content_digest: str,
+    db: Annotated[Session, Depends(get_db)],
+):
+    job = db.scalar(
+        select(ScientificIngestionJob).where(
+            ScientificIngestionJob.content_digest == content_digest
+        )
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scientific ingestion job not found.")
+    return ingestion_response(job)
 
 
 @router.get("/jobs/{job_id}", response_model=ScientificIngestionResponse)
