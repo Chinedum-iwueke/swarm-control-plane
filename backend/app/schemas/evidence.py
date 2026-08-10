@@ -80,6 +80,7 @@ class ScientificObjectPayload(StrictModel):
     coordinates: dict[str, int | float | str]
     extraction_method: str = Field(min_length=1, max_length=300)
     extraction_confidence: float = Field(ge=0, le=1)
+    content_text: str | None = Field(default=None, min_length=1, max_length=100_000)
 
 
 class ClaimPayload(StrictModel):

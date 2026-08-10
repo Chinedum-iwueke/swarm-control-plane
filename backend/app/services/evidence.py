@@ -77,6 +77,8 @@ def register_evidence_object(
     db: Session,
     payload: EvidenceObjectCreate,
     access: EvidenceAccessContext,
+    *,
+    commit: bool = True,
 ) -> CanonicalEvidenceObject:
     _require_write_access(access, payload.project, payload.access_class)
     _require_payload_digest(payload)
@@ -145,8 +147,11 @@ def register_evidence_object(
             detail="Canonical evidence object registered.",
         )
     )
-    db.commit()
-    db.refresh(record)
+    if commit:
+        db.commit()
+        db.refresh(record)
+    else:
+        db.flush()
     return record
 
 

@@ -1,0 +1,21 @@
+{
+  "schema": "ScientificIngestionCreate",
+  "required_fields": [
+    "access_class",
+    "content_base64",
+    "content_digest",
+    "filename",
+    "media_type",
+    "project",
+    "requested_by",
+    "schema_version",
+    "source"
+  ],
+  "routes": {
+    "/v1/research/ingestion/jobs": ["post"],
+    "/v1/research/ingestion/jobs/{job_id}": ["get"],
+    "/v1/research/ingestion/jobs/{job_id}/process": ["post"],
+    "/v1/research/ingestion/objects/{object_id}/replay": ["get"]
+  },
+  "security_scheme": "HTTPBearer"
+}
