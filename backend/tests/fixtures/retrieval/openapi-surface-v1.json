@@ -1,0 +1,11 @@
+{
+  "schema": "HybridRetrievalRequest",
+  "required_fields": ["query"],
+  "routes": {
+    "/v1/research/retrieval/objects/{object_id}/replay": ["get"],
+    "/v1/research/retrieval/projections/rebuild": ["post"],
+    "/v1/research/retrieval/projections/status": ["get"],
+    "/v1/research/retrieval/query": ["post"]
+  },
+  "security_scheme": "HTTPBearer"
+}

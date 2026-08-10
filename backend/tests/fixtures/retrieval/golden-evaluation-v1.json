@@ -1,0 +1,27 @@
+{
+  "evaluation_version": "ri-003-golden-v1.0.0",
+  "minimum_mrr": 1.0,
+  "minimum_recall_at_3": 1.0,
+  "cases": [
+    {
+      "query": "short horizon momentum transaction costs",
+      "expected_object_id": "22222222-2222-4222-8222-222222222222",
+      "expected_type": "paragraph"
+    },
+    {
+      "query": "net_return gross_return transaction_cost",
+      "expected_object_id": "33333333-3333-4333-8333-333333333333",
+      "expected_type": "equation"
+    },
+    {
+      "query": "regime sharpe drawdown weekend",
+      "expected_object_id": "44444444-4444-4444-8444-444444444444",
+      "expected_type": "table"
+    },
+    {
+      "query": "Figure 2 volatility regime performance",
+      "expected_object_id": "55555555-5555-4555-8555-555555555555",
+      "expected_type": "figure"
+    }
+  ]
+}
