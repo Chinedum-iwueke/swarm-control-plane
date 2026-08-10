@@ -23,6 +23,7 @@ from app.api.routes.research_programs import router as research_programs_router
 from app.api.routes.retrieval import router as retrieval_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.supervisor import router as supervisor_router
+from app.api.routes.surveillance import router as surveillance_router
 from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
 
@@ -52,6 +53,7 @@ __all__ = [
     "retrieval_router",
     "runbook_packages_router",
     "supervisor_router",
+    "surveillance_router",
     "task_runtime_router",
     "tasks_router",
 ]

@@ -41,6 +41,13 @@ from app.models.research import (
 )
 from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
+from app.models.surveillance import (
+    SurveillanceDigest,
+    SurveillanceFetchReceipt,
+    SurveillancePublication,
+    SurveillanceRoutingEvent,
+    SurveillanceSource,
+)
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 
@@ -92,6 +99,11 @@ __all__ = [
     "RunbookPackage",
     "RunbookPromotion",
     "ScientificIngestionJob",
+    "SurveillanceDigest",
+    "SurveillanceFetchReceipt",
+    "SurveillancePublication",
+    "SurveillanceRoutingEvent",
+    "SurveillanceSource",
     "Task",
     "TaskApproval",
     "TaskDependency",

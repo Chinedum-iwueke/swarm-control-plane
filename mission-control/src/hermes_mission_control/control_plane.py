@@ -62,6 +62,15 @@ class ControlPlaneClient:
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
+        surveillance_sources = await self._optional_collection(
+            "/v1/research/surveillance/sources"
+        )
+        surveillance_candidates = await self._optional_collection(
+            "/v1/research/surveillance/candidates"
+        )
+        surveillance_digests = await self._optional_collection(
+            "/v1/research/surveillance/digests"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -81,7 +90,18 @@ class ControlPlaneClient:
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
             "evidence_dossiers": evidence_dossiers,
+            "surveillance_sources": surveillance_sources,
+            "surveillance_candidates": surveillance_candidates,
+            "surveillance_digests": surveillance_digests,
         }
+
+    async def replay_surveillance_candidate(
+        self, publication_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/v1/research/surveillance/candidates/{publication_id}/replay",
+        )
 
     async def get_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/research/memory/dossiers/{dossier_id}")

@@ -117,6 +117,10 @@ def create_app(
     async def replay_evidence_dossier(dossier_id: str) -> dict:
         return await client.replay_evidence_dossier(dossier_id)
 
+    @app.get("/api/research/surveillance/{publication_id}/replay")
+    async def replay_surveillance_candidate(publication_id: str) -> dict:
+        return await client.replay_surveillance_candidate(publication_id)
+
     @app.post("/api/intake", dependencies=[Depends(_mutation_intent)])
     async def intake(payload: IntakeRequest) -> dict:
         return await client.create_intake(payload)

@@ -1,0 +1,11 @@
+{
+  "security_scheme": "HTTPBearer",
+  "routes": {
+    "/v1/research/surveillance/candidates": ["get"],
+    "/v1/research/surveillance/candidates/{publication_id}/disposition": ["post"],
+    "/v1/research/surveillance/candidates/{publication_id}/replay": ["get"],
+    "/v1/research/surveillance/digests": ["get", "post"],
+    "/v1/research/surveillance/sources": ["get", "post"],
+    "/v1/research/surveillance/sources/{source_id}/poll": ["post"]
+  }
+}

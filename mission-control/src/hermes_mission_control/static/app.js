@@ -626,6 +626,9 @@ function renderResearch() {
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
   const dossiers = state.dashboard.evidence_dossiers || [];
+  const surveillanceSources = state.dashboard.surveillance_sources || [];
+  const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
+  const surveillanceDigests = state.dashboard.surveillance_digests || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
   const latestMemoryTask = memoryTasks[0];
   const latestMemory = memoryExports[0];
@@ -666,6 +669,17 @@ function renderResearch() {
       ${statusBadge(domain.status)}
     </div>`;
   }).join("") : empty("No domain has passed its retrieval qualification exam.");
+  const surveillanceSummary = document.getElementById("research-surveillance-summary");
+  surveillanceSummary.innerHTML = `
+    <div class="machine-cell"><span class="machine-symbol">SF</span><div><strong>${surveillanceSources.filter((item) => item.is_enabled).length}</strong><small>approved feeds</small></div></div>
+    <div class="machine-cell"><span class="machine-symbol">CA</span><div><strong>${surveillanceCandidates.length}</strong><small>governed candidates</small></div></div>
+    <div class="machine-cell"><span class="machine-symbol">WD</span><div><strong>${surveillanceDigests.length}</strong><small>weekly digests</small></div></div>`;
+  document.getElementById("research-surveillance").innerHTML = surveillanceCandidates.length ? surveillanceCandidates.slice(0, 20).map((item) => `
+    <button class="entity-row entity-button" type="button" data-surveillance-id="${item.id}">
+      <div class="entity-primary"><strong>${escapeHtml(item.title)}</strong><div class="entity-meta"><span>${escapeHtml(item.publication_status)}</span><span>novelty ${number(item.assessment?.novelty_score)}</span><span>quality ${number(item.assessment?.evidence_quality)}</span><span>${escapeHtml(item.routing?.target || "review")}</span><span class="mono">${shortHash(item.content_digest)}</span></div></div>
+      ${statusBadge(item.publication_status === "retracted" ? "failed" : "pending")}
+    </button>
+  `).join("") : empty("No surveillance candidates have been collected.");
   document.getElementById("research-dossiers").innerHTML = dossiers.length ? dossiers.map((item) => {
     const dossier = item.dossier || {};
     const objects = dossier.objects || {};
@@ -686,6 +700,13 @@ function renderResearch() {
     </div>`;
   }).join("") : empty("No research experiments recorded.");
   bindEntityButtons();
+  document.querySelectorAll("[data-surveillance-id]").forEach((element) => {
+    element.onclick = async () => {
+      const replay = await request(`/api/research/surveillance/${element.dataset.surveillanceId}/replay`);
+      openInspector("Surveillance provenance", replay.external_id, `
+        <div class="inspector-section"><p class="section-kicker">Citation replay</p><h3>${escapeHtml(replay.publication_status)}</h3><p>${replay.exact_replay ? "Fetch receipt and publication identity are available." : "Fetch receipt is unavailable; candidate cannot advance."}</p><div class="entity-meta"><span class="mono">${escapeHtml(replay.content_digest)}</span><span>${escapeHtml(replay.canonical_url)}</span></div></div>`);
+    };
+  });
 }
 
 async function openDossier(id) {

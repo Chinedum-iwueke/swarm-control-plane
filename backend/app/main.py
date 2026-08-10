@@ -26,6 +26,7 @@ from app.api.routes import (
     retrieval_router,
     runbook_packages_router,
     supervisor_router,
+    surveillance_router,
     task_runtime_router,
     tasks_router,
 )
@@ -65,3 +66,4 @@ app.include_router(research_programs_router)
 app.include_router(runbook_packages_router)
 app.include_router(task_runtime_router)
 app.include_router(supervisor_router)
+app.include_router(surveillance_router)

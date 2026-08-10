@@ -1,0 +1,32 @@
+[
+  {
+    "project": "systematic-research",
+    "source_key": "arxiv-qfin-trading",
+    "name": "arXiv Quantitative Finance - Trading and Market Microstructure",
+    "feed_url": "https://export.arxiv.org/api/query?search_query=cat:q-fin.TR&sortBy=submittedDate&sortOrder=descending&max_results=100",
+    "feed_kind": "atom",
+    "domains": ["trading", "market-microstructure", "execution"],
+    "rights": "Public metadata and abstracts only; full text follows artifact-specific rights.",
+    "access_class": "public",
+    "cadence": "daily",
+    "freshness_hours": 48,
+    "owner": "canon-curator",
+    "allowed_hosts": ["export.arxiv.org"],
+    "is_enabled": true
+  },
+  {
+    "project": "systematic-research",
+    "source_key": "arxiv-qfin-portfolio",
+    "name": "arXiv Quantitative Finance - Portfolio Management",
+    "feed_url": "https://export.arxiv.org/api/query?search_query=cat:q-fin.PM&sortBy=submittedDate&sortOrder=descending&max_results=100",
+    "feed_kind": "atom",
+    "domains": ["finance", "portfolio", "risk"],
+    "rights": "Public metadata and abstracts only; full text follows artifact-specific rights.",
+    "access_class": "public",
+    "cadence": "daily",
+    "freshness_hours": 48,
+    "owner": "canon-curator",
+    "allowed_hosts": ["export.arxiv.org"],
+    "is_enabled": true
+  }
+]
