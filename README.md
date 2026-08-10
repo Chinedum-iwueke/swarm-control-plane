@@ -31,3 +31,25 @@ in [`mission-control/`](mission-control/README.md).
 - mac-founder
 - vm1-developer
 - vm2-deployment
+
+## Machine-verifiable implementation baseline
+
+The repository ships a read-only `implementation-baseline-v1` collector. It
+records the Git pin and dirty state, sanitized origin, runtime versions,
+dependency and lock-file state, tracked schema hashes, declared acceptance
+commands, and the controlled claim vocabulary. It does not read environment
+values, ignored files, raw datasets, or credentials.
+
+```bash
+python worker/scripts/implementation_baseline.py collect \
+  --repository . \
+  --output /tmp/swarm-control-plane-baseline.json
+python worker/scripts/implementation_baseline.py validate \
+  /tmp/swarm-control-plane-baseline.json
+```
+
+Collection fails closed on a dirty worktree. `--allow-dirty` is available for
+audits and records the affected tracked/untracked paths in the evidence rather
+than claiming a release-quality baseline. CI publishes the validated JSON as a
+30-day workflow artifact. The canonical schema is
+[`schemas/implementation-baseline-v1.schema.json`](schemas/implementation-baseline-v1.schema.json).
