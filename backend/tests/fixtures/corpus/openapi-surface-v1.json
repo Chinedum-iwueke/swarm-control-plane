@@ -1,0 +1,11 @@
+{
+  "security_scheme": "HTTPBearer",
+  "routes": {
+    "/v1/research/corpus/backups": ["post"],
+    "/v1/research/corpus/backups/{backup_id}/restore": ["post"],
+    "/v1/research/corpus/health": ["get"],
+    "/v1/research/corpus/projections/recover": ["post"],
+    "/v1/research/corpus/queue/recover": ["post"],
+    "/v1/research/corpus/security-findings": ["get"]
+  }
+}

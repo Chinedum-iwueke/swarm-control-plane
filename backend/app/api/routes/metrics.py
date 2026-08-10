@@ -9,7 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
 from app.db.session import get_db
-from app.models import Agent, ControlScope, Task
+from app.models import (
+    Agent,
+    CanonicalEvidenceObject,
+    ControlScope,
+    CorpusBackup,
+    CorpusRecoveryRun,
+    CorpusSecurityFinding,
+    ScientificIngestionJob,
+    Task,
+)
+from app.models.retrieval import EvidenceRetrievalState
 
 TASKS = Gauge("hermes_tasks", "Tasks by status", ["status"])
 AGENTS = Gauge("hermes_agents", "Agents by enabled and online state", ["state"])
@@ -24,6 +34,27 @@ OLDEST_LEASE_AGE = Gauge(
     "Age of the oldest active task lease",
 )
 PAUSED_SCOPES = Gauge("hermes_paused_scopes", "Paused control scopes", ["scope_type"])
+CORPUS_INGESTION = Gauge(
+    "hermes_corpus_ingestion_jobs", "Corpus ingestion jobs by status", ["status"]
+)
+CORPUS_SECURITY = Gauge(
+    "hermes_corpus_security_findings", "Corpus security findings by code", ["code"]
+)
+CORPUS_PROJECTION_AGE = Gauge(
+    "hermes_corpus_projection_age_seconds", "Age of the canonical corpus projection"
+)
+CORPUS_BACKUP_AGE = Gauge(
+    "hermes_corpus_latest_backup_age_seconds", "Age of the latest corpus backup"
+)
+CORPUS_RESTORE_AGE = Gauge(
+    "hermes_corpus_latest_restore_age_seconds", "Age of the latest corpus restore proof"
+)
+CORPUS_OBJECTS = Gauge(
+    "hermes_corpus_canonical_objects", "Canonical corpus object count"
+)
+CORPUS_STORAGE = Gauge(
+    "hermes_corpus_artifact_bytes", "Bytes referenced by canonical corpus artifacts"
+)
 
 router = APIRouter(
     prefix="/v1/metrics",
@@ -93,5 +124,54 @@ def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
         .group_by(ControlScope.scope_type)
     ).all():
         PAUSED_SCOPES.labels(scope_type=scope_type).set(count)
+
+    CORPUS_INGESTION.clear()
+    for job_status, count in db.execute(
+        select(ScientificIngestionJob.status, func.count()).group_by(
+            ScientificIngestionJob.status
+        )
+    ).all():
+        CORPUS_INGESTION.labels(status=job_status).set(count)
+    CORPUS_SECURITY.clear()
+    for code, count in db.execute(
+        select(CorpusSecurityFinding.finding_code, func.count()).group_by(
+            CorpusSecurityFinding.finding_code
+        )
+    ).all():
+        CORPUS_SECURITY.labels(code=code).set(count)
+    projection_built_at = db.scalar(
+        select(func.max(EvidenceRetrievalState.built_at))
+    )
+    latest_backup_at = db.scalar(select(func.max(CorpusBackup.created_at)))
+    latest_restore_at = db.scalar(
+        select(func.max(CorpusRecoveryRun.ended_at)).where(
+            CorpusRecoveryRun.operation == "restore",
+            CorpusRecoveryRun.status == "succeeded",
+        )
+    )
+    CORPUS_PROJECTION_AGE.set(
+        max(0.0, (now - projection_built_at).total_seconds())
+        if projection_built_at
+        else -1
+    )
+    CORPUS_BACKUP_AGE.set(
+        max(0.0, (now - latest_backup_at).total_seconds())
+        if latest_backup_at
+        else -1
+    )
+    CORPUS_RESTORE_AGE.set(
+        max(0.0, (now - latest_restore_at).total_seconds())
+        if latest_restore_at
+        else -1
+    )
+    CORPUS_OBJECTS.set(
+        db.scalar(select(func.count()).select_from(CanonicalEvidenceObject)) or 0
+    )
+    artifact_bytes = db.scalars(
+        select(CanonicalEvidenceObject.payload).where(
+            CanonicalEvidenceObject.object_type == "artifact"
+        )
+    ).all()
+    CORPUS_STORAGE.set(sum(int(item.get("byte_size", 0)) for item in artifact_bytes))
 
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
