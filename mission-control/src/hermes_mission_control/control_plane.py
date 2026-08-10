@@ -239,6 +239,24 @@ class ControlPlaneClient:
             "POST", "/v1/research/knowledge/documents", json=payload
         )
 
+    async def create_scientific_ingestion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/v1/research/ingestion/jobs", json=payload)
+
+    async def process_scientific_ingestion(self, job_id: str) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/v1/research/ingestion/jobs/{job_id}/process"
+        )
+
+    async def reconcile_corpus(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/v1/research/corpus-sync/runs", json=payload)
+
+    async def rebuild_corpus_projections(self, project: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/research/corpus/projections/recover",
+            json={"project": project, "requested_by": "founder-mission-control"},
+        )
+
     async def register_research_bundle(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST", "/v1/research/knowledge/document-bundles", json=payload

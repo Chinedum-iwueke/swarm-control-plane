@@ -130,6 +130,13 @@ class ResearchMemorySyncExecutor:
             "export_id": registration.export["id"],
             "document_key": registration.document_key,
             "unchanged": registration.unchanged,
+            "canonical_ingestion_job_id": str(
+                registration.canonical_ingestion_job_id
+            ),
+            "canonical_object_ids": [
+                str(value) for value in registration.canonical_object_ids
+            ],
+            "corpus_sync_run_id": str(registration.corpus_sync_run_id),
             "counts": document.counts.model_dump(),
         }
         stdout.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
