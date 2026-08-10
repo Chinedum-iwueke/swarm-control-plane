@@ -45,6 +45,36 @@ async def test_dashboard_uses_bearer_without_exposing_token(
         for request in authenticated
     )
     assert "operator-token-that-is-long-enough" not in json.dumps(result)
+    assert "evidence_dossiers" in result
+
+
+@pytest.mark.asyncio
+async def test_dossier_client_uses_authenticated_read_only_routes(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        assert request.headers["authorization"] == (
+            "Bearer operator-token-that-is-long-enough"
+        )
+        if request.url.path.endswith("/replay"):
+            return httpx.Response(200, json={"exact_replay": True, "impacts": []})
+        return httpx.Response(200, json={"id": "dossier-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        dossier = await client.get_evidence_dossier("dossier-id")
+        replay = await client.replay_evidence_dossier("dossier-id")
+    finally:
+        await client.close()
+    assert dossier["id"] == "dossier-id"
+    assert replay["exact_replay"] is True
+    assert seen == [
+        ("GET", "/v1/research/memory/dossiers/dossier-id"),
+        ("GET", "/v1/research/memory/dossiers/dossier-id/replay"),
+    ]
 
 
 @pytest.mark.asyncio

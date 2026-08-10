@@ -38,8 +38,14 @@ _REFERENCE_FIELDS: dict[str, tuple[str, ...]] = {
         "claim_object_id",
         "supporting_evidence_ids",
         "opposing_evidence_ids",
+        "dependencies",
     ),
-    "episode": ("input_object_ids", "output_object_ids", "decision_object_ids"),
+    "episode": (
+        "input_object_ids",
+        "output_object_ids",
+        "decision_object_ids",
+        "prior_belief_object_id",
+    ),
 }
 
 

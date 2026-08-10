@@ -59,6 +59,9 @@ class ControlPlaneClient:
         dataset_builds = await self._optional_collection(
             "/v1/research/data-contracts/builds"
         )
+        evidence_dossiers = await self._optional_collection(
+            "/v1/research/memory/dossiers"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -77,7 +80,16 @@ class ControlPlaneClient:
             "operational_notes": operational_notes,
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
+            "evidence_dossiers": evidence_dossiers,
         }
+
+    async def get_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/v1/research/memory/dossiers/{dossier_id}")
+
+    async def replay_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/memory/dossiers/{dossier_id}/replay"
+        )
 
     async def transition_operational_note(
         self, note_id: str, payload: dict[str, Any]
