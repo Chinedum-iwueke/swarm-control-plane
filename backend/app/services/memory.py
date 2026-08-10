@@ -302,6 +302,11 @@ def publish_episode(
 def compile_dossier(
     db: Session, payload: DossierCompileCreate, access: EvidenceAccessContext
 ) -> EvidenceDossier:
+    if _ACCESS_LEVEL[payload.access_class] > _ACCESS_LEVEL[access.max_access_class]:
+        raise HTTPException(
+            status_code=403,
+            detail="Dossier access class exceeds compiler access.",
+        )
     dossier_access = EvidenceAccessContext(
         actor=access.actor,
         projects=access.projects,

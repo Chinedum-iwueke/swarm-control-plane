@@ -462,6 +462,13 @@ def test_cross_role_dossier_access_is_denied() -> None:
     assert error.value.status_code == 403
 
 
+def test_dossier_compiler_cannot_escalate_its_access_class() -> None:
+    payload = dossier_payload().model_copy(update={"access_class": "protected"})
+    with pytest.raises(HTTPException, match="exceeds compiler access") as error:
+        compile_dossier(MagicMock(), payload, access("internal"))
+    assert error.value.status_code == 403
+
+
 @pytest.mark.asyncio
 async def test_memory_client_parses_frozen_dossiers_and_redacts_token() -> None:
     token = "memory-client-secret-token"
