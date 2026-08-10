@@ -55,6 +55,7 @@ class FakeDB:
         self.added = []
         self.items = []
         self.committed = False
+        self.events = []
 
     def scalar(self, _statement):
         return self.scalar_results.pop(0)
@@ -70,15 +71,17 @@ class FakeDB:
         if value.id is None:
             value.id = uuid4()
         self.added.append(value)
+        self.events.append(("add", type(value).__name__))
 
     def add_all(self, values):
         for value in values:
             if value.id is None:
                 value.id = uuid4()
         self.items.extend(values)
+        self.events.append(("add_all", len(values)))
 
     def flush(self):
-        return None
+        self.events.append(("flush", None))
 
     def commit(self):
         self.committed = True
@@ -96,6 +99,11 @@ def test_canonical_inventory_is_digest_bound() -> None:
     assert run.coverage_digest != run.inventory_digest
     assert db.items[0].canonical_object_ids == [
         str(value) for value in JOB.published_object_ids
+    ]
+    assert db.events[-3:] == [
+        ("add", "CorpusSyncRun"),
+        ("flush", None),
+        ("add_all", 1),
     ]
 
 

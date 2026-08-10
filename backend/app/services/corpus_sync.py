@@ -122,6 +122,7 @@ def reconcile_corpus(db: Session, payload: CorpusSyncRunCreate) -> CorpusSyncRun
         ]
     )
     db.add(run)
+    db.flush()
     db.add_all(items)
     db.commit()
     db.refresh(run)
