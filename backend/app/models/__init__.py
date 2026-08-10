@@ -33,6 +33,7 @@ from app.models.research import (
     ResearchSource,
     ResearchTrial,
 )
+from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.task import Task
 from app.models.task_event import TaskEvent
@@ -49,6 +50,8 @@ __all__ = [
     "ControlEvent",
     "ControlScope",
     "EngineeringMission",
+    "EvidenceRetrievalProjection",
+    "EvidenceRetrievalState",
     "FounderProposal",
     "MissionEvent",
     "OperationalNote",
