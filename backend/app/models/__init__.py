@@ -10,6 +10,11 @@ from app.models.evidence import (
 )
 from app.models.governance import ApprovalEvent, Artifact, TaskApproval
 from app.models.ingestion import ScientificIngestionJob
+from app.models.memory import (
+    EvidenceDossier,
+    EvidenceOppositionRecord,
+    EvidenceOutcomeRecord,
+)
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
 from app.models.package import PackageDeployment, RolePackage
@@ -50,6 +55,9 @@ __all__ = [
     "ControlEvent",
     "ControlScope",
     "EngineeringMission",
+    "EvidenceDossier",
+    "EvidenceOppositionRecord",
+    "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
     "FounderProposal",

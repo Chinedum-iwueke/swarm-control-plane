@@ -109,6 +109,14 @@ def create_app(
         result["knowledge"] = store.stats()
         return result
 
+    @app.get("/api/research/dossiers/{dossier_id}")
+    async def evidence_dossier(dossier_id: str) -> dict:
+        return await client.get_evidence_dossier(dossier_id)
+
+    @app.get("/api/research/dossiers/{dossier_id}/replay")
+    async def replay_evidence_dossier(dossier_id: str) -> dict:
+        return await client.replay_evidence_dossier(dossier_id)
+
     @app.post("/api/intake", dependencies=[Depends(_mutation_intent)])
     async def intake(payload: IntakeRequest) -> dict:
         return await client.create_intake(payload)

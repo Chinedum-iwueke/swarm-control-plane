@@ -14,6 +14,7 @@ class FakeControlPlane:
         self.bundle: Any = None
         self.closed = False
         self.memory_sync_requested = False
+        self.dossier_requested: str | None = None
 
     async def close(self) -> None:
         self.closed = True
@@ -61,6 +62,14 @@ class FakeControlPlane:
         self.memory_sync_requested = True
         return {"id": "memory-proposal-id", "status": "proposed"}
 
+    async def get_evidence_dossier(self, dossier_id: str) -> dict:
+        self.dossier_requested = dossier_id
+        return {"id": dossier_id, "dossier_key": "RI004-PILOT"}
+
+    async def replay_evidence_dossier(self, dossier_id: str) -> dict:
+        self.dossier_requested = dossier_id
+        return {"exact_replay": True, "impacts": []}
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,
@@ -89,6 +98,20 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/knowledge/search" in paths
     assert "/api/research/sources/upload" in paths
     assert "/api/research/memory-sync/proposals" in paths
+    assert "/api/research/dossiers/{dossier_id}" in paths
+    assert "/api/research/dossiers/{dossier_id}/replay" in paths
+
+
+def test_dossier_inspection_and_replay_are_read_only(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        dossier = client.get("/api/research/dossiers/dossier-id")
+        replay = client.get("/api/research/dossiers/dossier-id/replay")
+    assert dossier.json()["dossier_key"] == "RI004-PILOT"
+    assert replay.json() == {"exact_replay": True, "impacts": []}
+    assert fake.dossier_requested == "dossier-id"
 
 
 def test_memory_sync_requires_founder_intent_and_creates_proposal(

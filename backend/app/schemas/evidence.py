@@ -155,11 +155,20 @@ class BeliefPayload(StrictModel):
     supporting_evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
     opposing_evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
     assessment: str = Field(min_length=1, max_length=10_000)
-    confidence: float = Field(ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
     owner: str = Field(pattern=_NAME)
     reviewers: list[str] = Field(min_length=1, max_length=20)
     valid_from: datetime
     valid_until: datetime | None = None
+    scope: str | None = Field(default=None, max_length=2000)
+    assessment_type: str | None = Field(default=None, max_length=100)
+    typed_assessment: dict | None = None
+    synthesis_method: str | None = Field(default=None, max_length=4000)
+    uncertainty: list[dict] = Field(default_factory=list, max_length=30)
+    dependencies: list[UUID] = Field(default_factory=list, max_length=100)
+    minority_assessments: list[dict] = Field(default_factory=list, max_length=20)
+    review_due: datetime | None = None
+    invalidation_conditions: list[str] = Field(default_factory=list, max_length=30)
 
     @model_validator(mode="after")
     def validity_is_ordered(self) -> BeliefPayload:
@@ -178,6 +187,12 @@ class EpisodePayload(StrictModel):
     decision_object_ids: list[UUID] = Field(default_factory=list, max_length=100)
     lessons: list[str] = Field(default_factory=list, max_length=100)
     protected_references: list[str] = Field(default_factory=list, max_length=100)
+    question: str | None = Field(default=None, max_length=2000)
+    prior_belief_object_id: UUID | None = None
+    dossier_id: UUID | None = None
+    alternatives: list[str] = Field(default_factory=list, max_length=50)
+    surprise: str | None = Field(default=None, max_length=4000)
+    new_questions: list[str] = Field(default_factory=list, max_length=100)
 
 
 EvidencePayload = Annotated[
