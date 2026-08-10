@@ -3,6 +3,7 @@ from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.controls import router as controls_router
 from app.api.routes.data_contracts import router as data_contracts_router
+from app.api.routes.evidence import router as evidence_router
 from app.api.routes.founder_channel import router as founder_channel_router
 from app.api.routes.governance import router as governance_router
 from app.api.routes.health import router as health_router
@@ -30,6 +31,7 @@ __all__ = [
     "agents_router",
     "controls_router",
     "data_contracts_router",
+    "evidence_router",
     "founder_channel_router",
     "governance_router",
     "health_router",
