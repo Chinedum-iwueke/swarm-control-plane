@@ -13,6 +13,7 @@ from app.api.routes import (
     founder_channel_router,
     governance_router,
     health_router,
+    ingestion_router,
     metrics_router,
     missions_router,
     operational_notes_router,
@@ -35,6 +36,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(ingestion_router)
 app.include_router(metrics_router)
 app.include_router(missions_router)
 app.include_router(operational_notes_router)
