@@ -1,6 +1,7 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
+from app.models.corpus import CorpusBackup, CorpusRecoveryRun, CorpusSecurityFinding
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.evidence import (
     CanonicalEvidenceAuditEvent,
@@ -54,6 +55,9 @@ __all__ = [
     "CanonicalIdentityAlias",
     "ControlEvent",
     "ControlScope",
+    "CorpusBackup",
+    "CorpusRecoveryRun",
+    "CorpusSecurityFinding",
     "EngineeringMission",
     "EvidenceDossier",
     "EvidenceOppositionRecord",

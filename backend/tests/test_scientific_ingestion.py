@@ -11,8 +11,6 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from pypdf import PdfWriter
-
 from app.ingestion.pipeline import (
     IngestionRejected,
     RecoveredObject,
@@ -28,6 +26,7 @@ from app.services.scientific_ingestion import (
     replay_coordinate,
 )
 from app.workers.scientific_ingestion import process_next_scientific_ingestion
+from pypdf import PdfWriter
 
 NOW = datetime(2026, 8, 10, tzinfo=UTC)
 JOB_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -226,6 +225,7 @@ def test_failed_recovery_retains_quarantine_without_publication(tmp_path: Path) 
     )
     job = SimpleNamespace(
         id=JOB_ID,
+        project="systematic-research",
         filename="scan.pdf",
         media_type="application/pdf",
         content_digest=digest,

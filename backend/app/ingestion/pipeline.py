@@ -24,6 +24,10 @@ _INJECTION_PATTERNS = tuple(
         r"reveal\s+(the\s+)?system\s+prompt",
         r"override\s+(your\s+)?(policy|instructions)",
         r"exfiltrate\s+(credentials|secrets|tokens)",
+        r"(?:read|send|upload|print)\s+(?:the\s+)?(?:contents\s+of\s+)?/(?:run|etc)/secrets",
+        r"(?:approve|authorize)\s+(?:this|the)\s+(?:task|mission|request)",
+        r"(?:execute|run|call)\s+(?:this\s+)?(?:tool|command|shell)",
+        r"treat\s+(?:this|the following)\s+(?:text\s+)?as\s+(?:a\s+)?system\s+instruction",
     )
 )
 _HEADING = re.compile(r"^(?:[0-9]+(?:\.[0-9]+)*[.)]?\s+|#{1,6}\s+)(.+)$")
@@ -120,7 +124,7 @@ class ScientificIngestionPipeline:
             raise IngestionRejected(
                 "extracted content exceeds the expansion limit", stage="extract"
             )
-        if any(pattern.search(combined) for pattern in _INJECTION_PATTERNS):
+        if contains_instruction_injection(combined):
             raise IngestionRejected("document contains instruction-injection content")
         objects = self._recover_objects(pages, scanned=scanned)
         if not objects:
@@ -300,3 +304,7 @@ class ScientificIngestionPipeline:
         if line.lower().startswith(("note:", "footnote:")):
             return "note"
         return None
+
+
+def contains_instruction_injection(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _INJECTION_PATTERNS)

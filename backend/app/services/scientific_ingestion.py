@@ -8,7 +8,11 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ingestion.pipeline import IngestionRejected, ScientificIngestionPipeline
+from app.ingestion.pipeline import (
+    IngestionRejected,
+    ScientificIngestionPipeline,
+    contains_instruction_injection,
+)
 from app.models.ingestion import ScientificIngestionJob
 from app.schemas.evidence import EvidenceObjectCreate
 from app.schemas.ingestion import (
@@ -16,6 +20,7 @@ from app.schemas.ingestion import (
     ScientificIngestionCreate,
     ScientificIngestionResponse,
 )
+from app.services.corpus import finding_code, record_security_finding
 from app.services.evidence import (
     EvidenceAccessContext,
     canonical_payload_digest,
@@ -32,6 +37,15 @@ def quarantine_ingestion(
     *,
     max_bytes: int,
 ) -> ScientificIngestionJob:
+    metadata = (
+        f"{payload.source.title}\n{payload.source.origin}\n"
+        f"{payload.source.rights}\n{payload.source.edition_label}"
+    )
+    if contains_instruction_injection(metadata):
+        raise HTTPException(
+            status_code=422,
+            detail="Scientific source metadata contains instruction-injection content.",
+        )
     content = payload.content_bytes()
     if len(content) > max_bytes:
         raise HTTPException(status_code=413, detail="Scientific artifact is too large.")
@@ -139,6 +153,12 @@ def process_ingestion(
         )
         job.stage_report = {"stages": stages}
         job.updated_at = datetime.now(UTC)
+        record_security_finding(
+            db,
+            job,
+            code=finding_code(exc.stage, str(exc)),
+            stage=exc.stage,
+        )
         db.commit()
         db.refresh(job)
         return job
