@@ -117,6 +117,9 @@ def test_new_entry_creates_bounded_assessment_and_proposal_only_routing() -> Non
     publication = db.add.call_args_list[0].args[0]
     receipt = db.add.call_args_list[1].args[0]
     assert publication.assessment["adoption_authority"] is False
+    assert (
+        publication.assessment["comparison_basis"]["includes_internal_memory"] is True
+    )
     assert publication.routing["approval_required"] is True
     assert publication.routing["execution_authority"] is False
     assert receipt.new_count == 1

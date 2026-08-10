@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ingestion.pipeline import contains_instruction_injection
+from app.models.retrieval import EvidenceRetrievalProjection
 from app.models.surveillance import (
     SurveillanceDigest,
     SurveillanceFetchReceipt,
@@ -161,14 +162,26 @@ def poll_source(
 
 def assess_entry(db: Session, source: SurveillanceSource, entry: FeedEntry) -> dict:
     candidate_tokens = _tokens(f"{entry.title} {entry.abstract}")
-    existing = db.scalars(select(SurveillancePublication.title).limit(500)).all()
+    comparison = (
+        select(EvidenceRetrievalProjection.content_text)
+        .where(EvidenceRetrievalProjection.project == source.project)
+        .union_all(
+            select(SurveillancePublication.title).where(
+                SurveillancePublication.project == source.project
+            )
+        )
+        .limit(1000)
+    )
+    existing = db.scalars(comparison).all()
     nearest = 0.0
+    nearest_digest = None
     for title in existing:
         known = _tokens(title)
         union = candidate_tokens | known
-        nearest = max(
-            nearest, len(candidate_tokens & known) / len(union) if union else 0
-        )
+        similarity = len(candidate_tokens & known) / len(union) if union else 0
+        if similarity > nearest:
+            nearest = similarity
+            nearest_digest = hashlib.sha256(title.encode()).hexdigest()
     novelty = round(1.0 - nearest, 6)
     quality = 0.5
     quality += 0.15 if entry.doi else 0
@@ -179,6 +192,13 @@ def assess_entry(db: Session, source: SurveillanceSource, entry: FeedEntry) -> d
         "schema_version": "surveillance-assessment-v1.0.0",
         "novelty_score": min(round(quality * 0 + novelty, 6), 1.0),
         "nearest_prior_similarity": round(nearest, 6),
+        "nearest_prior_text_digest": nearest_digest,
+        "comparison_basis": {
+            "project": source.project,
+            "projection": "canonical-scientific",
+            "records_compared": len(existing),
+            "includes_internal_memory": True,
+        },
         "evidence_quality": min(round(quality, 6), 1.0),
         "technique_brief": {
             "title": entry.title,
