@@ -29,9 +29,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
             return httpx.Response(200, json={"status": "ok"})
         return httpx.Response(200, json=[])
 
-    client = ControlPlaneClient(
-        settings, transport=httpx.MockTransport(handler)
-    )
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
     try:
         result = await client.dashboard()
     finally:
@@ -40,11 +38,68 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     authenticated = [request for request in seen if request.url.path != "/health"]
     assert authenticated
     assert all(
-        request.headers["authorization"]
-        == "Bearer operator-token-that-is-long-enough"
+        request.headers["authorization"] == "Bearer operator-token-that-is-long-enough"
         for request in authenticated
     )
     assert "operator-token-that-is-long-enough" not in json.dumps(result)
+    assert "evidence_dossiers" in result
+    assert "surveillance_candidates" in result
+
+
+@pytest.mark.asyncio
+async def test_surveillance_replay_uses_authenticated_read_only_route(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        assert request.headers["authorization"] == (
+            "Bearer operator-token-that-is-long-enough"
+        )
+        return httpx.Response(200, json={"exact_replay": True})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        replay = await client.replay_surveillance_candidate("publication-id")
+    finally:
+        await client.close()
+    assert replay["exact_replay"] is True
+    assert seen == [
+        (
+            "GET",
+            "/v1/research/surveillance/candidates/publication-id/replay",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dossier_client_uses_authenticated_read_only_routes(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        assert request.headers["authorization"] == (
+            "Bearer operator-token-that-is-long-enough"
+        )
+        if request.url.path.endswith("/replay"):
+            return httpx.Response(200, json={"exact_replay": True, "impacts": []})
+        return httpx.Response(200, json={"id": "dossier-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        dossier = await client.get_evidence_dossier("dossier-id")
+        replay = await client.replay_evidence_dossier("dossier-id")
+    finally:
+        await client.close()
+    assert dossier["id"] == "dossier-id"
+    assert replay["exact_replay"] is True
+    assert seen == [
+        ("GET", "/v1/research/memory/dossiers/dossier-id"),
+        ("GET", "/v1/research/memory/dossiers/dossier-id/replay"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -173,9 +228,7 @@ async def test_proposal_materialization_is_an_explicit_founder_action(
         await client.decide_proposal(
             "proposal-id",
             "materialize",
-            ProposalDecision(
-                reason="Founder reviewed the complete bounded proposal."
-            ),
+            ProposalDecision(reason="Founder reviewed the complete bounded proposal."),
         )
     finally:
         await client.close()

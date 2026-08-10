@@ -1,0 +1,24 @@
+{
+  "schema": "EvidenceObjectCreate",
+  "required_fields": [
+    "access_class",
+    "aliases",
+    "authority_class",
+    "content_digest",
+    "content_version",
+    "created_by",
+    "object_id",
+    "object_schema_version",
+    "object_type",
+    "payload",
+    "producer",
+    "project",
+    "schema_version"
+  ],
+  "routes": {
+    "/v1/research/evidence/objects": ["get", "post"],
+    "/v1/research/evidence/objects/{object_id}": ["get"],
+    "/v1/research/evidence/objects/{object_id}/lineage": ["get"]
+  },
+  "security_scheme": "HTTPBearer"
+}

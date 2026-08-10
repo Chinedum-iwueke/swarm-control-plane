@@ -625,6 +625,10 @@ function renderResearch() {
   const memoryExports = state.dashboard.research_memory_exports || [];
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
+  const dossiers = state.dashboard.evidence_dossiers || [];
+  const surveillanceSources = state.dashboard.surveillance_sources || [];
+  const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
+  const surveillanceDigests = state.dashboard.surveillance_digests || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
   const latestMemoryTask = memoryTasks[0];
   const latestMemory = memoryExports[0];
@@ -665,6 +669,25 @@ function renderResearch() {
       ${statusBadge(domain.status)}
     </div>`;
   }).join("") : empty("No domain has passed its retrieval qualification exam.");
+  const surveillanceSummary = document.getElementById("research-surveillance-summary");
+  surveillanceSummary.innerHTML = `
+    <div class="machine-cell"><span class="machine-symbol">SF</span><div><strong>${surveillanceSources.filter((item) => item.is_enabled).length}</strong><small>approved feeds</small></div></div>
+    <div class="machine-cell"><span class="machine-symbol">CA</span><div><strong>${surveillanceCandidates.length}</strong><small>governed candidates</small></div></div>
+    <div class="machine-cell"><span class="machine-symbol">WD</span><div><strong>${surveillanceDigests.length}</strong><small>weekly digests</small></div></div>`;
+  document.getElementById("research-surveillance").innerHTML = surveillanceCandidates.length ? surveillanceCandidates.slice(0, 20).map((item) => `
+    <button class="entity-row entity-button" type="button" data-surveillance-id="${item.id}">
+      <div class="entity-primary"><strong>${escapeHtml(item.title)}</strong><div class="entity-meta"><span>${escapeHtml(item.publication_status)}</span><span>novelty ${number(item.assessment?.novelty_score)}</span><span>quality ${number(item.assessment?.evidence_quality)}</span><span>${escapeHtml(item.routing?.target || "review")}</span><span class="mono">${shortHash(item.content_digest)}</span></div></div>
+      ${statusBadge(item.publication_status === "retracted" ? "failed" : "pending")}
+    </button>
+  `).join("") : empty("No surveillance candidates have been collected.");
+  document.getElementById("research-dossiers").innerHTML = dossiers.length ? dossiers.map((item) => {
+    const dossier = item.dossier || {};
+    const objects = dossier.objects || {};
+    return `<button class="entity-row entity-button" type="button" data-dossier-id="${item.id}">
+      <div class="entity-primary"><strong>${escapeHtml(item.question)}</strong><div class="entity-meta"><span>${escapeHtml(item.dossier_key)} v${item.version}</span><span>${objects.supporting_evidence?.length ?? 0} supporting</span><span>${objects.opposing_evidence?.length ?? 0} opposing</span><span>${dossier.access_limitations?.length ?? 0} redacted</span><span class="mono">${shortHash(item.record_digest)}</span></div></div>
+      ${statusBadge("frozen")}
+    </button>`;
+  }).join("") : empty("No frozen evidence dossier has been compiled.");
   document.getElementById("research-list").innerHTML = tasks.length ? tasks.map((task) => {
     const summary = task.result?.summary || {};
     const oos = summary.out_of_sample || {};
@@ -677,6 +700,35 @@ function renderResearch() {
     </div>`;
   }).join("") : empty("No research experiments recorded.");
   bindEntityButtons();
+  document.querySelectorAll("[data-surveillance-id]").forEach((element) => {
+    element.onclick = async () => {
+      const replay = await request(`/api/research/surveillance/${element.dataset.surveillanceId}/replay`);
+      openInspector("Surveillance provenance", replay.external_id, `
+        <div class="inspector-section"><p class="section-kicker">Citation replay</p><h3>${escapeHtml(replay.publication_status)}</h3><p>${replay.exact_replay ? "Fetch receipt and publication identity are available." : "Fetch receipt is unavailable; candidate cannot advance."}</p><div class="entity-meta"><span class="mono">${escapeHtml(replay.content_digest)}</span><span>${escapeHtml(replay.canonical_url)}</span></div></div>`);
+    };
+  });
+}
+
+async function openDossier(id) {
+  const dossier = await request(`/api/research/dossiers/${id}`);
+  const body = dossier.dossier || {};
+  const objects = body.objects || {};
+  const evidenceRows = (items, label) => (items || []).map((item) => `
+    <div class="inspector-row"><span>${label}</span><strong>${escapeHtml(item.object_type || "evidence")}</strong><small class="mono">${shortHash(item.content_digest)}</small>${item.citation_replay_path ? `<small class="mono">citation replay available</small>` : ""}</div>
+  `).join("") || `<p class="muted">No ${label.toLowerCase()} recorded.</p>`;
+  openInspector("Frozen evidence dossier", `${dossier.dossier_key} v${dossier.version}`, `
+    <div class="inspector-section"><p class="section-kicker">Frozen question</p><h3>${escapeHtml(dossier.question)}</h3><p>${escapeHtml(dossier.decision_context)}</p><div class="entity-meta"><span>${formatDate(dossier.frozen_at)}</span><span class="mono">${escapeHtml(dossier.record_digest)}</span></div></div>
+    <div class="inspector-section"><h3>Supporting evidence</h3>${evidenceRows(objects.supporting_evidence, "Supporting")}</div>
+    <div class="inspector-section"><h3>Opposing evidence</h3>${evidenceRows(objects.opposing_evidence, "Opposing")}</div>
+    <div class="inspector-section"><h3>Synthesis</h3><p>${escapeHtml(body.synthesis || "No synthesis recorded.")}</p><p><strong>Recommendation:</strong> ${escapeHtml(body.recommendation || "None")}</p><p><strong>Dissent:</strong> ${escapeHtml((body.dissent || []).join("; ") || "None recorded")}</p></div>
+    <div class="inspector-section"><h3>Access ledger</h3>${(body.access_limitations || []).map((item) => `<div class="inspector-row"><span>Protected evidence exists</span><strong>${escapeHtml(item.reason)}</strong><small class="mono">${escapeHtml(item.object_id)}</small></div>`).join("") || '<p class="muted">No evidence redacted for this role.</p>'}</div>
+    <button id="replay-dossier" class="secondary" type="button">Replay frozen dossier</button>
+    <div id="dossier-replay-result"></div>
+  `);
+  document.getElementById("replay-dossier").addEventListener("click", async () => {
+    const replay = await request(`/api/research/dossiers/${id}/replay`);
+    document.getElementById("dossier-replay-result").innerHTML = `<div class="inspector-section"><h3>Replay result</h3><p>${replay.exact_replay ? "All frozen identities and digests match." : "Historical state preserved; later impacts detected."}</p><div class="entity-meta"><span>${replay.impacts?.length ?? 0} later impacts</span></div></div>`;
+  });
 }
 
 function renderArtifacts() {
@@ -702,6 +754,9 @@ function renderArtifacts() {
 }
 
 function bindEntityButtons() {
+  document.querySelectorAll("[data-dossier-id]").forEach((element) => {
+    element.onclick = () => openDossier(element.dataset.dossierId);
+  });
   document.querySelectorAll("[data-task-id]").forEach((element) => {
     element.onclick = () => openTask(element.dataset.taskId);
   });

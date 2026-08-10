@@ -1,0 +1,15 @@
+{
+  "schema": "DossierCompileCreate",
+  "routes": {
+    "/v1/research/memory/beliefs": ["post"],
+    "/v1/research/memory/dossiers": ["get", "post"],
+    "/v1/research/memory/dossiers/{dossier_id}": ["get"],
+    "/v1/research/memory/dossiers/{dossier_id}/replay": ["get"],
+    "/v1/research/memory/episodes": ["post"],
+    "/v1/research/memory/oppositions": ["post"],
+    "/v1/research/memory/oppositions/{opposition_id}/review": ["post"],
+    "/v1/research/memory/outcomes": ["post"],
+    "/v1/research/memory/outcomes/search": ["get"]
+  },
+  "security_scheme": "HTTPBearer"
+}

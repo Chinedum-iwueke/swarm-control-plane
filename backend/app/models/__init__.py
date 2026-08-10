@@ -1,8 +1,21 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
+from app.models.corpus import CorpusBackup, CorpusRecoveryRun, CorpusSecurityFinding
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
+from app.models.evidence import (
+    CanonicalEvidenceAuditEvent,
+    CanonicalEvidenceEdge,
+    CanonicalEvidenceObject,
+    CanonicalIdentityAlias,
+)
 from app.models.governance import ApprovalEvent, Artifact, TaskApproval
+from app.models.ingestion import ScientificIngestionJob
+from app.models.memory import (
+    EvidenceDossier,
+    EvidenceOppositionRecord,
+    EvidenceOutcomeRecord,
+)
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
 from app.models.package import PackageDeployment, RolePackage
@@ -26,7 +39,15 @@ from app.models.research import (
     ResearchSource,
     ResearchTrial,
 )
+from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
+from app.models.surveillance import (
+    SurveillanceDigest,
+    SurveillanceFetchReceipt,
+    SurveillancePublication,
+    SurveillanceRoutingEvent,
+    SurveillanceSource,
+)
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 
@@ -35,20 +56,32 @@ __all__ = [
     "AgentCredential",
     "ApprovalEvent",
     "Artifact",
+    "CanonicalEvidenceAuditEvent",
+    "CanonicalEvidenceEdge",
+    "CanonicalEvidenceObject",
+    "CanonicalIdentityAlias",
     "ControlEvent",
     "ControlScope",
+    "CorpusBackup",
+    "CorpusRecoveryRun",
+    "CorpusSecurityFinding",
     "EngineeringMission",
+    "EvidenceDossier",
+    "EvidenceOppositionRecord",
+    "EvidenceOutcomeRecord",
+    "EvidenceRetrievalProjection",
+    "EvidenceRetrievalState",
     "FounderProposal",
     "MissionEvent",
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
-    "ResearchDatasetBuild",
-    "ResearchDatasetManifest",
     "ResearchBrief",
     "ResearchChunk",
     "ResearchDailyCycle",
     "ResearchDataSnapshot",
+    "ResearchDatasetBuild",
+    "ResearchDatasetManifest",
     "ResearchDecision",
     "ResearchDocument",
     "ResearchDomainProfile",
@@ -65,6 +98,12 @@ __all__ = [
     "RolePackage",
     "RunbookPackage",
     "RunbookPromotion",
+    "ScientificIngestionJob",
+    "SurveillanceDigest",
+    "SurveillanceFetchReceipt",
+    "SurveillancePublication",
+    "SurveillanceRoutingEvent",
+    "SurveillanceSource",
     "Task",
     "TaskApproval",
     "TaskDependency",
