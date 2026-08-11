@@ -9,6 +9,7 @@ def test_settings_strip_api_slash_and_prepare(settings: MissionControlSettings) 
     settings.prepare()
     assert settings.normalized_api_url == "http://control-plane.test"
     assert settings.data_root.stat().st_mode & 0o777 == 0o700
+    assert settings.projection_rebuild_timeout_seconds == 600.0
 
 
 def test_non_loopback_bind_is_rejected(settings: MissionControlSettings) -> None:

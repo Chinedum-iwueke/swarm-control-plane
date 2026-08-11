@@ -267,3 +267,24 @@ async def test_note_remediation_enters_founder_intake_planning(
             "objective": "Measure storage growth before proposing remediation.",
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_projection_rebuild_uses_maintenance_timeout(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["timeout"] = request.extensions["timeout"]
+        return httpx.Response(201, json={"status": "succeeded"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.rebuild_corpus_projections("systematic-research")
+    finally:
+        await client.close()
+
+    assert captured["path"] == "/v1/research/corpus/projections/recover"
+    assert captured["timeout"]["read"] == 600.0

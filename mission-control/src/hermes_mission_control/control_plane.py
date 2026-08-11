@@ -255,6 +255,7 @@ class ControlPlaneClient:
             "POST",
             "/v1/research/corpus/projections/recover",
             json={"project": project, "requested_by": "founder-mission-control"},
+            timeout=self._settings.projection_rebuild_timeout_seconds,
         )
 
     async def register_research_bundle(self, payload: dict[str, Any]) -> dict[str, Any]:
