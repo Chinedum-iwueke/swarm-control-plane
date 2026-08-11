@@ -54,7 +54,9 @@ def corpus_digest(db: Session) -> str:
         .where(CanonicalEvidenceObject.object_type == "scientific_object")
         .order_by(CanonicalEvidenceObject.id)
     ).all()
-    ids = [item.id for item in objects]
+    scientific_ids = select(CanonicalEvidenceObject.id).where(
+        CanonicalEvidenceObject.object_type == "scientific_object"
+    )
     edges = db.execute(
         select(
             CanonicalEvidenceEdge.subject_id,
@@ -63,8 +65,8 @@ def corpus_digest(db: Session) -> str:
         )
         .where(
             or_(
-                CanonicalEvidenceEdge.subject_id.in_(ids),
-                CanonicalEvidenceEdge.object_id.in_(ids),
+                CanonicalEvidenceEdge.subject_id.in_(scientific_ids),
+                CanonicalEvidenceEdge.object_id.in_(scientific_ids),
             )
         )
         .order_by(
@@ -72,7 +74,7 @@ def corpus_digest(db: Session) -> str:
             CanonicalEvidenceEdge.predicate,
             CanonicalEvidenceEdge.object_id,
         )
-    ).all() if ids else []
+    ).all() if objects else []
     aliases = db.execute(
         select(
             CanonicalIdentityAlias.canonical_object_id,
@@ -80,14 +82,14 @@ def corpus_digest(db: Session) -> str:
             CanonicalIdentityAlias.native_object_type,
             CanonicalIdentityAlias.alias_value,
         )
-        .where(CanonicalIdentityAlias.canonical_object_id.in_(ids))
+        .where(CanonicalIdentityAlias.canonical_object_id.in_(scientific_ids))
         .order_by(
             CanonicalIdentityAlias.canonical_object_id,
             CanonicalIdentityAlias.namespace,
             CanonicalIdentityAlias.native_object_type,
             CanonicalIdentityAlias.alias_value,
         )
-    ).all() if ids else []
+    ).all() if objects else []
     material = {
         "projection_version": PROJECTION_VERSION,
         "objects": [
@@ -125,11 +127,14 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
         ).all()
     )
     ids = [item.id for item in objects]
+    scientific_ids = select(CanonicalEvidenceObject.id).where(
+        CanonicalEvidenceObject.object_type == "scientific_object"
+    )
     edge_rows = db.execute(
         select(CanonicalEvidenceEdge.subject_id, CanonicalEvidenceEdge.object_id).where(
             or_(
-                CanonicalEvidenceEdge.subject_id.in_(ids),
-                CanonicalEvidenceEdge.object_id.in_(ids),
+                CanonicalEvidenceEdge.subject_id.in_(scientific_ids),
+                CanonicalEvidenceEdge.object_id.in_(scientific_ids),
             )
         )
     ).all() if ids else []
@@ -145,7 +150,7 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
             CanonicalIdentityAlias.namespace,
             CanonicalIdentityAlias.native_object_type,
             CanonicalIdentityAlias.alias_value,
-        ).where(CanonicalIdentityAlias.canonical_object_id.in_(ids))
+        ).where(CanonicalIdentityAlias.canonical_object_id.in_(scientific_ids))
     ).all() if ids else []
     aliases_by_id: dict[UUID, list[str]] = {item: [] for item in ids}
     for object_id, namespace, object_type, value in aliases:
