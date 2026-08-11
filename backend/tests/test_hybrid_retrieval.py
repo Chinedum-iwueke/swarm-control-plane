@@ -18,6 +18,7 @@ from app.services.retrieval import (
     PROJECTION_VERSION,
     _authorized_projections,
     build_projections,
+    corpus_digest,
     fuse_rankings,
     hashed_vector,
     hybrid_search,
@@ -308,6 +309,61 @@ def test_projection_rebuild_is_atomic_and_digest_bound() -> None:
         "3fcd6f4b2b54f059928145dd1c27cf4b779a388c101e5e9079f1c9cf88c20f7d"
     )
     assert db.commit.call_count == 1
+
+
+def test_projection_queries_do_not_expand_corpus_ids_into_parameters() -> None:
+    object_id = UUID("22222222-2222-4222-8222-222222222222")
+    canonical = SimpleNamespace(
+        id=object_id,
+        project=PROJECT,
+        access_class="internal",
+        object_schema_version=SCHEMA,
+        content_digest="2" * 64,
+        payload={"scientific_type": "paragraph", "content_text": "Momentum"},
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [canonical]
+    result = MagicMock()
+    result.all.return_value = []
+    db.execute.return_value = result
+
+    build_projections(db)
+
+    select_statements = [
+        call.args[0]
+        for call in db.execute.call_args_list
+        if call.args and getattr(call.args[0], "is_select", False)
+    ]
+    assert select_statements
+    for statement in select_statements:
+        compiled = statement.compile()
+        assert object_id not in compiled.params.values()
+        assert "SELECT canonical_evidence_objects.id" in str(compiled)
+
+
+def test_corpus_digest_queries_do_not_expand_corpus_ids_into_parameters() -> None:
+    object_id = UUID("22222222-2222-4222-8222-222222222222")
+    db = MagicMock()
+    objects = MagicMock()
+    objects.all.return_value = [
+        SimpleNamespace(
+            id=object_id,
+            content_digest="2" * 64,
+            object_schema_version=SCHEMA,
+            project=PROJECT,
+            access_class="internal",
+        )
+    ]
+    empty = MagicMock()
+    empty.all.return_value = []
+    db.execute.side_effect = [objects, empty, empty]
+
+    corpus_digest(db)
+
+    for call in db.execute.call_args_list[1:]:
+        compiled = call.args[0].compile()
+        assert object_id not in compiled.params.values()
+        assert "SELECT canonical_evidence_objects.id" in str(compiled)
 
 
 def test_result_is_reauthorized_against_canonical_object(
