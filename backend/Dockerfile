@@ -4,6 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 swarm \
     && useradd \
         --uid 10001 \

@@ -24,7 +24,8 @@ class MissionControlSettings(BaseSettings):
     port: int = Field(default=8790, ge=1024, le=65535)
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     projection_rebuild_timeout_seconds: float = Field(default=600.0, ge=30, le=3600)
-    upload_max_bytes: int = Field(default=52_428_800, ge=1024, le=104_857_600)
+    ingestion_timeout_seconds: float = Field(default=3600.0, ge=60, le=7200)
+    upload_max_bytes: int = Field(default=104_857_600, ge=1024, le=104_857_600)
     research_inbox_directory: Optional[Path] = None  # noqa: UP045
 
     @property

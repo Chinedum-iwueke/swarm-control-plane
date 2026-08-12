@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://redis:6379/0"
     evidence_object_root: Path = Path("/var/lib/invariance-swarm/evidence-objects")
-    scientific_ingestion_max_bytes: int = 25 * 1024 * 1024
+    scientific_ingestion_max_bytes: int = 100 * 1024 * 1024
 
     orchestrator_secret_file: str = Field(default="/run/secrets/orchestrator_secret")
 

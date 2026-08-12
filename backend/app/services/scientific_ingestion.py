@@ -58,6 +58,25 @@ def quarantine_ingestion(
         )
     )
     if existing is not None:
+        if (
+            existing.status in {"rejected", "remediation_required"}
+            and existing.filename != payload.filename
+            and payload.filename.endswith((".pdf", ".md", ".markdown", ".txt"))
+        ):
+            stages = list(existing.stage_report.get("stages", []))
+            stages.append(
+                _stage(
+                    "quarantine",
+                    "requeued",
+                    reason="bounded filename metadata was corrected",
+                )
+            )
+            existing.filename = payload.filename
+            existing.stage_report = {"stages": stages}
+            existing.status = "quarantined"
+            existing.updated_at = datetime.now(UTC)
+            db.commit()
+            db.refresh(existing)
         return existing
     reference = store.put(content, expected_digest=actual)
     now = datetime.now(UTC)
@@ -103,7 +122,7 @@ def process_ingestion(
         raise HTTPException(status_code=404, detail="Scientific ingestion job not found.")
     if job.status == "published":
         return job
-    if job.status not in {"quarantined", "remediation_required"}:
+    if job.status not in {"quarantined", "remediation_required", "rejected"}:
         raise HTTPException(status_code=409, detail="Scientific ingestion is not processable.")
     content = store.get(
         ObjectReference(
