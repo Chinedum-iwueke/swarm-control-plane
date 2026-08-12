@@ -8,6 +8,7 @@ from app.api.routes.data_contracts import router as data_contracts_router
 from app.api.routes.evidence import router as evidence_router
 from app.api.routes.founder_channel import router as founder_channel_router
 from app.api.routes.governance import router as governance_router
+from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingestion import router as ingestion_router
 from app.api.routes.memory import router as memory_router
@@ -42,6 +43,7 @@ __all__ = [
     "evidence_router",
     "founder_channel_router",
     "governance_router",
+    "graph_router",
     "health_router",
     "ingestion_router",
     "memory_router",

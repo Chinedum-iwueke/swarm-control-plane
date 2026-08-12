@@ -18,6 +18,7 @@ class FakeControlPlane:
         self.memory_sync_requested = False
         self.dossier_requested: str | None = None
         self.surveillance_requested: str | None = None
+        self.graph_requested = False
 
     async def close(self) -> None:
         self.closed = True
@@ -100,6 +101,27 @@ class FakeControlPlane:
         self.surveillance_requested = publication_id
         return {"publication_id": publication_id, "exact_replay": True}
 
+    async def knowledge_graph(self, *, limit: int = 100) -> dict:
+        self.graph_requested = True
+        return {
+            "projection_version": "knowledge-graph-v1.0.0",
+            "corpus_digest": "a" * 64,
+            "query_digest": "b" * 64,
+            "nodes": [
+                {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "label": "A supported claim",
+                    "object_type": "claim",
+                    "project": "systematic-research",
+                    "access_class": "internal",
+                    "content_digest": "c" * 64,
+                }
+            ],
+            "edges": [],
+            "paths": [],
+            "truncated": False,
+        }
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,
@@ -131,6 +153,18 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/research/dossiers/{dossier_id}" in paths
     assert "/api/research/dossiers/{dossier_id}/replay" in paths
     assert "/api/research/surveillance/{publication_id}/replay" in paths
+
+
+def test_graph_explorer_uses_canonical_control_plane_projection(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get("/api/knowledge/graph")
+    assert response.status_code == 200
+    assert response.json()["projection_version"] == "knowledge-graph-v1.0.0"
+    assert response.json()["nodes"][0]["object_type"] == "claim"
+    assert fake.graph_requested is True
 
 
 def test_dossier_inspection_and_replay_are_read_only(

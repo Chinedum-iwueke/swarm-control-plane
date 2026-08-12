@@ -505,9 +505,11 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .result p { margin: 6px 0; line-height: 1.55; white-space: pre-wrap; }
 .citation { color: var(--cyan); font-family: var(--mono); font-size: 9px; word-break: break-all; }
 .graph-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.node { padding: 4px 6px; background: #f3f6f4; border: 1px solid var(--line); border-radius: 3px; font-size: 10px; }
+.node { padding: 4px 6px; background: #f3f6f4; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); cursor: pointer; font: inherit; font-size: 10px; text-align: left; }
+.node:hover, .node:focus-visible { background: #e7eeea; border-color: var(--muted); }
 .node small { color: var(--muted); }
 .graph-edge { min-height: 28px; display: flex; align-items: center; color: var(--muted); border-top: 1px solid var(--line-soft); font-family: var(--mono); font-size: 9px; }
+.projection-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; color: var(--muted); font-size: 10px; }
 
 .artifact-row {
   display: grid;

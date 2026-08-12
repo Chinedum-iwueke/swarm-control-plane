@@ -11,6 +11,12 @@ from app.models.evidence import (
     CanonicalIdentityAlias,
 )
 from app.models.governance import ApprovalEvent, Artifact, TaskApproval
+from app.models.graph import (
+    CognitiveToolReceipt,
+    EvidenceGraphProjectionEdge,
+    EvidenceGraphProjectionNode,
+    EvidenceGraphProjectionState,
+)
 from app.models.ingestion import ScientificIngestionJob
 from app.models.memory import (
     EvidenceDossier,
@@ -61,6 +67,7 @@ __all__ = [
     "CanonicalEvidenceEdge",
     "CanonicalEvidenceObject",
     "CanonicalIdentityAlias",
+    "CognitiveToolReceipt",
     "ControlEvent",
     "ControlScope",
     "CorpusBackup",
@@ -70,6 +77,9 @@ __all__ = [
     "CorpusSyncRun",
     "EngineeringMission",
     "EvidenceDossier",
+    "EvidenceGraphProjectionEdge",
+    "EvidenceGraphProjectionNode",
+    "EvidenceGraphProjectionState",
     "EvidenceOppositionRecord",
     "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
