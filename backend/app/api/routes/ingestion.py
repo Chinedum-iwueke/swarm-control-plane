@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import require_orchestrator
 from app.db.session import get_db
-from app.ingestion import ScientificIngestionPipeline
+from app.ingestion import OfflineTesseractOcr, ScientificIngestionPipeline
 from app.models.ingestion import ScientificIngestionJob
 from app.schemas.ingestion import (
     CoordinateReplayResponse,
@@ -41,6 +41,7 @@ def _store() -> FilesystemEvidenceObjectStore:
 def _pipeline() -> ScientificIngestionPipeline:
     settings = get_settings()
     return ScientificIngestionPipeline(
+        ocr=OfflineTesseractOcr(),
         max_bytes=settings.scientific_ingestion_max_bytes
     )
 

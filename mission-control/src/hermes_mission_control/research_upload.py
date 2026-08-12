@@ -31,7 +31,12 @@ def safe_filename(name: str) -> str:
     cleaned = _SAFE.sub("-", leaf.lower()).strip(".-")
     if not cleaned or cleaned.startswith("."):
         raise ResearchUploadError("The source filename is unsafe.")
-    return cleaned[:180]
+    suffix = Path(cleaned).suffix
+    if len(cleaned) <= 180:
+        return cleaned
+    if not suffix:
+        return cleaned[:180]
+    return f"{cleaned[: 180 - len(suffix)].rstrip('.-')}{suffix}"
 
 
 def extract_passages(filename: str, content: bytes) -> list[Passage]:

@@ -7,15 +7,8 @@ from pathlib import Path
 from typing import Protocol
 
 from pypdf import PdfReader
+from pypdf.generic import DictionaryObject, IndirectObject
 
-_ACTIVE_PDF_MARKERS = (
-    b"/JavaScript",
-    b"/JS",
-    b"/OpenAction",
-    b"/Launch",
-    b"/EmbeddedFile",
-    b"/AA",
-)
 _EICAR = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
 _INJECTION_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -71,6 +64,25 @@ class BuiltinSignatureScanner:
         if _EICAR in content:
             return "malware test signature detected"
         return None
+
+
+class OfflineTesseractOcr:
+    name = "tesseract-ocr-v1"
+    network_access = False
+
+    def recover_pages(self, content: bytes) -> list[str]:
+        import pypdfium2 as pdfium
+        import pytesseract
+
+        document = pdfium.PdfDocument(content)
+        pages: list[str] = []
+        for page in document:
+            image = page.render(scale=2).to_pil()
+            pages.append(pytesseract.image_to_string(image, lang="eng", timeout=60))
+            image.close()
+            page.close()
+        document.close()
+        return pages
 
 
 @dataclass(frozen=True)
@@ -168,20 +180,19 @@ class ScientificIngestionPipeline:
             raise IngestionRejected(
                 "archives are not accepted by scientific ingestion", stage="scan"
             )
-        if media_type == "application/pdf":
-            if not content.startswith(b"%PDF-"):
-                raise IngestionRejected("PDF signature is invalid", stage="scan")
-            if any(marker in content for marker in _ACTIVE_PDF_MARKERS):
-                raise IngestionRejected("active PDF content is forbidden", stage="scan")
+        if media_type == "application/pdf" and not content.startswith(b"%PDF-"):
+            raise IngestionRejected("PDF signature is invalid", stage="scan")
 
     def _pdf_pages(self, content: bytes) -> tuple[list[str], bool, str]:
         try:
             reader = PdfReader(BytesIO(content), strict=True)
+            if _has_active_pdf_content(reader):
+                raise IngestionRejected("active PDF content is forbidden", stage="scan")
             if len(reader.pages) == 0 or len(reader.pages) > self.max_pages:
                 raise IngestionRejected(
                     "PDF page count is outside the ingestion limit", stage="extract"
                 )
-            pages = [(page.extract_text() or "").strip() for page in reader.pages]
+            pages = [_database_safe(page.extract_text() or "").strip() for page in reader.pages]
         except IngestionRejected:
             raise
         except Exception as exc:
@@ -211,7 +222,7 @@ class ScientificIngestionPipeline:
 
     def _text_pages(self, content: bytes) -> tuple[list[str], bool, str]:
         try:
-            text = content.decode("utf-8")
+            text = _database_safe(content.decode("utf-8"))
         except UnicodeDecodeError as exc:
             raise IngestionRejected(
                 "text artifact must be valid UTF-8", stage="extract"
@@ -304,6 +315,48 @@ class ScientificIngestionPipeline:
         if line.lower().startswith(("note:", "footnote:")):
             return "note"
         return None
+
+
+def _database_safe(value: str) -> str:
+    """PostgreSQL text cannot represent NUL, occasionally emitted by PDF fonts."""
+    return value.replace("\x00", "")
+
+
+def _has_active_pdf_content(reader: PdfReader) -> bool:
+    root = _pdf_object(reader.trailer.get("/Root"))
+    if not isinstance(root, DictionaryObject):
+        return True
+    if "/OpenAction" in root or "/AA" in root:
+        return True
+    names = _pdf_object(root.get("/Names"))
+    if isinstance(names, DictionaryObject) and (
+        "/JavaScript" in names or "/EmbeddedFiles" in names
+    ):
+        return True
+    for page in reader.pages:
+        if "/AA" in page:
+            return True
+        for annotation in page.get("/Annots", []):
+            record = _pdf_object(annotation)
+            if not isinstance(record, DictionaryObject):
+                continue
+            if str(record.get("/Subtype")) == "/FileAttachment":
+                return True
+            if "/AA" in record or _is_dangerous_action(record.get("/A")):
+                return True
+    return False
+
+
+def _is_dangerous_action(value: object) -> bool:
+    action = _pdf_object(value)
+    return isinstance(action, DictionaryObject) and str(action.get("/S")) in {
+        "/JavaScript",
+        "/Launch",
+    }
+
+
+def _pdf_object(value: object) -> object:
+    return value.get_object() if isinstance(value, IndirectObject) else value
 
 
 def contains_instruction_injection(text: str) -> bool:

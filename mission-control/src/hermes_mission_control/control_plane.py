@@ -240,11 +240,18 @@ class ControlPlaneClient:
         )
 
     async def create_scientific_ingestion(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/v1/research/ingestion/jobs", json=payload)
+        return await self._request(
+            "POST",
+            "/v1/research/ingestion/jobs",
+            json=payload,
+            timeout=self._settings.ingestion_timeout_seconds,
+        )
 
     async def process_scientific_ingestion(self, job_id: str) -> dict[str, Any]:
         return await self._request(
-            "POST", f"/v1/research/ingestion/jobs/{job_id}/process"
+            "POST",
+            f"/v1/research/ingestion/jobs/{job_id}/process",
+            timeout=self._settings.ingestion_timeout_seconds,
         )
 
     async def reconcile_corpus(self, payload: dict[str, Any]) -> dict[str, Any]:

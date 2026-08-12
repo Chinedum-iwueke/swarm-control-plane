@@ -31,6 +31,12 @@ def test_filename_is_reduced_to_safe_leaf(name: str) -> None:
     assert safe_filename(name) == "paper.pdf"
 
 
+def test_long_filename_preserves_media_suffix() -> None:
+    filename = safe_filename(f"{'long-research-title-' * 20}.pdf")
+    assert len(filename) <= 180
+    assert filename.endswith(".pdf")
+
+
 def test_unsupported_upload_is_rejected() -> None:
     with pytest.raises(ResearchUploadError, match="Only PDF"):
         extract_passages("archive.zip", b"not an archive")

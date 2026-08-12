@@ -72,14 +72,18 @@ async def sync_research_inbox(
                 }
             )
             was_published = job["status"] == "published"
-            if not was_published:
+            if job["status"] != "published":
                 job = await client.process_scientific_ingestion(job["id"])
             disposition = (
                 "canonical" if job["status"] == "published" else "quarantined"
             )
             item.update(
-                status="unchanged" if was_published else (
-                    "added" if disposition == "canonical" else "rejected"
+                status=(
+                    "unchanged"
+                    if was_published
+                    else "added"
+                    if disposition == "canonical"
+                    else "rejected"
                 ),
                 content_digest=content_digest,
                 document_type=document_type,
