@@ -80,6 +80,33 @@ class ScientificIngestionResponse(StrictModel):
     updated_at: datetime
 
 
+class IngestionRecoveryCreate(StrictModel):
+    schema_version: Literal["scientific-ingestion-recovery-v1.0.0"]
+    project: str = Field(pattern=_NAME)
+    requested_by: str = Field(pattern=_NAME)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class IngestionRecoveryResponse(StrictModel):
+    id: UUID
+    schema_version: str
+    original_job_id: UUID
+    sanitized_job_id: UUID | None
+    status: Literal[
+        "queued", "processing", "recovered", "rejected", "remediation_required"
+    ]
+    requested_by: str
+    receipt: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class IngestionRecoveryBatchResponse(StrictModel):
+    queued: int
+    existing: int
+    recovery_ids: list[UUID]
+
+
 class CoordinateReplayResponse(StrictModel):
     object_id: UUID
     artifact_id: UUID

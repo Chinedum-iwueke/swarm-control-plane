@@ -1,7 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +35,41 @@ class ScientificIngestionJob(Base):
     published_object_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False, default=list
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ScientificIngestionRecovery(Base):
+    __tablename__ = "scientific_ingestion_recoveries"
+    __table_args__ = (
+        UniqueConstraint("original_job_id"),
+        CheckConstraint(
+            "status IN ('queued','processing','recovered','rejected','remediation_required')"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    original_job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_ingestion_jobs.id"),
+        nullable=False,
+        index=True,
+    )
+    sanitized_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_ingestion_jobs.id"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    requested_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    receipt: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

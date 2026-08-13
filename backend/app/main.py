@@ -16,6 +16,7 @@ from app.api.routes import (
     governance_router,
     graph_router,
     health_router,
+    ingestion_recovery_router,
     ingestion_router,
     memory_router,
     metrics_router,
@@ -45,6 +46,7 @@ app.include_router(health_router)
 app.include_router(corpus_router)
 app.include_router(corpus_sync_router)
 app.include_router(ingestion_router)
+app.include_router(ingestion_recovery_router)
 app.include_router(metrics_router)
 app.include_router(memory_router)
 app.include_router(missions_router)

@@ -11,6 +11,7 @@ from app.api.routes.governance import router as governance_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingestion import router as ingestion_router
+from app.api.routes.ingestion_recovery import router as ingestion_recovery_router
 from app.api.routes.memory import router as memory_router
 from app.api.routes.metrics import router as metrics_router
 from app.api.routes.missions import router as missions_router
@@ -45,6 +46,7 @@ __all__ = [
     "governance_router",
     "graph_router",
     "health_router",
+    "ingestion_recovery_router",
     "ingestion_router",
     "memory_router",
     "metrics_router",
