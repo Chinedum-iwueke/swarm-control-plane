@@ -14,6 +14,7 @@ from app.api.routes import (
     evidence_router,
     founder_channel_router,
     governance_router,
+    graph_router,
     health_router,
     ingestion_router,
     memory_router,
@@ -57,6 +58,7 @@ app.include_router(data_contracts_router)
 app.include_router(evidence_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
+app.include_router(graph_router)
 app.include_router(agent_runtime_router)
 app.include_router(agent_research_router)
 app.include_router(agent_notes_router)

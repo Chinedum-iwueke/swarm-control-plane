@@ -19,6 +19,7 @@ EvidenceObjectType = Literal[
     "assumption",
     "dataset",
     "run",
+    "result",
     "review",
     "decision",
     "belief",
@@ -124,6 +125,14 @@ class RunPayload(StrictModel):
     attempt: int = Field(ge=1)
 
 
+class ResultPayload(StrictModel):
+    kind: Literal["result"]
+    run_object_id: UUID
+    outcome: Literal["positive", "negative", "null", "invalid", "inconclusive"]
+    metrics: dict[str, int | float | str | bool | None]
+    artifact_object_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+
 class ReviewPayload(StrictModel):
     kind: Literal["review"]
     subject_object_id: UUID
@@ -205,6 +214,7 @@ EvidencePayload = Annotated[
     | AssumptionPayload
     | DatasetPayload
     | RunPayload
+    | ResultPayload
     | ReviewPayload
     | DecisionPayload
     | BeliefPayload
@@ -262,6 +272,7 @@ class EvidenceObjectCreate(StrictModel):
             "assumption": {"derived"},
             "dataset": {"primary", "derived"},
             "run": {"operational"},
+            "result": {"derived"},
             "review": {"institutional"},
             "decision": {"institutional"},
             "belief": {"institutional"},

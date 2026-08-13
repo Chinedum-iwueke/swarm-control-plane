@@ -326,7 +326,7 @@ def create_app(
 
     @app.get("/api/knowledge/graph")
     async def graph() -> dict:
-        return store.graph().model_dump()
+        return await client.knowledge_graph(limit=100)
 
     return app
 

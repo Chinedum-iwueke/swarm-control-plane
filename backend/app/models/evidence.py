@@ -80,6 +80,21 @@ class CanonicalEvidenceEdge(Base):
     object_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("canonical_evidence_objects.id"), nullable=False
     )
+    valid_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    valid_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    provenance_object_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("canonical_evidence_objects.id"), nullable=True
+    )
+    access_class: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="internal"
+    )
+    record_digest: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

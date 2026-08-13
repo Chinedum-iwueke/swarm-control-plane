@@ -103,6 +103,11 @@ class ControlPlaneClient:
             f"/v1/research/surveillance/candidates/{publication_id}/replay",
         )
 
+    async def knowledge_graph(self, *, limit: int = 100) -> dict[str, Any]:
+        return await self._request(
+            "GET", "/v1/research/graph/overview", params={"limit": limit}
+        )
+
     async def get_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/research/memory/dossiers/{dossier_id}")
 

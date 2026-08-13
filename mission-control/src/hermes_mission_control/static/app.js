@@ -986,12 +986,24 @@ async function loadGraph() {
 
 function renderGraph(graph) {
   const nodes = (graph.nodes || []).slice(0, 80);
-  const nodeMap = new Map(nodes.map((node) => [node.id, node.name]));
+  const nodeMap = new Map(nodes.map((node) => [node.id, node.label || node.name]));
   const edges = (graph.edges || []).slice(0, 24);
   document.getElementById("graph").innerHTML = nodes.length ? `
-    <div class="graph-list">${nodes.map((node) => `<span class="node">${escapeHtml(node.name)} <small>${escapeHtml(node.kind)}</small></span>`).join("")}</div>
-    ${edges.map((edge) => `<div class="graph-edge">${escapeHtml(nodeMap.get(edge.source) || edge.source)} → ${escapeHtml(edge.relation)} → ${escapeHtml(nodeMap.get(edge.target) || edge.target)}</div>`).join("")}
-  ` : empty("Index a document to build the graph.");
+    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span class="mono">${escapeHtml(shortHash(graph.corpus_digest || graph.query_digest || ""))}</span>${graph.truncated ? "<span>Bounded view</span>" : ""}</div>
+    <div class="graph-list">${nodes.map((node) => `<button class="node" data-graph-node="${escapeHtml(node.id)}">${escapeHtml(node.label || node.name)} <small>${escapeHtml(node.object_type || node.kind)}</small></button>`).join("")}</div>
+    ${edges.map((edge) => `<div class="graph-edge">${escapeHtml(nodeMap.get(edge.source) || edge.source)} → ${escapeHtml(edge.predicate || edge.relation)} → ${escapeHtml(nodeMap.get(edge.target) || edge.target)}</div>`).join("")}
+  ` : empty("Build the canonical graph projection to explore research lineage.");
+  document.querySelectorAll("[data-graph-node]").forEach((button) => {
+    const node = nodes.find((item) => String(item.id) === button.dataset.graphNode);
+    button.addEventListener("click", () => openInspector("Canonical evidence", node.label || node.name, `
+      <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
+        <dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd>
+        <dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd>
+        <dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd>
+        <dt>Digest</dt><dd class="mono">${escapeHtml(node.content_digest || "Local projection")}</dd>
+      </dl></section>
+    `));
+  });
 }
 
 function renderSearchResults(results) {

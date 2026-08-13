@@ -32,6 +32,7 @@ _REFERENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "assumption": ("evidence_object_ids",),
     "dataset": ("source_object_ids", "correction_object_ids"),
     "run": ("dataset_object_ids",),
+    "result": ("run_object_id", "artifact_object_ids"),
     "review": ("subject_object_id",),
     "decision": ("evidence_object_ids",),
     "belief": (
