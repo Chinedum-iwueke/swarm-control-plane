@@ -17,7 +17,7 @@ from app.models.graph import (
     EvidenceGraphProjectionNode,
     EvidenceGraphProjectionState,
 )
-from app.models.ingestion import ScientificIngestionJob
+from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
 from app.models.memory import (
     EvidenceDossier,
     EvidenceOppositionRecord,
@@ -112,6 +112,7 @@ __all__ = [
     "RunbookPackage",
     "RunbookPromotion",
     "ScientificIngestionJob",
+    "ScientificIngestionRecovery",
     "SurveillanceDigest",
     "SurveillanceFetchReceipt",
     "SurveillancePublication",
