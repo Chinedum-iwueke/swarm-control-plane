@@ -59,6 +59,7 @@ def read_retrieval_projection_status(db: Annotated[Session, Depends(get_db)]):
         corpus_digest=state.corpus_digest,
         current_corpus_digest=current,
         object_count=state.object_count,
+        source_epoch=state.source_epoch,
         built_at=state.built_at,
         stale=stale,
     )

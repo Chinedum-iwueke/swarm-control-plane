@@ -4,6 +4,8 @@ import hashlib
 import json
 import math
 import re
+import threading
+import time
 from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -11,7 +13,7 @@ from itertools import chain
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, insert, not_, or_, select
+from sqlalchemy import and_, delete, func, insert, not_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import (
@@ -19,12 +21,16 @@ from app.models.evidence import (
     CanonicalEvidenceObject,
     CanonicalIdentityAlias,
 )
-from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
+from app.models.retrieval import (
+    EvidenceCorpusFreshness,
+    EvidenceRetrievalProjection,
+    EvidenceRetrievalState,
+)
 from app.schemas.retrieval import HybridRetrievalRequest
 from app.services.evidence import EvidenceAccessContext, get_evidence_object
 
 PROJECTION_NAME = "canonical-scientific"
-PROJECTION_VERSION = "hybrid-retrieval-v1.0.0"
+PROJECTION_VERSION = "hybrid-retrieval-v1.1.0"
 VECTOR_DIMENSIONS = 64
 RRF_K = 60
 MINIMUM_EVIDENCE_CONFIDENCE = 0.18
@@ -72,6 +78,10 @@ _CONCEPTS = {
 }
 _PROJECTION_BATCH_SIZE = 1_000
 _CALIBRATION_CANDIDATES_PER_CHANNEL = 2_000
+_DATABASE_CANDIDATE_LIMIT = 4_000
+_GRAPH_EXPANSION_LIMIT = 1_000
+_MAX_QUERY_TERMS = 24
+_SEARCH_CAPACITY = threading.BoundedSemaphore(8)
 
 
 def _digest_rows(rows: Iterable[tuple[str, ...]]) -> str:
@@ -84,6 +94,26 @@ def _digest_rows(rows: Iterable[tuple[str, ...]]) -> str:
 
 
 def corpus_digest(db: Session) -> str:
+    return freshness_snapshot(db)[0]
+
+
+def corpus_epoch(db: Session) -> int:
+    return freshness_snapshot(db)[1]
+
+
+def freshness_snapshot(db: Session) -> tuple[str, int]:
+    row = db.execute(
+        select(
+            EvidenceCorpusFreshness.corpus_digest,
+            EvidenceCorpusFreshness.epoch,
+        ).where(EvidenceCorpusFreshness.corpus_name == PROJECTION_NAME)
+    ).one_or_none()
+    if row is not None and isinstance(row.epoch, int):
+        return row.corpus_digest, row.epoch
+    return _legacy_corpus_digest(db), 0
+
+
+def _legacy_corpus_digest(db: Session) -> str:
     object_rows = db.execute(
         select(
             CanonicalEvidenceObject.id,
@@ -169,7 +199,7 @@ def corpus_digest(db: Session) -> str:
 
 
 def build_projections(db: Session) -> EvidenceRetrievalState:
-    digest = corpus_digest(db)
+    digest, source_epoch = freshness_snapshot(db)
     now = datetime.now(UTC)
     db.execute(delete(EvidenceRetrievalProjection))
     db.execute(delete(EvidenceRetrievalState))
@@ -254,10 +284,18 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
         if mappings:
             db.execute(insert(EvidenceRetrievalProjection), mappings)
             projected_count += len(mappings)
+    final_digest, final_epoch = freshness_snapshot(db)
+    if final_digest != digest or final_epoch != source_epoch:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Canonical evidence changed during projection rebuild.",
+        )
     state = EvidenceRetrievalState(
         projection_name=PROJECTION_NAME,
         projection_version=PROJECTION_VERSION,
         corpus_digest=digest,
+        source_epoch=source_epoch,
         object_count=projected_count,
         built_at=now,
     )
@@ -273,8 +311,12 @@ def projection_status(db: Session) -> tuple[EvidenceRetrievalState, str, bool]:
         raise HTTPException(
             status_code=409, detail="Retrieval projection is not built."
         )
-    current = corpus_digest(db)
-    return state, current, state.corpus_digest != current
+    current, current_epoch = freshness_snapshot(db)
+    stale = (
+        state.corpus_digest != current
+        or getattr(state, "source_epoch", 0) != current_epoch
+    )
+    return state, current, stale
 
 
 def hybrid_search(
@@ -282,7 +324,25 @@ def hybrid_search(
     request: HybridRetrievalRequest,
     access: EvidenceAccessContext,
 ) -> dict:
+    if not _SEARCH_CAPACITY.acquire(timeout=0.1):
+        raise HTTPException(
+            status_code=503,
+            detail="Retrieval capacity is temporarily exhausted.",
+        )
+    try:
+        return _hybrid_search(db, request, access)
+    finally:
+        _SEARCH_CAPACITY.release()
+
+
+def _hybrid_search(
+    db: Session,
+    request: HybridRetrievalRequest,
+    access: EvidenceAccessContext,
+) -> dict:
+    started = time.perf_counter()
     state, current_digest, stale = projection_status(db)
+    freshness_finished = time.perf_counter()
     if stale:
         raise HTTPException(
             status_code=409,
@@ -293,6 +353,7 @@ def hybrid_search(
             status_code=409, detail="Projection version is incompatible."
         )
     projections = _authorized_projections(db, request, access)
+    candidates_finished = time.perf_counter()
     channel_scores = score_channels(projections, request.query)
     selected = calibrated_rankings(
         projections,
@@ -301,6 +362,7 @@ def hybrid_search(
         request.query,
         request.limit,
     )
+    ranking_finished = time.perf_counter()
     by_id = {item.object_id: item for item in projections}
     hits = []
     for object_id, fused_score, confidence, ranks in selected:
@@ -337,6 +399,15 @@ def hybrid_search(
                 },
             }
         )
+    source_epoch = getattr(state, "source_epoch", None)
+    if source_epoch is not None:
+        final_digest, final_epoch = freshness_snapshot(db)
+        if final_digest != current_digest or final_epoch != source_epoch:
+            raise HTTPException(
+                status_code=409,
+                detail="Canonical evidence changed during retrieval.",
+            )
+    completed = time.perf_counter()
     return {
         "query": request.query,
         "projection_version": state.projection_version,
@@ -346,6 +417,22 @@ def hybrid_search(
         "confidence": round(hits[0]["confidence"], 8) if hits else 0.0,
         "abstained": not hits,
         "calibration": CALIBRATION_VERSION,
+        "timings_ms": {
+            "freshness": _milliseconds(started, freshness_finished),
+            "candidates": _milliseconds(freshness_finished, candidates_finished),
+            "ranking": _milliseconds(candidates_finished, ranking_finished),
+            "authorization_and_hydration": _milliseconds(
+                ranking_finished, completed
+            ),
+            "total": _milliseconds(started, completed),
+        },
+        "candidate_counts": {
+            "bounded": len(projections),
+            **{
+                channel: len(channel_scores[channel])
+                for channel in request.channels
+            },
+        },
         "hits": hits,
     }
 
@@ -537,6 +624,80 @@ def _authorized_projections(
     request: HybridRetrievalRequest,
     access: EvidenceAccessContext,
 ) -> list[EvidenceRetrievalProjection]:
+    statement = _authorized_statement(request, access)
+    normalized = request.query.strip().lower()
+    exact_conditions = []
+    try:
+        exact_conditions.append(EvidenceRetrievalProjection.object_id == UUID(normalized))
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9a-f]{64}", normalized):
+        exact_conditions.append(
+            EvidenceRetrievalProjection.content_digest == normalized
+        )
+    exact_conditions.append(EvidenceRetrievalProjection.aliases.contains([normalized]))
+    exact = list(
+        db.scalars(
+            statement.where(or_(*exact_conditions))
+            .order_by(EvidenceRetrievalProjection.object_id)
+            .limit(100)
+        ).all()
+    )
+
+    terms = sorted(candidate_terms(request.query))[:_MAX_QUERY_TERMS]
+    lexical = []
+    if terms:
+        document = func.to_tsvector(
+            "simple", EvidenceRetrievalProjection.content_text
+        )
+        term_queries = [func.plainto_tsquery("simple", term) for term in terms]
+        lexical = list(
+            db.scalars(
+                statement.where(
+                    or_(*(document.op("@@")(query) for query in term_queries))
+                )
+                .order_by(
+                    func.ts_rank_cd(
+                        document,
+                        func.websearch_to_tsquery("simple", request.query),
+                    ).desc(),
+                    EvidenceRetrievalProjection.object_id,
+                )
+                .limit(_DATABASE_CANDIDATE_LIMIT)
+            ).all()
+        )
+
+    candidates = {item.object_id: item for item in (*exact, *lexical)}
+    if candidates and "graph" in request.channels:
+        initial_scores = score_channels(candidates.values(), request.query)
+        seed_ids = {
+            object_id
+            for scores in initial_scores.values()
+            for object_id, _ in _rank(scores)[:5]
+        }
+        neighbor_ids = sorted(
+            {
+                neighbor
+                for item in candidates.values()
+                if item.object_id in seed_ids
+                for neighbor in item.graph_neighbors
+            },
+            key=str,
+        )[:_GRAPH_EXPANSION_LIMIT]
+        if neighbor_ids:
+            neighbors = db.scalars(
+                statement.where(
+                    EvidenceRetrievalProjection.object_id.in_(neighbor_ids)
+                ).order_by(EvidenceRetrievalProjection.object_id)
+            ).all()
+            candidates.update((item.object_id, item) for item in neighbors)
+    return sorted(candidates.values(), key=lambda item: str(item.object_id))
+
+
+def _authorized_statement(
+    request: HybridRetrievalRequest,
+    access: EvidenceAccessContext,
+):
     statement = select(EvidenceRetrievalProjection).where(
         EvidenceRetrievalProjection.object_schema_version.in_(
             request.compatible_schema_versions
@@ -565,9 +726,17 @@ def _authorized_projections(
         statement = statement.where(
             EvidenceRetrievalProjection.scientific_type.in_(request.scientific_types)
         )
-    return list(
-        db.scalars(statement.order_by(EvidenceRetrievalProjection.object_id)).all()
+    return statement
+
+
+def candidate_terms(query: str) -> set[str]:
+    terms = informative_terms(query)
+    concepts = query_concepts(terms)
+    expanded = set(terms)
+    expanded.update(
+        term for term, concept in _CONCEPTS.items() if concept in concepts
     )
+    return expanded
 
 
 def _rank(scores: dict[UUID, float]) -> list[tuple[UUID, float]]:
@@ -576,3 +745,7 @@ def _rank(scores: dict[UUID, float]) -> list[tuple[UUID, float]]:
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _milliseconds(start: float, end: float) -> float:
+    return round((end - start) * 1_000, 3)
