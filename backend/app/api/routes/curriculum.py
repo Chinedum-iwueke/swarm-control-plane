@@ -7,10 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
 from app.db.session import get_db
-from app.models.curriculum import ResearchBrainEvaluation, ResearchDomainCurriculum
+from app.models.curriculum import (
+    ResearchBrainEvaluation,
+    ResearchCurriculumPortfolio,
+    ResearchDomainCurriculum,
+)
 from app.schemas.curriculum import (
     BrainEvaluationCreate,
     BrainEvaluationResponse,
+    CurriculumPortfolioCreate,
+    CurriculumPortfolioResponse,
     DomainCurriculumCreate,
     DomainCurriculumResponse,
     DomainReadinessResponse,
@@ -20,6 +26,7 @@ from app.services.curriculum import (
     domain_readiness,
     evaluate_curriculum,
     register_curriculum,
+    register_curriculum_portfolio,
 )
 
 router = APIRouter(
@@ -58,6 +65,29 @@ def list_readiness(db: Annotated[Session, Depends(get_db)]):
         )
     ).all()
     return [domain_readiness(db, record) for record in records]
+
+
+@router.post(
+    "/portfolios",
+    response_model=CurriculumPortfolioResponse,
+    status_code=201,
+)
+def create_portfolio(
+    payload: CurriculumPortfolioCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return register_curriculum_portfolio(db, payload)
+
+
+@router.get("/portfolios", response_model=list[CurriculumPortfolioResponse])
+def list_portfolios(db: Annotated[Session, Depends(get_db)]):
+    return list(
+        db.scalars(
+            select(ResearchCurriculumPortfolio).order_by(
+                ResearchCurriculumPortfolio.created_at.desc()
+            )
+        )
+    )
 
 
 @router.post(

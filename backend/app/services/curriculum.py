@@ -9,9 +9,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.corpus_sync import CorpusSyncRun
-from app.models.curriculum import ResearchBrainEvaluation, ResearchDomainCurriculum
+from app.models.curriculum import (
+    ResearchBrainEvaluation,
+    ResearchCurriculumPortfolio,
+    ResearchDomainCurriculum,
+)
 from app.models.evidence import CanonicalEvidenceObject
-from app.schemas.curriculum import BrainEvaluationCreate, DomainCurriculumCreate
+from app.schemas.curriculum import (
+    BrainEvaluationCreate,
+    CurriculumPortfolioCreate,
+    DomainCurriculumCreate,
+)
 from app.schemas.retrieval import HybridRetrievalRequest
 from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import digest_document, graph_projection_status
@@ -163,11 +171,31 @@ def evaluate_curriculum(
             ORCHESTRATOR_ACCESS,
         )
         returned = {item["object_id"] for item in result["hits"]}
+        opposition_result = (
+            search(
+                db,
+                HybridRetrievalRequest(
+                    query=case.opposition_query,
+                    project=curriculum.project,
+                    limit=50,
+                ),
+                ORCHESTRATOR_ACCESS,
+            )
+            if case.opposition_query is not None
+            else result
+        )
+        opposition_returned = {
+            item["object_id"] for item in opposition_result["hits"]
+        }
         expected = set(case.expected_object_ids)
         opposing = set(case.opposing_object_ids)
         forbidden = set(case.forbidden_object_ids)
         recall = len(returned & expected) / len(expected) if expected else 1.0
-        opposition = len(returned & opposing) / len(opposing) if opposing else 1.0
+        opposition = (
+            len(opposition_returned & opposing) / len(opposing)
+            if opposing
+            else 1.0
+        )
         citations_valid = all(
             item.get("citation", {}).get("object_id") == item.get("object_id")
             and bool(item.get("citation", {}).get("replay_path"))
@@ -185,8 +213,16 @@ def evaluate_curriculum(
             {
                 "case_key": case.case_key,
                 "query_digest": digest_document({"query": case.query}),
+                "opposition_query_digest": (
+                    digest_document({"query": case.opposition_query})
+                    if case.opposition_query is not None
+                    else None
+                ),
                 "retrieval_corpus_digest": result["corpus_digest"],
                 "returned_object_ids": sorted(map(str, returned)),
+                "opposition_returned_object_ids": sorted(
+                    map(str, opposition_returned)
+                ),
                 "retrieval_recall": recall,
                 "opposition_recall": opposition,
                 "citation_fidelity": float(citations_valid),
@@ -331,6 +367,87 @@ def curriculum_response(record: ResearchDomainCurriculum) -> dict[str, Any]:
         "created_by": record.created_by,
         "created_at": record.created_at,
     }
+
+
+def register_curriculum_portfolio(
+    db: Session, payload: CurriculumPortfolioCreate
+) -> ResearchCurriculumPortfolio:
+    retrieval_state, current_corpus, retrieval_stale = projection_status(db)
+    graph_state, graph_stale = graph_projection_status(db)
+    if retrieval_stale or graph_stale:
+        raise HTTPException(status_code=409, detail="Corpus projections are stale.")
+    if retrieval_state.corpus_digest != current_corpus:
+        raise HTTPException(status_code=409, detail="Retrieval projection is stale.")
+
+    matrix: dict[str, dict[str, Any]] = {}
+    evaluation_ids: list[str] = []
+    normalized_curriculum_ids: list[str] = []
+    for domain_key, curriculum_id in zip(
+        payload.required_domain_keys, payload.curriculum_ids, strict=True
+    ):
+        curriculum = db.get(ResearchDomainCurriculum, curriculum_id)
+        if curriculum is None:
+            raise HTTPException(status_code=422, detail="Portfolio curriculum not found.")
+        if curriculum.domain_key != domain_key:
+            raise HTTPException(
+                status_code=422,
+                detail="Portfolio domain-to-curriculum mapping is invalid.",
+            )
+        readiness = domain_readiness(db, curriculum)
+        evaluation = readiness["evaluation"]
+        evaluation_id = str(evaluation.id) if evaluation is not None else None
+        if evaluation_id is not None:
+            evaluation_ids.append(evaluation_id)
+        normalized_curriculum_ids.append(str(curriculum.id))
+        matrix[domain_key] = {
+            "curriculum_id": str(curriculum.id),
+            "curriculum_version": curriculum.version,
+            "curriculum_digest": curriculum.record_digest,
+            "evaluation_id": evaluation_id,
+            "evaluation_version": (
+                evaluation.evaluation_version if evaluation is not None else None
+            ),
+            "evaluation_digest": (
+                evaluation.record_digest if evaluation is not None else None
+            ),
+            "metrics": evaluation.metrics if evaluation is not None else None,
+            "ready": readiness["ready"],
+            "reasons": readiness["reasons"],
+        }
+
+    ready = all(item["ready"] for item in matrix.values())
+    document = {
+        "portfolio_key": payload.portfolio_key,
+        "version": payload.version,
+        "required_domain_keys": payload.required_domain_keys,
+        "curriculum_ids": normalized_curriculum_ids,
+        "evaluation_ids": evaluation_ids,
+        "readiness_matrix": matrix,
+        "corpus_digest": current_corpus,
+        "graph_manifest_digest": graph_state.manifest_digest,
+        "ready": ready,
+        "status": "qualified" if ready else "gaps_detected",
+        "created_by": payload.created_by,
+    }
+    digest = digest_document(document)
+    existing = db.scalar(
+        select(ResearchCurriculumPortfolio).where(
+            ResearchCurriculumPortfolio.portfolio_key == payload.portfolio_key,
+            ResearchCurriculumPortfolio.version == payload.version,
+        )
+    )
+    if existing is not None:
+        if existing.record_digest == digest:
+            return existing
+        raise HTTPException(status_code=409, detail="Portfolio version is immutable.")
+    record = ResearchCurriculumPortfolio(
+        **document,
+        record_digest=digest,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 def _topic_coverage(curriculum: ResearchDomainCurriculum) -> float:

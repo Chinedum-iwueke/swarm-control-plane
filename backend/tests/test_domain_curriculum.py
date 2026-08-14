@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.models.curriculum import ResearchDomainCurriculum
 from app.schemas.curriculum import (
     BrainEvaluationCreate,
+    CurriculumPortfolioCreate,
     DomainCurriculumCreate,
 )
 from app.services import curriculum as service
@@ -60,6 +62,7 @@ def evaluation_payload(curriculum_id) -> BrainEvaluationCreate:
                 "query": "What evidence supports robust statistical inference?",
                 "expected_object_ids": [ONE],
                 "opposing_object_ids": [TWO],
+                "opposition_query": "What evidence opposes this inference?",
                 "forbidden_object_ids": [THREE],
             },
             {
@@ -166,6 +169,11 @@ def test_evaluation_scores_retrieval_opposition_abstention_and_leakage(
                             "replay_path": f"/objects/{ONE}",
                         },
                     },
+                ],
+            },
+            {
+                "corpus_digest": "a" * 64,
+                "hits": [
                     {
                         "object_id": TWO,
                         "citation": {
@@ -173,7 +181,7 @@ def test_evaluation_scores_retrieval_opposition_abstention_and_leakage(
                             "content_digest": "e" * 64,
                             "replay_path": f"/objects/{TWO}",
                         },
-                    },
+                    }
                 ],
             },
             {"corpus_digest": "a" * 64, "hits": []},
@@ -248,6 +256,19 @@ def test_cross_domain_leakage_fails_closed(monkeypatch) -> None:
                     }
                 ],
             },
+            {
+                "corpus_digest": "a" * 64,
+                "hits": [
+                    {
+                        "object_id": TWO,
+                        "citation": {
+                            "object_id": TWO,
+                            "content_digest": "e" * 64,
+                            "replay_path": f"/objects/{TWO}",
+                        },
+                    }
+                ],
+            },
             {"corpus_digest": "a" * 64, "hits": []},
         ]
     )
@@ -259,3 +280,125 @@ def test_cross_domain_leakage_fails_closed(monkeypatch) -> None:
     assert result.passed is False
     assert result.metrics["cross_domain_leakage"] > 0
     assert curriculum.status == "draft"
+
+
+def test_portfolio_contract_requires_unique_canonical_domain_mapping() -> None:
+    first, second = uuid4(), uuid4()
+    with pytest.raises(ValidationError, match="canonical sort order"):
+        CurriculumPortfolioCreate(
+            portfolio_key="research-bible",
+            version="1.0.0",
+            required_domain_keys=["risk", "inference"],
+            curriculum_ids=[first, second],
+            created_by="independent-evaluator",
+        )
+    with pytest.raises(ValidationError, match="curriculum ids must be unique"):
+        CurriculumPortfolioCreate(
+            portfolio_key="research-bible",
+            version="1.0.0",
+            required_domain_keys=["inference", "risk"],
+            curriculum_ids=[first, first],
+            created_by="independent-evaluator",
+        )
+
+
+def test_portfolio_readiness_is_all_domains_not_an_average(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    curricula = [
+        SimpleNamespace(
+            id=uuid4(),
+            domain_key=key,
+            version="1.0.0",
+            record_digest=character * 64,
+        )
+        for key, character in (("inference", "a"), ("risk", "b"))
+    ]
+    evaluations = [
+        SimpleNamespace(
+            id=uuid4(),
+            evaluation_version="1.0.0",
+            record_digest=character * 64,
+            metrics={"retrieval_recall": score},
+        )
+        for character, score in (("c", 1.0), ("d", 0.5))
+    ]
+    readiness = {
+        "inference": {
+            "evaluation": evaluations[0],
+            "ready": True,
+            "reasons": [],
+        },
+        "risk": {
+            "evaluation": evaluations[1],
+            "ready": False,
+            "reasons": ["evaluation_not_passing"],
+        },
+    }
+    monkeypatch.setattr(
+        service,
+        "projection_status",
+        lambda _db: (
+            SimpleNamespace(corpus_digest="e" * 64),
+            "e" * 64,
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "graph_projection_status",
+        lambda _db: (SimpleNamespace(manifest_digest="f" * 64), False),
+    )
+    monkeypatch.setattr(
+        service,
+        "domain_readiness",
+        lambda _db, curriculum: readiness[curriculum.domain_key],
+    )
+    db = MagicMock()
+    db.get.side_effect = curricula
+    db.scalar.return_value = None
+    payload = CurriculumPortfolioCreate(
+        portfolio_key="research-bible",
+        version="1.0.0",
+        required_domain_keys=["inference", "risk"],
+        curriculum_ids=[item.id for item in curricula],
+        created_by="independent-evaluator",
+    )
+
+    result = service.register_curriculum_portfolio(db, payload)
+
+    assert result.ready is False
+    assert result.status == "gaps_detected"
+    assert result.readiness_matrix["inference"]["ready"] is True
+    assert result.readiness_matrix["risk"]["ready"] is False
+    assert result.evaluation_ids == [str(item.id) for item in evaluations]
+
+
+def test_portfolio_rejects_domain_curriculum_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        service,
+        "projection_status",
+        lambda _db: (
+            SimpleNamespace(corpus_digest="e" * 64),
+            "e" * 64,
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "graph_projection_status",
+        lambda _db: (SimpleNamespace(manifest_digest="f" * 64), False),
+    )
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(domain_key="risk")
+    payload = CurriculumPortfolioCreate(
+        portfolio_key="research-bible",
+        version="1.0.0",
+        required_domain_keys=["inference"],
+        curriculum_ids=[uuid4()],
+        created_by="independent-evaluator",
+    )
+    with pytest.raises(HTTPException, match="mapping is invalid"):
+        service.register_curriculum_portfolio(db, payload)
