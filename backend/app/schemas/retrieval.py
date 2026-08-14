@@ -34,7 +34,7 @@ class HybridRetrievalRequest(StrictModel):
         min_length=1,
         max_length=10,
     )
-    projection_version: Literal["hybrid-retrieval-v1.0.0"] = "hybrid-retrieval-v1.0.0"
+    projection_version: Literal["hybrid-retrieval-v1.1.0"] = "hybrid-retrieval-v1.1.0"
     fusion: Literal["rrf-v1"] = "rrf-v1"
 
     @field_validator("channels")
@@ -92,6 +92,8 @@ class HybridRetrievalResponse(StrictModel):
     confidence: float = Field(ge=0, le=1)
     abstained: bool
     calibration: Literal["evidence-confidence-v1"]
+    timings_ms: dict[str, float] = Field(default_factory=dict)
+    candidate_counts: dict[str, int] = Field(default_factory=dict)
     hits: list[HybridRetrievalHit]
 
 
@@ -99,9 +101,10 @@ class ProjectionBuildResponse(StrictModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     projection_name: Literal["canonical-scientific"]
-    projection_version: Literal["hybrid-retrieval-v1.0.0"]
+    projection_version: Literal["hybrid-retrieval-v1.1.0"]
     corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     object_count: int = Field(ge=0)
+    source_epoch: int = Field(ge=0)
     built_at: datetime
 
 

@@ -52,7 +52,11 @@ from app.models.research import (
     ResearchSource,
     ResearchTrial,
 )
-from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
+from app.models.retrieval import (
+    EvidenceCorpusFreshness,
+    EvidenceRetrievalProjection,
+    EvidenceRetrievalState,
+)
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.surveillance import (
     SurveillanceDigest,
@@ -82,6 +86,7 @@ __all__ = [
     "CorpusSyncItem",
     "CorpusSyncRun",
     "EngineeringMission",
+    "EvidenceCorpusFreshness",
     "EvidenceDossier",
     "EvidenceGraphProjectionEdge",
     "EvidenceGraphProjectionNode",

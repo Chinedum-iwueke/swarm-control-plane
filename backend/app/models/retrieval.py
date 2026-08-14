@@ -3,7 +3,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,7 +51,19 @@ class EvidenceRetrievalState(Base):
     projection_name: Mapped[str] = mapped_column(String(100), primary_key=True)
     projection_version: Mapped[str] = mapped_column(String(100), nullable=False)
     corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_epoch: Mapped[int] = mapped_column(BigInteger, nullable=False)
     object_count: Mapped[int] = mapped_column(Integer, nullable=False)
     built_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EvidenceCorpusFreshness(Base):
+    __tablename__ = "evidence_corpus_freshness"
+
+    corpus_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    epoch: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

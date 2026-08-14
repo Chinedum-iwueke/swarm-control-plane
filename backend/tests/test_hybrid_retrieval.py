@@ -274,8 +274,32 @@ def test_projection_status_detects_digest_change(
     state = SimpleNamespace(corpus_digest="1" * 64)
     db = MagicMock()
     db.get.return_value = state
-    monkeypatch.setattr("app.services.retrieval.corpus_digest", lambda db: "2" * 64)
+    monkeypatch.setattr(
+        "app.services.retrieval.freshness_snapshot", lambda db: ("2" * 64, 0)
+    )
     assert projection_status(db) == (state, "2" * 64, True)
+
+
+def test_corpus_digest_uses_constant_time_freshness_record() -> None:
+    db = MagicMock()
+    row = SimpleNamespace(epoch=42, corpus_digest="4" * 64)
+    db.execute.return_value.one_or_none.return_value = row
+
+    assert corpus_digest(db) == "4" * 64
+    assert db.execute.call_count == 1
+
+
+def test_projection_status_detects_epoch_change_without_rehashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(corpus_digest="1" * 64, source_epoch=41)
+    db = MagicMock()
+    db.get.return_value = state
+    monkeypatch.setattr(
+        "app.services.retrieval.freshness_snapshot", lambda db: ("1" * 64, 42)
+    )
+
+    assert projection_status(db) == (state, "1" * 64, True)
 
 
 def test_projection_rebuild_is_atomic_and_digest_bound(
@@ -294,7 +318,9 @@ def test_projection_rebuild_is_atomic_and_digest_bound(
         },
     )
     db = MagicMock()
-    monkeypatch.setattr("app.services.retrieval.corpus_digest", lambda _: "3" * 64)
+    monkeypatch.setattr(
+        "app.services.retrieval.freshness_snapshot", lambda _: ("3" * 64, 7)
+    )
 
     def result(rows):
         value = MagicMock()
@@ -325,10 +351,13 @@ def test_projection_rebuild_is_atomic_and_digest_bound(
         term_frequencies("Momentum after transaction costs")
     )
     assert state.corpus_digest == "3" * 64
+    assert state.source_epoch == 7
     assert db.commit.call_count == 1
 
 
-def test_projection_queries_do_not_expand_corpus_ids_into_parameters() -> None:
+def test_projection_queries_do_not_expand_corpus_ids_into_parameters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     object_id = UUID("22222222-2222-4222-8222-222222222222")
     canonical = SimpleNamespace(
         id=object_id,
@@ -339,6 +368,9 @@ def test_projection_queries_do_not_expand_corpus_ids_into_parameters() -> None:
         payload={"scientific_type": "paragraph", "content_text": "Momentum"},
     )
     db = MagicMock()
+    monkeypatch.setattr(
+        "app.services.retrieval.freshness_snapshot", lambda _: ("3" * 64, 7)
+    )
     db.scalars.return_value.all.return_value = [canonical]
     result = MagicMock()
     result.all.return_value = []
@@ -373,7 +405,9 @@ def test_corpus_digest_queries_do_not_expand_corpus_ids_into_parameters() -> Non
     ]
     empty = MagicMock()
     empty.all.return_value = []
-    db.execute.side_effect = [objects, empty, empty]
+    freshness = MagicMock()
+    freshness.one_or_none.return_value = None
+    db.execute.side_effect = [freshness, objects, empty, empty]
 
     corpus_digest(db)
 
@@ -422,6 +456,8 @@ def test_result_is_reauthorized_against_canonical_object(
     assert response["hits"][0]["confidence"] >= 0.18
     assert response["abstained"] is False
     assert response["calibration"] == "evidence-confidence-v1"
+    assert response["candidate_counts"]["bounded"] == 1
+    assert response["timings_ms"]["total"] >= 0
     assert canonical_fetch.call_args.kwargs == {"audit": False}
 
 
@@ -537,3 +573,32 @@ def test_migration_owns_only_rebuildable_projection_tables() -> None:
     assert "canonical_evidence_objects" in migration
     assert '"canonical_identity_aliases"' in migration
     assert 'server_default=sa.text("now()")' in migration
+
+
+def test_ri011_migration_adds_transactional_freshness_and_indexes() -> None:
+    migration = (
+        Path(__file__).parents[1]
+        / "alembic/versions/f1a6c8d42e70_optimize_retrieval_latency.py"
+    ).read_text(encoding="utf-8")
+
+    assert "evidence_corpus_freshness" in migration
+    assert "FOR EACH STATEMENT" in migration
+    assert "source_epoch" in migration
+    assert "ix_retrieval_projection_content_fts" in migration
+    assert 'postgresql_using="gin"' in migration
+
+
+def test_capacity_exhaustion_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    capacity = SimpleNamespace(acquire=lambda timeout: False, release=lambda: None)
+    monkeypatch.setattr("app.services.retrieval._SEARCH_CAPACITY", capacity)
+    with pytest.raises(HTTPException, match="capacity") as error:
+        hybrid_search(
+            MagicMock(),
+            HybridRetrievalRequest(query="momentum"),
+            EvidenceAccessContext(
+                actor="reader",
+                projects=frozenset({PROJECT}),
+                max_access_class="internal",
+            ),
+        )
+    assert error.value.status_code == 503
