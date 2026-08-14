@@ -51,6 +51,9 @@ class ControlPlaneClient:
         intelligence_runs = await self._optional_collection(
             "/v1/research/intelligence/runs"
         )
+        domain_readiness = await self._optional_collection(
+            "/v1/research/curricula/readiness"
+        )
         memory_exports = await self._optional_collection("/v1/research/memory-exports")
         operational_notes = await self._optional_collection("/v1/operational-notes")
         dataset_manifests = await self._optional_collection(
@@ -85,6 +88,7 @@ class ControlPlaneClient:
             "research_cycles": research_cycles,
             "research_domains": research_domains,
             "research_intelligence_runs": intelligence_runs,
+            "research_domain_readiness": domain_readiness,
             "research_memory_exports": memory_exports,
             "operational_notes": operational_notes,
             "research_dataset_manifests": dataset_manifests,

@@ -621,6 +621,7 @@ function renderResearch() {
   const tasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_experiment");
   const cycles = state.dashboard.research_cycles || [];
   const domains = state.dashboard.research_domains || [];
+  const domainReadiness = state.dashboard.research_domain_readiness || [];
   const intelligenceRuns = state.dashboard.research_intelligence_runs || [];
   const memoryExports = state.dashboard.research_memory_exports || [];
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
@@ -661,14 +662,19 @@ function renderResearch() {
       ${statusBadge(latest && latest.content_digest === latest.rebuild_content_digest ? "verified" : "pending")}
     </div>`;
   }).join("") : empty("No point-in-time dataset build is registered.");
-  document.getElementById("research-domains").innerHTML = domains.length ? domains.map((domain) => {
+  const readinessRows = domainReadiness.map((domain) => `<div class="entity-row">
+    <div class="entity-primary"><strong>${escapeHtml(domain.domain_key)}</strong><div class="entity-meta"><span>curriculum v${escapeHtml(domain.curriculum_version)}</span><span>${domain.covered_topic_count}/${domain.topic_count} topics</span><span>${number(domain.topic_coverage * 100)}% coverage</span><span>${domain.quarantined_items} quarantined</span><span class="mono">${shortHash(domain.graph_manifest_digest)}</span></div>${domain.reasons.length ? `<p>${domain.reasons.map(humanize).join(" · ")}</p>` : ""}</div>
+    ${statusBadge(domain.ready ? "qualified" : "gaps_detected")}
+  </div>`);
+  const legacyRows = domains.map((domain) => {
     const latestRun = intelligenceRuns.find((run) => run.domain_profile_id === domain.id);
     const selected = latestRun?.selected_candidate;
     return `<div class="entity-row">
       <div class="entity-primary"><strong>${escapeHtml(domain.title)}</strong><div class="entity-meta"><span>${escapeHtml(domain.domain_key)} v${escapeHtml(domain.version)}</span><span>${domain.document_keys.length} immutable sources</span><span class="mono">${shortHash(domain.corpus_digest)}</span></div>${selected ? `<p>${escapeHtml(selected.question)}</p>` : ""}</div>
       ${statusBadge(domain.status)}
     </div>`;
-  }).join("") : empty("No domain has passed its retrieval qualification exam.");
+  });
+  document.getElementById("research-domains").innerHTML = [...readinessRows, ...legacyRows].join("") || empty("No domain has passed its institutional brain evaluation.");
   const surveillanceSummary = document.getElementById("research-surveillance-summary");
   surveillanceSummary.innerHTML = `
     <div class="machine-cell"><span class="machine-symbol">SF</span><div><strong>${surveillanceSources.filter((item) => item.is_enabled).length}</strong><small>approved feeds</small></div></div>

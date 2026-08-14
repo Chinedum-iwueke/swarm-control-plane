@@ -3,6 +3,7 @@ from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
 from app.models.corpus import CorpusBackup, CorpusRecoveryRun, CorpusSecurityFinding
 from app.models.corpus_sync import CorpusSyncItem, CorpusSyncRun
+from app.models.curriculum import ResearchBrainEvaluation, ResearchDomainCurriculum
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.evidence import (
     CanonicalEvidenceAuditEvent,
@@ -89,6 +90,7 @@ __all__ = [
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
+    "ResearchBrainEvaluation",
     "ResearchBrief",
     "ResearchChunk",
     "ResearchDailyCycle",
@@ -97,6 +99,7 @@ __all__ = [
     "ResearchDatasetManifest",
     "ResearchDecision",
     "ResearchDocument",
+    "ResearchDomainCurriculum",
     "ResearchDomainProfile",
     "ResearchExperiment",
     "ResearchHypothesis",
