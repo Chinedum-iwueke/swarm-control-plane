@@ -77,9 +77,9 @@ _CONCEPTS = {
     "volatility": "concept-risk",
 }
 _PROJECTION_BATCH_SIZE = 1_000
-_CALIBRATION_CANDIDATES_PER_CHANNEL = 2_000
-_DATABASE_CANDIDATE_LIMIT = 4_000
-_GRAPH_EXPANSION_LIMIT = 1_000
+_CALIBRATION_CANDIDATES_PER_CHANNEL = 500
+_DATABASE_CANDIDATE_LIMIT = 500
+_GRAPH_EXPANSION_LIMIT = 100
 _MAX_QUERY_TERMS = 24
 _SEARCH_CAPACITY = threading.BoundedSemaphore(8)
 
@@ -650,17 +650,12 @@ def _authorized_projections(
         document = func.to_tsvector(
             "simple", EvidenceRetrievalProjection.content_text
         )
-        term_queries = [func.plainto_tsquery("simple", term) for term in terms]
+        candidate_query = func.to_tsquery("simple", " | ".join(terms))
         lexical = list(
             db.scalars(
-                statement.where(
-                    or_(*(document.op("@@")(query) for query in term_queries))
-                )
+                statement.where(document.op("@@")(candidate_query))
                 .order_by(
-                    func.ts_rank_cd(
-                        document,
-                        func.websearch_to_tsquery("simple", request.query),
-                    ).desc(),
+                    func.ts_rank_cd(document, candidate_query).desc(),
                     EvidenceRetrievalProjection.object_id,
                 )
                 .limit(_DATABASE_CANDIDATE_LIMIT)
