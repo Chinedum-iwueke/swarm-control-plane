@@ -6,9 +6,6 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
@@ -20,6 +17,7 @@ from app.services.graph import (
     _adjacency,
     _authorized_edges,
     _frontier_edges,
+    _node_response,
     _traverse,
     _validate_edge_types,
     calculate,
@@ -27,6 +25,8 @@ from app.services.graph import (
     execute_cognitive_tool,
     graph_projection_status,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 ONE = UUID("11111111-1111-4111-8111-111111111111")
 TWO = UUID("22222222-2222-4222-8222-222222222222")
@@ -127,6 +127,23 @@ def test_frontier_edge_query_is_bounded_to_requested_nodes() -> None:
     serialized = repr(parameters)
     assert str(ONE) in serialized and str(TWO) in serialized
     assert len(parameters) < 20
+
+
+def test_graph_node_replay_path_targets_canonical_evidence_route() -> None:
+    node = SimpleNamespace(
+        object_id=ONE,
+        object_type="scientific_object",
+        project="systematic-research",
+        access_class="internal",
+        content_digest="a" * 64,
+        label="Evidence",
+    )
+
+    response = _node_response(node)
+
+    assert response["replay_path"] == (
+        f"/v1/research/evidence/objects/{ONE}"
+    )
 
 
 def test_stale_projection_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
