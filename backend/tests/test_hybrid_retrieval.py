@@ -102,9 +102,7 @@ def ranked(query: str) -> list[UUID]:
     scores = score_channels(golden_corpus(), query)
     return [
         item[0]
-        for item in fuse_rankings(
-            scores, ["exact", "lexical", "vector", "graph"], 10
-        )
+        for item in fuse_rankings(scores, ["exact", "lexical", "vector", "graph"], 10)
     ]
 
 
@@ -245,7 +243,9 @@ def test_projection_status_detects_digest_change(
     assert projection_status(db) == (state, "2" * 64, True)
 
 
-def test_projection_rebuild_is_atomic_and_digest_bound() -> None:
+def test_projection_rebuild_is_atomic_and_digest_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     object_id = UUID("22222222-2222-4222-8222-222222222222")
     canonical = SimpleNamespace(
         id=object_id,
@@ -259,55 +259,37 @@ def test_projection_rebuild_is_atomic_and_digest_bound() -> None:
         },
     )
     db = MagicMock()
-    db.scalars.return_value.all.return_value = [canonical]
+    monkeypatch.setattr("app.services.retrieval.corpus_digest", lambda _: "3" * 64)
 
     def result(rows):
         value = MagicMock()
         value.all.return_value = rows
+        value.__iter__.return_value = iter(rows)
         return value
 
     db.execute.side_effect = [
+        MagicMock(),
+        MagicMock(),
+        result([canonical]),
         result([]),
         result([(object_id, "fixture", "paragraph", "native-2")]),
-        result(
-            [
-                SimpleNamespace(
-                    id=object_id,
-                    content_digest="2" * 64,
-                    object_schema_version=SCHEMA,
-                    project=PROJECT,
-                    access_class="internal",
-                )
-            ]
-        ),
+        MagicMock(),
         result([]),
-        result(
-            [
-                SimpleNamespace(
-                    canonical_object_id=object_id,
-                    namespace="fixture",
-                    native_object_type="paragraph",
-                    alias_value="native-2",
-                )
-            ]
-        ),
-        MagicMock(),
-        MagicMock(),
     ]
     state = build_projections(db)
-    added = [call.args[0] for call in db.add.call_args_list]
-    projection_record = added[0]
-    assert projection_record.object_id == object_id
-    assert projection_record.aliases == [
+    insert_call = next(
+        call for call in db.execute.call_args_list if len(call.args) == 2
+    )
+    projection_record = insert_call.args[1][0]
+    assert projection_record["object_id"] == object_id
+    assert projection_record["aliases"] == [
         "fixture:paragraph:native-2",
         "native-2",
     ]
-    assert projection_record.vector == hashed_vector(
+    assert projection_record["vector"] == hashed_vector(
         term_frequencies("Momentum after transaction costs")
     )
-    assert state.corpus_digest == (
-        "3fcd6f4b2b54f059928145dd1c27cf4b779a388c101e5e9079f1c9cf88c20f7d"
-    )
+    assert state.corpus_digest == "3" * 64
     assert db.commit.call_count == 1
 
 
@@ -387,9 +369,7 @@ def test_result_is_reauthorized_against_canonical_object(
         lambda db, request, access: [item],
     )
     canonical_fetch = MagicMock(return_value=canonical)
-    monkeypatch.setattr(
-        "app.services.retrieval.get_evidence_object", canonical_fetch
-    )
+    monkeypatch.setattr("app.services.retrieval.get_evidence_object", canonical_fetch)
     response = hybrid_search(
         MagicMock(),
         HybridRetrievalRequest(query="momentum"),
@@ -399,9 +379,10 @@ def test_result_is_reauthorized_against_canonical_object(
             max_access_class="internal",
         ),
     )
-    assert response["hits"][0]["citation"]["coordinates"] == canonical.payload[
-        "coordinates"
-    ]
+    assert (
+        response["hits"][0]["citation"]["coordinates"]
+        == canonical.payload["coordinates"]
+    )
     assert response["hits"][0]["citation"]["replay_path"].endswith("/replay")
     assert canonical_fetch.call_args.kwargs == {"audit": False}
 
@@ -499,9 +480,7 @@ def test_openapi_exposes_authenticated_retrieval_surface() -> None:
     ]
     for path, methods in fixture["routes"].items():
         for method in methods:
-            assert paths[path][method]["security"] == [
-                {fixture["security_scheme"]: []}
-            ]
+            assert paths[path][method]["security"] == [{fixture["security_scheme"]: []}]
     schema = document["components"]["schemas"][fixture["schema"]]
     assert sorted(schema["required"]) == fixture["required_fields"]
 

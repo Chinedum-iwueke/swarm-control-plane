@@ -7,11 +7,12 @@ import uuid
 from collections import deque
 from datetime import UTC, datetime
 from decimal import Decimal, localcontext
+from itertools import chain
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import CanonicalEvidenceEdge, CanonicalEvidenceObject
@@ -34,17 +35,43 @@ PROJECTION_VERSION = "knowledge-graph-v1.0.0"
 TOOL_VERSION = "deterministic-scientific-tools-v1.0.0"
 _ACCESS_LEVEL = {"public": 0, "internal": 1, "restricted": 2, "protected": 3}
 _TYPE_RULES: dict[str, set[tuple[str, str]]] = {
-    "supports": {("scientific_object", "claim"), ("result", "claim"), ("claim", "belief")},
-    "contradicts": {("scientific_object", "claim"), ("result", "claim"), ("claim", "claim")},
+    "supports": {
+        ("scientific_object", "claim"),
+        ("result", "claim"),
+        ("claim", "belief"),
+    },
+    "contradicts": {
+        ("scientific_object", "claim"),
+        ("result", "claim"),
+        ("claim", "claim"),
+    },
     "uses_method": {("run", "method")},
     "uses_dataset": {("run", "dataset"), ("method", "dataset")},
     "produced_result": {("run", "result")},
     "reviews": {("review", "claim"), ("review", "run"), ("review", "result")},
-    "decides_on": {("decision", "result"), ("decision", "claim"), ("decision", "belief")},
+    "decides_on": {
+        ("decision", "result"),
+        ("decision", "claim"),
+        ("decision", "belief"),
+    },
     "belongs_to_trial_family": {("run", "claim"), ("result", "claim")},
-    "depends_on": {("claim", "assumption"), ("method", "assumption"), ("belief", "belief")},
+    "depends_on": {
+        ("claim", "assumption"),
+        ("method", "assumption"),
+        ("belief", "belief"),
+    },
     "cites": {("claim", "scientific_object"), ("method", "scientific_object")},
 }
+_PROJECTION_BATCH_SIZE = 2_000
+
+
+def _stream_digest(rows) -> str:
+    digest = hashlib.sha256()
+    for row in rows:
+        encoded = _canonical(row)
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
 
 
 def digest_document(value: Any) -> str:
@@ -91,7 +118,9 @@ def register_edge(
         )
     )
     if identity_conflict is not None:
-        raise HTTPException(status_code=409, detail="Canonical edge identity is immutable.")
+        raise HTTPException(
+            status_code=409, detail="Canonical edge identity is immutable."
+        )
     record = CanonicalEvidenceEdge(
         subject_id=payload.subject_id,
         predicate=payload.predicate,
@@ -117,84 +146,143 @@ def graph_corpus_digest(db: Session) -> str:
             CanonicalEvidenceObject.project,
             CanonicalEvidenceObject.access_class,
         ).order_by(CanonicalEvidenceObject.id)
-    ).all()
-    edges = db.scalars(
-        select(CanonicalEvidenceEdge).order_by(
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    edges = db.execute(
+        select(
+            CanonicalEvidenceEdge.id,
+            CanonicalEvidenceEdge.subject_id,
+            CanonicalEvidenceEdge.predicate,
+            CanonicalEvidenceEdge.object_id,
+            CanonicalEvidenceEdge.valid_from,
+            CanonicalEvidenceEdge.valid_until,
+            CanonicalEvidenceEdge.provenance_object_id,
+            CanonicalEvidenceEdge.access_class,
+            CanonicalEvidenceEdge.record_digest,
+        ).order_by(
             CanonicalEvidenceEdge.subject_id,
             CanonicalEvidenceEdge.predicate,
             CanonicalEvidenceEdge.object_id,
         )
-    ).all()
-    return digest_document(
-        {
-            "projection_version": PROJECTION_VERSION,
-            "objects": [
-                [str(row.id), row.content_digest, row.object_type, row.project, row.access_class]
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    return _stream_digest(
+        chain(
+            [("version", PROJECTION_VERSION)],
+            (
+                (
+                    "object",
+                    str(row.id),
+                    row.content_digest,
+                    row.object_type,
+                    row.project,
+                    row.access_class,
+                )
                 for row in objects
-            ],
-            "edges": [_edge_material(edge) for edge in edges],
-        }
+            ),
+            (
+                (
+                    "edge",
+                    str(row.id),
+                    str(row.subject_id),
+                    row.predicate,
+                    str(row.object_id),
+                    row.valid_from.isoformat() if row.valid_from else None,
+                    row.valid_until.isoformat() if row.valid_until else None,
+                    str(row.provenance_object_id) if row.provenance_object_id else None,
+                    row.access_class,
+                    row.record_digest,
+                )
+                for row in edges
+            ),
+        )
     )
 
 
 def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
-    objects = list(
-        db.scalars(select(CanonicalEvidenceObject).order_by(CanonicalEvidenceObject.id)).all()
-    )
-    edges = list(
-        db.scalars(
-            select(CanonicalEvidenceEdge).order_by(
-                CanonicalEvidenceEdge.subject_id,
-                CanonicalEvidenceEdge.predicate,
-                CanonicalEvidenceEdge.object_id,
-            )
-        ).all()
-    )
     corpus = graph_corpus_digest(db)
     now = datetime.now(UTC)
-    manifest = {
-        "schema_version": "knowledge-graph-manifest-v1.0.0",
-        "projection_version": PROJECTION_VERSION,
-        "corpus_digest": corpus,
-        "node_digests": [item.content_digest for item in objects],
-        "edge_digests": [_edge_digest(item) for item in edges],
-    }
     db.execute(delete(EvidenceGraphProjectionEdge))
     db.execute(delete(EvidenceGraphProjectionNode))
     db.execute(delete(EvidenceGraphProjectionState))
-    for item in objects:
-        db.add(
-            EvidenceGraphProjectionNode(
-                object_id=item.id,
-                object_type=item.object_type,
-                project=item.project,
-                access_class=item.access_class,
-                content_digest=item.content_digest,
-                label=_object_label(item),
-                projection_version=PROJECTION_VERSION,
-            )
+    node_count = 0
+    last_object_id: UUID | None = None
+    while True:
+        statement = (
+            select(CanonicalEvidenceObject)
+            .order_by(CanonicalEvidenceObject.id)
+            .limit(_PROJECTION_BATCH_SIZE)
         )
-    for edge in edges:
-        db.add(
-            EvidenceGraphProjectionEdge(
-                edge_id=edge.id,
-                subject_id=edge.subject_id,
-                predicate=edge.predicate,
-                object_id=edge.object_id,
-                valid_from=edge.valid_from,
-                valid_until=edge.valid_until,
-                provenance_object_id=edge.provenance_object_id or edge.subject_id,
-                access_class=edge.access_class or "internal",
-                record_digest=_edge_digest(edge),
-                projection_version=PROJECTION_VERSION,
-            )
+        if last_object_id is not None:
+            statement = statement.where(CanonicalEvidenceObject.id > last_object_id)
+        objects = list(db.scalars(statement).all())
+        if not objects:
+            break
+        last_object_id = objects[-1].id
+        db.execute(
+            insert(EvidenceGraphProjectionNode),
+            [
+                {
+                    "object_id": item.id,
+                    "object_type": item.object_type,
+                    "project": item.project,
+                    "access_class": item.access_class,
+                    "content_digest": item.content_digest,
+                    "label": _object_label(item),
+                    "projection_version": PROJECTION_VERSION,
+                }
+                for item in objects
+            ],
         )
+        node_count += len(objects)
+        db.expunge_all()
+
+    edge_count = 0
+    last_edge_id: UUID | None = None
+    while True:
+        statement = (
+            select(CanonicalEvidenceEdge)
+            .order_by(CanonicalEvidenceEdge.id)
+            .limit(_PROJECTION_BATCH_SIZE)
+        )
+        if last_edge_id is not None:
+            statement = statement.where(CanonicalEvidenceEdge.id > last_edge_id)
+        edges = list(db.scalars(statement).all())
+        if not edges:
+            break
+        last_edge_id = edges[-1].id
+        db.execute(
+            insert(EvidenceGraphProjectionEdge),
+            [
+                {
+                    "edge_id": edge.id,
+                    "subject_id": edge.subject_id,
+                    "predicate": edge.predicate,
+                    "object_id": edge.object_id,
+                    "valid_from": edge.valid_from,
+                    "valid_until": edge.valid_until,
+                    "provenance_object_id": edge.provenance_object_id
+                    or edge.subject_id,
+                    "access_class": edge.access_class or "internal",
+                    "record_digest": _edge_digest(edge),
+                    "projection_version": PROJECTION_VERSION,
+                }
+                for edge in edges
+            ],
+        )
+        edge_count += len(edges)
+        db.expunge_all()
+    manifest = {
+        "schema_version": "knowledge-graph-manifest-v1.1.0",
+        "projection_version": PROJECTION_VERSION,
+        "corpus_digest": corpus,
+        "node_count": node_count,
+        "edge_count": edge_count,
+    }
     state = EvidenceGraphProjectionState(
         projection_name=PROJECTION_NAME,
         projection_version=PROJECTION_VERSION,
         corpus_digest=corpus,
-        node_count=len(objects),
-        edge_count=len(edges),
+        node_count=node_count,
+        edge_count=edge_count,
         manifest=manifest,
         manifest_digest=digest_document(manifest),
         built_at=now,
@@ -210,7 +298,9 @@ def graph_projection_status(
 ) -> tuple[EvidenceGraphProjectionState, bool]:
     state = db.get(EvidenceGraphProjectionState, PROJECTION_NAME)
     if state is None:
-        raise HTTPException(status_code=409, detail="Knowledge graph projection is not built.")
+        raise HTTPException(
+            status_code=409, detail="Knowledge graph projection is not built."
+        )
     return state, state.corpus_digest != graph_corpus_digest(db)
 
 
@@ -222,7 +312,8 @@ def query_graph(
     state, stale = graph_projection_status(db)
     if stale:
         raise HTTPException(
-            status_code=409, detail="Knowledge graph projection is stale and must be rebuilt."
+            status_code=409,
+            detail="Knowledge graph projection is stale and must be rebuilt.",
         )
     nodes = _authorized_nodes(db, access, request.project)
     by_id = {node.object_id: node for node in nodes}
@@ -230,7 +321,9 @@ def query_graph(
     if request.target_id is not None:
         requested.add(request.target_id)
     if not requested <= set(by_id):
-        raise HTTPException(status_code=404, detail="Graph root or target is unavailable.")
+        raise HTTPException(
+            status_code=404, detail="Graph root or target is unavailable."
+        )
     edges = _authorized_edges(db, set(by_id), access, request)
     adjacency = _adjacency(edges, request.direction)
     visited, paths = _traverse(request, adjacency)
@@ -251,7 +344,9 @@ def query_graph(
         "projection_version": state.projection_version,
         "corpus_digest": state.corpus_digest,
         "query_digest": digest_document(document),
-        "nodes": [_node_response(by_id[item]) for item in sorted(selected_ids, key=str)],
+        "nodes": [
+            _node_response(by_id[item]) for item in sorted(selected_ids, key=str)
+        ],
         "edges": [_edge_response(item) for item in selected_edges],
         "paths": paths,
         "truncated": len(visited) > request.max_nodes,
@@ -268,16 +363,21 @@ def graph_overview(
     state, stale = graph_projection_status(db)
     if stale:
         raise HTTPException(
-            status_code=409, detail="Knowledge graph projection is stale and must be rebuilt."
+            status_code=409,
+            detail="Knowledge graph projection is stale and must be rebuilt.",
         )
     nodes = _authorized_nodes(db, access, project)
     selected = nodes[:limit]
     selected_ids = {item.object_id for item in selected}
-    request = GraphQueryRequest(
-        root_ids=[item.object_id for item in selected[:1]],
-        project=project,
-        max_nodes=limit,
-    ) if selected else None
+    request = (
+        GraphQueryRequest(
+            root_ids=[item.object_id for item in selected[:1]],
+            project=project,
+            max_nodes=limit,
+        )
+        if selected
+        else None
+    )
     edges = _authorized_edges(db, selected_ids, access, request) if request else []
     document = {
         "projection_version": state.projection_version,
@@ -385,7 +485,9 @@ def execute_cognitive_tool(
     return receipt
 
 
-def calculate(tool: str, values: list[float], parameters: dict[str, Any]) -> dict[str, Any]:
+def calculate(
+    tool: str, values: list[float], parameters: dict[str, Any]
+) -> dict[str, Any]:
     with localcontext() as context:
         context.prec = 28
         series = [Decimal(str(value)) for value in values]
@@ -395,7 +497,9 @@ def calculate(tool: str, values: list[float], parameters: dict[str, Any]) -> dic
             value = mean
         elif tool == "sample-standard-deviation":
             if len(series) < 2:
-                raise HTTPException(status_code=422, detail="Sample deviation needs two values.")
+                raise HTTPException(
+                    status_code=422, detail="Sample deviation needs two values."
+                )
             value = (sum((item - mean) ** 2 for item in series) / (count - 1)).sqrt()
         elif tool == "sharpe":
             if len(series) < 2:
@@ -428,17 +532,24 @@ def calculate(tool: str, values: list[float], parameters: dict[str, Any]) -> dic
 def _authorized_nodes(
     db: Session, access: EvidenceAccessContext, project: str | None
 ) -> list[EvidenceGraphProjectionNode]:
-    if project is not None and "*" not in access.projects and project not in access.projects:
+    if (
+        project is not None
+        and "*" not in access.projects
+        and project not in access.projects
+    ):
         raise HTTPException(status_code=403, detail="Graph project access denied.")
     classes = [
-        name for name, level in _ACCESS_LEVEL.items()
+        name
+        for name, level in _ACCESS_LEVEL.items()
         if level <= _ACCESS_LEVEL[access.max_access_class]
     ]
     statement = select(EvidenceGraphProjectionNode).where(
         EvidenceGraphProjectionNode.access_class.in_(classes)
     )
     if "*" not in access.projects:
-        statement = statement.where(EvidenceGraphProjectionNode.project.in_(access.projects))
+        statement = statement.where(
+            EvidenceGraphProjectionNode.project.in_(access.projects)
+        )
     if project is not None:
         statement = statement.where(EvidenceGraphProjectionNode.project == project)
     return list(db.scalars(statement).all())
@@ -451,7 +562,8 @@ def _authorized_edges(
     request: GraphQueryRequest,
 ) -> list[EvidenceGraphProjectionEdge]:
     classes = [
-        name for name, level in _ACCESS_LEVEL.items()
+        name
+        for name, level in _ACCESS_LEVEL.items()
         if level <= _ACCESS_LEVEL[access.max_access_class]
     ]
     statement = select(EvidenceGraphProjectionEdge).where(
@@ -464,7 +576,9 @@ def _authorized_edges(
         statement = statement.where(
             EvidenceGraphProjectionEdge.predicate.in_(request.predicates)
         )
-    return [edge for edge in db.scalars(statement).all() if _active(edge, request.as_of)]
+    return [
+        edge for edge in db.scalars(statement).all() if _active(edge, request.as_of)
+    ]
 
 
 def _active(edge: Any, as_of: datetime | None) -> bool:
@@ -540,7 +654,14 @@ def _edge_digest(edge: CanonicalEvidenceEdge) -> str:
 
 def _object_label(item: CanonicalEvidenceObject) -> str:
     payload = item.payload
-    for key in ("title", "proposition", "name", "statement", "decision", "content_text"):
+    for key in (
+        "title",
+        "proposition",
+        "name",
+        "statement",
+        "decision",
+        "content_text",
+    ):
         if payload.get(key):
             return str(payload[key])[:500]
     return f"{item.object_type}:{str(item.id)[:8]}"

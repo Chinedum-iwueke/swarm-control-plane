@@ -66,19 +66,23 @@ class CanonicalIdentityAlias(Base):
 
 class CanonicalEvidenceEdge(Base):
     __tablename__ = "canonical_evidence_edges"
-    __table_args__ = (
-        UniqueConstraint("subject_id", "predicate", "object_id"),
-    )
+    __table_args__ = (UniqueConstraint("subject_id", "predicate", "object_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("canonical_evidence_objects.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("canonical_evidence_objects.id"),
+        nullable=False,
+        index=True,
     )
     predicate: Mapped[str] = mapped_column(String(100), nullable=False)
     object_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("canonical_evidence_objects.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("canonical_evidence_objects.id"),
+        nullable=False,
+        index=True,
     )
     valid_from: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

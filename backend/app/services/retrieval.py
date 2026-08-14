@@ -7,10 +7,11 @@ import re
 from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from itertools import chain
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import (
@@ -40,10 +41,20 @@ _CONCEPTS = {
     "risk": "concept-risk",
     "volatility": "concept-risk",
 }
+_PROJECTION_BATCH_SIZE = 1_000
+
+
+def _digest_rows(rows: Iterable[tuple[str, ...]]) -> str:
+    digest = hashlib.sha256()
+    for row in rows:
+        encoded = _canonical(list(row))
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
 
 
 def corpus_digest(db: Session) -> str:
-    objects = db.execute(
+    object_rows = db.execute(
         select(
             CanonicalEvidenceObject.id,
             CanonicalEvidenceObject.content_digest,
@@ -53,11 +64,11 @@ def corpus_digest(db: Session) -> str:
         )
         .where(CanonicalEvidenceObject.object_type == "scientific_object")
         .order_by(CanonicalEvidenceObject.id)
-    ).all()
+    ).yield_per(_PROJECTION_BATCH_SIZE)
     scientific_ids = select(CanonicalEvidenceObject.id).where(
         CanonicalEvidenceObject.object_type == "scientific_object"
     )
-    edges = db.execute(
+    edge_rows = db.execute(
         select(
             CanonicalEvidenceEdge.subject_id,
             CanonicalEvidenceEdge.predicate,
@@ -74,8 +85,8 @@ def corpus_digest(db: Session) -> str:
             CanonicalEvidenceEdge.predicate,
             CanonicalEvidenceEdge.object_id,
         )
-    ).all() if objects else []
-    aliases = db.execute(
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    alias_rows = db.execute(
         select(
             CanonicalIdentityAlias.canonical_object_id,
             CanonicalIdentityAlias.namespace,
@@ -89,100 +100,125 @@ def corpus_digest(db: Session) -> str:
             CanonicalIdentityAlias.native_object_type,
             CanonicalIdentityAlias.alias_value,
         )
-    ).all() if objects else []
-    material = {
-        "projection_version": PROJECTION_VERSION,
-        "objects": [
-            [
-                str(item.id),
-                item.content_digest,
-                item.object_schema_version,
-                item.project,
-                item.access_class,
-            ]
-            for item in objects
-        ],
-        "edges": [
-            [str(item.subject_id), item.predicate, str(item.object_id)] for item in edges
-        ],
-        "aliases": [
-            [
-                str(item.canonical_object_id),
-                item.namespace,
-                item.native_object_type,
-                item.alias_value,
-            ]
-            for item in aliases
-        ],
-    }
-    return hashlib.sha256(_canonical(material)).hexdigest()
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    return _digest_rows(
+        chain(
+            [("version", PROJECTION_VERSION)],
+            (
+                (
+                    "object",
+                    str(row.id),
+                    row.content_digest,
+                    row.object_schema_version,
+                    row.project,
+                    row.access_class,
+                )
+                for row in object_rows
+            ),
+            (
+                ("edge", str(row.subject_id), row.predicate, str(row.object_id))
+                for row in edge_rows
+            ),
+            (
+                (
+                    "alias",
+                    str(row.canonical_object_id),
+                    row.namespace,
+                    row.native_object_type,
+                    row.alias_value,
+                )
+                for row in alias_rows
+            ),
+        )
+    )
 
 
 def build_projections(db: Session) -> EvidenceRetrievalState:
-    objects = list(
-        db.scalars(
-            select(CanonicalEvidenceObject)
-            .where(CanonicalEvidenceObject.object_type == "scientific_object")
-            .order_by(CanonicalEvidenceObject.id)
-        ).all()
-    )
-    ids = [item.id for item in objects]
-    scientific_ids = select(CanonicalEvidenceObject.id).where(
-        CanonicalEvidenceObject.object_type == "scientific_object"
-    )
-    edge_rows = db.execute(
-        select(CanonicalEvidenceEdge.subject_id, CanonicalEvidenceEdge.object_id).where(
-            or_(
-                CanonicalEvidenceEdge.subject_id.in_(scientific_ids),
-                CanonicalEvidenceEdge.object_id.in_(scientific_ids),
-            )
-        )
-    ).all() if ids else []
-    neighbors: dict[UUID, set[UUID]] = {item: set() for item in ids}
-    for subject_id, object_id in edge_rows:
-        if subject_id in neighbors:
-            neighbors[subject_id].add(object_id)
-        if object_id in neighbors:
-            neighbors[object_id].add(subject_id)
-    aliases = db.execute(
-        select(
-            CanonicalIdentityAlias.canonical_object_id,
-            CanonicalIdentityAlias.namespace,
-            CanonicalIdentityAlias.native_object_type,
-            CanonicalIdentityAlias.alias_value,
-        ).where(CanonicalIdentityAlias.canonical_object_id.in_(scientific_ids))
-    ).all() if ids else []
-    aliases_by_id: dict[UUID, list[str]] = {item: [] for item in ids}
-    for object_id, namespace, object_type, value in aliases:
-        aliases_by_id[object_id].extend((value, f"{namespace}:{object_type}:{value}"))
-
     digest = corpus_digest(db)
     now = datetime.now(UTC)
     db.execute(delete(EvidenceRetrievalProjection))
     db.execute(delete(EvidenceRetrievalState))
-    for record in objects:
-        text = str(record.payload.get("content_text") or "").strip()
-        if not text:
-            continue
-        terms = term_frequencies(text)
-        db.add(
-            EvidenceRetrievalProjection(
-                object_id=record.id,
-                project=record.project,
-                access_class=record.access_class,
-                object_schema_version=record.object_schema_version,
-                scientific_type=record.payload["scientific_type"],
-                content_digest=record.content_digest,
-                content_text=text,
-                aliases=sorted(set(aliases_by_id[record.id])),
-                lexical_terms=terms,
-                vector=hashed_vector(terms),
-                graph_neighbors=sorted(neighbors[record.id], key=str),
-                projection_version=PROJECTION_VERSION,
-                indexed_at=now,
+    projected_count = 0
+    last_id: UUID | None = None
+    while True:
+        statement = (
+            select(
+                CanonicalEvidenceObject.id,
+                CanonicalEvidenceObject.project,
+                CanonicalEvidenceObject.access_class,
+                CanonicalEvidenceObject.object_schema_version,
+                CanonicalEvidenceObject.content_digest,
+                CanonicalEvidenceObject.payload,
+            )
+            .where(CanonicalEvidenceObject.object_type == "scientific_object")
+            .order_by(CanonicalEvidenceObject.id)
+            .limit(_PROJECTION_BATCH_SIZE)
+        )
+        if last_id is not None:
+            statement = statement.where(CanonicalEvidenceObject.id > last_id)
+        objects = db.execute(statement).all()
+        if not objects:
+            break
+        first_id, last_id = objects[0].id, objects[-1].id
+        ids = {row.id for row in objects}
+        neighbors: dict[UUID, set[UUID]] = {item: set() for item in ids}
+        edge_rows = db.execute(
+            select(
+                CanonicalEvidenceEdge.subject_id, CanonicalEvidenceEdge.object_id
+            ).where(
+                or_(
+                    CanonicalEvidenceEdge.subject_id.between(first_id, last_id),
+                    CanonicalEvidenceEdge.object_id.between(first_id, last_id),
+                )
             )
         )
-    projected_count = sum(bool(str(item.payload.get("content_text") or "").strip()) for item in objects)
+        for subject_id, object_id in edge_rows:
+            if subject_id in neighbors:
+                neighbors[subject_id].add(object_id)
+            if object_id in neighbors:
+                neighbors[object_id].add(subject_id)
+        aliases_by_id: dict[UUID, list[str]] = {item: [] for item in ids}
+        alias_rows = db.execute(
+            select(
+                CanonicalIdentityAlias.canonical_object_id,
+                CanonicalIdentityAlias.namespace,
+                CanonicalIdentityAlias.native_object_type,
+                CanonicalIdentityAlias.alias_value,
+            ).where(
+                CanonicalIdentityAlias.canonical_object_id.between(first_id, last_id)
+            )
+        )
+        for object_id, namespace, object_type, value in alias_rows:
+            if object_id in aliases_by_id:
+                aliases_by_id[object_id].extend(
+                    (value, f"{namespace}:{object_type}:{value}")
+                )
+        mappings = []
+        for record in objects:
+            text = str(record.payload.get("content_text") or "").strip()
+            if not text:
+                continue
+            terms = term_frequencies(text)
+            mappings.append(
+                {
+                    "object_id": record.id,
+                    "project": record.project,
+                    "access_class": record.access_class,
+                    "object_schema_version": record.object_schema_version,
+                    "scientific_type": record.payload["scientific_type"],
+                    "content_digest": record.content_digest,
+                    "content_text": text,
+                    "aliases": sorted(set(aliases_by_id[record.id])),
+                    "lexical_terms": terms,
+                    "vector": hashed_vector(terms),
+                    "graph_neighbors": sorted(neighbors[record.id], key=str),
+                    "projection_version": PROJECTION_VERSION,
+                    "indexed_at": now,
+                }
+            )
+        if mappings:
+            db.execute(insert(EvidenceRetrievalProjection), mappings)
+            projected_count += len(mappings)
     state = EvidenceRetrievalState(
         projection_name=PROJECTION_NAME,
         projection_version=PROJECTION_VERSION,
@@ -199,7 +235,9 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
 def projection_status(db: Session) -> tuple[EvidenceRetrievalState, str, bool]:
     state = db.get(EvidenceRetrievalState, PROJECTION_NAME)
     if state is None:
-        raise HTTPException(status_code=409, detail="Retrieval projection is not built.")
+        raise HTTPException(
+            status_code=409, detail="Retrieval projection is not built."
+        )
     current = corpus_digest(db)
     return state, current, state.corpus_digest != current
 
@@ -216,7 +254,9 @@ def hybrid_search(
             detail="Retrieval projection is stale and must be rebuilt.",
         )
     if state.projection_version != request.projection_version:
-        raise HTTPException(status_code=409, detail="Projection version is incompatible.")
+        raise HTTPException(
+            status_code=409, detail="Projection version is incompatible."
+        )
     projections = _authorized_projections(db, request, access)
     channel_scores = score_channels(projections, request.query)
     selected = fuse_rankings(channel_scores, request.channels, request.limit)
@@ -386,17 +426,19 @@ def _authorized_projections(
         )
     if request.project is not None:
         if "*" not in access.projects and request.project not in access.projects:
-            raise HTTPException(status_code=403, detail="Evidence project access denied.")
+            raise HTTPException(
+                status_code=403, detail="Evidence project access denied."
+            )
         statement = statement.where(
             EvidenceRetrievalProjection.project == request.project
         )
     if request.scientific_types:
         statement = statement.where(
-            EvidenceRetrievalProjection.scientific_type.in_(
-                request.scientific_types
-            )
+            EvidenceRetrievalProjection.scientific_type.in_(request.scientific_types)
         )
-    return list(db.scalars(statement.order_by(EvidenceRetrievalProjection.object_id)).all())
+    return list(
+        db.scalars(statement.order_by(EvidenceRetrievalProjection.object_id)).all()
+    )
 
 
 def _rank(scores: dict[UUID, float]) -> list[tuple[UUID, float]]:
