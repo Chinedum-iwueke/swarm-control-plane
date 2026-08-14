@@ -463,7 +463,7 @@ def assemble_context_pack(
                 "access_class": record.access_class,
                 "excerpt": text[:2000],
                 "citation": {
-                    "replay_path": f"/v1/research/evidence/{record.id}",
+                    "replay_path": _evidence_replay_path(record.id),
                     "coordinates": record.payload.get("coordinates"),
                 },
             }
@@ -788,8 +788,12 @@ def _node_response(node: EvidenceGraphProjectionNode) -> dict[str, Any]:
         "access_class": node.access_class,
         "content_digest": node.content_digest,
         "label": node.label,
-        "replay_path": f"/v1/research/evidence/{node.object_id}",
+        "replay_path": _evidence_replay_path(node.object_id),
     }
+
+
+def _evidence_replay_path(object_id: UUID) -> str:
+    return f"/v1/research/evidence/objects/{object_id}"
 
 
 def _edge_response(edge: EvidenceGraphProjectionEdge) -> dict[str, Any]:
