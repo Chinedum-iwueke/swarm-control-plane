@@ -39,12 +39,14 @@ _ACCESS_LEVEL = {"public": 0, "internal": 1, "restricted": 2, "protected": 3}
 _TERMS = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _STOP_TERMS = {
     "a",
+    "about",
     "after",
     "and",
     "are",
     "be",
     "do",
     "does",
+    "evidence",
     "for",
     "from",
     "has",
@@ -55,6 +57,7 @@ _STOP_TERMS = {
     "of",
     "on",
     "or",
+    "say",
     "that",
     "the",
     "to",
@@ -79,6 +82,7 @@ _CONCEPTS = {
 _PROJECTION_BATCH_SIZE = 1_000
 _CALIBRATION_CANDIDATES_PER_CHANNEL = 500
 _DATABASE_CANDIDATE_LIMIT = 500
+_PRECISE_CANDIDATE_LIMIT = 100
 _GRAPH_EXPANSION_LIMIT = 100
 _MAX_QUERY_TERMS = 24
 _SEARCH_CAPACITY = threading.BoundedSemaphore(8)
@@ -644,20 +648,31 @@ def _authorized_projections(
         ).all()
     )
 
+    informative = sorted(informative_terms(request.query))[:_MAX_QUERY_TERMS]
     terms = sorted(candidate_terms(request.query))[:_MAX_QUERY_TERMS]
     lexical = []
     if terms:
         document = func.to_tsvector(
             "simple", EvidenceRetrievalProjection.content_text
         )
+        if informative:
+            precise_query = func.plainto_tsquery(
+                "simple", " ".join(informative)
+            )
+            lexical.extend(
+                db.scalars(
+                    statement.where(document.op("@@")(precise_query))
+                    .order_by(
+                        func.ts_rank_cd(document, precise_query).desc(),
+                        EvidenceRetrievalProjection.object_id,
+                    )
+                    .limit(_PRECISE_CANDIDATE_LIMIT)
+                ).all()
+            )
         candidate_query = func.to_tsquery("simple", " | ".join(terms))
-        lexical = list(
+        lexical.extend(
             db.scalars(
                 statement.where(document.op("@@")(candidate_query))
-                .order_by(
-                    func.ts_rank_cd(document, candidate_query).desc(),
-                    EvidenceRetrievalProjection.object_id,
-                )
                 .limit(_DATABASE_CANDIDATE_LIMIT)
             ).all()
         )
