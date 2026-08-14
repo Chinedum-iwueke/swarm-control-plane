@@ -46,7 +46,7 @@ without changing evidence IDs.
 
 ## Engineering validation
 
-- Backend full suite: 249 passed.
+- Backend full suite: 252 passed.
 - Focused graph and curriculum suites: 22 passed after freshness optimization.
 - Worker suite: 186 passed; two unrelated existing VM2 Postgres TLS/layout
   preflight tests remain failing.
