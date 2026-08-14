@@ -1,6 +1,8 @@
 schema_version: 1
 portfolio_key: research-bible-quantitative-domains
 version: 1.0.0
+evaluation_version: 1.0.1
+portfolio_version: 1.0.1
 project: systematic-research
 qualified_roles:
 - senior-quantitative-researcher
@@ -45,8 +47,8 @@ domains:
   title: Regime Analysis
   topic: regime-identification
   supporting_query: market regimes structural breaks hidden states volatility
-  opposing_query: stable predictor relations in any weather regime limitations
-  held_out_query: structural breaks coefficient instability time series
+  opposing_query: strategies imply stable relations between asset returns and predictors in any weather
+  held_out_query: there might be structural breaks in the data
 - key: reproducibility-governance
   title: Reproducibility and Governance
   topic: reproducible-governed-research
@@ -57,8 +59,8 @@ domains:
   title: Risk Engineering
   topic: drawdown-tail-and-model-risk
   supporting_query: portfolio risk drawdown tail risk stress testing
-  opposing_query: limitations of Value-at-Risk as a portfolio risk measure
-  held_out_query: Value-at-Risk tracking error credit exposures portfolio risk
+  opposing_query: Recall that we introduced Value-at-Risk when we discussed advanced portfolio
+  held_out_query: estimate the VaR or tracking error consequences of credit exposures
 - key: selection-bias
   title: Selection Bias
   topic: multiple-testing-and-selection
