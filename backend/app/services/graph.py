@@ -304,7 +304,14 @@ def graph_projection_status(
         raise HTTPException(
             status_code=409, detail="Knowledge graph projection is not built."
         )
-    return state, state.source_epoch != corpus_epoch(db)
+    current_epoch = corpus_epoch(db)
+    if state.source_epoch == 0:
+        stale = state.corpus_digest != graph_corpus_digest(db)
+        if not stale:
+            state.source_epoch = current_epoch
+            db.commit()
+        return state, stale
+    return state, state.source_epoch != current_epoch
 
 
 def query_graph(

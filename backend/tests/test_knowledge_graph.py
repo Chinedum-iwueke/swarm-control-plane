@@ -165,6 +165,38 @@ def test_current_projection_uses_constant_time_epoch(
     assert graph_projection_status(db) == (state, False)
 
 
+def test_legacy_projection_adopts_epoch_only_after_digest_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(corpus_digest="1" * 64, source_epoch=0)
+    db = MagicMock()
+    db.get.return_value = state
+    monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
+    monkeypatch.setattr(
+        "app.services.graph.graph_corpus_digest", lambda _: "1" * 64
+    )
+
+    assert graph_projection_status(db) == (state, False)
+    assert state.source_epoch == 42
+    db.commit.assert_called_once()
+
+
+def test_legacy_projection_does_not_adopt_epoch_when_digest_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(corpus_digest="1" * 64, source_epoch=0)
+    db = MagicMock()
+    db.get.return_value = state
+    monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
+    monkeypatch.setattr(
+        "app.services.graph.graph_corpus_digest", lambda _: "2" * 64
+    )
+
+    assert graph_projection_status(db) == (state, True)
+    assert state.source_epoch == 0
+    db.commit.assert_not_called()
+
+
 def test_deterministic_calculators_have_stable_parity() -> None:
     assert calculate("mean", [1, 2, 3], {})["value"] == 2.0
     deviation = calculate("sample-standard-deviation", [1, 2, 3], {})
