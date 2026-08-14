@@ -29,6 +29,7 @@ from app.schemas.graph import (
     GraphQueryRequest,
 )
 from app.services.evidence import EvidenceAccessContext, get_evidence_object
+from app.services.retrieval import corpus_epoch
 
 PROJECTION_NAME = "canonical-knowledge-graph"
 PROJECTION_VERSION = "knowledge-graph-v1.0.0"
@@ -198,6 +199,7 @@ def graph_corpus_digest(db: Session) -> str:
 
 
 def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
+    source_epoch = corpus_epoch(db)
     corpus = graph_corpus_digest(db)
     now = datetime.now(UTC)
     db.execute(delete(EvidenceGraphProjectionEdge))
@@ -281,6 +283,7 @@ def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
         projection_name=PROJECTION_NAME,
         projection_version=PROJECTION_VERSION,
         corpus_digest=corpus,
+        source_epoch=source_epoch,
         node_count=node_count,
         edge_count=edge_count,
         manifest=manifest,
@@ -301,7 +304,7 @@ def graph_projection_status(
         raise HTTPException(
             status_code=409, detail="Knowledge graph projection is not built."
         )
-    return state, state.corpus_digest != graph_corpus_digest(db)
+    return state, state.source_epoch != corpus_epoch(db)
 
 
 def query_graph(
