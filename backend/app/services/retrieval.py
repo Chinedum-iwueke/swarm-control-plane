@@ -11,7 +11,7 @@ from itertools import chain
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, insert, or_, select
+from sqlalchemy import and_, delete, insert, not_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import (
@@ -68,6 +68,9 @@ def corpus_digest(db: Session) -> str:
     scientific_ids = select(CanonicalEvidenceObject.id).where(
         CanonicalEvidenceObject.object_type == "scientific_object"
     )
+    non_scientific_ids = select(CanonicalEvidenceObject.id).where(
+        CanonicalEvidenceObject.object_type != "scientific_object"
+    )
     edge_rows = db.execute(
         select(
             CanonicalEvidenceEdge.subject_id,
@@ -75,9 +78,11 @@ def corpus_digest(db: Session) -> str:
             CanonicalEvidenceEdge.object_id,
         )
         .where(
-            or_(
-                CanonicalEvidenceEdge.subject_id.in_(scientific_ids),
-                CanonicalEvidenceEdge.object_id.in_(scientific_ids),
+            not_(
+                and_(
+                    CanonicalEvidenceEdge.subject_id.in_(non_scientific_ids),
+                    CanonicalEvidenceEdge.object_id.in_(non_scientific_ids),
+                )
             )
         )
         .order_by(
