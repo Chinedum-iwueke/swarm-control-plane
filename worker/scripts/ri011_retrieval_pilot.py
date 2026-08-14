@@ -18,7 +18,7 @@ CASES = [
     {
         "case_key": "commodity-momentum-evidence",
         "query": "What does the evidence say about commodity momentum and trend following?",
-        "expected_object_ids": ["167cec89-df71-51cb-aa7e-3cd368fb161a"],
+        "expected_object_ids": ["d98c71ca-bf52-567d-9b35-e23411f561a5"],
         "opposing_object_ids": [],
         "forbidden_object_ids": [],
         "should_abstain": False,
