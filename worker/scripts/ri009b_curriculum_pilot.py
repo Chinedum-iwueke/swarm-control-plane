@@ -188,7 +188,9 @@ def evaluate(
         curriculum = curriculum_domains[domain_key]
         payload = {
             "curriculum_id": curriculum["id"],
-            "evaluation_version": catalog["version"],
+            "evaluation_version": catalog.get(
+                "evaluation_version", catalog["version"]
+            ),
             "cases": [
                 {
                     "case_key": f"{domain_key}-held-out",
@@ -240,7 +242,7 @@ def finalize(
         "/v1/research/curricula/portfolios",
         {
             "portfolio_key": catalog["portfolio_key"],
-            "version": catalog["version"],
+            "version": catalog.get("portfolio_version", catalog["version"]),
             "required_domain_keys": domain_keys,
             "curriculum_ids": [curricula_by_domain[key]["id"] for key in domain_keys],
             "created_by": "ri009b-independent-evaluator",
