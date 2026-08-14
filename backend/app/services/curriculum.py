@@ -174,7 +174,7 @@ def evaluate_curriculum(
             and bool(item.get("citation", {}).get("content_digest"))
             for item in result["hits"]
         )
-        abstained = not result["hits"]
+        abstained = bool(result.get("abstained", not result["hits"]))
         leakage = len(returned & forbidden) / len(returned) if returned else 0.0
         recalls.append(recall)
         opposition_recalls.append(opposition)

@@ -27,8 +27,37 @@ PROJECTION_NAME = "canonical-scientific"
 PROJECTION_VERSION = "hybrid-retrieval-v1.0.0"
 VECTOR_DIMENSIONS = 64
 RRF_K = 60
+MINIMUM_EVIDENCE_CONFIDENCE = 0.18
+CALIBRATION_VERSION = "evidence-confidence-v1"
 _ACCESS_LEVEL = {"public": 0, "internal": 1, "restricted": 2, "protected": 3}
 _TERMS = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_STOP_TERMS = {
+    "a",
+    "after",
+    "and",
+    "are",
+    "be",
+    "do",
+    "does",
+    "for",
+    "from",
+    "has",
+    "have",
+    "in",
+    "indicates",
+    "is",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "what",
+    "when",
+    "whether",
+    "which",
+    "with",
+}
 _CONCEPTS = {
     "momentum": "concept-trend",
     "trend": "concept-trend",
@@ -42,6 +71,7 @@ _CONCEPTS = {
     "volatility": "concept-risk",
 }
 _PROJECTION_BATCH_SIZE = 1_000
+_CALIBRATION_CANDIDATES_PER_CHANNEL = 2_000
 
 
 def _digest_rows(rows: Iterable[tuple[str, ...]]) -> str:
@@ -264,10 +294,16 @@ def hybrid_search(
         )
     projections = _authorized_projections(db, request, access)
     channel_scores = score_channels(projections, request.query)
-    selected = fuse_rankings(channel_scores, request.channels, request.limit)
+    selected = calibrated_rankings(
+        projections,
+        channel_scores,
+        request.channels,
+        request.query,
+        request.limit,
+    )
     by_id = {item.object_id: item for item in projections}
     hits = []
-    for object_id, fused_score, ranks in selected:
+    for object_id, fused_score, confidence, ranks in selected:
         item = by_id[object_id]
         canonical = get_evidence_object(db, object_id, access, audit=False)
         if canonical.content_digest != item.content_digest:
@@ -290,6 +326,7 @@ def hybrid_search(
                 "scientific_type": item.scientific_type,
                 "text": item.content_text,
                 "score": round(fused_score, 8),
+                "confidence": round(confidence, 8),
                 "channel_scores": scores,
                 "channel_ranks": ranks,
                 "citation": {
@@ -306,6 +343,9 @@ def hybrid_search(
         "corpus_digest": current_digest,
         "fusion": request.fusion,
         "stale": False,
+        "confidence": round(hits[0]["confidence"], 8) if hits else 0.0,
+        "abstained": not hits,
+        "calibration": CALIBRATION_VERSION,
         "hits": hits,
     }
 
@@ -368,6 +408,90 @@ def fuse_rankings(
             ranks_by_id.setdefault(object_id, {})[channel] = rank
     ordered = sorted(fused, key=lambda item: (-fused[item], str(item)))[:limit]
     return [(item, fused[item], ranks_by_id[item]) for item in ordered]
+
+
+def calibrated_rankings(
+    projections: Iterable[EvidenceRetrievalProjection],
+    scores: dict[str, dict[UUID, float]],
+    channels: list[str],
+    query: str,
+    limit: int,
+) -> list[tuple[UUID, float, float, dict[str, int]]]:
+    items = list(projections)
+    by_id = {item.object_id: item for item in items}
+    fused_scores: dict[UUID, float] = {}
+    ranks_by_id: dict[UUID, dict[str, int]] = {}
+    for channel in channels:
+        for rank, (object_id, _) in enumerate(
+            _rank(scores[channel])[:_CALIBRATION_CANDIDATES_PER_CHANNEL], 1
+        ):
+            fused_scores[object_id] = fused_scores.get(object_id, 0.0) + 1 / (
+                RRF_K + rank
+            )
+            ranks_by_id.setdefault(object_id, {})[channel] = rank
+    fused = sorted(
+        (
+            (object_id, fused_score, ranks_by_id[object_id])
+            for object_id, fused_score in fused_scores.items()
+        ),
+        key=lambda item: (-item[1], str(item[0])),
+    )
+    query_terms = informative_terms(query)
+    anchors = explicit_anchor_terms(query)
+    requested_concepts = query_concepts(query_terms)
+    calibrated = []
+    for object_id, fused_score, ranks in fused:
+        item = by_id[object_id]
+        item_terms = set(item.lexical_terms)
+        identifiers = " ".join(
+            (str(item.object_id), item.content_digest, *map(str, item.aliases))
+        ).lower()
+        searchable = f"{item.content_text.lower()} {identifiers}"
+        if anchors and not anchors.issubset(set(_TERMS.findall(searchable))):
+            continue
+        overlap = query_terms & item_terms
+        concept_overlap = requested_concepts & query_concepts(item_terms)
+        exact = scores["exact"].get(object_id, 0.0)
+        lexical = scores["lexical"].get(object_id, 0.0)
+        if exact == 0 and len(overlap) < 2 and not concept_overlap:
+            continue
+        coverage = len(overlap) / len(query_terms) if query_terms else 0.0
+        concept_coverage = (
+            len(concept_overlap) / len(requested_concepts)
+            if requested_concepts
+            else 0.0
+        )
+        confidence = min(
+            1.0,
+            (0.55 * coverage)
+            + (0.25 * lexical)
+            + (0.15 * exact)
+            + (0.05 * concept_coverage),
+        )
+        if exact == 1.0:
+            confidence = max(confidence, 0.95)
+        if confidence >= MINIMUM_EVIDENCE_CONFIDENCE:
+            calibrated.append((object_id, fused_score, confidence, ranks))
+    return sorted(
+        calibrated,
+        key=lambda item: (-item[2], -item[1], str(item[0])),
+    )[:limit]
+
+
+def informative_terms(text: str) -> set[str]:
+    return set(term_frequencies(text)) - _STOP_TERMS
+
+
+def explicit_anchor_terms(text: str) -> set[str]:
+    return {
+        token
+        for token in _TERMS.findall(text.lower())
+        if any(character.isdigit() for character in token)
+    }
+
+
+def query_concepts(terms: Iterable[str]) -> set[str]:
+    return {_CONCEPTS[term] for term in terms if term in _CONCEPTS}
 
 
 def term_frequencies(text: str) -> dict[str, int]:

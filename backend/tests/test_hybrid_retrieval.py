@@ -8,9 +8,6 @@ from uuid import UUID
 
 import httpx
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.clients.retrieval import CanonicalRetrievalClient, RetrievalClientError
 from app.schemas.retrieval import HybridRetrievalRequest
 from app.services.evidence import EvidenceAccessContext
@@ -18,6 +15,7 @@ from app.services.retrieval import (
     PROJECTION_VERSION,
     _authorized_projections,
     build_projections,
+    calibrated_rankings,
     corpus_digest,
     fuse_rankings,
     hashed_vector,
@@ -26,6 +24,8 @@ from app.services.retrieval import (
     score_channels,
     term_frequencies,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures/retrieval"
 PROJECT = "systematic-research"
@@ -158,6 +158,41 @@ def test_rrf_ties_are_deterministic_by_object_id() -> None:
         first,
         second,
     ]
+
+
+def test_calibrated_ranking_prioritizes_query_coverage() -> None:
+    corpus = golden_corpus()
+    scores = score_channels(
+        corpus,
+        "Does momentum retain predictive value after transaction costs?",
+    )
+
+    results = calibrated_rankings(
+        corpus,
+        scores,
+        ["exact", "lexical", "vector", "graph"],
+        "Does momentum retain predictive value after transaction costs?",
+        10,
+    )
+
+    assert results[0][0] == UUID("22222222-2222-4222-8222-222222222222")
+    assert results[0][2] >= 0.18
+
+
+def test_explicit_unknown_identifiers_force_abstention() -> None:
+    corpus = golden_corpus()
+    query = "What is the Sharpe ratio of nonexistent ZQX-999 in 2049?"
+    scores = score_channels(corpus, query)
+
+    results = calibrated_rankings(
+        corpus,
+        scores,
+        ["exact", "lexical", "vector", "graph"],
+        query,
+        10,
+    )
+
+    assert results == []
 
 
 def test_request_rejects_duplicate_channels_and_invalid_compatibility() -> None:
@@ -384,6 +419,9 @@ def test_result_is_reauthorized_against_canonical_object(
         == canonical.payload["coordinates"]
     )
     assert response["hits"][0]["citation"]["replay_path"].endswith("/replay")
+    assert response["hits"][0]["confidence"] >= 0.18
+    assert response["abstained"] is False
+    assert response["calibration"] == "evidence-confidence-v1"
     assert canonical_fetch.call_args.kwargs == {"audit": False}
 
 
@@ -436,6 +474,9 @@ async def test_typed_client_sends_bearer_and_parses_search() -> None:
                 "corpus_digest": "a" * 64,
                 "fusion": "rrf-v1",
                 "stale": False,
+                "confidence": 0.0,
+                "abstained": True,
+                "calibration": "evidence-confidence-v1",
                 "hits": [],
             },
         )

@@ -34,9 +34,7 @@ class HybridRetrievalRequest(StrictModel):
         min_length=1,
         max_length=10,
     )
-    projection_version: Literal["hybrid-retrieval-v1.0.0"] = (
-        "hybrid-retrieval-v1.0.0"
-    )
+    projection_version: Literal["hybrid-retrieval-v1.0.0"] = "hybrid-retrieval-v1.0.0"
     fusion: Literal["rrf-v1"] = "rrf-v1"
 
     @field_validator("channels")
@@ -79,6 +77,7 @@ class HybridRetrievalHit(StrictModel):
     scientific_type: ScientificType
     text: str
     score: float
+    confidence: float = Field(ge=0, le=1)
     channel_scores: dict[RetrievalChannel, float]
     channel_ranks: dict[RetrievalChannel, int]
     citation: RetrievalCitation
@@ -90,6 +89,9 @@ class HybridRetrievalResponse(StrictModel):
     corpus_digest: str
     fusion: Literal["rrf-v1"]
     stale: Literal[False]
+    confidence: float = Field(ge=0, le=1)
+    abstained: bool
+    calibration: Literal["evidence-confidence-v1"]
     hits: list[HybridRetrievalHit]
 
 
