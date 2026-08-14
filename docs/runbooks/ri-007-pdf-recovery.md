@@ -30,6 +30,25 @@ container is not recreated during the active inbox request.
 Do not increase concurrency until CPU, memory, database latency, and ingestion time
 have been measured. Do not bypass the active-content scanner.
 
+## Continuous steward
+
+The VM2 recovery steward continuously queues terminal PDF rejections, retries proven
+inert editions, and uses an independent offline PDFium text recovery only when a
+structural PDF rewrite cannot be proven safe. The fallback produces a new UTF-8
+artifact and records original, recovered, text, page-sample, retrieval, and graph
+digests. It never publishes the original quarantine object.
+
+After a five-minute settled interval, the steward maps recovered editions back to the
+latest founder-inbox inventory and atomically rebuilds retrieval and graph projections.
+An unreadable artifact remains rejected and requires a replacement source edition.
+
+Install and activate on VM2 only after the image and migration are deployed:
+
+```bash
+cd /srv/invariance/swarm/repositories/swarm-control-plane/worker
+sudo ./systemd/install-recovery-steward.sh --enable --start
+```
+
 ## Rollback
 
 Stop the separate recovery container. Queued records remain durable. Processing rows

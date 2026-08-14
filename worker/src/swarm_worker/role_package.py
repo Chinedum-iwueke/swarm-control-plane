@@ -85,6 +85,7 @@ class RolePackageManifest(BaseModel):
             "founder_request",
             "operational_memory",
             "research_intelligence",
+            "scientific_ingestion_recovery",
         }
         if not self.workflows and set(self.task_types) - non_executing:
             raise ValueError("only non-executing reasoning packages may omit workflows")
