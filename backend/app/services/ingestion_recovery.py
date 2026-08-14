@@ -224,6 +224,7 @@ def _recover(
         "visual_samples_equivalent": True,
         "removed": removed,
         "normal_pipeline_status": sanitized.status,
+        "recovery_attempts": int(recovery.receipt.get("recovery_attempts", 1)),
         "completed_at": datetime.now(UTC).isoformat(),
     }
     recovery = db.get(ScientificIngestionRecovery, recovery_id)
