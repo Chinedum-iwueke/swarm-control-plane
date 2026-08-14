@@ -7,7 +7,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ingestion.pdf_sanitizer import PdfSanitizationError, sanitize_pdf
+from app.ingestion.pdf_sanitizer import (
+    PdfSanitizationError,
+    recover_pdf_as_inert_text,
+    sanitize_pdf,
+)
 from app.ingestion.pipeline import ScientificIngestionPipeline
 from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
 from app.schemas.ingestion import IngestionRecoveryCreate
@@ -20,7 +24,9 @@ RECOVERABLE_REASONS = {
 }
 
 
-def queue_recoveries(db: Session, payload: IngestionRecoveryCreate) -> tuple[int, int, list[UUID]]:
+def queue_recoveries(
+    db: Session, payload: IngestionRecoveryCreate
+) -> tuple[int, int, list[UUID]]:
     existing_ids = set(
         db.scalars(select(ScientificIngestionRecovery.original_job_id)).all()
     )
@@ -111,7 +117,9 @@ def process_next_recovery(
             }
         )
         recovery.status = (
-            "rejected" if isinstance(exc, PdfSanitizationError) else "remediation_required"
+            "rejected"
+            if isinstance(exc, PdfSanitizationError)
+            else "remediation_required"
         )
         recovery.receipt = receipt
         recovery.updated_at = datetime.now(UTC)
@@ -139,25 +147,42 @@ def _recover(
             byte_size=0,
         )
     )
-    result = sanitize_pdf(content)
-    reference = store.put(result.content, expected_digest=result.sanitized_digest)
+    try:
+        result = sanitize_pdf(content)
+        recovered_content = result.content
+        recovered_digest = result.sanitized_digest
+        recovered_filename = f"{Path(original.filename).stem[:160]}-sanitized.pdf"
+        recovered_media_type = "application/pdf"
+        recovery_mode = "hermes-inert-pdf-v1"
+        removed = result.removed
+        text_equivalent = True
+    except PdfSanitizationError:
+        result = recover_pdf_as_inert_text(content)
+        recovered_content = result.content
+        recovered_digest = result.recovered_digest
+        recovered_filename = f"{Path(original.filename).stem[:160]}-recovered.txt"
+        recovered_media_type = "text/plain"
+        recovery_mode = "hermes-pdfium-text-v1"
+        removed = {}
+        text_equivalent = False
+    reference = store.put(recovered_content, expected_digest=recovered_digest)
     sanitized = db.scalar(
         select(ScientificIngestionJob).where(
-            ScientificIngestionJob.content_digest == result.sanitized_digest
+            ScientificIngestionJob.content_digest == recovered_digest
         )
     )
     if sanitized is None:
         now = datetime.now(UTC)
         source = dict(original.source)
         source["title"] = f"{source['title']} [inert recovered edition]"[:500]
-        source["origin"] = f"{source['origin']}#hermes-inert-recovery-v1"[:2000]
-        source["edition_label"] = f"sanitized-{result.sanitized_digest[:12]}"
+        source["origin"] = f"{source['origin']}#{recovery_mode}"[:2000]
+        source["edition_label"] = f"recovered-{recovered_digest[:12]}"
         sanitized = ScientificIngestionJob(
             schema_version="scientific-ingestion-v1.0.0",
             project=original.project,
-            filename=f"{Path(original.filename).stem[:160]}-sanitized.pdf",
-            media_type="application/pdf",
-            content_digest=result.sanitized_digest,
+            filename=recovered_filename,
+            media_type=recovered_media_type,
+            content_digest=recovered_digest,
             quarantine_uri=reference.uri,
             access_class=original.access_class,
             source=source,
@@ -169,8 +194,8 @@ def _recover(
                         "stage": "quarantine",
                         "status": "passed",
                         "at": now.isoformat(),
-                        "artifact_digest": result.sanitized_digest,
-                        "byte_size": len(result.content),
+                        "artifact_digest": recovered_digest,
+                        "byte_size": len(recovered_content),
                         "recovered_from_job_id": str(original.id),
                         "recovered_from_digest": original.content_digest,
                     }
@@ -189,15 +214,15 @@ def _recover(
         "original_digest": result.original_digest,
         "original_retained": True,
         "sanitized_job_id": str(sanitized.id),
-        "sanitized_digest": result.sanitized_digest,
-        "sanitizer": "hermes-inert-pdf-v1",
+        "sanitized_digest": recovered_digest,
+        "sanitizer": recovery_mode,
         "page_count": result.page_count,
         "text_digest": result.text_digest,
-        "text_equivalent": True,
+        "text_equivalent": text_equivalent,
         "visual_sample_digest": result.visual_sample_digest,
         "visual_sample_pages": result.visual_sample_pages,
         "visual_samples_equivalent": True,
-        "removed": result.removed,
+        "removed": removed,
         "normal_pipeline_status": sanitized.status,
         "completed_at": datetime.now(UTC).isoformat(),
     }
@@ -205,12 +230,74 @@ def _recover(
     if recovery is None:
         raise RuntimeError("recovery record is unavailable after publication")
     recovery.sanitized_job_id = sanitized.id
-    recovery.status = "recovered" if sanitized.status == "published" else "remediation_required"
+    recovery.status = (
+        "recovered" if sanitized.status == "published" else "remediation_required"
+    )
     recovery.receipt = receipt
     recovery.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(recovery)
     return recovery
+
+
+def requeue_recoverable_outcomes(db: Session) -> int:
+    """Retry proven inert editions and allow one independent-parser fallback."""
+
+    records = list(
+        db.scalars(
+            select(ScientificIngestionRecovery).where(
+                ScientificIngestionRecovery.status.in_(
+                    ["rejected", "remediation_required"]
+                )
+            )
+        ).all()
+    )
+    requeued = 0
+    now = datetime.now(UTC)
+    for record in records:
+        original = db.get(ScientificIngestionJob, record.original_job_id)
+        if original is None or original.status != "rejected":
+            continue
+        receipt = dict(record.receipt)
+        attempts = int(receipt.get("recovery_attempts", 1))
+        if attempts >= 2:
+            continue
+        if record.status == "remediation_required":
+            sanitized = (
+                db.get(ScientificIngestionJob, record.sanitized_job_id)
+                if record.sanitized_job_id
+                else None
+            )
+            if (
+                sanitized is None
+                or sanitized.status != "rejected"
+                or not receipt.get("visual_samples_equivalent")
+            ):
+                continue
+            report = dict(sanitized.stage_report)
+            stages = list(report.get("stages", []))
+            stages.append(
+                {
+                    "stage": "quarantine",
+                    "status": "requeued",
+                    "reason": "equivalent inert recovery edition retried",
+                    "at": now.isoformat(),
+                }
+            )
+            report["stages"] = stages
+            sanitized.stage_report = report
+            sanitized.status = "quarantined"
+            sanitized.updated_at = now
+        elif receipt.get("failure_category") != "PdfSanitizationError":
+            continue
+        receipt["recovery_attempts"] = attempts + 1
+        receipt["requeued_at"] = now.isoformat()
+        record.receipt = receipt
+        record.status = "queued"
+        record.updated_at = now
+        requeued += 1
+    db.commit()
+    return requeued
 
 
 def requeue_stale_recoveries(db: Session, *, stale_after_seconds: int) -> int:

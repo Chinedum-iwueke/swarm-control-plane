@@ -25,15 +25,30 @@ class PdfSanitizationResult:
     removed: dict[str, int]
 
 
+@dataclass(frozen=True)
+class PdfTextRecoveryResult:
+    content: bytes
+    original_digest: str
+    recovered_digest: str
+    page_count: int
+    text_digest: str
+    visual_sample_digest: str
+    visual_sample_pages: list[int]
+
+
 def sanitize_pdf(content: bytes) -> PdfSanitizationResult:
     """Create an inert PDF and prove that its extracted text did not change."""
 
     original_digest = hashlib.sha256(content).hexdigest()
     try:
         reader = PdfReader(BytesIO(content), strict=False)
-        original_pages = [_normalized_text(page.extract_text() or "") for page in reader.pages]
+        original_pages = [
+            _normalized_text(page.extract_text() or "") for page in reader.pages
+        ]
     except Exception as exc:
-        raise PdfSanitizationError("original PDF cannot be parsed for safe recovery") from exc
+        raise PdfSanitizationError(
+            "original PDF cannot be parsed for safe recovery"
+        ) from exc
     if not original_pages:
         raise PdfSanitizationError("original PDF has no pages")
 
@@ -53,7 +68,9 @@ def sanitize_pdf(content: bytes) -> PdfSanitizationResult:
     for page in reader.pages:
         if "/Annots" in page:
             annotations = page.get("/Annots")
-            removed["annotations"] += len(annotations) if isinstance(annotations, ArrayObject) else 1
+            removed["annotations"] += (
+                len(annotations) if isinstance(annotations, ArrayObject) else 1
+            )
             del page[NameObject("/Annots")]
         if "/AA" in page:
             del page[NameObject("/AA")]
@@ -75,7 +92,9 @@ def sanitize_pdf(content: bytes) -> PdfSanitizationResult:
     sanitized = output.getvalue()
     try:
         check = PdfReader(BytesIO(sanitized), strict=True)
-        sanitized_pages = [_normalized_text(page.extract_text() or "") for page in check.pages]
+        sanitized_pages = [
+            _normalized_text(page.extract_text() or "") for page in check.pages
+        ]
     except Exception as exc:
         raise PdfSanitizationError("sanitized PDF failed strict parsing") from exc
     if len(sanitized_pages) != len(original_pages):
@@ -96,6 +115,51 @@ def sanitize_pdf(content: bytes) -> PdfSanitizationResult:
         visual_sample_digest=original_visual_digest,
         visual_sample_pages=[page + 1 for page in visual_pages],
         removed=removed,
+    )
+
+
+def recover_pdf_as_inert_text(content: bytes) -> PdfTextRecoveryResult:
+    """Extract bounded page text with PDFium when structural rewrite is unsafe."""
+
+    original_digest = hashlib.sha256(content).hexdigest()
+    try:
+        import pypdfium2 as pdfium
+
+        document = pdfium.PdfDocument(content)
+        page_count = len(document)
+        if page_count < 1 or page_count > 2_000:
+            document.close()
+            raise PdfSanitizationError("PDF page count is outside recovery bounds")
+        pages: list[str] = []
+        for page_number in range(page_count):
+            page = document[page_number]
+            text_page = page.get_textpage()
+            pages.append(_normalized_text(text_page.get_text_bounded()))
+            text_page.close()
+            page.close()
+        document.close()
+    except PdfSanitizationError:
+        raise
+    except Exception as exc:
+        raise PdfSanitizationError(
+            "original PDF is unreadable by the independent recovery parser"
+        ) from exc
+    if not any(pages):
+        raise PdfSanitizationError("independent PDF recovery produced no text")
+    visual_pages = sorted({0, page_count // 2, page_count - 1})
+    visual_digest = _visual_digest(content, visual_pages)
+    recovered = "\n\n".join(
+        f"--- Page {page_number} ---\n{text}"
+        for page_number, text in enumerate(pages, start=1)
+    ).encode("utf-8")
+    return PdfTextRecoveryResult(
+        content=recovered,
+        original_digest=original_digest,
+        recovered_digest=hashlib.sha256(recovered).hexdigest(),
+        page_count=page_count,
+        text_digest=_pages_digest(pages),
+        visual_sample_digest=visual_digest,
+        visual_sample_pages=[page + 1 for page in visual_pages],
     )
 
 
@@ -120,7 +184,9 @@ def _visual_digest(content: bytes, pages: list[int]) -> str:
         for page_number in pages:
             page = document[page_number]
             image = page.render(scale=1).to_pil().convert("RGB")
-            digest.update(f"{page_number}:{image.width}x{image.height}:".encode("ascii"))
+            digest.update(
+                f"{page_number}:{image.width}x{image.height}:".encode("ascii")
+            )
             digest.update(image.tobytes())
             image.close()
             page.close()

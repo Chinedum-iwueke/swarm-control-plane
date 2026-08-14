@@ -3,7 +3,11 @@ from __future__ import annotations
 from io import BytesIO
 
 import pytest
-from app.ingestion.pdf_sanitizer import PdfSanitizationError, sanitize_pdf
+from app.ingestion.pdf_sanitizer import (
+    PdfSanitizationError,
+    recover_pdf_as_inert_text,
+    sanitize_pdf,
+)
 from app.ingestion.pipeline import ScientificIngestionPipeline, _has_active_pdf_content
 from pypdf import PdfReader, PdfWriter
 
@@ -59,3 +63,13 @@ def test_sanitizer_never_mutates_original_bytes() -> None:
     retained = bytes(original)
     sanitize_pdf(original)
     assert original == retained
+
+
+def test_pdfium_fallback_produces_bounded_inert_page_text() -> None:
+    original = golden_pdf()
+    result = recover_pdf_as_inert_text(original)
+    assert result.page_count == 1
+    assert result.original_digest != result.recovered_digest
+    assert result.visual_sample_pages == [1]
+    assert b"--- Page 1 ---" in result.content
+    assert b"Momentum is evaluated after costs" in result.content
