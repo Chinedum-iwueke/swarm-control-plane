@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import CanonicalEvidenceEdge, CanonicalEvidenceObject
@@ -315,16 +315,55 @@ def query_graph(
             status_code=409,
             detail="Knowledge graph projection is stale and must be rebuilt.",
         )
-    nodes = _authorized_nodes(db, access, request.project)
-    by_id = {node.object_id: node for node in nodes}
     requested = set(request.root_ids)
     if request.target_id is not None:
         requested.add(request.target_id)
-    if not requested <= set(by_id):
+    initial = _authorized_node_subset(db, requested, access, request.project)
+    if set(initial) != requested:
         raise HTTPException(
             status_code=404, detail="Graph root or target is unavailable."
         )
-    edges = _authorized_edges(db, set(by_id), access, request)
+    by_id = dict(initial)
+    edges: list[EvidenceGraphProjectionEdge] = []
+    frontier = set(request.root_ids)
+    for _depth in range(request.max_depth):
+        if not frontier or len(by_id) >= request.max_nodes:
+            break
+        candidates = _frontier_edges(db, frontier, access, request)
+        candidate_ids = {
+            node_id
+            for edge in candidates
+            for node_id in (
+                edge.subject_id,
+                edge.object_id,
+                edge.provenance_object_id,
+            )
+        }
+        authorized = _authorized_node_subset(db, candidate_ids, access, request.project)
+        authorized_ids = set(authorized)
+        accepted = [
+            edge
+            for edge in candidates
+            if {
+                edge.subject_id,
+                edge.object_id,
+                edge.provenance_object_id,
+            }
+            <= authorized_ids
+        ]
+        previous = set(by_id)
+        for node_id in sorted(authorized, key=str):
+            if len(by_id) >= request.max_nodes and node_id not in by_id:
+                break
+            by_id[node_id] = authorized[node_id]
+        existing_edges = {edge.edge_id for edge in edges}
+        edges.extend(edge for edge in accepted if edge.edge_id not in existing_edges)
+        frontier = {
+            node_id
+            for edge in accepted
+            for node_id in (edge.subject_id, edge.object_id)
+            if node_id not in previous and node_id in by_id
+        }
     adjacency = _adjacency(edges, request.direction)
     visited, paths = _traverse(request, adjacency)
     selected_ids = set(list(visited)[: request.max_nodes])
@@ -366,7 +405,7 @@ def graph_overview(
             status_code=409,
             detail="Knowledge graph projection is stale and must be rebuilt.",
         )
-    nodes = _authorized_nodes(db, access, project)
+    nodes = _authorized_nodes(db, access, project, limit=limit + 1)
     selected = nodes[:limit]
     selected_ids = {item.object_id for item in selected}
     request = (
@@ -530,7 +569,11 @@ def calculate(
 
 
 def _authorized_nodes(
-    db: Session, access: EvidenceAccessContext, project: str | None
+    db: Session,
+    access: EvidenceAccessContext,
+    project: str | None,
+    *,
+    limit: int | None = None,
 ) -> list[EvidenceGraphProjectionNode]:
     if (
         project is not None
@@ -552,7 +595,73 @@ def _authorized_nodes(
         )
     if project is not None:
         statement = statement.where(EvidenceGraphProjectionNode.project == project)
+    statement = statement.order_by(EvidenceGraphProjectionNode.object_id)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).all())
+
+
+def _authorized_node_subset(
+    db: Session,
+    node_ids: set[UUID],
+    access: EvidenceAccessContext,
+    project: str | None,
+) -> dict[UUID, EvidenceGraphProjectionNode]:
+    if not node_ids:
+        return {}
+    if (
+        project is not None
+        and "*" not in access.projects
+        and project not in access.projects
+    ):
+        raise HTTPException(status_code=403, detail="Graph project access denied.")
+    classes = [
+        name
+        for name, level in _ACCESS_LEVEL.items()
+        if level <= _ACCESS_LEVEL[access.max_access_class]
+    ]
+    statement = select(EvidenceGraphProjectionNode).where(
+        EvidenceGraphProjectionNode.object_id.in_(node_ids),
+        EvidenceGraphProjectionNode.access_class.in_(classes),
+    )
+    if "*" not in access.projects:
+        statement = statement.where(
+            EvidenceGraphProjectionNode.project.in_(access.projects)
+        )
+    if project is not None:
+        statement = statement.where(EvidenceGraphProjectionNode.project == project)
+    return {item.object_id: item for item in db.scalars(statement).all()}
+
+
+def _frontier_edges(
+    db: Session,
+    frontier: set[UUID],
+    access: EvidenceAccessContext,
+    request: GraphQueryRequest,
+) -> list[EvidenceGraphProjectionEdge]:
+    classes = [
+        name
+        for name, level in _ACCESS_LEVEL.items()
+        if level <= _ACCESS_LEVEL[access.max_access_class]
+    ]
+    conditions = []
+    if request.direction in {"outgoing", "both"}:
+        conditions.append(EvidenceGraphProjectionEdge.subject_id.in_(frontier))
+    if request.direction in {"incoming", "both"}:
+        conditions.append(EvidenceGraphProjectionEdge.object_id.in_(frontier))
+    statement = select(EvidenceGraphProjectionEdge).where(
+        or_(*conditions), EvidenceGraphProjectionEdge.access_class.in_(classes)
+    )
+    if request.predicates:
+        statement = statement.where(
+            EvidenceGraphProjectionEdge.predicate.in_(request.predicates)
+        )
+    statement = statement.order_by(EvidenceGraphProjectionEdge.edge_id).limit(
+        request.max_nodes * 4
+    )
+    return [
+        edge for edge in db.scalars(statement).all() if _active(edge, request.as_of)
+    ]
 
 
 def _authorized_edges(

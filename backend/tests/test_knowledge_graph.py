@@ -19,6 +19,7 @@ from app.services.graph import (
     _active,
     _adjacency,
     _authorized_edges,
+    _frontier_edges,
     _traverse,
     _validate_edge_types,
     calculate,
@@ -109,6 +110,23 @@ def test_access_filters_endpoints_and_provenance_before_edge_query() -> None:
     compiled = repr(statement.compile().params)
     assert "protected" not in compiled
     assert str(ONE) in compiled and str(TWO) in compiled
+
+
+def test_frontier_edge_query_is_bounded_to_requested_nodes() -> None:
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    request = GraphQueryRequest(root_ids=[ONE], max_nodes=500)
+    access = EvidenceAccessContext(
+        actor="reader",
+        projects=frozenset({"systematic-research"}),
+        max_access_class="internal",
+    )
+    _frontier_edges(db, {ONE, TWO}, access, request)
+    statement = db.scalars.call_args.args[0]
+    parameters = statement.compile().params
+    serialized = repr(parameters)
+    assert str(ONE) in serialized and str(TWO) in serialized
+    assert len(parameters) < 20
 
 
 def test_stale_projection_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

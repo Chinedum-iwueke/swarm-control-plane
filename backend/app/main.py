@@ -10,6 +10,7 @@ from app.api.routes import (
     controls_router,
     corpus_router,
     corpus_sync_router,
+    curriculum_router,
     data_contracts_router,
     evidence_router,
     founder_channel_router,
@@ -45,6 +46,7 @@ app = FastAPI(
 app.include_router(health_router)
 app.include_router(corpus_router)
 app.include_router(corpus_sync_router)
+app.include_router(curriculum_router)
 app.include_router(ingestion_router)
 app.include_router(ingestion_recovery_router)
 app.include_router(metrics_router)
