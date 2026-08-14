@@ -1,0 +1,79 @@
+schema_version: 1
+portfolio_key: research-bible-quantitative-domains
+version: 1.0.0
+project: systematic-research
+qualified_roles:
+- senior-quantitative-researcher
+domains:
+- key: backtesting-validity
+  title: Backtesting Validity
+  topic: point-in-time-backtesting
+  supporting_query: point-in-time backtesting look-ahead bias transaction costs
+  opposing_query: backtest overfitting limitations false discovery
+  held_out_query: backtest overfitting data snooping look-ahead bias
+- key: causal-reasoning
+  title: Causal Reasoning
+  topic: causal-identification
+  supporting_query: causal inference identification confounding financial markets
+  opposing_query: correlation does not imply causation observational bias
+  held_out_query: causal effect confounding observational studies
+- key: data-quality
+  title: Data Quality
+  topic: point-in-time-data-quality
+  supporting_query: financial data quality survivorship timestamps revisions
+  opposing_query: data errors stale prices missing observations bias
+  held_out_query: data quality historical equity returns
+- key: execution-science
+  title: Execution Science
+  topic: execution-cost-and-impact
+  supporting_query: optimal execution market impact transaction costs implementation shortfall
+  opposing_query: execution model assumptions underestimate market impact
+  held_out_query: implementation shortfall market impact execution costs
+- key: market-microstructure
+  title: Market Microstructure
+  topic: liquidity-and-price-formation
+  supporting_query: market microstructure liquidity bid ask spread price formation
+  opposing_query: liquidity fragmentation adverse selection limitations
+  held_out_query: bid-ask spread liquidity adverse selection
+- key: portfolio-construction
+  title: Portfolio Construction
+  topic: diversification-and-allocation
+  supporting_query: portfolio construction diversification covariance allocation optimization
+  opposing_query: estimation error portfolio optimization instability
+  held_out_query: portfolio optimization covariance estimation error robust
+- key: regime-analysis
+  title: Regime Analysis
+  topic: regime-identification
+  supporting_query: market regimes structural breaks hidden states volatility
+  opposing_query: stable predictor relations in any weather regime limitations
+  held_out_query: structural breaks coefficient instability time series
+- key: reproducibility-governance
+  title: Reproducibility and Governance
+  topic: reproducible-governed-research
+  supporting_query: reproducible research provenance versioning audit trail
+  opposing_query: reproducibility failure data snooping undocumented decisions
+  held_out_query: replication reproducibility data snooping
+- key: risk-engineering
+  title: Risk Engineering
+  topic: drawdown-tail-and-model-risk
+  supporting_query: portfolio risk drawdown tail risk stress testing
+  opposing_query: limitations of Value-at-Risk as a portfolio risk measure
+  held_out_query: Value-at-Risk tracking error credit exposures portfolio risk
+- key: selection-bias
+  title: Selection Bias
+  topic: multiple-testing-and-selection
+  supporting_query: selection bias multiple testing false discovery backtests
+  opposing_query: false discovery analysis designed before seeing data
+  held_out_query: selection bias biggest z value winner many contenders
+- key: statistical-inference
+  title: Statistical Inference
+  topic: robust-financial-inference
+  supporting_query: statistical inference financial returns uncertainty hypothesis testing
+  opposing_query: robust standard errors dependence within group invalid uncorrected
+  held_out_query: statistical models empirical papers uncertainty inference
+- key: time-series-methods
+  title: Time-Series Methods
+  topic: dependence-and-forecasting
+  supporting_query: financial time series dependence forecasting stationarity
+  opposing_query: time series nonstationarity structural breaks forecast instability
+  held_out_query: linear time series financial data econometric models

@@ -99,6 +99,7 @@ class DomainCurriculumResponse(DomainCurriculumCreate):
 class BrainEvaluationCase(StrictModel):
     case_key: str = Field(pattern=r"^[a-z][a-z0-9._-]{1,99}$")
     query: str = Field(min_length=3, max_length=1000)
+    opposition_query: str | None = Field(default=None, min_length=3, max_length=1000)
     expected_object_ids: list[UUID] = Field(default_factory=list, max_length=50)
     opposing_object_ids: list[UUID] = Field(default_factory=list, max_length=50)
     forbidden_object_ids: list[UUID] = Field(default_factory=list, max_length=50)
@@ -107,11 +108,15 @@ class BrainEvaluationCase(StrictModel):
     @model_validator(mode="after")
     def abstention_has_no_expected_answer(self) -> BrainEvaluationCase:
         if self.should_abstain and (
-            self.expected_object_ids or self.opposing_object_ids
+            self.expected_object_ids
+            or self.opposing_object_ids
+            or self.opposition_query is not None
         ):
             raise ValueError("abstention cases cannot prescribe answer evidence")
         if not self.should_abstain and not self.expected_object_ids:
             raise ValueError("answerable cases require expected evidence")
+        if self.opposing_object_ids and self.opposition_query is None:
+            raise ValueError("opposing evidence requires an opposition query")
         return self
 
 
@@ -177,3 +182,42 @@ class DomainReadinessResponse(StrictModel):
     evaluation: BrainEvaluationResponse | None
     ready: bool
     reasons: list[str]
+
+
+class CurriculumPortfolioCreate(StrictModel):
+    portfolio_key: str = Field(pattern=r"^[a-z][a-z0-9._-]{1,149}$")
+    version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
+    required_domain_keys: list[str] = Field(min_length=1, max_length=100)
+    curriculum_ids: list[UUID] = Field(min_length=1, max_length=100)
+    created_by: str = Field(pattern=r"^[a-z][a-z0-9._-]{0,149}$")
+
+    @model_validator(mode="after")
+    def validate_complete_mapping(self) -> CurriculumPortfolioCreate:
+        if len(set(self.required_domain_keys)) != len(self.required_domain_keys):
+            raise ValueError("portfolio domain keys must be unique")
+        if len(set(self.curriculum_ids)) != len(self.curriculum_ids):
+            raise ValueError("portfolio curriculum ids must be unique")
+        if len(self.required_domain_keys) != len(self.curriculum_ids):
+            raise ValueError("portfolio requires one curriculum per domain")
+        if self.required_domain_keys != sorted(self.required_domain_keys):
+            raise ValueError("portfolio domain keys must use canonical sort order")
+        return self
+
+
+class CurriculumPortfolioResponse(StrictModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: UUID
+    portfolio_key: str
+    version: str
+    required_domain_keys: list[str]
+    curriculum_ids: list[UUID]
+    evaluation_ids: list[UUID]
+    readiness_matrix: dict
+    corpus_digest: str
+    graph_manifest_digest: str
+    ready: bool
+    status: Literal["qualified", "gaps_detected"]
+    record_digest: str
+    created_by: str
+    created_at: datetime

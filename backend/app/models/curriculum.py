@@ -68,3 +68,29 @@ class ResearchBrainEvaluation(Base):
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ResearchCurriculumPortfolio(Base):
+    __tablename__ = "research_curriculum_portfolios"
+    __table_args__ = (UniqueConstraint("portfolio_key", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    portfolio_key: Mapped[str] = mapped_column(
+        String(150), nullable=False, index=True
+    )
+    version: Mapped[str] = mapped_column(String(100), nullable=False)
+    required_domain_keys: Mapped[list] = mapped_column(JSONB, nullable=False)
+    curriculum_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    evaluation_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    readiness_matrix: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    graph_manifest_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    ready: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    record_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
