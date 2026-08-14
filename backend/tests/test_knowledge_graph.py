@@ -6,6 +6,9 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
@@ -25,8 +28,6 @@ from app.services.graph import (
     execute_cognitive_tool,
     graph_projection_status,
 )
-from fastapi import HTTPException
-from pydantic import ValidationError
 
 ONE = UUID("11111111-1111-4111-8111-111111111111")
 TWO = UUID("22222222-2222-4222-8222-222222222222")
@@ -147,11 +148,21 @@ def test_graph_node_replay_path_targets_canonical_evidence_route() -> None:
 
 
 def test_stale_projection_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    state = SimpleNamespace(corpus_digest="1" * 64)
+    state = SimpleNamespace(corpus_digest="1" * 64, source_epoch=41)
     db = MagicMock()
     db.get.return_value = state
-    monkeypatch.setattr("app.services.graph.graph_corpus_digest", lambda _: "2" * 64)
+    monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
     assert graph_projection_status(db) == (state, True)
+
+
+def test_current_projection_uses_constant_time_epoch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(corpus_digest="1" * 64, source_epoch=42)
+    db = MagicMock()
+    db.get.return_value = state
+    monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
+    assert graph_projection_status(db) == (state, False)
 
 
 def test_deterministic_calculators_have_stable_parity() -> None:

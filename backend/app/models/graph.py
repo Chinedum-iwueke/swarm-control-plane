@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,7 @@ class EvidenceGraphProjectionState(Base):
     projection_name: Mapped[str] = mapped_column(String(100), primary_key=True)
     projection_version: Mapped[str] = mapped_column(String(100), nullable=False)
     corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_epoch: Mapped[int] = mapped_column(BigInteger, nullable=False)
     node_count: Mapped[int] = mapped_column(Integer, nullable=False)
     edge_count: Mapped[int] = mapped_column(Integer, nullable=False)
     manifest: Mapped[dict] = mapped_column(JSONB, nullable=False)
