@@ -11,7 +11,12 @@ from app.models.evidence import (
     CanonicalEvidenceObject,
     CanonicalIdentityAlias,
 )
-from app.models.governance import ApprovalEvent, Artifact, TaskApproval
+from app.models.governance import (
+    ApprovalEvent,
+    Artifact,
+    FounderNotification,
+    TaskApproval,
+)
 from app.models.graph import (
     CognitiveToolReceipt,
     EvidenceGraphProjectionEdge,
@@ -85,6 +90,7 @@ __all__ = [
     "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
+    "FounderNotification",
     "FounderProposal",
     "MissionEvent",
     "OperationalNote",

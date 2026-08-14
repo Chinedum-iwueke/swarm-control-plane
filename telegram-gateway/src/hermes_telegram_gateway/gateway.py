@@ -42,13 +42,62 @@ class RestrictedTelegramGateway:
             self._telegram.updates(self._offset, self._settings.poll_timeout_seconds),
             self._notify_proposals(),
             self._notify_tasks(),
-            self._notify_approvals(),
+            self._notify_outbox(),
             self._notify_missions(),
             self._notify_research_cycles(),
         )
         for update in updates:
             self._offset = max(self._offset, int(update["update_id"]) + 1)
             await self._handle_update(update)
+
+    async def _notify_outbox(self) -> None:
+        for notification in await self._channel.notifications():
+            payload = notification["payload"]
+            kind = notification["kind"]
+            if kind == "approval_required":
+                token = self._store.create(
+                    "approval",
+                    payload["approval_id"],
+                    payload["plan_digest"],
+                    self._settings.handoff_ttl_seconds,
+                )
+                operation = payload.get("operation") or payload["task_type"]
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Task approval required\n"
+                    f"{payload['task_number']} · {payload['task_title']}\n"
+                    f"Operation: {operation}\n"
+                    f"Risk: {payload['risk_level']}\n"
+                    f"Plan: {payload['plan_digest']}",
+                    button_text="Review approval",
+                    button_url=f"https://t.me/{self._username}?start=review_{token}",
+                )
+            elif kind == "mission_approval_required":
+                token = self._store.create(
+                    "mission",
+                    payload["mission_id"],
+                    payload["manifest_digest"],
+                    self._settings.handoff_ttl_seconds,
+                )
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Mission plan approval required\n"
+                    f"{payload['milestone_id']}\n{payload['objective']}\n"
+                    f"Plan: {payload['manifest_digest']}",
+                    button_text="Review mission plan",
+                    button_url=f"https://t.me/{self._username}?start=review_{token}",
+                )
+            elif kind == "task_ready":
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Task ready for execution\n"
+                    f"{payload['task_number']} · {payload['task_title']}",
+                )
+            else:
+                continue
+            await self._channel.acknowledge_notification(
+                notification["id"], f"telegram:{self._settings.founder_chat_id}"
+            )
 
     async def _handle_update(self, update: dict[str, Any]) -> None:
         message = update.get("message") or {}
@@ -165,35 +214,18 @@ class RestrictedTelegramGateway:
     async def _notify_missions(self) -> None:
         for mission in await self._channel.missions():
             status = mission["supervision_status"]
-            if status not in {"pending_approval", "attention_required"}:
+            if status != "attention_required":
                 continue
             state = f"{status}:{mission['manifest_digest']}:{mission['supervision_exception']}"
             if not self._store.changed(f"mission:{mission['id']}", _digest(state)):
                 continue
-            if status == "pending_approval":
-                token = self._store.create(
-                    "mission",
-                    mission["id"],
-                    mission["manifest_digest"],
-                    self._settings.handoff_ttl_seconds,
-                )
-                url = f"https://t.me/{self._username}?start=review_{token}"
-                await self._telegram.send(
-                    self._settings.founder_chat_id,
-                    f"Mission plan approval required\n"
-                    f"{mission['milestone_id']}\n{mission['objective']}\n"
-                    f"Plan: {mission['manifest_digest']}",
-                    button_text="Review mission plan",
-                    button_url=url,
-                )
-            else:
-                exception = mission.get("supervision_exception") or {}
-                await self._telegram.send(
-                    self._settings.founder_chat_id,
-                    f"Mission needs attention\n{mission['milestone_id']}\n"
-                    f"Checkpoint: {exception.get('task_number', 'unknown')}\n"
-                    f"Category: {exception.get('category', 'unknown')}",
-                )
+            exception = mission.get("supervision_exception") or {}
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Mission needs attention\n{mission['milestone_id']}\n"
+                f"Checkpoint: {exception.get('task_number', 'unknown')}\n"
+                f"Category: {exception.get('category', 'unknown')}",
+            )
 
     async def _notify_research_cycles(self) -> None:
         for cycle in await self._channel.research_cycles():

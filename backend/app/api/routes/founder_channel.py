@@ -13,12 +13,12 @@ from app.core.security import require_founder_channel
 from app.db.session import get_db
 from app.models import (
     EngineeringMission,
+    FounderNotification,
     FounderProposal,
     OperationalNote,
     ResearchDailyCycle,
     Task,
     TaskApproval,
-    TaskDependency,
 )
 from app.schemas import (
     ApprovalResponse,
@@ -26,12 +26,19 @@ from app.schemas import (
     FounderChannelDecision,
     FounderChannelMission,
     FounderChannelRequest,
+    FounderNotificationAcknowledgement,
+    FounderNotificationResponse,
     FounderProposalResponse,
     TaskCreate,
     TaskResponse,
 )
 from app.schemas.operational_note import OperationalNoteResponse
 from app.schemas.research_program import ResearchDailyCycleResponse
+from app.services.founder_notifications import (
+    acknowledge_notification,
+    approval_readiness,
+    reconcile_founder_notifications,
+)
 from app.services.governance import approve_task, decide_task
 from app.services.proposals import materialize_proposal, reject_proposal
 from app.services.supervision import approve_supervision
@@ -250,6 +257,37 @@ def list_approvals(
     return [_founder_approval(db, item) for item in values]
 
 
+@router.get("/notifications", response_model=list[FounderNotificationResponse])
+def list_notifications(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[FounderNotificationResponse]:
+    values = reconcile_founder_notifications(db)
+    db.commit()
+    return [FounderNotificationResponse.model_validate(item) for item in values]
+
+
+@router.post(
+    "/notifications/{notification_id}/acknowledge",
+    response_model=FounderNotificationResponse,
+)
+def acknowledge_founder_notification(
+    notification_id: uuid.UUID,
+    payload: FounderNotificationAcknowledgement,
+    db: Annotated[Session, Depends(get_db)],
+) -> FounderNotificationResponse:
+    notification = db.scalar(
+        select(FounderNotification)
+        .where(FounderNotification.id == notification_id)
+        .with_for_update()
+    )
+    if notification is None:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    acknowledge_notification(notification, payload.delivery_reference)
+    db.commit()
+    db.refresh(notification)
+    return FounderNotificationResponse.model_validate(notification)
+
+
 @router.post(
     "/approvals/{approval_id}/{action}",
     response_model=ApprovalResponse,
@@ -295,37 +333,7 @@ def decide_approval(
 
 
 def _founder_approval(db: Session, approval: TaskApproval) -> FounderChannelApproval:
-    task = db.get(Task, approval.task_id)
-    if task is None:
-        raise HTTPException(status_code=409, detail="Approval task is unavailable.")
-    dependencies = db.execute(
-        select(Task.task_number, Task.status)
-        .join(
-            TaskDependency,
-            Task.id == TaskDependency.depends_on_task_id,
-        )
-        .where(TaskDependency.task_id == task.id)
-    ).all()
-    blocked_by = [
-        f"{task_number}:{task_status}"
-        for task_number, task_status in dependencies
-        if task_status != "succeeded"
-    ]
-    mission = (
-        db.get(EngineeringMission, task.mission_id)
-        if task.mission_id is not None
-        else None
-    )
-    now = datetime.now(UTC)
-    mission_ready = mission is None or (
-        mission.status == "active" and mission.deadline_at > now
-    )
-    actionable = (
-        approval.status == "pending"
-        and task.status == "pending_approval"
-        and not blocked_by
-        and mission_ready
-    )
+    actionable, blocked_by, task, mission = approval_readiness(db, approval)
     base = ApprovalResponse.model_validate(approval).model_dump(mode="python")
     contract = task.input_contract if isinstance(task.input_contract, dict) else {}
     return FounderChannelApproval(

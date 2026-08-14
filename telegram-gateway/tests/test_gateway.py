@@ -51,6 +51,8 @@ class Channel:
         self.mission_values: list[dict] = []
         self.mission_approvals: list[tuple[str, str]] = []
         self.note_values: list[dict] = []
+        self.notification_values: list[dict] = []
+        self.acknowledged: list[tuple[str, str]] = []
 
     async def create_request(self, payload):
         self.created.append(payload)
@@ -64,6 +66,18 @@ class Channel:
 
     async def approvals(self):
         return self.approval_values
+
+    async def notifications(self):
+        return self.notification_values
+
+    async def acknowledge_notification(self, notification_id, delivery_reference):
+        self.acknowledged.append((notification_id, delivery_reference))
+        self.notification_values = [
+            value
+            for value in self.notification_values
+            if value["id"] != notification_id
+        ]
+        return {}
 
     async def missions(self):
         return self.mission_values
@@ -101,6 +115,23 @@ def approval(*, actionable: bool, suffix: str = "02") -> dict:
         "task_title": "VM2-POSTGRES-ROLLOUT-RETRY-1: stage",
         "operation": "stage-invariance-postgres",
         "actionable": actionable,
+    }
+
+
+def approval_notification(suffix: str = "02") -> dict:
+    value = approval(actionable=True, suffix=suffix)
+    return {
+        "id": f"notification-{suffix}",
+        "kind": "approval_required",
+        "payload": {
+            "approval_id": value["id"],
+            "task_number": value["task_number"],
+            "task_title": value["task_title"],
+            "operation": value["operation"],
+            "task_type": value["scope"]["task_type"],
+            "risk_level": value["risk_level"],
+            "plan_digest": value["plan_digest"],
+        },
     }
 
 
@@ -248,6 +279,59 @@ async def test_blocked_approval_notifies_when_it_becomes_actionable(
     candidate["actionable"] = True
     await gateway._notify_approvals()
     assert len(telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_outbox_notification_is_acknowledged_after_delivery(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [approval_notification()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+    await gateway._notify_outbox()
+
+    assert len(telegram.sent) == 1
+    assert channel.acknowledged == [
+        ("notification-02", "telegram:456")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_is_not_acknowledged_when_delivery_fails(
+    tmp_path: Path,
+) -> None:
+    class FailingTelegram(Telegram):
+        async def send(self, chat_id, text, **kwargs):
+            raise RuntimeError("temporary delivery failure")
+
+    telegram = FailingTelegram()
+    channel = Channel()
+    channel.notification_values = [approval_notification()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    with pytest.raises(RuntimeError, match="temporary delivery failure"):
+        await gateway._notify_outbox()
+
+    assert channel.acknowledged == []
 
 
 @pytest.mark.asyncio
