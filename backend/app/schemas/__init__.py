@@ -19,6 +19,8 @@ from app.schemas.founder_channel import (
     FounderChannelDecision,
     FounderChannelMission,
     FounderChannelRequest,
+    FounderNotificationAcknowledgement,
+    FounderNotificationResponse,
 )
 from app.schemas.governance import (
     ApprovalDecision,
@@ -113,6 +115,8 @@ __all__ = [
     "FounderChannelDecision",
     "FounderChannelMission",
     "FounderChannelRequest",
+    "FounderNotificationAcknowledgement",
+    "FounderNotificationResponse",
     "FounderProposalCreate",
     "FounderProposalDecision",
     "FounderProposalDocument",

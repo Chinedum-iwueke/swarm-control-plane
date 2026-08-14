@@ -40,6 +40,18 @@ class FounderChannelClient:
     async def approvals(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/approvals")
 
+    async def notifications(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/v1/founder-channel/notifications")
+
+    async def acknowledge_notification(
+        self, notification_id: str, delivery_reference: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/founder-channel/notifications/{notification_id}/acknowledge",
+            json={"delivery_reference": delivery_reference},
+        )
+
     async def missions(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/missions")
 

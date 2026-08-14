@@ -52,3 +52,19 @@ class FounderChannelMission(BaseModel):
     supervision_exception: dict
     deadline_at: datetime
     actionable: bool
+
+
+class FounderNotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: str
+    entity_id: uuid.UUID
+    deduplication_key: str
+    state: str
+    payload: dict
+    created_at: datetime
+
+
+class FounderNotificationAcknowledgement(StrictModel):
+    delivery_reference: str = Field(min_length=1, max_length=200)

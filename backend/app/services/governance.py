@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ApprovalEvent, Task, TaskApproval
+from app.models import ApprovalEvent, EngineeringMission, Task, TaskApproval
 
 
 def task_plan_digest(document: dict) -> str:
@@ -52,9 +52,12 @@ def create_approval(db: Session, task: Task) -> TaskApproval:
     )
     db.add(approval)
     db.flush()
-    append_approval_event(
+    requested = append_approval_event(
         db, approval, "approval_requested", task.created_by, "Task requires approval."
     )
+    from app.services.founder_notifications import enqueue_approval_gate
+
+    enqueue_approval_gate(db, approval, task, generation=requested.id)
     return approval
 
 
@@ -81,7 +84,22 @@ def approve_task(
     approval.expires_at = now + timedelta(seconds=expires_in_seconds)
     approval.updated_at = now
     task.status = "queued"
-    append_approval_event(db, approval, "approval_granted", actor, reason)
+    if task.mission_id is not None:
+        mission = db.get(EngineeringMission, task.mission_id)
+        if mission is not None and mission.supervision_enabled:
+            mission.next_reconcile_at = now
+    granted = append_approval_event(db, approval, "approval_granted", actor, reason)
+    from app.services.founder_notifications import enqueue_task_ready
+    from app.services.tasks import append_task_event
+
+    append_task_event(
+        db,
+        task,
+        "task_ready",
+        "Approved task is ready for a matching worker.",
+        payload={"approval_id": str(approval.id), "plan_digest": task.plan_digest},
+    )
+    enqueue_task_ready(db, task, approval, generation=granted.id)
 
 
 def decide_task(
