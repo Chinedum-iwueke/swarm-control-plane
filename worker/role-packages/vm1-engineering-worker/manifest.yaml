@@ -1,6 +1,6 @@
 schema_version: 1
 name: vm1-engineering-worker
-version: 1.0.0
+version: 1.0.1
 role: Restricted VM1 engineering worker
 task_types:
 - code_validation

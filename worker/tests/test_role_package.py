@@ -20,7 +20,7 @@ OPERATIONAL_MEMORY_MANIFEST = (
 def test_versioned_package_and_workflow_digest_verify() -> None:
     package = load_role_package(MANIFEST, WORKFLOWS)
     assert package.manifest.name == "vm1-engineering-worker"
-    assert package.manifest.version == "1.0.0"
+    assert package.manifest.version == "1.0.1"
     assert len(package.manifest_digest) == 64
 
 
