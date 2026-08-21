@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import FounderProposalDocument
+from app.schemas import FounderProposalDocument, FounderProposalResponse
 from app.services.proposals import materialize_proposal, proposal_digest
 
 
@@ -65,6 +65,13 @@ def test_non_task_recommendations_cannot_smuggle_a_task() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
+def test_proposal_rejects_invented_worker_route() -> None:
+    payload = valid_document()
+    payload["proposed_task"]["required_capabilities"] = ["compile"]
+    with pytest.raises(ValidationError):
+        FounderProposalDocument.model_validate(payload)
+
+
 def test_memory_sync_proposal_has_no_path_or_command_surface() -> None:
     payload = valid_document()
     payload["proposed_task"].update(
@@ -76,6 +83,9 @@ def test_memory_sync_proposal_has_no_path_or_command_surface() -> None:
                 "workflow": "research-memory-sync",
                 "base_ref": "main",
             },
+            "risk_level": 0,
+            "approval_policy": {"kind": "automatic", "risk": 0},
+            "required_capabilities": ["git", "python", "research-memory-sync"],
         }
     )
     document = FounderProposalDocument.model_validate(payload)
@@ -102,3 +112,24 @@ def test_materialization_is_exactly_once() -> None:
             now=datetime.now(UTC),
         )
     assert getattr(raised.value, "status_code", None) == 409
+
+
+def test_historical_proposal_response_remains_readable() -> None:
+    now = datetime.now(UTC)
+    response = FounderProposalResponse.model_validate(
+        {
+            "id": UUID("11111111-1111-4111-8111-111111111111"),
+            "source_task_id": UUID("22222222-2222-4222-8222-222222222222"),
+            "planner_agent_id": UUID("33333333-3333-4333-8333-333333333333"),
+            "status": "proposed",
+            "proposal": {"legacy_schema": True},
+            "proposal_digest": "a" * 64,
+            "decision_reason": None,
+            "decided_by": None,
+            "materialized_task_id": None,
+            "created_at": now,
+            "updated_at": now,
+            "decided_at": None,
+        }
+    )
+    assert response.proposal == {"legacy_schema": True}

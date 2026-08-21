@@ -37,6 +37,8 @@ def valid_proposal() -> dict:
                 "base_ref": "main",
             },
             "approval_policy": {"kind": "automatic", "risk": 0},
+            "required_capabilities": ["git", "python", "testing"],
+            "allowed_machines": ["vm1-developer"],
         },
     }
 
@@ -44,6 +46,13 @@ def valid_proposal() -> dict:
 def test_planner_proposal_rejects_commands_and_unknown_fields() -> None:
     payload = valid_proposal()
     payload["proposed_task"]["input_contract"]["shell"] = "pytest"
+    with pytest.raises(ValidationError):
+        FounderProposalDocument.model_validate(payload)
+
+
+def test_planner_proposal_rejects_invented_worker_route() -> None:
+    payload = valid_proposal()
+    payload["proposed_task"]["allowed_machines"] = ["server-local"]
     with pytest.raises(ValidationError):
         FounderProposalDocument.model_validate(payload)
 

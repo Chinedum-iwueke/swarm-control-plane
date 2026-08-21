@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -194,6 +194,36 @@ class ProposedTask(StrictModel):
         }
         if not isinstance(self.input_contract, expected[self.task_type]):
             raise TypeError("proposal task type does not match its input contract")
+        if self.task_type in {"code_validation", "engineering_mission"}:
+            machines = ["vm1-developer"]
+            capabilities = ["git", "python", "testing"]
+        elif self.task_type == "research_experiment":
+            machines = ["vm1-developer"]
+            capabilities = ["git", "python", "backtesting", "research-audit"]
+        elif self.task_type == "research_memory_sync":
+            machines = ["vm1-developer"]
+            capabilities = ["git", "python", "research-memory-sync"]
+        elif self.input_contract.runbook == "vm2-infrastructure":
+            machines = ["vm2-deployment"]
+            capabilities = [
+                "infrastructure-observation",
+                "service-health",
+                "controlled-restart",
+            ]
+        else:
+            machines = ["vm2-deployment"]
+            capabilities = [
+                "deployment-architecture",
+                "infrastructure-observation",
+                "postgres-deployment",
+                "service-health",
+            ]
+        if self.allowed_machines != machines:
+            raise ValueError("proposal does not use the canonical machine route")
+        if self.required_capabilities != capabilities:
+            raise ValueError("proposal does not use the canonical capability route")
+        if self.approval_policy.risk != self.risk_level:
+            raise ValueError("proposal approval risk does not match task risk")
         return self
 
 
@@ -238,7 +268,7 @@ class FounderProposalResponse(StrictModel):
     source_task_id: uuid.UUID
     planner_agent_id: uuid.UUID
     status: str
-    proposal: FounderProposalDocument
+    proposal: FounderProposalDocument | dict[str, Any]
     proposal_digest: str
     decision_reason: str | None
     decided_by: str | None
