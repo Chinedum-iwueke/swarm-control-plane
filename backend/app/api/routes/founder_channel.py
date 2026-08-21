@@ -61,33 +61,7 @@ def create_request(
     db: Annotated[Session, Depends(get_db)],
 ) -> TaskResponse:
     now = datetime.now(UTC)
-    task = build_task(
-        TaskCreate(
-            task_number=f"FOUNDER-TELEGRAM-{now:%Y%m%dT%H%M%S%fZ}",
-            project=payload.project,
-            task_type="founder_request",
-            title=payload.title,
-            objective=payload.objective,
-            priority=70,
-            risk_level=payload.risk_level,
-            created_by="founder-telegram",
-            input_contract={
-                "schema_version": 1,
-                "request_kind": payload.kind,
-                "objective": payload.objective,
-            },
-            expected_outputs=["reviewed structured execution plan"],
-            acceptance_criteria=payload.acceptance_criteria,
-            approval_policy={
-                "kind": "explicit" if payload.risk_level >= 2 else "automatic",
-                "risk": payload.risk_level,
-            },
-            approval_required=payload.risk_level >= 2,
-            required_capabilities=["founder-intake"],
-            allowed_machines=["vm1-developer"],
-            max_attempts=1,
-        )
-    )
+    task = build_task(_founder_request_task(payload, now))
     try:
         persist_new_task(db, task)
         db.commit()
@@ -98,6 +72,36 @@ def create_request(
         ) from exc
     db.refresh(task)
     return TaskResponse.model_validate(serialize_task(task))
+
+
+def _founder_request_task(
+    payload: FounderChannelRequest,
+    now: datetime,
+) -> TaskCreate:
+    # Intake only produces a reviewable proposal. The proposal carries the risk
+    # and approval policy for any eventual execution task.
+    return TaskCreate(
+        task_number=f"FOUNDER-TELEGRAM-{now:%Y%m%dT%H%M%S%fZ}",
+        project=payload.project,
+        task_type="founder_request",
+        title=payload.title,
+        objective=payload.objective,
+        priority=70,
+        risk_level=0,
+        created_by="founder-telegram",
+        input_contract={
+            "schema_version": 1,
+            "request_kind": payload.kind,
+            "objective": payload.objective,
+        },
+        expected_outputs=["reviewed structured execution plan"],
+        acceptance_criteria=payload.acceptance_criteria,
+        approval_policy={"kind": "automatic", "risk": 0},
+        approval_required=False,
+        required_capabilities=["founder-intake"],
+        allowed_machines=["vm1-developer"],
+        max_attempts=1,
+    )
 
 
 @router.get("/tasks", response_model=list[TaskResponse])
