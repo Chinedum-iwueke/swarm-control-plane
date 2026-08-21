@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -409,7 +410,13 @@ def test_postgres_preflight_is_read_only_and_reports_tls_blocker(
 
 def test_postgres_preflight_accepts_exact_preprovisioned_layout(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(InfrastructureBroker, "_port_available", lambda *_: True)
+    monkeypatch.setattr(
+        "swarm_worker.infrastructure.broker.shutil.disk_usage",
+        lambda *_: SimpleNamespace(total=100 * 1024**3, free=75 * 1024**3),
+    )
     root = tmp_path / "postgres"
     root.mkdir()
     for name in (
@@ -458,7 +465,13 @@ def test_postgres_preflight_accepts_exact_preprovisioned_layout(
 
 def test_postgres_preflight_accepts_digest_bound_staged_layout(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(InfrastructureBroker, "_port_available", lambda *_: True)
+    monkeypatch.setattr(
+        "swarm_worker.infrastructure.broker.shutil.disk_usage",
+        lambda *_: SimpleNamespace(total=100 * 1024**3, free=75 * 1024**3),
+    )
     root = tmp_path / "postgres"
     PostgresDeploymentManager(
         root,
