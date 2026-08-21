@@ -151,6 +151,10 @@ class EvidenceLifecycleState(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    @property
+    def active_for_retrieval(self) -> bool:
+        return self.state == "active"
+
 
 class EvidenceLifecycleEvent(Base):
     __tablename__ = "evidence_lifecycle_events"

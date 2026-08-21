@@ -233,6 +233,15 @@ def test_inactive_filter_is_present_in_projection_queries() -> None:
     assert "deleted" in sql
 
 
+def test_lifecycle_state_serializes_derived_retrieval_eligibility() -> None:
+    from app.schemas.lifecycle import LifecycleStateResponse
+
+    active = LifecycleStateResponse.model_validate(state(ONE))
+    inactive = LifecycleStateResponse.model_validate(state(TWO, "retracted"))
+    assert active.active_for_retrieval is True
+    assert inactive.active_for_retrieval is False
+
+
 def test_migration_backfills_and_invalidates_projections() -> None:
     from pathlib import Path
 
