@@ -36,6 +36,7 @@ def valid_proposal() -> dict:
                 "workflow": "code-validation",
                 "base_ref": "main",
             },
+            "approval_policy": {"kind": "automatic", "risk": 0},
         },
     }
 
@@ -59,6 +60,26 @@ def test_planner_child_environment_excludes_worker_token(tmp_path) -> None:
     environment = planner._environment()
     assert "SWARM_AGENT_TOKEN" not in environment
     assert "agent-token-must-not-propagate" not in str(environment)
+
+
+def test_planner_output_schema_is_closed_and_requires_declared_fields() -> None:
+    schema = CodexProposalPlanner._strict_output_schema(
+        FounderProposalDocument.model_json_schema()
+    )
+
+    def inspect(value: object) -> None:
+        if isinstance(value, dict):
+            properties = value.get("properties")
+            if isinstance(properties, dict):
+                assert value["additionalProperties"] is False
+                assert value["required"] == list(properties)
+            for nested in value.values():
+                inspect(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                inspect(nested)
+
+    inspect(schema)
 
 
 @pytest.mark.asyncio
