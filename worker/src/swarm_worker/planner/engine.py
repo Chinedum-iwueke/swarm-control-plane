@@ -44,7 +44,11 @@ class CodexProposalPlanner:
             schema_path = root / "proposal.schema.json"
             output_path = root / "proposal.json"
             schema_path.write_text(
-                json.dumps(FounderProposalDocument.model_json_schema()),
+                json.dumps(
+                    self._strict_output_schema(
+                        FounderProposalDocument.model_json_schema()
+                    )
+                ),
                 encoding="utf-8",
             )
             command = [
@@ -104,6 +108,22 @@ class CodexProposalPlanner:
             "LANG": os.environ.get("LANG", "C.UTF-8"),
         }
         return environment
+
+    @classmethod
+    def _strict_output_schema(cls, value: object) -> object:
+        if isinstance(value, dict):
+            normalized = {
+                key: cls._strict_output_schema(nested)
+                for key, nested in value.items()
+            }
+            properties = normalized.get("properties")
+            if isinstance(properties, dict):
+                normalized["additionalProperties"] = False
+                normalized["required"] = list(properties)
+            return normalized
+        if isinstance(value, list):
+            return [cls._strict_output_schema(item) for item in value]
+        return value
 
     @staticmethod
     async def _terminate(process: asyncio.subprocess.Process) -> None:

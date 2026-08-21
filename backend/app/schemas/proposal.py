@@ -36,6 +36,118 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProposalCodeValidationContract(StrictModel):
+    repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    workflow: Literal["code-validation"]
+    base_ref: str = Field(min_length=1, max_length=255)
+
+
+class ProposalEngineeringMissionContract(StrictModel):
+    repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    workflow: Literal["engineering-mission"]
+    base_ref: str = Field(min_length=1, max_length=255)
+    milestone_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    work_item_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    objective: str = Field(min_length=10, max_length=4000)
+    allowed_paths: list[str] = Field(min_length=1, max_length=50)
+    context_paths: list[str] = Field(default_factory=list, max_length=50)
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=50)
+    stop_conditions: list[str] = Field(min_length=1, max_length=20)
+    max_files_changed: int = Field(ge=1, le=100)
+    max_diff_lines: int = Field(ge=1, le=10000)
+    max_duration_seconds: int = Field(ge=60, le=86400)
+
+
+class ProposalInfrastructureParameters(StrictModel):
+    service: Literal["api", "postgres", "pgbouncer", "redis"] | None = None
+    certificate_profile: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    )
+
+
+class ProposalInfrastructureContract(StrictModel):
+    runbook: Literal[
+        "vm2-infrastructure",
+        "vm2-postgres-deployment",
+        "vm2-platform-operations",
+    ]
+    runbook_version: Literal["1.0.0"]
+    operation: Literal[
+        "observe-control-plane",
+        "restart-control-plane-api",
+        "preflight-invariance-postgres",
+        "stage-invariance-postgres",
+        "start-invariance-postgres-private",
+        "initialize-invariance-schema",
+        "configure-invariance-backups",
+        "verify-invariance-postgres",
+        "prepare-invariance-cutover",
+        "verify-docker-service",
+        "restart-docker-service",
+        "verify-redis",
+        "verify-storage",
+        "verify-certificate",
+        "verify-backup",
+        "verify-service-health",
+    ]
+    target: Literal[
+        "vm2-control-plane",
+        "vm2-invariance-postgres",
+        "vm2-production",
+    ]
+    parameters: ProposalInfrastructureParameters
+    package_name: str | None = Field(default=None, pattern=r"^[a-z0-9-]+$")
+    package_version: str | None = Field(
+        default=None, pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$"
+    )
+    package_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class ProposalResearchAcceptance(StrictModel):
+    minimum_out_of_sample_sharpe: float = Field(ge=-10, le=10)
+    maximum_out_of_sample_drawdown: float = Field(ge=0, le=1)
+    minimum_out_of_sample_trades: int = Field(ge=1, le=10000)
+    minimum_cost_stress_sharpe: float = Field(ge=-10, le=10)
+
+
+class ProposalResearchExperimentContract(StrictModel):
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["research-experiment"]
+    base_ref: str = Field(min_length=1, max_length=255)
+    program_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    hypothesis_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    hypothesis: Literal["lagged-return-momentum", "btc-hourly-lagged-return"]
+    dataset: Literal["synthetic-regime-v1", "binance-btcusdt-1h-2025"]
+    dataset_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    experiment_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    trial_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    seed: int = Field(ge=0, le=2_147_483_647)
+    observations: int = Field(ge=500, le=10000)
+    train_fraction: float = Field(ge=0.5, le=0.8)
+    transaction_cost_bps: float = Field(ge=0, le=100)
+    acceptance: ProposalResearchAcceptance
+
+
+class ProposalResearchMemorySyncContract(StrictModel):
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["research-memory-sync"]
+    base_ref: str = Field(min_length=1, max_length=255)
+
+
+ProposalInputContract = (
+    ProposalCodeValidationContract
+    | ProposalEngineeringMissionContract
+    | ProposalInfrastructureContract
+    | ProposalResearchExperimentContract
+    | ProposalResearchMemorySyncContract
+)
+
+
+class ProposalApprovalPolicy(StrictModel):
+    kind: Literal["automatic", "explicit", "registry_gate"]
+    risk: int = Field(ge=0, le=5)
+
+
 class ProposedTask(StrictModel):
     project: str = Field(min_length=1, max_length=100)
     task_type: SupportedTaskType
@@ -43,10 +155,10 @@ class ProposedTask(StrictModel):
     objective: str = Field(min_length=10, max_length=8000)
     priority: int = Field(default=50, ge=0, le=100)
     risk_level: int = Field(default=0, ge=0, le=5)
-    input_contract: dict = Field(default_factory=dict)
+    input_contract: ProposalInputContract
     expected_outputs: list[str] = Field(default_factory=list, max_length=30)
     acceptance_criteria: list[str] = Field(default_factory=list, max_length=30)
-    approval_policy: dict = Field(default_factory=dict)
+    approval_policy: ProposalApprovalPolicy
     approval_required: bool = False
     required_capabilities: list[str] = Field(default_factory=list, max_length=30)
     allowed_machines: list[str] = Field(default_factory=list, max_length=20)
@@ -72,6 +184,16 @@ class ProposedTask(StrictModel):
                     inspect(nested)
 
         inspect(self.input_contract)
+        expected = {
+            "code_validation": ProposalCodeValidationContract,
+            "engineering_mission": ProposalEngineeringMissionContract,
+            "infrastructure_observation": ProposalInfrastructureContract,
+            "infrastructure_operation": ProposalInfrastructureContract,
+            "research_experiment": ProposalResearchExperimentContract,
+            "research_memory_sync": ProposalResearchMemorySyncContract,
+        }
+        if not isinstance(self.input_contract, expected[self.task_type]):
+            raise TypeError("proposal task type does not match its input contract")
         return self
 
 

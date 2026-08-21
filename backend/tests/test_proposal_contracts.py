@@ -80,7 +80,7 @@ def test_memory_sync_proposal_has_no_path_or_command_surface() -> None:
     )
     document = FounderProposalDocument.model_validate(payload)
     assert document.proposed_task.task_type == "research_memory_sync"
-    assert set(document.proposed_task.input_contract) == {
+    assert set(document.proposed_task.input_contract.model_dump()) == {
         "repository",
         "workflow",
         "base_ref",
