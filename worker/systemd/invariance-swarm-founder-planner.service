@@ -46,7 +46,7 @@ LockPersonality=true
 CapabilityBoundingSet=
 AmbientCapabilities=
 
-ReadOnlyPaths=/etc/invariance-swarm/codex-worker
+ReadWritePaths=-/etc/invariance-swarm/codex-planner
 ReadWritePaths=-/home/omenka/Projects/swarm-agent-workspaces/founder-intake
 
 [Install]
