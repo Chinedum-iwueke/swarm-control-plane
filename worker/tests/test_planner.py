@@ -66,6 +66,11 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     command: tuple[str, ...] = ()
+    child_environment: dict[str, str] = {}
+    credential_home = tmp_path / "credentials"
+    credential_home.mkdir()
+    auth_path = credential_home / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
 
     class Process:
         returncode = 0
@@ -73,9 +78,14 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
         async def communicate(self, _: bytes):
             return b"", b""
 
-    async def create_subprocess_exec(*args: str, **_: object):
-        nonlocal command
+    async def create_subprocess_exec(*args: str, **kwargs: object):
+        nonlocal command, child_environment
         command = args
+        child_environment = kwargs["env"]  # type: ignore[assignment]
+        runtime_home = Path(child_environment["CODEX_HOME"])
+        assert runtime_home != credential_home
+        assert (runtime_home / "auth.json").is_symlink()
+        assert (runtime_home / "auth.json").resolve() == auth_path
         output_path = Path(args[args.index("--output-last-message") + 1])
         output_path.write_text(json.dumps(valid_proposal()), encoding="utf-8")
         return Process()
@@ -86,7 +96,7 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
     )
     planner = CodexProposalPlanner(
         codex_binary=tmp_path / "codex",
-        codex_home=tmp_path / "home",
+        codex_home=credential_home,
         model="test-model",
         timeout_seconds=1,
         working_directory=tmp_path,
@@ -108,6 +118,7 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
 
     assert proposal.recommended_action == "create_task"
     assert "--skip-git-repo-check" in command
+    assert child_environment["HOME"] == child_environment["CODEX_HOME"]
 
 
 @pytest.mark.asyncio
