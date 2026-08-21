@@ -1,6 +1,6 @@
 schema_version: 1
 name: vm2-infrastructure-operator
-version: 1.0.0
+version: 1.0.1
 role: Restricted VM2 infrastructure observer and controlled operator
 task_types:
 - infrastructure_observation
