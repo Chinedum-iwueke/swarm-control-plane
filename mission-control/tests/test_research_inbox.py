@@ -22,6 +22,9 @@ class FakeResearchClient:
         self.runs: list[dict] = []
         self.projection_rebuilds = 0
 
+    async def scientific_ingestion_by_digest(self, content_digest: str) -> dict | None:
+        return self.jobs.get(content_digest)
+
     async def create_scientific_ingestion(self, payload: dict) -> dict:
         content_digest = payload["content_digest"]
         if content_digest in self.jobs:
@@ -185,13 +188,9 @@ async def test_inbox_persisted_dirty_projection_survives_resume(
     source.write_text("Checkpoint before projection.", encoding="utf-8")
     client = FakeResearchClient()
     await sync_research_inbox(settings, client)
-    state = json.loads(
-        settings.research_inbox_index_path.read_text(encoding="utf-8")
-    )
+    state = json.loads(settings.research_inbox_index_path.read_text(encoding="utf-8"))
     state["projection_dirty"] = True
-    settings.research_inbox_index_path.write_text(
-        json.dumps(state), encoding="utf-8"
-    )
+    settings.research_inbox_index_path.write_text(json.dumps(state), encoding="utf-8")
 
     report = await sync_research_inbox(settings, client)
 
@@ -216,6 +215,28 @@ async def test_inbox_retries_cached_noncanonical_entry(
     assert second["counts"]["added"] == 1
     assert client.process_calls == 2
     assert client.projection_rebuilds == 2
+
+
+@pytest.mark.asyncio
+async def test_cold_index_bootstrap_reuses_server_digest_without_upload(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "books" / "known.txt"
+    source.write_text("Already canonical evidence.", encoding="utf-8")
+    content_digest = digest(source.read_bytes())
+    client = FakeResearchClient()
+    client.jobs[content_digest] = {
+        "id": "known-job",
+        "status": "published",
+        "published_object_ids": ["known-object"],
+        "stage_report": {},
+    }
+
+    report = await sync_research_inbox(settings, client)
+
+    assert client.ingestions == []
+    assert report["counts"]["unchanged"] == 1
 
 
 @pytest.mark.asyncio

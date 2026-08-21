@@ -44,7 +44,9 @@ async def sync_research_inbox(
         try:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise ResearchUploadError("A research inbox refresh is already running.") from exc
+            raise ResearchUploadError(
+                "A research inbox refresh is already running."
+            ) from exc
         state = _load_index(settings.research_inbox_index_path)
         entries: dict[str, Any] = state["entries"]
         digest_entries = {
@@ -90,9 +92,7 @@ async def sync_research_inbox(
         projection = state.get("projection")
         projection_rebuilt = corpus_changed or projection is None
         if projection_rebuilt:
-            projection = await client.rebuild_corpus_projections(
-                "systematic-research"
-            )
+            projection = await client.rebuild_corpus_projections("systematic-research")
             state["projection"] = projection
             state["projection_dirty"] = False
         state["run"] = _progress(
@@ -165,37 +165,43 @@ async def _sync_path(
         if duplicate is not None:
             duplicate_item = dict(duplicate["item"])
             duplicate_item.update(path=relative.as_posix(), status="unchanged")
-            return duplicate_item, {
-                "fingerprint": fingerprint,
-                "item": duplicate_item,
-                "synced_at": _now(),
-            }, False
+            return (
+                duplicate_item,
+                {
+                    "fingerprint": fingerprint,
+                    "item": duplicate_item,
+                    "synced_at": _now(),
+                },
+                False,
+            )
 
         category = relative.parts[0] if len(relative.parts) > 1 else "papers"
         document_type, evidence_type = CLASSIFICATIONS.get(
             category, CLASSIFICATIONS["papers"]
         )
-        job = await client.create_scientific_ingestion(
-            {
-                "schema_version": "scientific-ingestion-v1.0.0",
-                "project": "systematic-research",
-                "filename": safe_filename(path.name),
-                "media_type": _media_type(path),
-                "content_base64": base64.b64encode(content).decode("ascii"),
-                "content_digest": content_digest,
-                "access_class": "internal",
-                "source": {
-                    "title": path.stem.replace("_", " ").replace("-", " "),
-                    "origin": f"mission-control-inbox://{relative.as_posix()}",
-                    "rights": "founder-provided research source",
-                    "acquired_at": datetime.fromtimestamp(
-                        stat.st_mtime, tz=timezone.utc
-                    ).isoformat(),
-                    "edition_label": content_digest[:12],
-                },
-                "requested_by": "founder-mission-control",
-            }
-        )
+        job = await client.scientific_ingestion_by_digest(content_digest)
+        if job is None:
+            job = await client.create_scientific_ingestion(
+                {
+                    "schema_version": "scientific-ingestion-v1.0.0",
+                    "project": "systematic-research",
+                    "filename": safe_filename(path.name),
+                    "media_type": _media_type(path),
+                    "content_base64": base64.b64encode(content).decode("ascii"),
+                    "content_digest": content_digest,
+                    "access_class": "internal",
+                    "source": {
+                        "title": path.stem.replace("_", " ").replace("-", " "),
+                        "origin": f"mission-control-inbox://{relative.as_posix()}",
+                        "rights": "founder-provided research source",
+                        "acquired_at": datetime.fromtimestamp(
+                            stat.st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                        "edition_label": content_digest[:12],
+                    },
+                    "requested_by": "founder-mission-control",
+                }
+            )
         was_published = job["status"] == "published"
         if job["status"] != "published":
             job = await client.process_scientific_ingestion(job["id"])
@@ -216,20 +222,28 @@ async def _sync_path(
             canonical_object_ids=job["published_object_ids"],
             stage_report=job["stage_report"] if disposition == "quarantined" else None,
         )
-        return item, {
-            "fingerprint": fingerprint,
-            "item": item,
-            "synced_at": _now(),
-        }, not was_published and disposition == "canonical"
+        return (
+            item,
+            {
+                "fingerprint": fingerprint,
+                "item": item,
+                "synced_at": _now(),
+            },
+            not was_published and disposition == "canonical",
+        )
     except (OSError, ResearchUploadError) as exc:
         item.update(status="rejected", error=str(exc))
     except ControlPlaneError as exc:
         item.update(status="failed", disposition="failed", error=str(exc))
-    return item, {
-        "fingerprint": _safe_fingerprint(path),
-        "item": item,
-        "synced_at": _now(),
-    }, False
+    return (
+        item,
+        {
+            "fingerprint": _safe_fingerprint(path),
+            "item": item,
+            "synced_at": _now(),
+        },
+        False,
+    )
 
 
 def _terminal(entry: dict[str, Any]) -> bool:
@@ -305,9 +319,7 @@ def _inventory_item(item: dict[str, Any]) -> dict[str, Any]:
         "source_locator": item["path"],
         "content_digest": item.get("content_digest"),
         "classification": {
-            key: item[key]
-            for key in ("document_type", "evidence_type")
-            if key in item
+            key: item[key] for key in ("document_type", "evidence_type") if key in item
         },
         "access_class": "internal",
         "disposition": disposition,
