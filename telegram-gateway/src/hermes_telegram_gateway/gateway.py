@@ -166,6 +166,14 @@ class RestrictedTelegramGateway:
                 continue
             proposal = item["proposal"]
             if item["status"] == "proposed":
+                if proposal["recommended_action"] == "needs_clarification":
+                    await self._telegram.send(
+                        self._settings.founder_chat_id,
+                        f"Clarification required\n{proposal['summary']}\n\n"
+                        f"{_clarification_text(proposal)}\n\n"
+                        "Reply with a new plain-English request containing these answers.",
+                    )
+                    continue
                 token = self._store.create(
                     "proposal",
                     item["id"],
@@ -416,10 +424,16 @@ class RestrictedTelegramGateway:
             )
             return
         task = current["proposal"].get("proposed_task")
+        if task is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"This proposal cannot be approved yet.\n\n"
+                f"{_clarification_text(current['proposal'])}\n\n"
+                "Reply with a new plain-English request containing these answers.",
+            )
+            return
         detail = (
             f"\nTask: {task['task_type']} · risk {task['risk_level']}"
-            if task
-            else "\nNo executable task is proposed."
         )
         await self._telegram.send(
             self._settings.founder_chat_id,
@@ -511,6 +525,15 @@ class RestrictedTelegramGateway:
                 "Proposal digest or state no longer matches.",
             )
             return
+        if action == "approve" and current["proposal"].get("proposed_task") is None:
+            self._store.consume(token)
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "This proposal cannot be approved because clarification is required.\n\n"
+                f"{_clarification_text(current['proposal'])}\n\n"
+                "Reply with a new plain-English request containing these answers.",
+            )
+            return
         api_action = "materialize" if action == "approve" else "reject"
         await self._channel.decide_proposal(
             entity_id,
@@ -573,6 +596,17 @@ def classify_request(text: str) -> tuple[str, int]:
     ):
         return "knowledge", 0
     return "swarm-control-plane", 1
+
+
+def _clarification_text(proposal: dict) -> str:
+    questions = proposal.get("clarification_questions") or []
+    if not questions:
+        return "Questions:\n1. Provide the missing information requested by the planner."
+    rendered = "\n".join(
+        f"{index}. {str(question)[:500]}"
+        for index, question in enumerate(questions[:10], start=1)
+    )
+    return f"Questions:\n{rendered}"
 
 
 def title_for(text: str) -> str:
