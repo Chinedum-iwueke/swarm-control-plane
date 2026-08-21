@@ -275,12 +275,33 @@ class ControlPlaneClient:
             "POST", "/v1/research/knowledge/documents", json=payload
         )
 
-    async def create_scientific_ingestion(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def create_scientific_ingestion(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self._request(
             "POST",
             "/v1/research/ingestion/jobs",
             json=payload,
             timeout=self._settings.ingestion_timeout_seconds,
+        )
+
+    async def scientific_ingestion_by_digest(
+        self, content_digest: str
+    ) -> dict[str, Any] | None:
+        try:
+            response = await self._client.get(
+                f"/v1/research/ingestion/jobs/by-digest/{content_digest}",
+                timeout=self._settings.ingestion_timeout_seconds,
+            )
+        except httpx.TransportError as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return None
+        if response.is_success:
+            return response.json()
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
         )
 
     async def process_scientific_ingestion(self, job_id: str) -> dict[str, Any]:
@@ -291,7 +312,9 @@ class ControlPlaneClient:
         )
 
     async def reconcile_corpus(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/v1/research/corpus-sync/runs", json=payload)
+        return await self._request(
+            "POST", "/v1/research/corpus-sync/runs", json=payload
+        )
 
     async def rebuild_corpus_projections(self, project: str) -> dict[str, Any]:
         return await self._request(

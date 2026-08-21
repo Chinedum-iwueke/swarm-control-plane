@@ -266,6 +266,21 @@ Installation and supervised pilot steps are in
 `docs/runbooks/m5-m6-vm2-infrastructure.md`. The continuous VM2 worker must
 remain disabled until both one-shot pilots have passed.
 
+## VM1 Research Runner
+
+The reproducible research runner has a dedicated identity, credential file,
+and continuous service. Install and activate it on VM1 with:
+
+```bash
+sudo ./systemd/install-research-worker.sh --enable --start
+systemctl is-active invariance-swarm-research-worker.service
+sudo journalctl -u invariance-swarm-research-worker.service -f --no-pager
+```
+
+The unit reads `/etc/invariance-swarm/vm1-research-worker.env`, processes one
+research task at a time, and may write only isolated workspaces and Git
+worktree metadata. It is independent of the research-memory steward.
+
 ## Rollback
 
 Stop the service, restore the previous reviewed worker revision, reinstall the
