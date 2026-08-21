@@ -41,9 +41,6 @@ class CodexProposalPlanner:
             prefix="proposal-", dir=self._working_directory
         ) as temporary:
             root = Path(temporary)
-            codex_home = root / "codex-home"
-            codex_home.mkdir(mode=0o700)
-            (codex_home / "auth.json").symlink_to(self._codex_home / "auth.json")
             schema_path = root / "proposal.schema.json"
             output_path = root / "proposal.json"
             schema_path.write_text(
@@ -73,7 +70,7 @@ class CodexProposalPlanner:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=self._environment(codex_home),
+                env=self._environment(),
                 start_new_session=True,
             )
             try:
@@ -99,12 +96,11 @@ class CodexProposalPlanner:
                     "Planner output did not match the proposal contract."
                 ) from exc
 
-    def _environment(self, codex_home: Path | None = None) -> dict[str, str]:
-        runtime_home = codex_home or self._codex_home
+    def _environment(self) -> dict[str, str]:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": str(runtime_home),
-            "CODEX_HOME": str(runtime_home),
+            "HOME": str(self._codex_home),
+            "CODEX_HOME": str(self._codex_home),
             "LANG": os.environ.get("LANG", "C.UTF-8"),
         }
         return environment

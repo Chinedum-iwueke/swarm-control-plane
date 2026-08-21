@@ -7,6 +7,7 @@ WORKER_ROOT="/home/omenka/Projects/swarm-control-plane/worker"
 EXECUTABLE="${WORKER_ROOT}/.venv/bin/invariance-swarm-founder-planner"
 ENVIRONMENT_FILE="/etc/invariance-swarm/vm1-founder-planner.env"
 WORKSPACE="/home/omenka/Projects/swarm-agent-workspaces/founder-intake"
+CODEX_HOME="/etc/invariance-swarm/codex-planner"
 
 SCRIPT_DIRECTORY="$(
   cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
@@ -53,10 +54,14 @@ if ((8#${environment_mode} & 8#077)); then
   printf 'Planner environment must not allow group or other access.\n' >&2
   exit 1
 fi
+if [[ ! -d "${CODEX_HOME}" ]]; then
+  printf 'The dedicated planner Codex home is unavailable: %s\n' "${CODEX_HOME}" >&2
+  exit 1
+fi
 if ! runuser -u omenka -- env \
-  CODEX_HOME=/etc/invariance-swarm/codex-worker \
+  CODEX_HOME="${CODEX_HOME}" \
   /usr/bin/codex login status >/dev/null; then
-  printf 'The restricted Codex home is not authenticated.\n' >&2
+  printf 'The dedicated planner Codex home is not authenticated.\n' >&2
   exit 1
 fi
 
