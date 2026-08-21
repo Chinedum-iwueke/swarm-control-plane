@@ -5,10 +5,9 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-from pydantic import ValidationError
-
 from app.schemas import FounderProposalDocument, FounderProposalResponse
-from app.services.proposals import materialize_proposal, proposal_digest
+from app.services.proposals import _task_create, materialize_proposal, proposal_digest
+from pydantic import ValidationError
 
 
 def valid_document() -> dict:
@@ -112,6 +111,54 @@ def test_materialization_is_exactly_once() -> None:
             now=datetime.now(UTC),
         )
     assert getattr(raised.value, "status_code", None) == 409
+
+
+def test_infrastructure_materialization_removes_null_parameter_scaffolding() -> None:
+    payload = valid_document()
+    payload["proposed_task"].update(
+        {
+            "project": "swarm-control-plane",
+            "task_type": "infrastructure_observation",
+            "input_contract": {
+                "runbook": "vm2-infrastructure",
+                "runbook_version": "1.0.0",
+                "operation": "observe-control-plane",
+                "target": "vm2-control-plane",
+                "parameters": {
+                    "service": None,
+                    "certificate_profile": None,
+                },
+                "package_name": None,
+                "package_version": None,
+                "package_digest": None,
+            },
+            "risk_level": 0,
+            "approval_policy": {"kind": "automatic", "risk": 0},
+            "required_capabilities": [
+                "infrastructure-observation",
+                "service-health",
+                "controlled-restart",
+            ],
+            "allowed_machines": ["vm2-deployment"],
+        }
+    )
+    document = FounderProposalDocument.model_validate(payload)
+    source = SimpleNamespace(id=UUID("11111111-1111-4111-8111-111111111111"))
+
+    task = _task_create(
+        document.proposed_task,
+        source,
+        "founder",
+        datetime(2026, 8, 21, tzinfo=UTC),
+    )
+
+    assert task.input_contract == {
+        "runbook": "vm2-infrastructure",
+        "runbook_version": "1.0.0",
+        "operation": "observe-control-plane",
+        "target": "vm2-control-plane",
+        "parameters": {},
+    }
 
 
 def test_historical_proposal_response_remains_readable() -> None:
