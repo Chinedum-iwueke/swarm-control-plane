@@ -442,11 +442,13 @@ function renderProposals() {
   document.getElementById("proposal-list").innerHTML = proposals.length ? proposals.map((item) => {
     const proposal = item.proposal;
     const task = proposal.proposed_task;
+    const questions = proposal.clarification_questions || [];
     return `<article class="proposal-row" data-proposal-id="${item.id}">
       <div class="proposal-main">
         <div class="proposal-eyebrow">${escapeHtml(humanize(proposal.recommended_action))} · ${escapeHtml(proposal.target_role || "Unassigned role")}</div>
         <h2>${escapeHtml(proposal.summary)}</h2>
         <p>${escapeHtml(proposal.interpretation)}</p>
+        ${!task && questions.length ? `<div class="proposal-clarification"><strong>Clarification required</strong>${bulletList(questions, "")}</div>` : ""}
         <div class="entity-meta"><span>${task ? escapeHtml(task.project) : "No task drafted"}</span><span>${task ? escapeHtml(humanize(task.task_type)) : "Clarification required"}</span><span>${relativeTime(item.created_at)}</span></div>
       </div>
       <div class="proposal-side">${task ? `<span class="risk ${task.risk_level >= 3 ? "high" : ""}">Risk ${task.risk_level}</span>` : ""}${statusBadge(item.status)}<span class="row-open">›</span></div>
@@ -879,7 +881,7 @@ function openProposal(id) {
     </dl></section>
     <section class="detail-section"><h3>Interpretation</h3><p>${escapeHtml(proposal.interpretation)}</p></section>
     <section class="detail-section"><h3>Assumptions</h3>${bulletList(proposal.assumptions, "No assumptions recorded.")}</section>
-    <section class="detail-section"><h3>Clarification questions</h3>${bulletList(proposal.clarification_questions, "No clarification required.")}</section>
+    <section class="detail-section ${!task ? "clarification-required" : ""}"><h3>${!task ? "Clarification required before approval" : "Clarification questions"}</h3>${bulletList(proposal.clarification_questions, "No clarification required.")}</section>
     <section class="detail-section"><h3>Safety constraints</h3>${bulletList(proposal.safety_constraints, "No additional constraints recorded.")}</section>
     ${task ? `<section class="detail-section"><h3>Proposed governed task</h3><dl class="detail-grid">
       <dt>Project</dt><dd>${escapeHtml(task.project)}</dd>

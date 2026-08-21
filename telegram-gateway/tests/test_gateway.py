@@ -47,6 +47,7 @@ class Channel:
     def __init__(self) -> None:
         self.created: list[dict] = []
         self.proposal_decisions: list[tuple[str, str, str]] = []
+        self.proposal_values: list[dict] = []
         self.approval_values: list[dict] = []
         self.mission_values: list[dict] = []
         self.mission_approvals: list[tuple[str, str]] = []
@@ -59,7 +60,7 @@ class Channel:
         return {"task_number": "FOUNDER-1"}
 
     async def proposals(self):
-        return []
+        return self.proposal_values
 
     async def tasks(self):
         return []
@@ -135,6 +136,24 @@ def approval_notification(suffix: str = "02") -> dict:
     }
 
 
+def clarification_proposal() -> dict:
+    return {
+        "id": "proposal-clarification",
+        "status": "proposed",
+        "proposal_digest": "c" * 64,
+        "proposal": {
+            "summary": "The research request needs immutable identifiers.",
+            "recommended_action": "needs_clarification",
+            "target_role": "research-experiment executor",
+            "proposed_task": None,
+            "clarification_questions": [
+                "What base reference should be used?",
+                "What hypothesis ID should identify the trial?",
+            ],
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_plain_english_is_structured_and_sender_is_allowlisted(
     tmp_path: Path,
@@ -189,6 +208,55 @@ def test_domain_classification_is_bounded() -> None:
     assert classify_request("Run a research hypothesis") == ("bulletproof_bt", 1)
     assert classify_request("Restart the API") == ("swarm-control-plane", 3)
     assert classify_request("Index my knowledge notes") == ("knowledge", 0)
+
+
+@pytest.mark.asyncio
+async def test_clarification_proposal_sends_questions_without_approval_link(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.proposal_values = [clarification_proposal()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+
+    await gateway._notify_proposals()
+
+    assert len(telegram.sent) == 1
+    message = telegram.sent[0][1]
+    assert "Clarification required" in message
+    assert "What base reference" in message
+    assert "button_url" not in telegram.sent[0][2]
+
+
+@pytest.mark.asyncio
+async def test_stale_clarification_approval_token_cannot_materialize(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.proposal_values = [clarification_proposal()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    token = store.create("proposal", "proposal-clarification", "c" * 64, 300)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+
+    await gateway._decide_handoff(token, "approve")
+
+    assert channel.proposal_decisions == []
+    assert "clarification is required" in telegram.sent[0][1]
+    assert store.resolve(token) is None
 
 
 @pytest.mark.asyncio

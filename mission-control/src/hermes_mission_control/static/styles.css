@@ -629,6 +629,10 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
 .proposal-main p { max-width: 850px; margin: 0 0 10px; color: var(--muted); }
 .proposal-eyebrow { color: var(--accent); font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .proposal-side { display: flex; align-items: center; gap: 10px; }
+.proposal-clarification { margin: 10px 0; padding: 10px 12px; color: #6b3d08; background: #fff7e8; border-left: 3px solid #c8811a; }
+.proposal-clarification strong { display: block; margin-bottom: 6px; }
+.proposal-clarification .detail-list { margin-bottom: 0; }
+.clarification-required { margin-top: 12px; padding: 12px; background: #fff7e8; border: 1px solid #ead0a3; }
 .agent-role { min-height: 34px; margin: 12px 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .agent-envelope { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 .agent-envelope span { padding: 4px 6px; background: #f1f4f2; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: 9px; }
