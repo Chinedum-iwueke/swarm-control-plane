@@ -627,6 +627,7 @@ function renderResearch() {
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
   const dossiers = state.dashboard.evidence_dossiers || [];
+  const lifecycleStates = state.dashboard.evidence_lifecycle_states || [];
   const surveillanceSources = state.dashboard.surveillance_sources || [];
   const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
@@ -694,6 +695,12 @@ function renderResearch() {
       ${statusBadge("frozen")}
     </button>`;
   }).join("") : empty("No frozen evidence dossier has been compiled.");
+  document.getElementById("research-lifecycle").innerHTML = lifecycleStates.length ? lifecycleStates.map((item) => `
+    <button class="entity-row entity-button" type="button" data-lifecycle-id="${item.object_id}">
+      <div class="entity-primary"><strong>${escapeHtml(item.state)}</strong><div class="entity-meta"><span class="mono">${shortHash(item.object_id)}</span><span>version ${item.version}</span><span>${item.retention_hold ? "retention hold" : "no hold"}</span><span>${formatDate(item.effective_at)}</span></div></div>
+      ${statusBadge(item.state)}
+    </button>
+  `).join("") : empty("No evidence has left active memory.");
   document.getElementById("research-list").innerHTML = tasks.length ? tasks.map((task) => {
     const summary = task.result?.summary || {};
     const oos = summary.out_of_sample || {};
@@ -762,6 +769,17 @@ function renderArtifacts() {
 function bindEntityButtons() {
   document.querySelectorAll("[data-dossier-id]").forEach((element) => {
     element.onclick = () => openDossier(element.dataset.dossierId);
+  });
+  document.querySelectorAll("[data-lifecycle-id]").forEach((element) => {
+    element.onclick = async () => {
+      const dossier = await request(`/api/research/evidence/${element.dataset.lifecycleId}/lifecycle`);
+      const current = dossier.state;
+      const events = dossier.events || [];
+      const impacts = dossier.impacts || [];
+      openInspector("Evidence lifecycle", current.state, `
+        <div class="inspector-section"><p class="section-kicker">Current materialized state</p><h3>${escapeHtml(current.state)}</h3><div class="entity-meta"><span class="mono">${escapeHtml(current.object_id)}</span><span>version ${current.version}</span><span>${current.retention_hold ? "retention hold active" : "no retention hold"}</span></div></div>
+        <div class="inspector-section"><p class="section-kicker">Immutable lineage</p><h3>${events.length} lifecycle events</h3><p>${events.map((item) => `${escapeHtml(item.event_type)} by ${escapeHtml(item.authority)}`).join(" · ") || "No transitions recorded."}</p><div class="entity-meta"><span>${impacts.length} impact reports</span><span class="mono">${escapeHtml(dossier.dossier_digest)}</span></div></div>`);
+    };
   });
   document.querySelectorAll("[data-task-id]").forEach((element) => {
     element.onclick = () => openTask(element.dataset.taskId);

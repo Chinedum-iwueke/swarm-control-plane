@@ -29,6 +29,7 @@ from app.schemas.graph import (
     GraphQueryRequest,
 )
 from app.services.evidence import EvidenceAccessContext, get_evidence_object
+from app.services.lifecycle import is_active_expression
 from app.services.retrieval import corpus_epoch
 
 PROJECTION_NAME = "canonical-knowledge-graph"
@@ -139,6 +140,7 @@ def register_edge(
 
 
 def graph_corpus_digest(db: Session) -> str:
+    active_ids = select(CanonicalEvidenceObject.id).where(is_active_expression())
     objects = db.execute(
         select(
             CanonicalEvidenceObject.id,
@@ -146,7 +148,7 @@ def graph_corpus_digest(db: Session) -> str:
             CanonicalEvidenceObject.object_type,
             CanonicalEvidenceObject.project,
             CanonicalEvidenceObject.access_class,
-        ).order_by(CanonicalEvidenceObject.id)
+        ).where(is_active_expression()).order_by(CanonicalEvidenceObject.id)
     ).yield_per(_PROJECTION_BATCH_SIZE)
     edges = db.execute(
         select(
@@ -159,6 +161,9 @@ def graph_corpus_digest(db: Session) -> str:
             CanonicalEvidenceEdge.provenance_object_id,
             CanonicalEvidenceEdge.access_class,
             CanonicalEvidenceEdge.record_digest,
+        ).where(
+            CanonicalEvidenceEdge.subject_id.in_(active_ids),
+            CanonicalEvidenceEdge.object_id.in_(active_ids),
         ).order_by(
             CanonicalEvidenceEdge.subject_id,
             CanonicalEvidenceEdge.predicate,
@@ -210,6 +215,7 @@ def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
     while True:
         statement = (
             select(CanonicalEvidenceObject)
+            .where(is_active_expression())
             .order_by(CanonicalEvidenceObject.id)
             .limit(_PROJECTION_BATCH_SIZE)
         )
@@ -242,6 +248,14 @@ def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
     while True:
         statement = (
             select(CanonicalEvidenceEdge)
+            .where(
+                CanonicalEvidenceEdge.subject_id.in_(
+                    select(CanonicalEvidenceObject.id).where(is_active_expression())
+                ),
+                CanonicalEvidenceEdge.object_id.in_(
+                    select(CanonicalEvidenceObject.id).where(is_active_expression())
+                ),
+            )
             .order_by(CanonicalEvidenceEdge.id)
             .limit(_PROJECTION_BATCH_SIZE)
         )

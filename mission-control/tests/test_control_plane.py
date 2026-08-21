@@ -43,6 +43,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     )
     assert "operator-token-that-is-long-enough" not in json.dumps(result)
     assert "evidence_dossiers" in result
+    assert "evidence_lifecycle_states" in result
     assert "surveillance_candidates" in result
 
 
@@ -99,6 +100,40 @@ async def test_dossier_client_uses_authenticated_read_only_routes(
     assert seen == [
         ("GET", "/v1/research/memory/dossiers/dossier-id"),
         ("GET", "/v1/research/memory/dossiers/dossier-id/replay"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_client_reads_and_submits_only_structured_actions(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        return httpx.Response(200, json={"dossier_digest": "a" * 64})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "action": "retract",
+        "authority": "knowledge-steward",
+        "reason": "Evidence was retracted by its source.",
+        "successor_object_id": None,
+        "effective_at": "2026-08-21T00:00:00Z",
+    }
+    try:
+        await client.get_evidence_lifecycle("object-id")
+        await client.transition_evidence_lifecycle("object-id", payload)
+        with pytest.raises(ValueError, match="Unsupported"):
+            await client.transition_evidence_lifecycle(
+                "object-id", {**payload, "command": "rm -rf /"}
+            )
+    finally:
+        await client.close()
+    assert seen == [
+        ("GET", "/v1/research/evidence/lifecycle/objects/object-id", None),
+        ("POST", "/v1/research/evidence/lifecycle/objects/object-id/actions", payload),
     ]
 
 

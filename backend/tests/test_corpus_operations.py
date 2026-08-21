@@ -148,9 +148,25 @@ def _canonical_object(object_type: str = "scientific_object") -> SimpleNamespace
 
 def test_backup_is_digest_bound_and_stored_content_addressably() -> None:
     record = _canonical_object()
+    lifecycle = SimpleNamespace(
+        object_id=record.id,
+        state="retracted",
+        successor_object_id=None,
+        retention_hold=False,
+        hold_authority=None,
+        hold_reason=None,
+        effective_at=NOW,
+        version=2,
+        updated_at=NOW,
+    )
     db = MagicMock()
     db.scalars.side_effect = [
         MagicMock(all=lambda: [record]),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=lambda: [lifecycle]),
+        MagicMock(all=list),
+        MagicMock(all=list),
         MagicMock(all=list),
         MagicMock(all=list),
     ]
@@ -167,6 +183,9 @@ def test_backup_is_digest_bound_and_stored_content_addressably() -> None:
     assert hashlib.sha256(store.values[backup.manifest_digest]).hexdigest() == (
         backup.manifest_digest
     )
+    document = json.loads(store.values[backup.manifest_digest])
+    assert document["schema_version"] == "corpus-backup-v1.1.0"
+    assert document["lifecycle_states"][0]["state"] == "retracted"
 
 
 def test_unchanged_backup_is_idempotent() -> None:
@@ -175,6 +194,11 @@ def test_unchanged_backup_is_idempotent() -> None:
     db = MagicMock()
     db.scalars.side_effect = [
         MagicMock(all=lambda: [record]),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
         MagicMock(all=list),
         MagicMock(all=list),
     ]
@@ -198,6 +222,11 @@ def test_backup_fails_closed_when_an_artifact_is_missing() -> None:
     db = MagicMock()
     db.scalars.side_effect = [
         MagicMock(all=lambda: [record]),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
+        MagicMock(all=list),
         MagicMock(all=list),
         MagicMock(all=list),
     ]

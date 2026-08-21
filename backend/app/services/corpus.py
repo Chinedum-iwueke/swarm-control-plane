@@ -15,6 +15,11 @@ from app.models.evidence import (
     CanonicalEvidenceEdge,
     CanonicalEvidenceObject,
     CanonicalIdentityAlias,
+    EvidenceConsolidationReceipt,
+    EvidenceDeletionRequest,
+    EvidenceLifecycleEvent,
+    EvidenceLifecycleImpactReport,
+    EvidenceLifecycleState,
 )
 from app.models.ingestion import ScientificIngestionJob
 from app.models.retrieval import EvidenceRetrievalProjection, EvidenceRetrievalState
@@ -22,7 +27,7 @@ from app.schemas.corpus import CorpusBackupCreate
 from app.services.object_store import EvidenceObjectStore, ObjectReference
 from app.services.retrieval import PROJECTION_NAME, build_projections, corpus_digest
 
-BACKUP_SCHEMA_VERSION = "corpus-backup-v1.0.0"
+BACKUP_SCHEMA_VERSION = "corpus-backup-v1.1.0"
 _SAFE_FINDINGS = {
     "active_content": ("high", "quarantined"),
     "malware": ("critical", "quarantined"),
@@ -107,11 +112,30 @@ def create_backup(
             .order_by(CanonicalEvidenceEdge.id)
         ).all()
     ) if object_ids else []
+    lifecycle_states = _records_for_ids(db, EvidenceLifecycleState, object_ids, "object_id")
+    lifecycle_events = _records_for_ids(db, EvidenceLifecycleEvent, object_ids, "object_id")
+    event_ids = [item.id for item in lifecycle_events]
+    consolidations = list(
+        db.scalars(
+            select(EvidenceConsolidationReceipt).where(
+                EvidenceConsolidationReceipt.duplicate_object_id.in_(object_ids),
+                EvidenceConsolidationReceipt.canonical_object_id.in_(object_ids),
+            )
+        ).all()
+    ) if object_ids else []
+    deletion_requests = _records_for_ids(db, EvidenceDeletionRequest, object_ids, "object_id")
+    lifecycle_impacts = list(
+        db.scalars(
+            select(EvidenceLifecycleImpactReport).where(
+                EvidenceLifecycleImpactReport.event_id.in_(event_ids)
+            )
+        ).all()
+    ) if event_ids else []
     artifact_refs = sorted(
         {
             (item.payload["storage_uri"], item.content_digest, item.payload["byte_size"])
             for item in objects
-            if item.object_type == "artifact"
+            if item.object_type == "artifact" and not item.payload.get("tombstone")
         }
     )
     for uri, digest, size in artifact_refs:
@@ -126,6 +150,11 @@ def create_backup(
         "objects": [_object_document(item) for item in objects],
         "aliases": [_alias_document(item) for item in aliases],
         "edges": [_edge_document(item) for item in edges],
+        "lifecycle_states": [_lifecycle_state_document(item) for item in lifecycle_states],
+        "lifecycle_events": [_lifecycle_event_document(item) for item in lifecycle_events],
+        "consolidation_receipts": [_consolidation_document(item) for item in consolidations],
+        "deletion_requests": [_deletion_request_document(item) for item in deletion_requests],
+        "lifecycle_impacts": [_lifecycle_impact_document(item) for item in lifecycle_impacts],
         "artifact_references": [
             {"uri": uri, "content_digest": digest, "byte_size": size}
             for uri, digest, size in artifact_refs
@@ -205,6 +234,17 @@ def restore_backup(
             db.add(CanonicalIdentityAlias(**_restore_alias(item)))
         for item in document["edges"]:
             db.add(CanonicalEvidenceEdge(**_restore_edge(item)))
+        for item in document.get("lifecycle_states", []):
+            db.add(EvidenceLifecycleState(**_restore_lifecycle_state(item)))
+        for item in document.get("lifecycle_events", []):
+            db.add(EvidenceLifecycleEvent(**_restore_lifecycle_event(item)))
+        for item in document.get("consolidation_receipts", []):
+            db.add(EvidenceConsolidationReceipt(**_restore_consolidation(item)))
+        for item in document.get("deletion_requests", []):
+            db.add(EvidenceDeletionRequest(**_restore_deletion_request(item)))
+        db.flush()
+        for item in document.get("lifecycle_impacts", []):
+            db.add(EvidenceLifecycleImpactReport(**_restore_lifecycle_impact(item)))
         db.commit()
         state = build_projections(db)
         evidence = {
@@ -320,12 +360,12 @@ def corpus_health(
             )
         )
         for item in objects
-        if item.object_type == "artifact"
+        if item.object_type == "artifact" and not item.payload.get("tombstone")
     )
     object_store_bytes = sum(
         int(item.payload["byte_size"])
         for item in objects
-        if item.object_type == "artifact"
+        if item.object_type == "artifact" and not item.payload.get("tombstone")
     )
     state = db.get(EvidenceRetrievalState, PROJECTION_NAME)
     projection = "missing"
@@ -453,6 +493,89 @@ def _edge_document(item):
     }
 
 
+def _records_for_ids(db, model, object_ids, field):
+    if not object_ids:
+        return []
+    column = getattr(model, field)
+    return list(db.scalars(select(model).where(column.in_(object_ids))).all())
+
+
+def _time(value):
+    return value.isoformat() if value is not None else None
+
+
+def _lifecycle_state_document(item):
+    return {
+        "object_id": str(item.object_id),
+        "state": item.state,
+        "successor_object_id": str(item.successor_object_id) if item.successor_object_id else None,
+        "retention_hold": item.retention_hold,
+        "hold_authority": item.hold_authority,
+        "hold_reason": item.hold_reason,
+        "effective_at": _time(item.effective_at),
+        "version": item.version,
+        "updated_at": _time(item.updated_at),
+    }
+
+
+def _lifecycle_event_document(item):
+    return {
+        "id": str(item.id),
+        "object_id": str(item.object_id),
+        "event_type": item.event_type,
+        "prior_state": item.prior_state,
+        "resulting_state": item.resulting_state,
+        "successor_object_id": str(item.successor_object_id) if item.successor_object_id else None,
+        "authority": item.authority,
+        "legal_basis": item.legal_basis,
+        "reason": item.reason,
+        "detail": item.detail,
+        "record_digest": item.record_digest,
+        "effective_at": _time(item.effective_at),
+        "created_at": _time(item.created_at),
+    }
+
+
+def _consolidation_document(item):
+    return {
+        "id": str(item.id),
+        "canonical_object_id": str(item.canonical_object_id),
+        "duplicate_object_id": str(item.duplicate_object_id),
+        "authority": item.authority,
+        "reason": item.reason,
+        "record_digest": item.record_digest,
+        "created_at": _time(item.created_at),
+    }
+
+
+def _deletion_request_document(item):
+    return {
+        "id": str(item.id),
+        "object_id": str(item.object_id),
+        "status": item.status,
+        "requested_by": item.requested_by,
+        "legal_basis": item.legal_basis,
+        "reason": item.reason,
+        "payload_digest": item.payload_digest,
+        "decided_by": item.decided_by,
+        "decision_reason": item.decision_reason,
+        "record_digest": item.record_digest,
+        "created_at": _time(item.created_at),
+        "decided_at": _time(item.decided_at),
+    }
+
+
+def _lifecycle_impact_document(item):
+    return {
+        "id": str(item.id),
+        "event_id": str(item.event_id),
+        "object_id": str(item.object_id),
+        "impact": item.impact,
+        "record_digest": item.record_digest,
+        "created_at": _time(item.created_at),
+    }
+
+
 def _restore_object(item):
     output = dict(item)
     output["id"] = UUID(output["id"])
@@ -473,6 +596,51 @@ def _restore_edge(item):
     for key in ("id", "subject_id", "object_id"):
         output[key] = UUID(output[key])
     return output
+
+
+def _restore_times(output, *keys):
+    for key in keys:
+        if output.get(key):
+            output[key] = datetime.fromisoformat(output[key])
+    return output
+
+
+def _restore_lifecycle_state(item):
+    output = dict(item)
+    output["object_id"] = UUID(output["object_id"])
+    if output["successor_object_id"]:
+        output["successor_object_id"] = UUID(output["successor_object_id"])
+    return _restore_times(output, "effective_at", "updated_at")
+
+
+def _restore_lifecycle_event(item):
+    output = dict(item)
+    for key in ("id", "object_id"):
+        output[key] = UUID(output[key])
+    if output["successor_object_id"]:
+        output["successor_object_id"] = UUID(output["successor_object_id"])
+    return _restore_times(output, "effective_at", "created_at")
+
+
+def _restore_consolidation(item):
+    output = dict(item)
+    for key in ("id", "canonical_object_id", "duplicate_object_id"):
+        output[key] = UUID(output[key])
+    return _restore_times(output, "created_at")
+
+
+def _restore_deletion_request(item):
+    output = dict(item)
+    for key in ("id", "object_id"):
+        output[key] = UUID(output[key])
+    return _restore_times(output, "created_at", "decided_at")
+
+
+def _restore_lifecycle_impact(item):
+    output = dict(item)
+    for key in ("id", "event_id", "object_id"):
+        output[key] = UUID(output[key])
+    return _restore_times(output, "created_at")
 
 
 def _validate_manifest(document, backup):

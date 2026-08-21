@@ -405,14 +405,35 @@ def replay_dossier(
                 impacts.append(
                     {"group": group, "object_id": snapshot["object_id"], "impact": "digest_changed"}
                 )
-            elif db.scalar(
-                select(CanonicalEvidenceObject.id).where(
-                    CanonicalEvidenceObject.supersedes_object_id == current.id
-                )
-            ) is not None:
-                impacts.append(
-                    {"group": group, "object_id": snapshot["object_id"], "impact": "superseded"}
-                )
+            else:
+                from app.services.lifecycle import lifecycle_state
+
+                state = lifecycle_state(db, current.id)
+                if state is not None and state.state != "active":
+                    impacts.append(
+                        {
+                            "group": group,
+                            "object_id": snapshot["object_id"],
+                            "impact": state.state,
+                            "successor_object_id": (
+                                str(state.successor_object_id)
+                                if state.successor_object_id
+                                else None
+                            ),
+                        }
+                    )
+                elif db.scalar(
+                    select(CanonicalEvidenceObject.id).where(
+                        CanonicalEvidenceObject.supersedes_object_id == current.id
+                    )
+                ) is not None:
+                    impacts.append(
+                        {
+                            "group": group,
+                            "object_id": snapshot["object_id"],
+                            "impact": "superseded",
+                        }
+                    )
     return dossier, not impacts, impacts
 
 

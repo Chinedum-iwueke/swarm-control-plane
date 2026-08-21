@@ -118,6 +118,17 @@ def create_app(
     async def replay_evidence_dossier(dossier_id: str) -> dict:
         return await client.replay_evidence_dossier(dossier_id)
 
+    @app.get("/api/research/evidence/{object_id}/lifecycle")
+    async def evidence_lifecycle(object_id: str) -> dict:
+        return await client.get_evidence_lifecycle(object_id)
+
+    @app.post(
+        "/api/research/evidence/{object_id}/lifecycle",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def transition_evidence_lifecycle(object_id: str, payload: dict) -> dict:
+        return await client.transition_evidence_lifecycle(object_id, payload)
+
     @app.get("/api/research/surveillance/{publication_id}/replay")
     async def replay_surveillance_candidate(publication_id: str) -> dict:
         return await client.replay_surveillance_candidate(publication_id)

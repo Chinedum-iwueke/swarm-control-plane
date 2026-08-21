@@ -17,6 +17,7 @@ class FakeControlPlane:
         self.closed = False
         self.memory_sync_requested = False
         self.dossier_requested: str | None = None
+        self.lifecycle_requested: str | None = None
         self.surveillance_requested: str | None = None
         self.graph_requested = False
 
@@ -97,6 +98,14 @@ class FakeControlPlane:
         self.dossier_requested = dossier_id
         return {"exact_replay": True, "impacts": []}
 
+    async def get_evidence_lifecycle(self, object_id: str) -> dict:
+        self.lifecycle_requested = object_id
+        return {"state": {"object_id": object_id, "state": "retracted"}}
+
+    async def transition_evidence_lifecycle(self, object_id: str, payload: dict) -> dict:
+        self.lifecycle_requested = object_id
+        return {"state": {"object_id": object_id, "state": payload["action"]}}
+
     async def replay_surveillance_candidate(self, publication_id: str) -> dict:
         self.surveillance_requested = publication_id
         return {"publication_id": publication_id, "exact_replay": True}
@@ -152,6 +161,7 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/research/memory-sync/proposals" in paths
     assert "/api/research/dossiers/{dossier_id}" in paths
     assert "/api/research/dossiers/{dossier_id}/replay" in paths
+    assert "/api/research/evidence/{object_id}/lifecycle" in paths
     assert "/api/research/surveillance/{publication_id}/replay" in paths
 
 

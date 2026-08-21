@@ -65,6 +65,9 @@ class ControlPlaneClient:
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
+        lifecycle_states = await self._optional_collection(
+            "/v1/research/evidence/lifecycle/objects"
+        )
         surveillance_sources = await self._optional_collection(
             "/v1/research/surveillance/sources"
         )
@@ -94,6 +97,7 @@ class ControlPlaneClient:
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
             "evidence_dossiers": evidence_dossiers,
+            "evidence_lifecycle_states": lifecycle_states,
             "surveillance_sources": surveillance_sources,
             "surveillance_candidates": surveillance_candidates,
             "surveillance_digests": surveillance_digests,
@@ -118,6 +122,29 @@ class ControlPlaneClient:
     async def replay_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
         return await self._request(
             "GET", f"/v1/research/memory/dossiers/{dossier_id}/replay"
+        )
+
+    async def get_evidence_lifecycle(self, object_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/evidence/lifecycle/objects/{object_id}"
+        )
+
+    async def transition_evidence_lifecycle(
+        self, object_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        allowed = {
+            "action",
+            "authority",
+            "reason",
+            "successor_object_id",
+            "effective_at",
+        }
+        if set(payload) - allowed:
+            raise ValueError("Unsupported evidence lifecycle fields.")
+        return await self._request(
+            "POST",
+            f"/v1/research/evidence/lifecycle/objects/{object_id}/actions",
+            json=payload,
         )
 
     async def transition_operational_note(
