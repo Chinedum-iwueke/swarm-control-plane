@@ -4,14 +4,13 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import ValidationError
-
-from app.api.routes.founder_channel import _founder_approval
+from app.api.routes.founder_channel import _founder_approval, _founder_request_task
 from app.core.config import get_settings
 from app.core.security import require_founder_channel, require_orchestrator
 from app.schemas import FounderChannelRequest
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import ValidationError
 
 
 def credential(value: str) -> HTTPAuthorizationCredentials:
@@ -49,6 +48,23 @@ def test_founder_intake_rejects_command_surface() -> None:
             acceptance_criteria=[],
             command="bash -c anything",
         )
+
+
+def test_founder_intake_risk_is_bounded_to_non_executing_planning() -> None:
+    payload = FounderChannelRequest(
+        kind="task",
+        project="swarm-control-plane",
+        title="Observe VM2 control plane",
+        objective="Do not restart anything; report infrastructure health only.",
+        risk_level=3,
+        acceptance_criteria=["No infrastructure mutation occurs."],
+    )
+
+    task = _founder_request_task(payload, datetime.now(UTC))
+
+    assert task.risk_level == 0
+    assert task.approval_policy == {"kind": "automatic", "risk": 0}
+    assert task.approval_required is False
 
 
 class _Rows:
