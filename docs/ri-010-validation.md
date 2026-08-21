@@ -39,9 +39,50 @@ control-plane orchestrator credential.
 - Focused lifecycle, retrieval, graph, and dossier suite: 87 passed.
 - Ruff and compileall: passed for changed surfaces.
 - Alembic head: `a4e7c9d21f60`.
+- Control-plane merges: PR 54 (`63855851677b8b0ec0cd9a20159bf45e70bcfaa8`)
+  and pilot response fix PR 55 (`ada05ecf86123c7aed9a820e96e586e8279079a1`).
 
-The production pilot output, deployed merge, live object identities, dossier
-digests, rebuilt projection manifests, and final test totals are recorded after
-the VM2 migration gate. Rollback restores the prior API image; lifecycle tables
+## Clean-room pilot
+
+On 2026-08-21 the entire migration chain was applied from an empty PostgreSQL
+17 database to `a4e7c9d21f60`. A live loopback API then executed the production
+pilot through its authenticated HTTP routes. All checks passed:
+
+- duplicate consolidation with equal canonical content digests;
+- automatic supersession propagation when a corrected successor registered;
+- retraction followed by authorized restoration;
+- retention hold rejection of an independently approved deletion;
+- hold release and independently approved lawful deletion;
+- terminal deletion state with payload tombstone and retained lifecycle dossier;
+- stale retrieval and graph detection followed by successful rebuild;
+- active graph contained only the two surviving active objects.
+
+The consolidation, supersession, retraction, restoration, retention and deletion
+dossier digests were respectively:
+
+```text
+a49c6933dcc947118fcd439c0b8ecebc16f357f1234957907d3c31dbc8157288
+a1b802d99f94ed472b84d383981c2f54f4447aafec6efb17e945908d5856bf5c
+c28f3ae8112a93e8cf2f0d6e7a6c787781506fd7123d02d6844b0a6a9abbf6e3
+3ca620f47b55636a55356649627aed0c196a5a39012577269866c400ab01325f
+32b29ef5f1d14a1b7e3e12fb9f9c1361211fdd96c7b7db0efa4d5f8723e7caef
+c56bbe3e756f1633580755358745a35f2cb518d09fad5917a96ac63d1d37b06f
+```
+
+The Mac pulled `ada05ecf86123c7aed9a820e96e586e8279079a1`, reinstalled
+Mission Control, and returned a healthy loopback status. Its lifecycle ledger UI
+is ready but will remain empty until the VM2 API is migrated.
+
+## Production activation
+
+VM2 could not be migrated on 2026-08-21 because Tailscale reported
+`vm2-deployment` offline, last seen three days earlier; SSH and API health both
+timed out. This is an external availability block, not a passing production
+claim. When VM2 returns, pull the exact merge, run `alembic upgrade head`,
+recreate the API, execute `worker/scripts/ri010_lifecycle_pilot.py`, and retain
+its live dossier and projection digests before changing this record to
+production-qualified.
+
+Rollback restores the prior API image; lifecycle tables
 are append-oriented and should be retained unless the migration has never
 accepted a lifecycle transition.
