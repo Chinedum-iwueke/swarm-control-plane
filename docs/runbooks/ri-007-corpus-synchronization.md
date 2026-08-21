@@ -24,6 +24,16 @@ Renames reuse the canonical digest. Replacements create a new canonical ingestio
 and retain the previous item as a predecessor. Files absent from a later complete
 inventory become `superseded`; their canonical evidence is retained.
 
+Mission Control maintains a derived `research-inbox-sync-v1.json` index in its private
+data root. Unchanged canonical files take a stat-only fast path and are not reread,
+rehashed, encoded, or uploaded. New and changed files are hashed; renamed canonical
+content reuses its digest-bound receipt. Every completed item is checkpointed
+atomically, and a concurrent refresh is rejected. Inspect progress with
+`hermes-mission-control sync-status`. Quarantined and failed entries remain retryable.
+Projection recovery runs once after a batch only when new canonical content was
+published. Deleting this local index is safe but forces a full bootstrap scan; it does
+not delete canonical evidence.
+
 ## Legacy inventory
 
 After deploying the API migration, inventory legacy rows with the protected operator

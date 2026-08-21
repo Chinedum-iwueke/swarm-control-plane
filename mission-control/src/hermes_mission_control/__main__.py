@@ -11,12 +11,12 @@ from .app import create_app
 from .config import MissionControlSettings
 from .control_plane import ControlPlaneClient
 from .knowledge import KnowledgeStore
-from .research_inbox import sync_research_inbox
+from .research_inbox import research_inbox_status, sync_research_inbox
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="hermes-mission-control")
-    parser.add_argument("command", choices=("run", "check", "sync"))
+    parser.add_argument("command", choices=("run", "check", "sync", "sync-status"))
     parser.add_argument("--inbox")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
@@ -33,6 +33,9 @@ def main() -> int:
             return asyncio.run(_check(settings, store))
         if args.command == "sync":
             return asyncio.run(_sync(settings))
+        if args.command == "sync-status":
+            print(json.dumps(research_inbox_status(settings), indent=2, sort_keys=True))
+            return 0
         uvicorn.run(
             create_app(settings),
             host=settings.host,

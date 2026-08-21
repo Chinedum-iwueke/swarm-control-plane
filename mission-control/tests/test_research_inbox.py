@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import fcntl
+import json
 from pathlib import Path
 
 import pytest
 
+from hermes_mission_control import research_inbox
 from hermes_mission_control.config import MissionControlSettings
-from hermes_mission_control.research_inbox import sync_research_inbox
-from hermes_mission_control.research_upload import digest
+from hermes_mission_control.research_inbox import (
+    research_inbox_status,
+    sync_research_inbox,
+)
+from hermes_mission_control.research_upload import ResearchUploadError, digest
 
 
 class FakeResearchClient:
@@ -14,6 +20,7 @@ class FakeResearchClient:
         self.jobs: dict[str, dict] = {}
         self.ingestions: list[dict] = []
         self.runs: list[dict] = []
+        self.projection_rebuilds = 0
 
     async def create_scientific_ingestion(self, payload: dict) -> dict:
         content_digest = payload["content_digest"]
@@ -48,12 +55,28 @@ class FakeResearchClient:
 
     async def rebuild_corpus_projections(self, project: str) -> dict:
         assert project == "systematic-research"
+        self.projection_rebuilds += 1
         return {"evidence": {"projection_corpus_digest": "b" * 64}}
+
+
+class RetryResearchClient(FakeResearchClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.process_calls = 0
+
+    async def process_scientific_ingestion(self, job_id: str) -> dict:
+        self.process_calls += 1
+        job = next(item for item in self.jobs.values() if item["id"] == job_id)
+        if self.process_calls == 1:
+            return job
+        job.update(status="published", published_object_ids=["recovered-source"])
+        return job
 
 
 @pytest.mark.asyncio
 async def test_inbox_adds_then_reconciles_unchanged_book(
     settings: MissionControlSettings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings.prepare()
     source = settings.research_inbox / "books" / "research-methods.txt"
@@ -61,6 +84,11 @@ async def test_inbox_adds_then_reconciles_unchanged_book(
     client = FakeResearchClient()
 
     first = await sync_research_inbox(settings, client)
+    monkeypatch.setattr(
+        research_inbox,
+        "digest",
+        lambda _content: pytest.fail("unchanged file was rehashed"),
+    )
     second = await sync_research_inbox(settings, client)
 
     assert first["counts"]["added"] == 1
@@ -74,6 +102,120 @@ async def test_inbox_adds_then_reconciles_unchanged_book(
         "evidence_type": "method",
     }
     assert second["coverage"]["digest"] == "a" * 64
+    assert second["incremental"] == {
+        "corpus_changed": False,
+        "projection_rebuilt": False,
+        "index": str(settings.research_inbox_index_path),
+    }
+    assert client.projection_rebuilds == 1
+
+
+@pytest.mark.asyncio
+async def test_inbox_renamed_canonical_file_reuses_digest_receipt(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    original = settings.research_inbox / "papers" / "original.txt"
+    original.write_text("Prospective evidence.", encoding="utf-8")
+    client = FakeResearchClient()
+
+    await sync_research_inbox(settings, client)
+    original.rename(settings.research_inbox / "papers" / "renamed.txt")
+    report = await sync_research_inbox(settings, client)
+
+    assert len(client.ingestions) == 1
+    assert report["counts"]["unchanged"] == 1
+    assert report["incremental"]["corpus_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_inbox_checkpoints_progress(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "papers" / "evidence.txt"
+    source.write_text("Bounded evidence.", encoding="utf-8")
+
+    await sync_research_inbox(settings, FakeResearchClient())
+
+    index = settings.research_inbox_index_path.read_text(encoding="utf-8")
+    assert '"status": "complete"' in index
+    assert '"remaining": 0' in index
+    assert settings.research_inbox_index_path.stat().st_mode & 0o077 == 0
+    assert research_inbox_status(settings)["run"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_inbox_rejects_concurrent_refresh(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    with settings.research_inbox_lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            ResearchUploadError, match="research inbox refresh is already running"
+        ):
+            await sync_research_inbox(settings, FakeResearchClient())
+
+
+@pytest.mark.asyncio
+async def test_inbox_removal_reconciles_without_rebuilding_projection(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "papers" / "removed.txt"
+    source.write_text("Retained canonical evidence.", encoding="utf-8")
+    client = FakeResearchClient()
+    await sync_research_inbox(settings, client)
+
+    source.unlink()
+    report = await sync_research_inbox(settings, client)
+
+    assert client.runs[-1]["items"] == []
+    assert client.projection_rebuilds == 1
+    assert report["incremental"]["corpus_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_inbox_persisted_dirty_projection_survives_resume(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "papers" / "checkpointed.txt"
+    source.write_text("Checkpoint before projection.", encoding="utf-8")
+    client = FakeResearchClient()
+    await sync_research_inbox(settings, client)
+    state = json.loads(
+        settings.research_inbox_index_path.read_text(encoding="utf-8")
+    )
+    state["projection_dirty"] = True
+    settings.research_inbox_index_path.write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+
+    report = await sync_research_inbox(settings, client)
+
+    assert len(client.ingestions) == 1
+    assert client.projection_rebuilds == 2
+    assert report["incremental"]["projection_rebuilt"] is True
+
+
+@pytest.mark.asyncio
+async def test_inbox_retries_cached_noncanonical_entry(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "papers" / "recoverable.txt"
+    source.write_text("Recoverable evidence.", encoding="utf-8")
+    client = RetryResearchClient()
+
+    first = await sync_research_inbox(settings, client)
+    second = await sync_research_inbox(settings, client)
+
+    assert first["counts"]["rejected"] == 1
+    assert second["counts"]["added"] == 1
+    assert client.process_calls == 2
+    assert client.projection_rebuilds == 2
 
 
 @pytest.mark.asyncio

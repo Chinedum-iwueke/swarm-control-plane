@@ -45,6 +45,14 @@ class MissionControlSettings(BaseSettings):
         return self.data_root / "knowledge.sqlite3"
 
     @property
+    def research_inbox_index_path(self) -> Path:
+        return self.data_root / "research-inbox-sync-v1.json"
+
+    @property
+    def research_inbox_lock_path(self) -> Path:
+        return self.data_root / "research-inbox-sync.lock"
+
+    @property
     def research_inbox(self) -> Path:
         return (
             (self.research_inbox_directory or self.data_root / "research-inbox")

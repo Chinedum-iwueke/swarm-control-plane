@@ -134,8 +134,23 @@ set +a
   sync --inbox "/Users/ice/Hermes Research Inbox"
 ```
 
-Sync is digest-idempotent. It reports added, unchanged, rejected, and failed
-files and never moves or deletes originals.
+Sync maintains a private, crash-safe incremental index. An unchanged refresh
+stats the inbox but does not reread, rehash, encode, or upload canonical files.
+Renamed content reuses its digest-bound receipt; quarantined and failed items
+remain retryable. Retrieval and graph projections rebuild only after canonical
+corpus content changes. Sync reports added, unchanged, rejected, and failed files
+and never moves or deletes originals.
+
+Inspect a foreground or resumed refresh from another terminal with:
+
+```bash
+"$HOME/Library/Application Support/Hermes Mission Control/venv/bin/hermes-mission-control" \
+  sync-status
+```
+
+The status includes scanned, remaining, and per-disposition counts. Atomic
+checkpoints permit a later refresh to retain all completed canonical work after
+an interruption. An exclusive lock rejects overlapping refreshes.
 
 ## Token rotation
 
