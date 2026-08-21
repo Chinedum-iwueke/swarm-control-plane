@@ -276,7 +276,7 @@ def test_registration_is_append_only_and_audited() -> None:
     record = register_evidence_object(db, value, ACCESS)
 
     assert record.id == OBJECT_ID
-    assert db.add.call_count == 3
+    assert db.add.call_count == 4
     db.commit.assert_called_once_with()
 
 

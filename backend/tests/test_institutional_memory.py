@@ -436,7 +436,7 @@ def test_dossier_replay_reports_supersession_without_mutation() -> None:
     )
     current = canonical(object_id, "scientific_object", digest="2" * 64)
     db = MagicMock()
-    db.get.side_effect = [dossier, current]
+    db.get.side_effect = [dossier, current, None]
     db.scalar.return_value = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
     replayed, exact, impacts = replay_dossier(db, dossier.id, access())
     assert replayed.dossier == dossier.dossier

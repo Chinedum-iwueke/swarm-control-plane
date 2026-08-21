@@ -119,6 +119,12 @@ def register_evidence_object(
     )
     db.add(record)
     db.flush()
+    from app.services.lifecycle import (
+        ensure_lifecycle_state,
+        register_declared_supersession,
+    )
+
+    ensure_lifecycle_state(db, record.id)
     for alias in payload.aliases:
         db.add(
             CanonicalIdentityAlias(
@@ -145,6 +151,13 @@ def register_evidence_object(
                 predicate="supersedes",
                 object_id=payload.supersedes_object_id,
             )
+        )
+        register_declared_supersession(
+            db,
+            referenced.get(payload.supersedes_object_id)
+            or db.get(CanonicalEvidenceObject, payload.supersedes_object_id),
+            record,
+            access.actor,
         )
     db.add(
         CanonicalEvidenceAuditEvent(
@@ -238,6 +251,11 @@ def get_evidence_lineage(
 
 
 def evidence_response(record: CanonicalEvidenceObject) -> EvidenceObjectResponse:
+    if record.payload.get("tombstone") is True:
+        raise HTTPException(
+            status_code=410,
+            detail="Evidence payload was lawfully deleted; lifecycle dossier remains available.",
+        )
     aliases = [
         {
             "namespace": alias.namespace,

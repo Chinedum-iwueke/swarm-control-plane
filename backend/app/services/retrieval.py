@@ -28,6 +28,7 @@ from app.models.retrieval import (
 )
 from app.schemas.retrieval import HybridRetrievalRequest
 from app.services.evidence import EvidenceAccessContext, get_evidence_object
+from app.services.lifecycle import is_active_expression
 
 PROJECTION_NAME = "canonical-scientific"
 PROJECTION_VERSION = "hybrid-retrieval-v1.1.0"
@@ -127,10 +128,12 @@ def _legacy_corpus_digest(db: Session) -> str:
             CanonicalEvidenceObject.access_class,
         )
         .where(CanonicalEvidenceObject.object_type == "scientific_object")
+        .where(is_active_expression())
         .order_by(CanonicalEvidenceObject.id)
     ).yield_per(_PROJECTION_BATCH_SIZE)
     scientific_ids = select(CanonicalEvidenceObject.id).where(
-        CanonicalEvidenceObject.object_type == "scientific_object"
+        CanonicalEvidenceObject.object_type == "scientific_object",
+        is_active_expression(),
     )
     non_scientific_ids = select(CanonicalEvidenceObject.id).where(
         CanonicalEvidenceObject.object_type != "scientific_object"
@@ -220,6 +223,7 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
                 CanonicalEvidenceObject.payload,
             )
             .where(CanonicalEvidenceObject.object_type == "scientific_object")
+            .where(is_active_expression())
             .order_by(CanonicalEvidenceObject.id)
             .limit(_PROJECTION_BATCH_SIZE)
         )
