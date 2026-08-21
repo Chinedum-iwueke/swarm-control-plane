@@ -126,5 +126,5 @@ def _task_create(
         task_number=f"PLANNED-{now:%Y%m%dT%H%M%S}-{suffix}",
         parent_task_id=source.id,
         created_by=actor,
-        **proposed.model_dump(mode="python"),
+        **proposed.model_dump(mode="python", exclude_none=True),
     )
