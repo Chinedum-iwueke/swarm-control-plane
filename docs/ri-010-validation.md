@@ -71,17 +71,18 @@ c56bbe3e756f1633580755358745a35f2cb518d09fad5917a96ac63d1d37b06f
 
 The Mac pulled `ada05ecf86123c7aed9a820e96e586e8279079a1`, reinstalled
 Mission Control, and returned a healthy loopback status. Its lifecycle ledger UI
-is ready but will remain empty until the VM2 API is migrated.
+is ready for production lifecycle records.
 
 ## Production activation
 
-VM2 could not be migrated on 2026-08-21 because Tailscale reported
-`vm2-deployment` offline, last seen three days earlier; SSH and API health both
-timed out. This is an external availability block, not a passing production
-claim. When VM2 returns, pull the exact merge, run `alembic upgrade head`,
-recreate the API, execute `worker/scripts/ri010_lifecycle_pilot.py`, and retain
-its live dossier and projection digests before changing this record to
-production-qualified.
+On 2026-08-21 VM2 returned online. Its clean `main` checkout fast-forwarded to
+validation merge `7085872e1d598d5afbf876c762d4d60ed27f05c3`; the API image
+rebuilt, the production database migrated from `c8f2a6d94e31` to
+`a4e7c9d21f60`, and the recreated API became healthy. The exact authenticated
+pilot still requires execution under the root-protected operator environment;
+this automation session could not read that credential and did not weaken its
+permissions. No production-qualified lifecycle claim is made until that pilot
+passes and its live dossier and projection digests are retained.
 
 Rollback restores the prior API image; lifecycle tables
 are append-oriented and should be retained unless the migration has never
