@@ -78,11 +78,26 @@ is ready for production lifecycle records.
 On 2026-08-21 VM2 returned online. Its clean `main` checkout fast-forwarded to
 validation merge `7085872e1d598d5afbf876c762d4d60ed27f05c3`; the API image
 rebuilt, the production database migrated from `c8f2a6d94e31` to
-`a4e7c9d21f60`, and the recreated API became healthy. The exact authenticated
-pilot still requires execution under the root-protected operator environment;
-this automation session could not read that credential and did not weaken its
-permissions. No production-qualified lifecycle claim is made until that pilot
-passes and its live dossier and projection digests are retained.
+`a4e7c9d21f60`, and the recreated API became healthy.
+
+The founder then ran the exact authenticated production pilot under the
+root-protected operator environment. All eight lifecycle checks passed. The live
+dossier digests were:
+
+```text
+consolidation  2cac7f71b8bba053b884707fccced0d50a2b4b0d8dc7f4ff5049122635969642
+supersession   dbaeb3a8295216df995c0ad0f869d51e497097faa610a36ee8a033155009d7af
+retraction     03d3767ae4bb91a258671311ce0a2448ab7e94452bc61a65501b6ffffc39e5b2
+restore        098ba240a27459defa855eafcef1c129abf9a905ed1aa788ee6af32b64dc4a7b
+retention      dc5b9fa291fe57f6d082682d3f2abc986b1c0175283b3df9e36266667055d8a8
+deletion       19d70b27e74456ffa23d5fc04a07fa44549a5eb73f36eca4fbbb1439e9433a38
+```
+
+Retrieval rebuilt current with 623,375 objects at source epoch 25 and manifest
+digest `f3e07bc8e94164055d3616759c992b64610a7073472a65021e465ad0472e6883`.
+The graph rebuilt current with 623,731 nodes, 1,097,688 edges and manifest digest
+`ceab189ceccd4b99067af0e42721fb4abdb9880c941607f340470a73ec57b334`.
+RI-010 is production-qualified for the exercised VM2 version and environment.
 
 Rollback restores the prior API image; lifecycle tables
 are append-oriented and should be retained unless the migration has never
