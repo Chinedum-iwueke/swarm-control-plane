@@ -112,6 +112,47 @@ class IngestionRecoveryResolutionResponse(StrictModel):
     sanitized_job: ScientificIngestionResponse
 
 
+class BlockedArtifactAttempt(StrictModel):
+    number: int = Field(ge=1)
+    method: str
+    outcome: str | None = None
+    failure_category: str | None = None
+    failure_detail: str | None = None
+    pipeline_status: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    derived_digest: str | None = None
+    codex_advice: dict | None = None
+
+
+class BlockedArtifactRegisterEntry(StrictModel):
+    original_job_id: UUID
+    recovery_id: UUID | None
+    project: str
+    filename: str
+    media_type: str
+    content_digest: str = Field(pattern=_DIGEST)
+    source_title: str
+    source_origin: str
+    ingestion_status: IngestionStatus
+    recovery_status: str | None
+    classification: str
+    action_required: str
+    retry_eligible: bool
+    attempted_methods: list[str]
+    attempts: list[BlockedArtifactAttempt]
+    redacted_edition_proposal: dict | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BlockedArtifactRegisterResponse(StrictModel):
+    generated_at: datetime
+    total: int
+    counts_by_classification: dict[str, int]
+    items: list[BlockedArtifactRegisterEntry]
+
+
 class CoordinateReplayResponse(StrictModel):
     object_id: UUID
     artifact_id: UUID

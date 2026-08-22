@@ -10,11 +10,13 @@ from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
 from app.schemas.ingestion import (
+    BlockedArtifactRegisterResponse,
     IngestionRecoveryBatchResponse,
     IngestionRecoveryCreate,
     IngestionRecoveryResolutionResponse,
     IngestionRecoveryResponse,
 )
+from app.services.blocked_artifact_register import blocked_artifact_register
 from app.services.ingestion_recovery import process_next_recovery, queue_recoveries
 from app.services.scientific_ingestion import ingestion_response
 
@@ -23,6 +25,11 @@ router = APIRouter(
     tags=["scientific-ingestion-recovery"],
     dependencies=[Depends(require_orchestrator)],
 )
+
+
+@router.get("/blocked-artifacts", response_model=BlockedArtifactRegisterResponse)
+def list_blocked_artifacts(db: Annotated[Session, Depends(get_db)]):
+    return blocked_artifact_register(db)
 
 
 @router.get(
