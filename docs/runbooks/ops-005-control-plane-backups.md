@@ -56,6 +56,9 @@ ports, restores the latest digest-verified dump, checks the Alembic marker and p
 table count, writes `latest-restore-drill.json`, and removes the container. It never
 connects to or mutates the production database.
 
+Both hardened units keep `ProtectHome=true` and point Docker at a private empty
+`RuntimeDirectory`. Do not redirect Docker to `/root/.docker` or weaken home protection.
+
 ## Failure and recovery
 
 Inspect `latest-failure.json`, journal output, free space, Docker health, and the latest

@@ -10,6 +10,7 @@
 - Non-blocking overlap lock, minimum-free-space gate, and partial-file cleanup.
 - Seven-daily, four-weekly, six-monthly verified-generation retention.
 - Hardened persistent daily systemd timer with bounded jitter.
+- Private runtime Docker configuration directories compatible with `ProtectHome`.
 - Weekly network-isolated disposable restore drill with RPO/RTO dossier.
 - VM2 fleet freshness, integrity, and latest-failure metrics.
 - Six-day warning, seven-day critical, and existing three-sample alert/recovery rules.
