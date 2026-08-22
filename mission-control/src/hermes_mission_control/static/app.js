@@ -630,6 +630,7 @@ function renderResearch() {
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
   const dossiers = state.dashboard.evidence_dossiers || [];
   const lifecycleStates = state.dashboard.evidence_lifecycle_states || [];
+  const blockedRegister = state.dashboard.blocked_artifact_register || { total: 0, counts_by_classification: {}, items: [] };
   const surveillanceSources = state.dashboard.surveillance_sources || [];
   const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
@@ -703,6 +704,17 @@ function renderResearch() {
       ${statusBadge(item.state)}
     </button>
   `).join("") : empty("No evidence has left active memory.");
+  const blockedCounts = Object.entries(blockedRegister.counts_by_classification || {});
+  document.getElementById("blocked-artifact-summary").innerHTML = `
+    <div class="machine-cell"><span class="machine-symbol">BQ</span><div><strong>${blockedRegister.total || 0}</strong><small>requiring action</small></div></div>
+    ${blockedCounts.map(([classification, count]) => `<div class="machine-cell"><div><strong>${count}</strong><small>${escapeHtml(humanize(classification))}</small></div></div>`).join("")}
+  `;
+  document.getElementById("blocked-artifact-register").innerHTML = blockedRegister.items?.length ? blockedRegister.items.map((item) => `
+    <button class="entity-row entity-button" type="button" data-blocked-job-id="${item.original_job_id}">
+      <div class="entity-primary"><strong>${escapeHtml(item.source_title || item.filename)}</strong><div class="entity-meta"><span>${escapeHtml(item.project)}</span><span>${item.attempts?.length || 0} bounded attempts</span><span class="mono">${shortHash(item.content_digest)}</span></div><p>${escapeHtml(item.action_required)}</p></div>
+      ${statusBadge(item.classification)}
+    </button>
+  `).join("") : empty("No blocked or quarantined artifacts require action.");
   document.getElementById("research-list").innerHTML = tasks.length ? tasks.map((task) => {
     const summary = task.result?.summary || {};
     const oos = summary.out_of_sample || {};
@@ -720,6 +732,18 @@ function renderResearch() {
       const replay = await request(`/api/research/surveillance/${element.dataset.surveillanceId}/replay`);
       openInspector("Surveillance provenance", replay.external_id, `
         <div class="inspector-section"><p class="section-kicker">Citation replay</p><h3>${escapeHtml(replay.publication_status)}</h3><p>${replay.exact_replay ? "Fetch receipt and publication identity are available." : "Fetch receipt is unavailable; candidate cannot advance."}</p><div class="entity-meta"><span class="mono">${escapeHtml(replay.content_digest)}</span><span>${escapeHtml(replay.canonical_url)}</span></div></div>`);
+    };
+  });
+  document.querySelectorAll("[data-blocked-job-id]").forEach((element) => {
+    element.onclick = () => {
+      const item = blockedRegister.items.find((entry) => entry.original_job_id === element.dataset.blockedJobId);
+      if (!item) return;
+      const attempts = (item.attempts || []).map((attempt) => `<div class="inspector-row"><span>${escapeHtml(humanize(attempt.method))}</span><strong>${escapeHtml(attempt.outcome || attempt.pipeline_status || "recorded")}</strong><small>${escapeHtml(attempt.failure_category || "")}</small></div>`).join("");
+      openInspector("Blocked artifact", item.source_title || item.filename, `
+        <div class="inspector-section"><p class="section-kicker">Required action</p><h3>${escapeHtml(humanize(item.classification))}</h3><p>${escapeHtml(item.action_required)}</p><div class="entity-meta"><span>${item.retry_eligible ? "Recovery eligible" : "Terminal decision"}</span><span class="mono">${escapeHtml(item.content_digest)}</span></div></div>
+        <div class="inspector-section"><h3>Recovery ledger</h3>${attempts || '<p class="muted">No recovery attempt has run yet.</p>'}</div>
+        ${item.redacted_edition_proposal ? '<div class="inspector-section"><h3>Redacted edition</h3><p>A provenance-preserving proposal exists and requires founder approval. It is not authorized for publication.</p></div>' : ""}
+      `);
     };
   });
 }

@@ -68,6 +68,10 @@ class ControlPlaneClient:
         lifecycle_states = await self._optional_collection(
             "/v1/research/evidence/lifecycle/objects"
         )
+        blocked_artifacts = await self._optional_object(
+            "/v1/research/ingestion/recoveries/blocked-artifacts",
+            {"total": 0, "counts_by_classification": {}, "items": []},
+        )
         surveillance_sources = await self._optional_collection(
             "/v1/research/surveillance/sources"
         )
@@ -98,10 +102,29 @@ class ControlPlaneClient:
             "research_dataset_builds": dataset_builds,
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
+            "blocked_artifact_register": blocked_artifacts,
             "surveillance_sources": surveillance_sources,
             "surveillance_candidates": surveillance_candidates,
             "surveillance_digests": surveillance_digests,
         }
+
+    async def _optional_object(
+        self, path: str, fallback: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            response = await self._client.get(path)
+        except httpx.TransportError as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return fallback
+        if response.is_success:
+            result = response.json()
+            if isinstance(result, dict):
+                return result
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
+        )
 
     async def replay_surveillance_candidate(
         self, publication_id: str
