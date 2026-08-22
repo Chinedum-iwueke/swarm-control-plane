@@ -32,9 +32,20 @@ source of truth. Node type is encoded by shape and label as well as color, while
 - Mobile inspection: 390 by 844, readable controls and keyboard adjacency.
 - Canonical replay remains read-only and credential-free in the browser response.
 
-## Production gate
+## Production observation
 
-After commit and Mac reinstall, acceptance requires one current-projection overview,
-one bounded neighborhood expansion and exact replay of a selected canonical object.
-The returned corpus/query digests and object identity must be retained below before
-UI-003B is described as production-observed.
+Mission Control was installed and started on the Mac at commit `8c93afd`. Its live
+current-projection overview returned 100 nodes and reported truncation. Expanding
+scientific object `00001bd0-d136-5193-81d2-6016934a8a1e` with depth two and a
+50-node cap returned 50 nodes and 50 edges under:
+
+- projection `knowledge-graph-v1.0.0`;
+- corpus digest `99888f190edc9b3c36481810570aa9c20deff6bddb0c6f6d7be31455ba4e0eb7`;
+- query digest `66dfe123158bbab8022043eb08fd5d42bd935378218d2e004dc54e07744e01ef`.
+
+Exact replay of canonical object `011a2e4b-25ff-572f-81f8-855433a2e961`
+returned HTTP 200 with replay digest
+`81d5566ea2770f49c7a5408927779fc9080e470530972706e51a969e1238bc1b`.
+The corpus-scale replay took 91.95 seconds, so only the read-only replay call now has
+a bounded 120-second timeout. Graph queries, mutations and all other control-plane
+calls retain their existing bounds.
