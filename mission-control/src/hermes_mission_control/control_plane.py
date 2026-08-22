@@ -65,7 +65,7 @@ class ControlPlaneClient:
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
-        lifecycle_states = await self._optional_collection(
+        lifecycle_states = await self._optional_items(
             "/v1/research/evidence/lifecycle/objects"
         )
         blocked_artifacts = await self._optional_object(
@@ -125,6 +125,13 @@ class ControlPlaneClient:
         raise ControlPlaneError(
             f"Control plane returned HTTP {response.status_code}: {detail}"
         )
+
+    async def _optional_items(self, path: str) -> list[dict[str, Any]]:
+        result = await self._optional_object(path, {"items": []})
+        items = result.get("items", [])
+        if isinstance(items, list):
+            return items
+        raise ControlPlaneError("Control plane returned an invalid item collection.")
 
     async def replay_surveillance_candidate(
         self, publication_id: str

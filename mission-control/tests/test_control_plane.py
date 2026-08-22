@@ -32,6 +32,8 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                 200,
                 json={"total": 0, "counts_by_classification": {}, "items": []},
             )
+        if request.url.path.endswith("/evidence/lifecycle/objects"):
+            return httpx.Response(200, json={"items": [], "count": 0})
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
