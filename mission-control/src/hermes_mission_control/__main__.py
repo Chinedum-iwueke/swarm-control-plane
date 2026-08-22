@@ -18,6 +18,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="hermes-mission-control")
     parser.add_argument("command", choices=("run", "check", "sync", "sync-status"))
     parser.add_argument("--inbox")
+    parser.add_argument("--finalize-only", action="store_true")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
     try:
@@ -32,7 +33,9 @@ def main() -> int:
         if args.command == "check":
             return asyncio.run(_check(settings, store))
         if args.command == "sync":
-            return asyncio.run(_sync(settings))
+            return asyncio.run(_sync(settings, finalize_only=args.finalize_only))
+        if args.finalize_only:
+            raise ValueError("--finalize-only is valid only with the sync command.")
         if args.command == "sync-status":
             print(json.dumps(research_inbox_status(settings), indent=2, sort_keys=True))
             return 0
@@ -69,10 +72,14 @@ async def _check(settings: MissionControlSettings, store: KnowledgeStore) -> int
     return 0
 
 
-async def _sync(settings: MissionControlSettings) -> int:
+async def _sync(
+    settings: MissionControlSettings, *, finalize_only: bool = False
+) -> int:
     client = ControlPlaneClient(settings)
     try:
-        report = await sync_research_inbox(settings, client)
+        report = await sync_research_inbox(
+            settings, client, finalize_only=finalize_only
+        )
     finally:
         await client.close()
     print(json.dumps(report, indent=2, sort_keys=True))

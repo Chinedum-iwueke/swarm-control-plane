@@ -240,6 +240,42 @@ async def test_cold_index_bootstrap_reuses_server_digest_without_upload(
 
 
 @pytest.mark.asyncio
+async def test_finalize_only_reuses_complete_checkpoint_without_ingestion(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "books" / "complete.txt"
+    source.write_text("Complete checkpoint.", encoding="utf-8")
+    client = FakeResearchClient()
+    await sync_research_inbox(settings, client)
+    state = json.loads(settings.research_inbox_index_path.read_text(encoding="utf-8"))
+    state["run"]["status"] = "running"
+    state["projection_dirty"] = True
+    settings.research_inbox_index_path.write_text(json.dumps(state), encoding="utf-8")
+
+    report = await sync_research_inbox(settings, client, finalize_only=True)
+
+    assert len(client.ingestions) == 1
+    assert report["incremental"]["projection_rebuilt"] is True
+    assert research_inbox_status(settings)["run"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_finalize_only_rejects_changed_checkpoint(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "books" / "changed.txt"
+    source.write_text("Original checkpoint.", encoding="utf-8")
+    client = FakeResearchClient()
+    await sync_research_inbox(settings, client)
+    source.write_text("Changed after checkpoint.", encoding="utf-8")
+
+    with pytest.raises(ResearchUploadError, match="changed after checkpoint"):
+        await sync_research_inbox(settings, client, finalize_only=True)
+
+
+@pytest.mark.asyncio
 async def test_inbox_rejects_symlink_without_reading_target(
     settings: MissionControlSettings, tmp_path: Path
 ) -> None:
