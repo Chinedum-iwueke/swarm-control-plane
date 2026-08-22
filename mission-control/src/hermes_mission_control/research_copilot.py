@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,8 +22,10 @@ class CopilotQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=2, max_length=1000)
-    conversation_id: uuid.UUID | None = None
-    project: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9._-]{0,99}$")
+    conversation_id: Optional[uuid.UUID] = None  # noqa: UP045 - macOS Python 3.9
+    project: Optional[str] = Field(  # noqa: UP045 - macOS Python 3.9
+        default=None, pattern=r"^[a-z][a-z0-9._-]{0,99}$"
+    )
 
 
 class CopilotClaim(BaseModel):
