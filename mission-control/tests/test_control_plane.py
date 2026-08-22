@@ -88,6 +88,45 @@ async def test_surveillance_replay_uses_authenticated_read_only_route(
 
 
 @pytest.mark.asyncio
+async def test_research_copilot_uses_only_canonical_read_routes(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.method,
+                request.url.path,
+                json.loads(request.content) if request.content else None,
+            )
+        )
+        assert request.headers["authorization"] == (
+            "Bearer operator-token-that-is-long-enough"
+        )
+        return httpx.Response(200, json={"ok": True})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.research_retrieval({"query": "momentum"})
+        await client.research_context_pack(
+            {"query": "momentum", "object_ids": ["object-id"]}
+        )
+        await client.replay_research_citation("object-id")
+    finally:
+        await client.close()
+    assert seen == [
+        ("POST", "/v1/research/retrieval/query", {"query": "momentum"}),
+        (
+            "POST",
+            "/v1/research/graph/context-packs",
+            {"query": "momentum", "object_ids": ["object-id"]},
+        ),
+        ("GET", "/v1/research/retrieval/objects/object-id/replay", None),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_dossier_client_uses_authenticated_read_only_routes(
     settings: MissionControlSettings,
 ) -> None:

@@ -150,6 +150,21 @@ class ControlPlaneClient:
             "GET", "/v1/research/graph/overview", params={"limit": limit}
         )
 
+    async def research_retrieval(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/retrieval/query", json=payload
+        )
+
+    async def research_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/graph/context-packs", json=payload
+        )
+
+    async def replay_research_citation(self, object_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/retrieval/objects/{object_id}/replay"
+        )
+
     async def get_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/research/memory/dossiers/{dossier_id}")
 

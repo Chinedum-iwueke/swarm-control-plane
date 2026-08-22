@@ -30,6 +30,13 @@ from .models import (
     KnowledgeIngestRequest,
     ProposalDecision,
 )
+from .research_copilot import (
+    AnswerGenerator,
+    CodexAnswerGenerator,
+    CopilotError,
+    CopilotQuestion,
+    ResearchCopilot,
+)
 from .research_inbox import sync_research_inbox
 from .research_upload import (
     ResearchUploadError,
@@ -45,6 +52,7 @@ def create_app(
     *,
     control_plane: ControlPlaneClient | None = None,
     knowledge: KnowledgeStore | None = None,
+    copilot_generator: AnswerGenerator | None = None,
 ) -> FastAPI:
     settings.prepare()
     store = knowledge or KnowledgeStore(
@@ -52,6 +60,16 @@ def create_app(
     )
     store.initialize()
     client = control_plane or ControlPlaneClient(settings)
+    copilot = ResearchCopilot(
+        client,
+        copilot_generator
+        or CodexAnswerGenerator(
+            binary=settings.research_codex_binary,
+            codex_home=settings.research_codex_home,
+            model=settings.research_codex_model,
+            timeout_seconds=settings.research_codex_timeout_seconds,
+        ),
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -90,6 +108,12 @@ def create_app(
         from fastapi.responses import JSONResponse
 
         return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(CopilotError)
+    async def copilot_error(_, exc: CopilotError):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
@@ -338,6 +362,14 @@ def create_app(
     @app.get("/api/knowledge/graph")
     async def graph() -> dict:
         return await client.knowledge_graph(limit=100)
+
+    @app.post("/api/research/copilot/questions")
+    async def ask_research_copilot(question: CopilotQuestion) -> dict:
+        return await copilot.ask(question)
+
+    @app.get("/api/research/copilot/citations/{object_id}")
+    async def replay_research_citation(object_id: str) -> dict:
+        return await client.replay_research_citation(object_id)
 
     return app
 

@@ -131,6 +131,21 @@ class FakeControlPlane:
             "truncated": False,
         }
 
+    async def research_retrieval(self, payload) -> dict:
+        return {
+            "corpus_digest": "a" * 64,
+            "confidence": 0.0,
+            "abstained": True,
+            "hits": [],
+            "timings_ms": {},
+        }
+
+    async def research_context_pack(self, payload) -> dict:
+        raise AssertionError("An abstained query must not build a context pack")
+
+    async def replay_research_citation(self, object_id: str) -> dict:
+        return {"object_id": object_id, "exact_replay": True}
+
 
 def test_static_application_and_safe_status(
     settings: MissionControlSettings,
@@ -163,6 +178,8 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/research/dossiers/{dossier_id}/replay" in paths
     assert "/api/research/evidence/{object_id}/lifecycle" in paths
     assert "/api/research/surveillance/{publication_id}/replay" in paths
+    assert "/api/research/copilot/questions" in paths
+    assert "/api/research/copilot/citations/{object_id}" in paths
 
 
 def test_graph_explorer_uses_canonical_control_plane_projection(
@@ -175,6 +192,20 @@ def test_graph_explorer_uses_canonical_control_plane_projection(
     assert response.json()["projection_version"] == "knowledge-graph-v1.0.0"
     assert response.json()["nodes"][0]["object_type"] == "claim"
     assert fake.graph_requested is True
+
+
+def test_research_copilot_abstention_is_bounded_and_read_only(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.post(
+            "/api/research/copilot/questions",
+            json={"question": "What is absent from the corpus?", "project": None},
+        )
+    assert response.status_code == 200
+    assert response.json()["confidence"] == "insufficient_evidence"
+    assert response.json()["sources"] == []
 
 
 def test_dossier_inspection_and_replay_are_read_only(

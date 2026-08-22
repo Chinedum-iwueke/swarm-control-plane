@@ -20,7 +20,10 @@ artifact visibility, and a private cited-search pilot.
   rejected.
 - Search is deterministic full-text retrieval. Every result includes the
   original path, source line range, modification time, and SHA-256 digest.
-- No document content is sent to the control plane or an external model.
+- Mac-local note search sends no document content to the control plane or a model.
+  Research Copilot is a separate governed path: the control plane authorizes and
+  assembles a bounded canonical context pack, and only that pack is sent through the
+  configured protected Codex identity. Raw source files and credentials are excluded.
 
 ## Configuration
 
@@ -44,6 +47,10 @@ HERMES_KNOWLEDGE_ROOTS="/Users/ice/Library/Application Support/Hermes Mission Co
 HERMES_HOST=127.0.0.1
 HERMES_PORT=8790
 HERMES_RESEARCH_INBOX_DIRECTORY="/Users/ice/Hermes Research Inbox"
+HERMES_RESEARCH_CODEX_BINARY=/usr/local/bin/codex
+HERMES_RESEARCH_CODEX_HOME="/Users/ice/.codex"
+HERMES_RESEARCH_CODEX_MODEL=gpt-5.6-sol
+HERMES_RESEARCH_CODEX_TIMEOUT_SECONDS=120
 EOF
 chmod 0600 "$HOME/Library/Application Support/Hermes Mission Control/mission-control.env"
 ```
@@ -51,6 +58,12 @@ chmod 0600 "$HOME/Library/Application Support/Hermes Mission Control/mission-con
 Multiple knowledge roots use the macOS path separator (`:`). The private
 application-data source directory is the default. This avoids granting the
 launch agent Full Disk Access for `~/Documents`.
+
+Research Copilot runs Codex with a read-only, ephemeral sandbox, a strict JSON answer
+schema and no repository tools. Every source claim must reference an object from the
+exact context pack; invented or out-of-pack citations fail closed. The Codex identity
+must already be authenticated at `HERMES_RESEARCH_CODEX_HOME`. The configured model is
+replaceable and has no authority to mutate canonical evidence or start research.
 
 The research inbox defaults to
 `~/Library/Application Support/Hermes Mission Control/data/research-inbox` when

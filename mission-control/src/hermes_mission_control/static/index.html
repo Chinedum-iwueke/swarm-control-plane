@@ -243,8 +243,33 @@
 
       <section id="knowledge" class="view">
         <div class="section-heading">
-          <div><p class="eyebrow">Mac-local intelligence</p><h1>Knowledge</h1><p class="heading-context">Private sources, cited retrieval, and explicit relationships</p></div>
+          <div><p class="eyebrow">Canonical research intelligence</p><h1>Research Copilot</h1><p class="heading-context">Evidence-grounded answers, replayable citations, and explicit uncertainty</p></div>
         </div>
+        <section class="copilot-workspace" aria-label="Research Copilot">
+          <div class="copilot-main">
+            <div class="copilot-heading">
+              <div><p class="section-kicker">Conversation</p><h2>Ask the institutional research corpus</h2></div>
+              <div id="copilot-state" class="copilot-state" aria-live="polite"><span class="state-dot"></span>Ready</div>
+            </div>
+            <div id="copilot-thread" class="copilot-thread" aria-live="polite">
+              <div class="copilot-empty"><strong>Research intelligence is ready.</strong><span>Answers remain bounded by canonical evidence and explicit inference.</span></div>
+            </div>
+            <form id="copilot-form" class="copilot-composer">
+              <label for="copilot-question">Research question</label>
+              <textarea id="copilot-question" name="question" minlength="2" maxlength="1000" rows="3" required placeholder="What does our evidence say about momentum persistence after transaction costs?"></textarea>
+              <div class="composer-actions">
+                <label for="copilot-project">Corpus</label>
+                <select id="copilot-project" name="project"><option value="">All authorized research</option><option value="systematic-research">Systematic research</option><option value="bulletproof_bt">Bulletproof BT</option></select>
+                <button id="copilot-submit" class="command" type="submit">Ask Copilot</button>
+              </div>
+            </form>
+          </div>
+          <aside class="copilot-evidence" aria-labelledby="copilot-evidence-title">
+            <div class="copilot-heading"><div><p class="section-kicker">Evidence</p><h2 id="copilot-evidence-title">Answer basis</h2></div></div>
+            <div id="copilot-answer-meta" class="answer-meta">No answer selected.</div>
+            <div id="copilot-sources" class="copilot-sources"></div>
+          </aside>
+        </section>
         <div class="knowledge-toolbar">
           <form id="search-form" class="search-field knowledge-search"><span>⌕</span><input id="search-query" required minlength="2" placeholder="Ask your indexed knowledge"></form>
           <form id="ingest-form" class="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/…/source.md"><button class="secondary">Index source</button></form>
@@ -262,7 +287,7 @@
           <button id="sync-research-inbox" class="secondary" type="button">Refresh inbox</button>
         </div>
         <div class="knowledge-layout">
-          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Retrieval</p><h2>Cited results</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
+          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Mac-local retrieval</p><h2>Private indexed notes</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Relationships</p><h2>Knowledge graph</h2></div></div><div id="graph"></div></section>
         </div>
       </section>

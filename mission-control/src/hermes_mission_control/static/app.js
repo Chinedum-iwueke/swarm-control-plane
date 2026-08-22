@@ -5,6 +5,8 @@ const state = {
   activeView: allowedViews.has(requestedView) ? requestedView : "command",
   missionFilter: "",
   demo: new URLSearchParams(window.location.search).get("demo") === "1",
+  copilotConversationId: null,
+  copilotTurns: [],
 };
 
 const intentHeaders = {
@@ -175,6 +177,39 @@ document.getElementById("search-form").addEventListener("submit", async (event) 
   if (state.demo) return renderDemoSearch(query);
   const data = await request(`/api/knowledge/search?q=${encodeURIComponent(query)}`);
   renderSearchResults(data.results);
+});
+
+document.getElementById("copilot-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (state.demo) return toast("Research Copilot is unavailable in demonstration mode.");
+  const question = document.getElementById("copilot-question").value.trim();
+  const project = document.getElementById("copilot-project").value || null;
+  const button = document.getElementById("copilot-submit");
+  button.disabled = true;
+  setCopilotState("Retrieving evidence", true);
+  appendCopilotQuestion(question);
+  try {
+    const answer = await request("/api/research/copilot/questions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        project,
+        conversation_id: state.copilotConversationId,
+      }),
+    });
+    state.copilotConversationId = answer.conversation_id;
+    state.copilotTurns.push(answer);
+    renderCopilotAnswer(answer);
+    document.getElementById("copilot-question").value = "";
+    setCopilotState(answer.confidence === "insufficient_evidence" ? "Evidence insufficient" : "Answer grounded", false);
+  } catch (error) {
+    appendCopilotFailure(error.message);
+    setCopilotState("Answer unavailable", false);
+  } finally {
+    button.disabled = false;
+    document.getElementById("copilot-question").focus();
+  }
 });
 
 document.getElementById("global-search-input").addEventListener("input", renderGlobalSearch);
@@ -1040,6 +1075,120 @@ function renderGlobalSearch() {
       document.getElementById("search-dialog").close();
       results[Number(button.dataset.searchIndex)].open();
     });
+  });
+}
+
+function setCopilotState(label, busy) {
+  const element = document.getElementById("copilot-state");
+  element.classList.toggle("busy", busy);
+  element.innerHTML = `<span class="state-dot"></span>${escapeHtml(label)}`;
+}
+
+function appendCopilotQuestion(question) {
+  const thread = document.getElementById("copilot-thread");
+  thread.querySelector(".copilot-empty")?.remove();
+  thread.insertAdjacentHTML("beforeend", `
+    <article class="copilot-message founder-message">
+      <div class="message-author">Founder</div>
+      <p>${escapeHtml(question)}</p>
+    </article>
+    <article id="copilot-pending" class="copilot-message copilot-message-pending" aria-label="Research Copilot is preparing an answer">
+      <div class="message-author">Research Copilot</div>
+      <div class="thinking-line"><span></span><span></span><span></span>Retrieving and validating canonical evidence</div>
+    </article>
+  `);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function appendCopilotFailure(message) {
+  document.getElementById("copilot-pending")?.remove();
+  const thread = document.getElementById("copilot-thread");
+  thread.insertAdjacentHTML("beforeend", `
+    <article class="copilot-message copilot-failure" role="alert">
+      <div class="message-author">Research Copilot</div>
+      <p>${escapeHtml(message)}</p>
+    </article>
+  `);
+}
+
+function renderCopilotAnswer(answer) {
+  document.getElementById("copilot-pending")?.remove();
+  const sourceIndex = new Map((answer.sources || []).map((source, index) => [String(source.object_id), index + 1]));
+  const claims = (answer.claims || []).map((claim) => {
+    const citations = (claim.citation_object_ids || []).map((id) => {
+      const source = (answer.sources || []).find((item) => String(item.object_id) === String(id));
+      return `<button class="inline-citation" type="button" data-copilot-source="${escapeHtml(id)}" aria-label="Open citation ${sourceIndex.get(String(id))}">[${sourceIndex.get(String(id))}]</button>`;
+    }).join("");
+    return `<li><span>${escapeHtml(claim.text)}</span>${citations}<small>${claim.evidence_class === "agent_inference" ? "Agent inference" : "Source evidence"}</small></li>`;
+  }).join("");
+  const thread = document.getElementById("copilot-thread");
+  thread.insertAdjacentHTML("beforeend", `
+    <article class="copilot-message assistant-message">
+      <div class="answer-header"><div class="message-author">Research Copilot</div>${confidenceBadge(answer.confidence)}</div>
+      <p class="copilot-answer">${escapeHtml(answer.answer)}</p>
+      ${claims ? `<ol class="answer-claims">${claims}</ol>` : ""}
+      ${(answer.limitations || []).length ? `<div class="answer-limitations"><strong>Limits</strong>${answer.limitations.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+      <div class="answer-receipt"><span class="mono">Corpus ${escapeHtml(shortHash(answer.corpus_digest || ""))}</span><span class="mono">Context ${escapeHtml(shortHash(answer.context_pack_digest || ""))}</span><span>${number((answer.retrieval_confidence || 0) * 100)}% retrieval confidence</span></div>
+    </article>
+  `);
+  renderCopilotSources(answer);
+  bindCopilotCitations(answer);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function confidenceBadge(confidence) {
+  const label = confidence === "insufficient_evidence" ? "Insufficient evidence" : humanize(confidence);
+  return `<span class="confidence ${escapeHtml(confidence)}">${escapeHtml(label)}</span>`;
+}
+
+function renderCopilotSources(answer) {
+  const sources = answer.sources || [];
+  document.getElementById("copilot-answer-meta").innerHTML = `
+    <div class="answer-status-line">${confidenceBadge(answer.confidence)}<span>${sources.length} cited object${sources.length === 1 ? "" : "s"}</span></div>
+    <dl><dt>Corpus</dt><dd class="mono">${escapeHtml(shortHash(answer.corpus_digest || ""))}</dd><dt>Context</dt><dd class="mono">${escapeHtml(shortHash(answer.context_pack_digest || ""))}</dd></dl>
+  `;
+  document.getElementById("copilot-sources").innerHTML = sources.length ? sources.map((source, index) => `
+    <button class="copilot-source" type="button" data-copilot-source="${escapeHtml(source.object_id)}">
+      <span class="source-number">${index + 1}</span>
+      <span><strong>${escapeHtml(humanize(source.object_type))}</strong><small>${escapeHtml((source.excerpt || "").slice(0, 180))}</small><span class="mono">${escapeHtml(shortHash(source.content_digest))}</span></span>
+    </button>
+  `).join("") : empty("No source met the evidence threshold.");
+}
+
+function bindCopilotCitations(answer) {
+  document.querySelectorAll("[data-copilot-source]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const source = (answer.sources || []).find((item) => String(item.object_id) === button.dataset.copilotSource);
+      if (source) openCopilotSource(source);
+    });
+  });
+}
+
+function openCopilotSource(source) {
+  const coordinates = source.citation?.coordinates || {};
+  openInspector("Canonical citation", humanize(source.object_type), `
+    <section class="detail-section"><h3>Evidence</h3><p class="replay-excerpt">${escapeHtml(source.excerpt)}</p></section>
+    <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
+      <dt>Object</dt><dd class="mono">${escapeHtml(source.object_id)}</dd>
+      <dt>Digest</dt><dd class="mono">${escapeHtml(source.content_digest)}</dd>
+      <dt>Page</dt><dd>${escapeHtml(coordinates.page || "Unavailable")}</dd>
+      <dt>Lines</dt><dd>${escapeHtml(coordinates.line_start || "–")}–${escapeHtml(coordinates.line_end || "–")}</dd>
+      <dt>Access</dt><dd>${statusBadge(source.access_class)}</dd>
+    </dl></section>
+    <button class="secondary replay-citation" type="button" data-replay-object="${escapeHtml(source.object_id)}">Replay exact citation</button>
+    <div id="citation-replay-result"></div>
+  `);
+  document.querySelector("[data-replay-object]").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const replay = await request(`/api/research/copilot/citations/${encodeURIComponent(button.dataset.replayObject)}`);
+      document.getElementById("citation-replay-result").innerHTML = `<pre class="citation-replay">${escapeHtml(JSON.stringify(replay, null, 2))}</pre>`;
+    } catch (error) {
+      document.getElementById("citation-replay-result").innerHTML = empty(error.message);
+    } finally {
+      button.disabled = false;
+    }
   });
 }
 

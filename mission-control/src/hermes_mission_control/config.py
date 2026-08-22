@@ -27,6 +27,10 @@ class MissionControlSettings(BaseSettings):
     ingestion_timeout_seconds: float = Field(default=3600.0, ge=60, le=7200)
     upload_max_bytes: int = Field(default=104_857_600, ge=1024, le=104_857_600)
     research_inbox_directory: Optional[Path] = None  # noqa: UP045
+    research_codex_binary: str = "codex"
+    research_codex_home: Path = Path.home() / ".codex"
+    research_codex_model: str = "gpt-5.6-sol"
+    research_codex_timeout_seconds: float = Field(default=120, ge=30, le=600)
 
     @property
     def normalized_api_url(self) -> str:
