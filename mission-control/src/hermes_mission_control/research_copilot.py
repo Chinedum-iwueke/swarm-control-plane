@@ -261,6 +261,9 @@ def _terminate(process: subprocess.Popen[str]) -> None:
 def _strict_schema(document: dict[str, Any]) -> dict[str, Any]:
     if document.get("type") == "object" or "properties" in document:
         document["additionalProperties"] = False
+        properties = document.get("properties")
+        if isinstance(properties, dict):
+            document["required"] = list(properties)
     for value in document.values():
         if isinstance(value, dict):
             _strict_schema(value)

@@ -10,6 +10,7 @@ from hermes_mission_control.research_copilot import (
     CopilotError,
     CopilotQuestion,
     ResearchCopilot,
+    _strict_schema,
 )
 
 OBJECT_ID = uuid.UUID("11111111-1111-4111-8111-111111111111")
@@ -111,3 +112,10 @@ async def test_copilot_rejects_citation_outside_context_pack():
         await ResearchCopilot(control, generator).ask(
             CopilotQuestion(question="Does momentum survive costs?")
         )
+
+
+def test_codex_schema_requires_every_nested_property():
+    schema = _strict_schema(CopilotDraft.model_json_schema())
+    assert set(schema["required"]) == set(schema["properties"])
+    claim_schema = schema["$defs"]["CopilotClaim"]
+    assert set(claim_schema["required"]) == set(claim_schema["properties"])
