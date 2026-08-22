@@ -107,6 +107,11 @@ class IngestionRecoveryBatchResponse(StrictModel):
     recovery_ids: list[UUID]
 
 
+class IngestionRecoveryResolutionResponse(StrictModel):
+    recovery: IngestionRecoveryResponse
+    sanitized_job: ScientificIngestionResponse
+
+
 class CoordinateReplayResponse(StrictModel):
     object_id: UUID
     artifact_id: UUID

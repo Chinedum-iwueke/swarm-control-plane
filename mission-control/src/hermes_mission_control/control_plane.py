@@ -311,6 +311,25 @@ class ControlPlaneClient:
             timeout=self._settings.ingestion_timeout_seconds,
         )
 
+    async def recovered_scientific_ingestion(
+        self, original_job_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            response = await self._client.get(
+                f"/v1/research/ingestion/recoveries/by-original-job/{original_job_id}",
+                timeout=self._settings.request_timeout_seconds,
+            )
+        except httpx.TransportError as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return None
+        if response.is_success:
+            return response.json()
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
+        )
+
     async def reconcile_corpus(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST", "/v1/research/corpus-sync/runs", json=payload

@@ -54,7 +54,7 @@ async def sync_research_inbox(
         entries: dict[str, Any] = state["entries"]
         corpus_changed = bool(state.get("projection_dirty", False))
         if finalize_only:
-            results = _finalize_results(root, paths, state)
+            results = await _finalize_results(root, paths, state, client)
             state["run"] = _progress(
                 "finalizing", total=len(paths), scanned=len(results), results=results
             )
@@ -140,8 +140,11 @@ async def sync_research_inbox(
     }
 
 
-def _finalize_results(
-    root: Path, paths: list[Path], state: dict[str, Any]
+async def _finalize_results(
+    root: Path,
+    paths: list[Path],
+    state: dict[str, Any],
+    client: ControlPlaneClient,
 ) -> list[dict[str, Any]]:
     entries: dict[str, Any] = state["entries"]
     run = state.get("run", {})
@@ -161,6 +164,10 @@ def _finalize_results(
             raise ResearchUploadError(f"Inbox source changed after checkpoint: {key}")
         item = dict(entry["item"])
         item["path"] = key
+        item, changed = await _resolve_recovery(client, item)
+        if changed:
+            entry["item"] = item
+            entry["synced_at"] = _now()
         results.append(item)
     return results
 
@@ -243,6 +250,12 @@ async def _sync_path(
                     "requested_by": "founder-mission-control",
                 }
             )
+        original_job = job
+        recovery = None
+        if job["status"] != "published":
+            recovery = await client.recovered_scientific_ingestion(job["id"])
+            if recovery is not None:
+                job = recovery["sanitized_job"]
         was_published = job["status"] == "published"
         if job["status"] != "published":
             job = await client.process_scientific_ingestion(job["id"])
@@ -255,7 +268,9 @@ async def _sync_path(
                 if disposition == "canonical"
                 else "rejected"
             ),
-            content_digest=content_digest,
+            content_digest=job["content_digest"] if recovery else content_digest,
+            original_content_digest=content_digest if recovery else None,
+            original_ingestion_job_id=original_job["id"] if recovery else None,
             document_type=document_type,
             evidence_type=evidence_type,
             ingestion_job_id=job["id"],
@@ -285,6 +300,32 @@ async def _sync_path(
         },
         False,
     )
+
+
+async def _resolve_recovery(
+    client: ControlPlaneClient, item: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    if item.get("disposition") != "quarantined" or not item.get("ingestion_job_id"):
+        return item, False
+    resolution = await client.recovered_scientific_ingestion(item["ingestion_job_id"])
+    if resolution is None:
+        return item, False
+    recovered = resolution["sanitized_job"]
+    original_digest = item.get("original_content_digest") or item.get("content_digest")
+    original_job_id = item.get("original_ingestion_job_id") or item["ingestion_job_id"]
+    updated = dict(item)
+    updated.update(
+        status="added",
+        disposition="canonical",
+        content_digest=recovered["content_digest"],
+        ingestion_job_id=recovered["id"],
+        canonical_object_ids=recovered["published_object_ids"],
+        stage_report=None,
+        original_content_digest=original_digest,
+        original_ingestion_job_id=original_job_id,
+        recovery_id=resolution["recovery"]["id"],
+    )
+    return updated, True
 
 
 def _terminal(entry: dict[str, Any]) -> bool:
