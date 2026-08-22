@@ -716,11 +716,14 @@ function renderInfrastructure() {
   document.getElementById("fleet-health").innerHTML = machines.length ? machines.map((machine) => {
     const metrics = machine.metrics || {};
     const activeIncidents = machine.incidents || [];
+    const backup = metrics.control_plane_backup_verified == null
+      ? ""
+      : `<span>Backup ${metrics.control_plane_backup_verified && !metrics.control_plane_backup_failed ? "verified" : "attention"} · ${formatDuration(metrics.control_plane_backup_age_seconds)} old</span>`;
     return `<article class="entity-row">
       <div class="entity-primary">
         <strong>${escapeHtml(machine.machine)}</strong>
         <div class="entity-meta"><span>CPU ${formatPercent(metrics.cpu_utilization_percent)}</span><span>Memory available ${formatPercent(metrics.memory_available_percent)}</span><span>Disk ${formatPercent(metrics.disk_used_percent)}</span><span>${activeIncidents.length} active incidents</span></div>
-        <div class="entity-meta"><span>Last sample ${relativeTime(machine.last_observed_at)}</span><span>PSI CPU ${formatPercent(metrics.cpu_pressure_avg10)}</span><span>PSI I/O ${formatPercent(metrics.io_pressure_avg10)}</span></div>
+        <div class="entity-meta"><span>Last sample ${relativeTime(machine.last_observed_at)}</span><span>PSI CPU ${formatPercent(metrics.cpu_pressure_avg10)}</span><span>PSI I/O ${formatPercent(metrics.io_pressure_avg10)}</span>${backup}</div>
       </div>
       <div class="entity-side">${statusBadge(machine.status === "healthy" ? "success" : machine.status)}</div>
     </article>`;
@@ -731,6 +734,14 @@ function renderInfrastructure() {
 
 function formatPercent(value) {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "–";
+}
+
+function formatDuration(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return "unknown age";
+  if (value < 3600) return `${Math.max(1, Math.round(value / 60))}m`;
+  if (value < 86400) return `${Math.round(value / 3600)}h`;
+  return `${(value / 86400).toFixed(1)}d`;
 }
 
 function renderResearch() {

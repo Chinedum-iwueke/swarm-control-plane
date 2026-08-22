@@ -83,6 +83,29 @@ def evaluate_observation(db: Session, observation: MachineObservation) -> None:
         "critical",
         {"unhealthy_services": unhealthy},
     )
+    backup_age = observation.metrics.get("control_plane_backup_age_seconds")
+    backup_verified = observation.metrics.get("control_plane_backup_verified")
+    backup_failed = observation.metrics.get("control_plane_backup_failed")
+    if backup_verified is not None:
+        age = float(backup_age) if backup_age is not None else None
+        breached = bool(
+            backup_failed or not backup_verified or age is None or age > 518_400
+        )
+        signals["control_plane_backup"] = (
+            breached,
+            "critical"
+            if backup_failed
+            or age is None
+            or (age is not None and age > 604_800)
+            else "warning",
+            {
+                "age_seconds": age,
+                "verified": bool(backup_verified),
+                "latest_run_failed": bool(backup_failed),
+                "warning_after_seconds": 518_400,
+                "critical_after_seconds": 604_800,
+            },
+        )
     for signal, (breached, severity, evidence) in signals.items():
         _advance(
             db,

@@ -1,0 +1,21 @@
+[Unit]
+Description=Hermes isolated control-plane restore drill
+After=docker.service invariance-swarm-control-plane-backup.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=invariance-swarm-backup-readers
+EnvironmentFile=-/etc/invariance-swarm/control-plane-backup.env
+ExecStart=/opt/invariance-swarm-worker/bin/invariance-swarm-control-plane-backup restore-drill
+UMask=0027
+TimeoutStartSec=45min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/invariance/swarm/control-plane-runtime/backups /run/invariance-swarm
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+RestrictRealtime=yes

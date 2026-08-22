@@ -18,6 +18,7 @@ grep -qx \
   }
 
 getent group invariance-fleet-probe >/dev/null || groupadd --system invariance-fleet-probe
+getent group invariance-swarm-backup-readers >/dev/null || groupadd --system invariance-swarm-backup-readers
 id invariance-fleet-probe >/dev/null 2>&1 || useradd --system --gid invariance-fleet-probe --home-dir /nonexistent --shell /usr/sbin/nologin invariance-fleet-probe
 install -d -o invariance-fleet-probe -g invariance-fleet-probe -m 0700 /var/lib/invariance-swarm-fleet-probe
 python3 -m venv --clear /opt/invariance-swarm-worker

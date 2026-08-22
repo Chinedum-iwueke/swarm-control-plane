@@ -9,6 +9,7 @@ StartLimitBurst=5
 Type=simple
 User=invariance-fleet-probe
 Group=invariance-fleet-probe
+SupplementaryGroups=invariance-swarm-backup-readers
 EnvironmentFile=/etc/invariance-swarm/fleet-probe.env
 Environment=PATH=/opt/invariance-swarm-worker/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LoadCredential=fleet-agent-token:/etc/invariance-swarm/fleet-probe.token
@@ -35,6 +36,7 @@ AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 ReadWritePaths=/var/lib/invariance-swarm-fleet-probe
+ReadOnlyPaths=-/srv/invariance/swarm/control-plane-runtime/backups
 TimeoutStopSec=15
 KillSignal=SIGTERM
 StandardOutput=journal

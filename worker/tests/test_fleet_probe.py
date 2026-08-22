@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -58,3 +59,29 @@ def test_publish_does_not_put_token_in_payload(tmp_path: Path) -> None:
     request = urlopen.call_args.args[0]
     assert request.headers["Authorization"].startswith("Bearer swarm_ag_")
     assert b"swarm_ag_" not in request.data
+
+
+def test_backup_metrics_are_reported_only_when_configured(tmp_path: Path) -> None:
+    probe_settings = settings(tmp_path)
+    backup_directory = tmp_path / "backups"
+    backup_directory.mkdir()
+    dump = backup_directory / "generation.dump"
+    dump.write_bytes(b"verified")
+    (backup_directory / "generation.manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "control-plane-backup-v1.0.0",
+                "filename": dump.name,
+                "byte_size": dump.stat().st_size,
+                "completed_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                "integrity_verified": True,
+            }
+        )
+    )
+    configured = probe_settings.model_copy(
+        update={"backup_directory": backup_directory}
+    )
+    metrics = collect(configured)["metrics"]
+    assert metrics["control_plane_backup_verified"] is True
+    assert metrics["control_plane_backup_failed"] is False
+    assert 3500 < metrics["control_plane_backup_age_seconds"] < 3700

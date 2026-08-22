@@ -1,29 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-runtime=/srv/invariance/swarm/control-plane-runtime
-backup_directory="$runtime/backups"
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-backup_file="$backup_directory/swarm_control_${timestamp}.dump"
+backup_directory=/srv/invariance/swarm/control-plane-runtime/backups
+failure="$backup_directory/latest-failure.json"
+temporary="$failure.partial"
 
-test -d "$backup_directory"
-test "$(stat -c %G "$backup_directory")" = invariance-swarm-backup-readers
+record_failure() {
+  rc=$?
+  printf '{"failed_at":"%s","return_code":%d}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" > "$temporary"
+  chmod 0640 "$temporary"
+  mv -f "$temporary" "$failure"
+  exit "$rc"
+}
+trap record_failure ERR
 
-cd "$runtime"
 umask 0027
-docker compose exec -T postgres \
-  pg_dump \
-  --format=custom \
-  --no-owner \
-  --no-privileges \
-  --username=swarm_app \
-  --dbname=swarm_control \
-  > "$backup_file"
-chmod 0640 "$backup_file"
-
-test "$(stat -c %G "$backup_file")" = invariance-swarm-backup-readers
-docker compose exec -T postgres pg_restore --list \
-  < "$backup_file" \
-  > /dev/null
-
-printf 'Created and verified backup: %s\n' "$backup_file"
+/opt/invariance-swarm-worker/bin/invariance-swarm-control-plane-backup create
+rm -f "$failure" "$temporary"

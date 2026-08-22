@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Hermes isolated control-plane restore drill
+
+[Timer]
+OnCalendar=Sun *-*-* 04:17:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+Unit=invariance-swarm-control-plane-restore-drill.service
+
+[Install]
+WantedBy=timers.target

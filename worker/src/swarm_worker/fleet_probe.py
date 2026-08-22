@@ -27,6 +27,7 @@ class ProbeSettings(BaseSettings):
     services: str = ""
     disk_path: Path = Path("/")
     state_path: Path = Path("/var/lib/invariance-swarm-fleet-probe/state.json")
+    backup_directory: Path | None = None
 
     @property
     def service_names(self) -> list[str]:
@@ -63,6 +64,7 @@ def collect(settings: ProbeSettings) -> dict:
     cpu_delta = max(cpu.total - int(previous.get("cpu_total", cpu.total)), 1)
     idle_delta = max(cpu.idle - int(previous.get("cpu_idle", cpu.idle)), 0)
     load = os.getloadavg()[0] / max(os.cpu_count() or 1, 1)
+    backup = _backup_metrics(settings)
     return {
         "schema_version": "fleet-observation-v1.0.0",
         "sample_id": f"{int(time.time())}-{uuid.uuid4().hex[:12]}",
@@ -97,6 +99,7 @@ def collect(settings: ProbeSettings) -> dict:
                 - int(previous.get("oom_kill", vm.get("oom_kill", 0))),
                 0,
             ),
+            **(backup or {}),
         },
         "services": [_service(name) for name in settings.service_names],
     }
@@ -168,6 +171,47 @@ def _service(name: str) -> dict[str, str]:
     if status not in {"active", "inactive", "failed"}:
         status = "unknown"
     return {"name": name, "status": status}
+
+
+def _backup_metrics(
+    settings: ProbeSettings,
+) -> dict[str, float | bool | None] | None:
+    directory = settings.backup_directory
+    if directory is None:
+        return None
+    failure = directory / "latest-failure.json"
+    manifests = sorted(directory.glob("*.manifest.json"), reverse=True)
+    if not manifests:
+        return {
+            "control_plane_backup_age_seconds": None,
+            "control_plane_backup_verified": False,
+            "control_plane_backup_failed": failure.is_file(),
+        }
+    try:
+        document = json.loads(manifests[0].read_text(encoding="utf-8"))
+        completed = datetime.fromisoformat(str(document["completed_at"]))
+        if completed.tzinfo is None:
+            raise ValueError("completed_at must be timezone-aware")
+        dump = directory / Path(str(document["filename"])).name
+        verified = (
+            document.get("schema_version") == "control-plane-backup-v1.0.0"
+            and document.get("integrity_verified") is True
+            and dump.is_file()
+            and dump.stat().st_size == int(document["byte_size"])
+        )
+        age = max(0.0, (datetime.now(timezone.utc) - completed).total_seconds())
+        failed = failure.is_file() and failure.stat().st_mtime > manifests[0].stat().st_mtime
+        return {
+            "control_plane_backup_age_seconds": round(age, 3),
+            "control_plane_backup_verified": verified,
+            "control_plane_backup_failed": failed,
+        }
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return {
+            "control_plane_backup_age_seconds": None,
+            "control_plane_backup_verified": False,
+            "control_plane_backup_failed": True,
+        }
 
 
 def _percent(numerator: float, denominator: float) -> float:

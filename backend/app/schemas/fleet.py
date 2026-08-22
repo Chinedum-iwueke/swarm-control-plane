@@ -21,6 +21,9 @@ class FleetMetrics(BaseModel):
     memory_pressure_avg10: float = Field(ge=0, le=100)
     uptime_seconds: float = Field(ge=0)
     oom_kills_delta: int = Field(ge=0)
+    control_plane_backup_age_seconds: float | None = Field(default=None, ge=0)
+    control_plane_backup_verified: bool | None = None
+    control_plane_backup_failed: bool | None = None
 
 
 class ServiceHealth(BaseModel):

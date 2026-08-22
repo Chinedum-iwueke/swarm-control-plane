@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
-
 from app.models.fleet import FleetIncident, FleetIncidentEvent
 from app.schemas.fleet import FleetMetrics, MachineObservationCreate, ServiceHealth
-from app.services.fleet import _advance
+from app.services.fleet import _advance, evaluate_observation
+from pydantic import ValidationError
 
 
 class FakeDB:
@@ -116,3 +116,38 @@ def test_observation_contract_rejects_unknown_fields_and_duplicate_services() ->
                 "command": "env",
             }
         )
+
+
+def test_backup_freshness_warns_before_deadline_and_recovers() -> None:
+    metrics = {
+        "cpu_utilization_percent": 1,
+        "load_per_core": 0.1,
+        "memory_available_percent": 80,
+        "swap_used_percent": 0,
+        "swap_in_bytes_delta": 0,
+        "swap_out_bytes_delta": 0,
+        "disk_used_percent": 10,
+        "inode_used_percent": 2,
+        "cpu_pressure_avg10": 0,
+        "io_pressure_avg10": 0,
+        "memory_pressure_avg10": 0,
+        "uptime_seconds": 100,
+        "oom_kills_delta": 0,
+        "control_plane_backup_age_seconds": 550_000,
+        "control_plane_backup_verified": True,
+        "control_plane_backup_failed": False,
+    }
+    observation = SimpleNamespace(
+        machine="vm2-deployment",
+        metrics=metrics,
+        service_health={},
+        observed_at=datetime.now(UTC),
+    )
+    with patch("app.services.fleet._advance") as advance:
+        evaluate_observation(FakeDB(), observation)
+    backup_call = next(
+        call for call in advance.call_args_list if call.args[2] == "control_plane_backup"
+    )
+    assert backup_call.args[3] is True
+    assert backup_call.args[4] == "warning"
+    assert backup_call.args[5]["critical_after_seconds"] == 604_800
