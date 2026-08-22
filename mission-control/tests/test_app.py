@@ -131,6 +131,10 @@ class FakeControlPlane:
             "truncated": False,
         }
 
+    async def query_knowledge_graph(self, payload: dict) -> dict:
+        self.graph_query = payload
+        return await self.knowledge_graph(limit=payload["max_nodes"])
+
     async def research_retrieval(self, payload) -> dict:
         return {
             "corpus_digest": "a" * 64,
@@ -180,6 +184,7 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/research/surveillance/{publication_id}/replay" in paths
     assert "/api/research/copilot/questions" in paths
     assert "/api/research/copilot/citations/{object_id}" in paths
+    assert "/api/knowledge/graph/query" in paths
 
 
 def test_graph_explorer_uses_canonical_control_plane_projection(
@@ -192,6 +197,42 @@ def test_graph_explorer_uses_canonical_control_plane_projection(
     assert response.json()["projection_version"] == "knowledge-graph-v1.0.0"
     assert response.json()["nodes"][0]["object_type"] == "claim"
     assert fake.graph_requested is True
+
+
+def test_graph_explorer_forwards_only_typed_bounded_query(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    root_id = "11111111-1111-4111-8111-111111111111"
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.post(
+            "/api/knowledge/graph/query",
+            json={
+                "root_ids": [root_id],
+                "mode": "neighborhood",
+                "predicates": ["supports", "contradicts"],
+                "direction": "both",
+                "max_depth": 2,
+                "max_nodes": 80,
+                "project": "systematic-research",
+            },
+        )
+    assert response.status_code == 200
+    assert fake.graph_query["root_ids"] == [root_id]
+    assert fake.graph_query["max_nodes"] == 80
+    assert "command" not in fake.graph_query
+
+
+def test_graph_explorer_rejects_unbounded_or_executable_input(
+    settings: MissionControlSettings,
+) -> None:
+    root_id = "11111111-1111-4111-8111-111111111111"
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.post(
+            "/api/knowledge/graph/query",
+            json={"root_ids": [root_id], "max_nodes": 500, "command": "shell"},
+        )
+    assert response.status_code == 422
 
 
 def test_research_copilot_abstention_is_bounded_and_read_only(

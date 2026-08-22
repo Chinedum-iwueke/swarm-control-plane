@@ -65,6 +65,13 @@ exact context pack; invented or out-of-pack citations fail closed. The Codex ide
 must already be authenticated at `HERMES_RESEARCH_CODEX_HOME`. The configured model is
 replaceable and has no authority to mutate canonical evidence or start research.
 
+The canonical Knowledge Graph Explorer is also read-only. Its local query route accepts
+only typed RI-008 roots, predicates, direction, depth and a 100-node maximum, then
+forwards them to the access-filtered control-plane graph service. The SVG is a derived
+visualization; the relationship list is the accessible source of truth. Selecting a
+node can replay canonical evidence but cannot register edges, rebuild projections or
+change evidence lifecycle state.
+
 The research inbox defaults to
 `~/Library/Application Support/Hermes Mission Control/data/research-inbox` when
 the explicit setting is omitted. It contains optional classification folders:
@@ -202,8 +209,8 @@ an earlier reviewed Git revision and rerun the installer to roll back software.
 - Research intake supports text-bearing PDFs, Markdown, and UTF-8 text. Scanned
   PDFs require a future sandboxed OCR stage. Email, cloud drives, and archives
   are not accepted.
-- The graph is explicit and deterministic: document titles, `[[wiki links]]`,
-  and `#tags`.
+- The small Mac-local notes graph remains explicit and deterministic. Scientific graph
+  exploration uses the canonical RI-008 projection and fails closed when it is stale.
 - Artifact metadata is visible, but workspace artifact bytes are not remotely
   downloaded.
 - Intake is a planner queue contract; no autonomous planner is deployed in M7.

@@ -37,6 +37,7 @@ from .research_copilot import (
     CopilotQuestion,
     ResearchCopilot,
 )
+from .research_graph import GraphExplorerQuery
 from .research_inbox import sync_research_inbox
 from .research_upload import (
     ResearchUploadError,
@@ -362,6 +363,10 @@ def create_app(
     @app.get("/api/knowledge/graph")
     async def graph() -> dict:
         return await client.knowledge_graph(limit=100)
+
+    @app.post("/api/knowledge/graph/query")
+    async def query_graph(query: GraphExplorerQuery) -> dict:
+        return await client.query_knowledge_graph(query.model_dump(mode="json"))
 
     @app.post("/api/research/copilot/questions")
     async def ask_research_copilot(question: CopilotQuestion) -> dict:

@@ -127,6 +127,34 @@ async def test_research_copilot_uses_only_canonical_read_routes(
 
 
 @pytest.mark.asyncio
+async def test_graph_explorer_uses_authenticated_read_only_query(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.method,
+                request.url.path,
+                json.loads(request.content) if request.content else None,
+            )
+        )
+        return httpx.Response(200, json={"nodes": [], "edges": []})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "root_ids": ["11111111-1111-4111-8111-111111111111"],
+        "max_nodes": 80,
+    }
+    try:
+        await client.query_knowledge_graph(payload)
+    finally:
+        await client.close()
+    assert seen == [("POST", "/v1/research/graph/query", payload)]
+
+
+@pytest.mark.asyncio
 async def test_dossier_client_uses_authenticated_read_only_routes(
     settings: MissionControlSettings,
 ) -> None:

@@ -7,6 +7,10 @@ const state = {
   demo: new URLSearchParams(window.location.search).get("demo") === "1",
   copilotConversationId: null,
   copilotTurns: [],
+  graphData: null,
+  graphSelectedId: null,
+  graphView: window.matchMedia("(max-width: 680px)").matches ? "list" : "visual",
+  graphTransform: { scale: 1, x: 0, y: 0 },
 };
 
 const intentHeaders = {
@@ -49,6 +53,18 @@ document.getElementById("mission-segments").addEventListener("click", (event) =>
   document.querySelectorAll("#mission-segments button").forEach((item) => item.classList.toggle("active", item === button));
   renderMissions();
 });
+document.querySelectorAll("[data-graph-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.graphView = button.dataset.graphView;
+    document.querySelectorAll("[data-graph-view]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    if (state.graphData) renderGraph(state.graphData);
+  });
+});
+document.getElementById("graph-query-form").addEventListener("submit", querySelectedGraphNode);
 
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1175,7 +1191,7 @@ function openCopilotSource(source) {
       <dt>Lines</dt><dd>${escapeHtml(coordinates.line_start || "–")}–${escapeHtml(coordinates.line_end || "–")}</dd>
       <dt>Access</dt><dd>${statusBadge(source.access_class)}</dd>
     </dl></section>
-    <button class="secondary replay-citation" type="button" data-replay-object="${escapeHtml(source.object_id)}">Replay exact citation</button>
+    <div class="inspector-actions"><button class="secondary replay-citation" type="button" data-replay-object="${escapeHtml(source.object_id)}">Replay exact citation</button><button class="secondary" type="button" data-explore-object="${escapeHtml(source.object_id)}">Explore relationships</button></div>
     <div id="citation-replay-result"></div>
   `);
   document.querySelector("[data-replay-object]").addEventListener("click", async (event) => {
@@ -1190,6 +1206,11 @@ function openCopilotSource(source) {
       button.disabled = false;
     }
   });
+  document.querySelector("[data-explore-object]").addEventListener("click", async (event) => {
+    closeInspector();
+    navigate("knowledge");
+    await queryGraphRoot(event.currentTarget.dataset.exploreObject);
+  });
 }
 
 async function loadGraph() {
@@ -1201,25 +1222,154 @@ async function loadGraph() {
 }
 
 function renderGraph(graph) {
-  const nodes = (graph.nodes || []).slice(0, 80);
-  const nodeMap = new Map(nodes.map((node) => [node.id, node.label || node.name]));
-  const edges = (graph.edges || []).slice(0, 24);
-  document.getElementById("graph").innerHTML = nodes.length ? `
-    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span class="mono">${escapeHtml(shortHash(graph.corpus_digest || graph.query_digest || ""))}</span>${graph.truncated ? "<span>Bounded view</span>" : ""}</div>
-    <div class="graph-list">${nodes.map((node) => `<button class="node" data-graph-node="${escapeHtml(node.id)}">${escapeHtml(node.label || node.name)} <small>${escapeHtml(node.object_type || node.kind)}</small></button>`).join("")}</div>
-    ${edges.map((edge) => `<div class="graph-edge">${escapeHtml(nodeMap.get(edge.source) || edge.source)} → ${escapeHtml(edge.predicate || edge.relation)} → ${escapeHtml(nodeMap.get(edge.target) || edge.target)}</div>`).join("")}
-  ` : empty("Build the canonical graph projection to explore research lineage.");
-  document.querySelectorAll("[data-graph-node]").forEach((button) => {
-    const node = nodes.find((item) => String(item.id) === button.dataset.graphNode);
-    button.addEventListener("click", () => openInspector("Canonical evidence", node.label || node.name, `
-      <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
-        <dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd>
-        <dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd>
-        <dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd>
-        <dt>Digest</dt><dd class="mono">${escapeHtml(node.content_digest || "Local projection")}</dd>
-      </dl></section>
-    `));
+  state.graphData = graph;
+  document.querySelectorAll("[data-graph-view]").forEach((item) => {
+    const active = item.dataset.graphView === state.graphView;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
   });
+  const nodes = (graph.nodes || []).slice(0, 100);
+  const nodeMap = new Map(nodes.map((node) => [String(node.id), node]));
+  const edges = (graph.edges || []).filter((edge) => nodeMap.has(String(edge.source)) && nodeMap.has(String(edge.target))).slice(0, 240);
+  if (!nodes.length) {
+    document.getElementById("graph").innerHTML = empty("Build the canonical graph projection to explore research lineage.");
+    return;
+  }
+  if (!nodeMap.has(String(state.graphSelectedId))) state.graphSelectedId = String(nodes[0].id);
+  const selected = nodeMap.get(String(state.graphSelectedId));
+  document.getElementById("graph-expand").disabled = !selected;
+  const positions = graphPositions(nodes);
+  const visual = `
+    <div class="graph-canvas-shell">
+      <div class="graph-canvas-toolbar" role="group" aria-label="Graph zoom controls">
+        <button type="button" class="icon-button" data-graph-zoom="in" aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" class="icon-button" data-graph-zoom="out" aria-label="Zoom out" title="Zoom out">−</button>
+        <button type="button" class="icon-button graph-fit" data-graph-zoom="fit" aria-label="Fit graph" title="Fit graph">Fit</button>
+      </div>
+      <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-labelledby="graph-svg-title graph-svg-desc">
+        <title id="graph-svg-title">Canonical research relationship graph</title>
+        <desc id="graph-svg-desc">${nodes.length} evidence nodes and ${edges.length} visible relationships. Use the Relationships view for a keyboard-first adjacency list.</desc>
+        <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
+        <g id="graph-viewport" transform="translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})">
+          <g class="graph-links">${edges.map((edge) => graphEdgeSvg(edge, positions)).join("")}</g>
+          <g class="graph-nodes">${nodes.map((node, index) => graphNodeSvg(node, positions.get(String(node.id)), index, String(node.id) === String(state.graphSelectedId))).join("")}</g>
+        </g>
+      </svg>
+      <div class="graph-legend"><span><i class="legend-shape claim"></i>Claim</span><span><i class="legend-shape result"></i>Result</span><span><i class="legend-shape source"></i>Source</span><span><i class="legend-line supports"></i>Supports</span><span><i class="legend-line contradicts"></i>Contradicts</span></div>
+    </div>`;
+  const relationships = `
+    <div class="graph-adjacency" role="list" aria-label="Visible graph relationships">
+      ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap)).join("") : empty("The selected bounded view contains no explicit relationships.")}
+    </div>`;
+  document.getElementById("graph").innerHTML = `
+    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${number(nodes.length)} nodes</span><span>${number(edges.length)} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? "<span>Bounded at query limit</span>" : ""}</div>
+    <div class="graph-workspace">
+      <div class="graph-primary">${state.graphView === "visual" ? visual : relationships}</div>
+      ${graphSelectionPanel(selected, edges, nodeMap)}
+    </div>`;
+  bindGraphInteractions(nodeMap);
+}
+
+function graphPositions(nodes) {
+  const positions = new Map();
+  nodes.forEach((node, index) => {
+    if (index === 0) return positions.set(String(node.id), { x: 450, y: 260 });
+    const angle = index * 2.399963;
+    const radius = Math.min(225, 38 + Math.sqrt(index) * 34);
+    positions.set(String(node.id), { x: 450 + Math.cos(angle) * radius * 1.55, y: 260 + Math.sin(angle) * radius });
+  });
+  return positions;
+}
+
+function graphNodeSvg(node, position, index, selected) {
+  const type = String(node.object_type || node.kind || "evidence");
+  const label = String(node.label || node.name || node.id);
+  const shape = type === "claim" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
+  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}">${shape}${(index < 14 || selected) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
+}
+
+function graphEdgeSvg(edge, positions) {
+  const source = positions.get(String(edge.source));
+  const target = positions.get(String(edge.target));
+  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
+}
+
+function graphRelationshipRow(edge, nodeMap) {
+  const source = nodeMap.get(String(edge.source));
+  const target = nodeMap.get(String(edge.target));
+  return `<div class="graph-relationship" role="listitem"><button type="button" data-graph-node="${escapeHtml(source.id)}">${escapeHtml(source.label || source.name)}</button><span class="relationship-predicate ${escapeHtml(edge.predicate || edge.relation)}">${escapeHtml(humanize(edge.predicate || edge.relation))}</span><button type="button" data-graph-node="${escapeHtml(target.id)}">${escapeHtml(target.label || target.name)}</button></div>`;
+}
+
+function graphSelectionPanel(node, edges, nodeMap) {
+  const related = edges.filter((edge) => String(edge.source) === String(node.id) || String(edge.target) === String(node.id));
+  return `<aside class="graph-selection" aria-label="Selected graph node">
+    <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
+    <dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || ""))}</dd><dt>Visible links</dt><dd>${number(related.length)}</dd></dl>
+    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button></div>
+    <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
+  </aside>`;
+}
+
+function bindGraphInteractions(nodeMap) {
+  document.querySelectorAll("[data-graph-node]").forEach((element) => {
+    const select = () => {
+      state.graphSelectedId = element.dataset.graphNode;
+      renderGraph(state.graphData);
+    };
+    element.addEventListener("click", select);
+    element.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
+    });
+  });
+  document.querySelectorAll("[data-graph-zoom]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.graphZoom === "fit") state.graphTransform = { scale: 1, x: 0, y: 0 };
+    else state.graphTransform.scale = Math.max(.55, Math.min(2.2, state.graphTransform.scale * (button.dataset.graphZoom === "in" ? 1.2 : .8)));
+    renderGraph(state.graphData);
+  }));
+  const replay = document.querySelector("[data-graph-replay]");
+  if (replay) replay.addEventListener("click", () => replayGraphEvidence(nodeMap.get(replay.dataset.graphReplay)));
+}
+
+async function replayGraphEvidence(node) {
+  openInspector("Canonical graph evidence", node.label || node.name, `<div id="graph-replay-result" class="empty-state">Replaying canonical evidence…</div>`);
+  try {
+    const replay = await request(`/api/research/copilot/citations/${encodeURIComponent(node.id)}`);
+    document.getElementById("graph-replay-result").innerHTML = `<pre class="citation-replay">${escapeHtml(JSON.stringify(replay, null, 2))}</pre>`;
+  } catch (error) {
+    document.getElementById("graph-replay-result").innerHTML = empty(error.message);
+  }
+}
+
+async function querySelectedGraphNode(event) {
+  event.preventDefault();
+  if (!state.graphSelectedId) return;
+  await queryGraphRoot(state.graphSelectedId);
+}
+
+async function queryGraphRoot(rootId) {
+  const button = document.getElementById("graph-expand");
+  button.disabled = true;
+  document.getElementById("graph").classList.add("loading");
+  try {
+    const predicate = document.getElementById("graph-predicate").value;
+    const graph = await request("/api/knowledge/graph/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        root_ids: [rootId], mode: "neighborhood", predicates: predicate ? [predicate] : [],
+        direction: document.getElementById("graph-direction").value,
+        max_depth: Number(document.getElementById("graph-depth").value), max_nodes: 100,
+      }),
+    });
+    state.graphSelectedId = rootId;
+    state.graphTransform = { scale: 1, x: 0, y: 0 };
+    renderGraph(graph);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    document.getElementById("graph").classList.remove("loading");
+    button.disabled = !state.graphSelectedId;
+  }
 }
 
 function renderSearchResults(results) {
@@ -1324,6 +1474,11 @@ function empty(message) {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+}
+
+function truncate(value, length) {
+  const text = String(value ?? "");
+  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
 }
 
 async function request(url, options = {}) {

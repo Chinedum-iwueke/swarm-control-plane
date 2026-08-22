@@ -150,6 +150,9 @@ class ControlPlaneClient:
             "GET", "/v1/research/graph/overview", params={"limit": limit}
         )
 
+    async def query_knowledge_graph(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/v1/research/graph/query", json=payload)
+
     async def research_retrieval(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST", "/v1/research/retrieval/query", json=payload

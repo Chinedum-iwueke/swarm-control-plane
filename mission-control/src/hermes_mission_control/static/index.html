@@ -288,7 +288,22 @@
         </div>
         <div class="knowledge-layout">
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Mac-local retrieval</p><h2>Private indexed notes</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
-          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Relationships</p><h2>Knowledge graph</h2></div></div><div id="graph"></div></section>
+          <section class="operational-band graph-explorer-band" aria-labelledby="graph-title">
+            <div class="band-heading graph-heading">
+              <div><p class="section-kicker">Canonical relationships</p><h2 id="graph-title">Knowledge graph explorer</h2></div>
+              <div class="graph-view-toggle" role="group" aria-label="Graph view">
+                <button class="secondary active" type="button" data-graph-view="visual" aria-pressed="true">Visual</button>
+                <button class="secondary" type="button" data-graph-view="list" aria-pressed="false">Relationships</button>
+              </div>
+            </div>
+            <form id="graph-query-form" class="graph-query-form">
+              <label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label>
+              <label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
+              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option></select></label>
+              <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button>
+            </form>
+            <div id="graph" class="graph-explorer" aria-live="polite"></div>
+          </section>
         </div>
       </section>
 
