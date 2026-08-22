@@ -189,7 +189,9 @@ def _backup_metrics(
         }
     try:
         document = json.loads(manifests[0].read_text(encoding="utf-8"))
-        completed = datetime.fromisoformat(str(document["completed_at"]))
+        completed = datetime.fromisoformat(
+            str(document["completed_at"]).replace("Z", "+00:00")
+        )
         if completed.tzinfo is None:
             raise ValueError("completed_at must be timezone-aware")
         dump = directory / Path(str(document["filename"])).name

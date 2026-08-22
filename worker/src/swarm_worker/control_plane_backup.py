@@ -11,7 +11,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO, Literal
 
@@ -72,7 +72,7 @@ def create_backup(settings: BackupSettings) -> BackupManifest:
     if shutil.disk_usage(settings.backup_directory).free < settings.min_free_bytes:
         raise RuntimeError("Insufficient free space for a control-plane backup.")
     with _exclusive_lock(settings.lock_path):
-        started = datetime.now(UTC)
+        started = datetime.now(timezone.utc)
         identity = uuid.uuid4().hex[:12]
         stem = f"swarm_control_{started:%Y%m%dT%H%M%SZ}_{identity}"
         temporary = settings.backup_directory / f".{stem}.dump.partial"
@@ -128,7 +128,7 @@ def create_backup(settings: BackupSettings) -> BackupManifest:
             if not migration:
                 raise RuntimeError("Database migration marker is unavailable.")
             digest = _sha256(temporary)
-            completed = datetime.now(UTC)
+            completed = datetime.now(timezone.utc)
             manifest = BackupManifest(
                 backup_id=identity,
                 database=settings.database_name,
@@ -166,7 +166,7 @@ def inspect_latest(
     if healthy and verify_digest and _sha256(dump) != manifest.sha256:
         healthy = False
         reason = "backup_digest_mismatch"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     age = max(0.0, (now - manifest.completed_at).total_seconds())
     return {
         "healthy": healthy,
@@ -214,7 +214,7 @@ def restore_drill(settings: BackupSettings) -> dict[str, object]:
     manifest = BackupManifest.model_validate(inspection["latest"])
     dump = settings.backup_directory / manifest.filename
     container = f"swarm-restore-drill-{uuid.uuid4().hex[:12]}"
-    started = datetime.now(UTC)
+    started = datetime.now(timezone.utc)
     try:
         _run(
             [
@@ -261,7 +261,7 @@ def restore_drill(settings: BackupSettings) -> dict[str, object]:
         )
         if marker != manifest.migration_marker or table_count < 3:
             raise RuntimeError("Restored database failed structural verification.")
-        completed = datetime.now(UTC)
+        completed = datetime.now(timezone.utc)
         dossier = {
             "schema_version": "control-plane-restore-drill-v1.0.0",
             "backup_id": manifest.backup_id,
