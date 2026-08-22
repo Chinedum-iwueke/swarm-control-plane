@@ -57,7 +57,7 @@ Create `/etc/invariance-swarm/fleet-probe.env` on the target host:
 
 ```bash
 SWARM_FLEET_API_URL=http://100.112.117.59:8787
-SWARM_FLEET_AGENT_TOKEN_FILE=/etc/invariance-swarm/fleet-probe.token
+SWARM_FLEET_AGENT_TOKEN_FILE=/run/credentials/invariance-swarm-fleet-probe.service/fleet-agent-token
 SWARM_FLEET_MACHINE=vm1-developer
 SWARM_FLEET_INTERVAL_SECONDS=20
 SWARM_FLEET_SERVICES=invariance-swarm-worker.service

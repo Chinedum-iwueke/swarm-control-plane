@@ -10,7 +10,12 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file=/etc/invariance-swarm/fleet-probe.env
 test -f "$env_file" || { echo "Missing $env_file" >&2; exit 1; }
 grep -q '^SWARM_FLEET_MACHINE=' "$env_file"
-grep -q '^SWARM_FLEET_AGENT_TOKEN_FILE=' "$env_file"
+grep -qx \
+  'SWARM_FLEET_AGENT_TOKEN_FILE=/run/credentials/invariance-swarm-fleet-probe.service/fleet-agent-token' \
+  "$env_file" || {
+    echo "SWARM_FLEET_AGENT_TOKEN_FILE must use the systemd credential path." >&2
+    exit 1
+  }
 
 getent group invariance-fleet-probe >/dev/null || groupadd --system invariance-fleet-probe
 id invariance-fleet-probe >/dev/null 2>&1 || useradd --system --gid invariance-fleet-probe --home-dir /nonexistent --shell /usr/sbin/nologin invariance-fleet-probe
