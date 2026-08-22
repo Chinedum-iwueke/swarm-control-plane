@@ -123,6 +123,28 @@ class RunPayload(StrictModel):
     code_digest: str = Field(pattern=_DIGEST)
     environment_digest: str = Field(pattern=_DIGEST)
     attempt: int = Field(ge=1)
+    bundle_digest: str | None = Field(default=None, pattern=_DIGEST)
+    bundle_manifest_digest: str | None = Field(default=None, pattern=_DIGEST)
+    bundle_uri: str | None = Field(
+        default=None, pattern=r"^bundle://sha256/[0-9a-f]{64}$"
+    )
+
+    @model_validator(mode="after")
+    def bundle_reference_is_complete(self) -> RunPayload:
+        values = (
+            self.bundle_digest,
+            self.bundle_manifest_digest,
+            self.bundle_uri,
+        )
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("run bundle reference must be complete")
+        if self.bundle_digest is not None:
+            assert self.bundle_uri is not None
+            if not self.bundle_uri.endswith(self.bundle_digest):
+                raise ValueError("bundle URI digest must match bundle_digest")
+        return self
 
 
 class ResultPayload(StrictModel):
