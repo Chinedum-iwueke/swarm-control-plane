@@ -1,7 +1,7 @@
 # OPS-005 Validation Record
 
 **Date:** 2026-08-22
-**Status:** Source complete; production evidence pending
+**Status:** Complete; deployed and production-observed on VM2
 
 ## Implemented
 
@@ -25,10 +25,23 @@ metrics, pre-deadline warning classification, notification hysteresis, and stric
 observation schemas. Full worker, backend, and Mission Control results are recorded at
 the source commit that closes this document.
 
-## Production acceptance gate
+## Production evidence
 
-OPS-005 is not production-complete until VM2 retains two consecutive verified
-manifests, one successful disposable restore dossier with measured RPO/RTO, an observed
-stale/failure alert and recovery transition, timer/unit verification, and a no-secret
-scan. Off-host encrypted replication remains coordinated with PLAT-007 and is not
-claimed by this milestone.
+- Verified generation `827e705d9ee1`: 980,858,141 bytes, migration
+  `b6f2a9c41d80`, completed `2026-08-22T16:32:04.374483Z`.
+- Verified generation `2fa39d5941ac`: 980,850,311 bytes, migration
+  `b6f2a9c41d80`, completed `2026-08-22T16:21:30.896857Z`.
+- Disposable restore of `2fa39d5941ac`: 77 public tables, RPO 4.584 seconds,
+  RTO 326.545 seconds, network isolated, no production database contact.
+- Daily backup and weekly restore timers are enabled and scheduled with persistent
+  bounded jitter; the VM2 fleet probe is active and publishing.
+- Real failed backup attempts opened critical incident generation 1 at
+  `2026-08-22T15:47:30Z`. The existing founder outbox recorded exactly one critical
+  notification. Three healthy samples recovered the same incident at
+  `2026-08-22T16:18:22Z` and recorded exactly one recovery notification.
+- Targeted source scanning found no credential, private-key, bearer-token, or agent-token
+  material in the OPS-005 implementation or evidence documents.
+
+Encrypted off-host replication remains coordinated with PLAT-007 and is not claimed by
+OPS-005. That separate disaster-recovery dependency does not weaken the now-active local
+backup, freshness, and restore-verification lifecycle.
