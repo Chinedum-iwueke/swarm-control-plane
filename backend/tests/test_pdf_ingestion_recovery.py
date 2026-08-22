@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 from app.ingestion.pdf_sanitizer import (
@@ -9,6 +12,7 @@ from app.ingestion.pdf_sanitizer import (
     sanitize_pdf,
 )
 from app.ingestion.pipeline import ScientificIngestionPipeline, _has_active_pdf_content
+from app.services.ingestion_recovery import requeue_recoverable_outcomes
 from pypdf import PdfReader, PdfWriter
 
 from tests.test_scientific_ingestion import golden_pdf
@@ -73,3 +77,29 @@ def test_pdfium_fallback_produces_bounded_inert_page_text() -> None:
     assert result.visual_sample_pages == [1]
     assert b"--- Page 1 ---" in result.content
     assert b"Momentum is evaluated after costs" in result.content
+
+
+def test_published_remediation_is_promoted_to_recovered() -> None:
+    original_id = UUID("10000000-0000-4000-8000-000000000001")
+    sanitized_id = UUID("10000000-0000-4000-8000-000000000002")
+    original = SimpleNamespace(id=original_id, status="rejected")
+    sanitized = SimpleNamespace(id=sanitized_id, status="published")
+    recovery = SimpleNamespace(
+        original_job_id=original_id,
+        sanitized_job_id=sanitized_id,
+        status="remediation_required",
+        receipt={"normal_pipeline_status": "rejected"},
+        updated_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [recovery]
+    db.get.side_effect = lambda _model, object_id: {
+        original_id: original,
+        sanitized_id: sanitized,
+    }[object_id]
+
+    assert requeue_recoverable_outcomes(db) == 0
+    assert recovery.status == "recovered"
+    assert recovery.receipt["normal_pipeline_status"] == "published"
+    assert recovery.receipt["reconciled_after_remediation"] is True
+    db.commit.assert_called_once_with()

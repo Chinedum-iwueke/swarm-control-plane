@@ -260,15 +260,23 @@ def requeue_recoverable_outcomes(db: Session) -> int:
         if original is None or original.status != "rejected":
             continue
         receipt = dict(record.receipt)
+        sanitized = (
+            db.get(ScientificIngestionJob, record.sanitized_job_id)
+            if record.sanitized_job_id
+            else None
+        )
+        if sanitized is not None and sanitized.status == "published":
+            receipt["normal_pipeline_status"] = "published"
+            receipt["completed_at"] = now.isoformat()
+            receipt["reconciled_after_remediation"] = True
+            record.receipt = receipt
+            record.status = "recovered"
+            record.updated_at = now
+            continue
         attempts = int(receipt.get("recovery_attempts", 1))
         if attempts >= 2:
             continue
         if record.status == "remediation_required":
-            sanitized = (
-                db.get(ScientificIngestionJob, record.sanitized_job_id)
-                if record.sanitized_job_id
-                else None
-            )
             if (
                 sanitized is None
                 or sanitized.status != "rejected"

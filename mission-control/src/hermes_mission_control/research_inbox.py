@@ -309,7 +309,19 @@ async def _resolve_recovery(
         return item, False
     resolution = await client.recovered_scientific_ingestion(item["ingestion_job_id"])
     if resolution is None:
-        return item, False
+        current = await client.scientific_ingestion_by_id(item["ingestion_job_id"])
+        if current is None or current["status"] != "published":
+            return item, False
+        updated = dict(item)
+        updated.update(
+            status="added",
+            disposition="canonical",
+            content_digest=current["content_digest"],
+            ingestion_job_id=current["id"],
+            canonical_object_ids=current["published_object_ids"],
+            stage_report=None,
+        )
+        return updated, True
     recovered = resolution["sanitized_job"]
     original_digest = item.get("original_content_digest") or item.get("content_digest")
     original_job_id = item.get("original_ingestion_job_id") or item["ingestion_job_id"]

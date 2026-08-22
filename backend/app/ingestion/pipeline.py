@@ -19,7 +19,9 @@ _INJECTION_PATTERNS = tuple(
         r"exfiltrate\s+(credentials|secrets|tokens)",
         r"(?:read|send|upload|print)\s+(?:the\s+)?(?:contents\s+of\s+)?/(?:run|etc)/secrets",
         r"(?:approve|authorize)\s+(?:this|the)\s+(?:task|mission|request)",
-        r"(?:execute|run|call)\s+(?:this\s+)?(?:tool|command|shell)",
+        r"(?:execute|call)\s+(?:this\s+)?tool",
+        r"run\s+(?:this\s+)?shell",
+        r"run\s+commands?\s+in\s+(?:a\s+)?(?:bash\s+)?shell",
         r"treat\s+(?:this|the following)\s+(?:text\s+)?as\s+(?:a\s+)?system\s+instruction",
     )
 )
@@ -318,8 +320,8 @@ class ScientificIngestionPipeline:
 
 
 def _database_safe(value: str) -> str:
-    """PostgreSQL text cannot represent NUL, occasionally emitted by PDF fonts."""
-    return value.replace("\x00", "")
+    """Remove NUL and replace unpaired surrogates emitted by broken PDF fonts."""
+    return value.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
 
 
 def _has_active_pdf_content(reader: PdfReader) -> bool:
