@@ -23,7 +23,14 @@ def blocked_artifact_register(db: Session) -> BlockedArtifactRegisterResponse:
             ScientificIngestionRecovery,
             ScientificIngestionRecovery.original_job_id == ScientificIngestionJob.id,
         )
-        .where(ScientificIngestionJob.status.in_(_BLOCKED_STATUSES))
+        .where(
+            ScientificIngestionJob.status.in_(_BLOCKED_STATUSES),
+            ScientificIngestionJob.id.not_in(
+                select(ScientificIngestionRecovery.sanitized_job_id).where(
+                    ScientificIngestionRecovery.sanitized_job_id.is_not(None)
+                )
+            ),
+        )
         .order_by(ScientificIngestionJob.updated_at.desc())
     ).all()
     items = [
