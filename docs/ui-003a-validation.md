@@ -28,16 +28,22 @@ single-column reading surface on mobile, retains visible labels and focus states
 ## Verification
 
 - Mission Control compile: passed.
-- Mission Control tests: 61 passed.
+- Mission Control tests: 62 passed.
 - Ruff: passed.
 - JavaScript syntax: passed.
 - Citation-outside-context rejection: passed.
 - No-evidence abstention without model invocation: passed.
 - Digest-bound cited-answer fixture: passed.
 
-## Deployment gate
+## Production observation
 
-The Mac Mission Control installation must be refreshed after merge. Its protected
-environment must point to an authenticated Codex home and installed Codex binary. A
-live acceptance query must demonstrate retrieval, answer generation and exact citation
-replay before UI-003A is described as production-observed.
+Mission Control was installed and started on the Mac against commit `1a9b723`. The
+protected environment uses the authenticated Mac Codex identity without exposing its
+credentials. Before acceptance, the canonical retrieval and graph projections were
+rebuilt to their current corpus digests.
+
+The live systematic-research acceptance question returned HTTP 200 with four claims,
+two canonical sources and bound corpus, context-pack and graph-query digests. Retrieval
+confidence was `0.32752859`, so the Copilot correctly reported
+`insufficient_evidence` instead of overstating the available evidence. Exact replay of
+object `011a2e4b-25ff-572f-81f8-855433a2e961` returned HTTP 200 with source content.
