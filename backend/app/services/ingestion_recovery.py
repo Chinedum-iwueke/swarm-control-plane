@@ -45,6 +45,11 @@ def queue_recoveries(
                 ScientificIngestionJob.project == payload.project,
                 ScientificIngestionJob.media_type == "application/pdf",
                 ScientificIngestionJob.status == "rejected",
+                ScientificIngestionJob.id.not_in(
+                    select(ScientificIngestionRecovery.sanitized_job_id).where(
+                        ScientificIngestionRecovery.sanitized_job_id.is_not(None)
+                    )
+                ),
             )
             .order_by(ScientificIngestionJob.created_at)
         ).all()
