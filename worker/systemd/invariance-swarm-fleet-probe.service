@@ -11,6 +11,8 @@ User=invariance-fleet-probe
 Group=invariance-fleet-probe
 EnvironmentFile=/etc/invariance-swarm/fleet-probe.env
 Environment=PATH=/opt/invariance-swarm-worker/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LoadCredential=fleet-agent-token:/etc/invariance-swarm/fleet-probe.token
+Environment=SWARM_FLEET_AGENT_TOKEN_FILE=/run/credentials/%N/fleet-agent-token
 ExecStart=/usr/bin/env invariance-swarm-fleet-probe run
 Restart=on-failure
 RestartSec=10
