@@ -33,10 +33,19 @@ single-column surface on mobile, with scrollable context items and touch-sized a
 - Graph panel hide/restore and selected-node context carryover: observed.
 - Browser console: no errors.
 
-## Production gate
+## Production observation
 
-After commit and Mac reinstall, acceptance requires the live workspace status to show
-the current canonical graph, a Copilot citation to enter working context, the same
-object to open as a bounded graph root, and exact replay to remain available. Retain
-the live object, corpus and query digests below before describing UI-003C as
-production-observed.
+Mission Control was installed and started on the Mac at commit `a4267ed`. The shipped
+page exposed all three workspace panels and the shared context surface. Canonical
+Copilot citation `011a2e4b-25ff-572f-81f8-855433a2e961` was exercised as the same
+graph root: a depth-one, 30-node-bounded query returned three nodes and two edges in
+0.3 seconds under:
+
+- projection `knowledge-graph-v1.0.0`;
+- corpus digest `99888f190edc9b3c36481810570aa9c20deff6bddb0c6f6d7be31455ba4e0eb7`;
+- query digest `5fe70dad7708a7c92621547ae7ce4ee2c9a6620337b21ef72fc0deafccb34562`.
+
+Exact replay of that object returned HTTP 200 in 22.38 seconds with replay digest
+`81d5566ea2770f49c7a5408927779fc9080e470530972706e51a969e1238bc1b`.
+UI-003C is therefore production-observed without introducing a new mutation or model
+authority path.
