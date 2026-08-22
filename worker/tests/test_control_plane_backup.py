@@ -45,6 +45,25 @@ def test_backup_is_verified_and_atomically_manifested(
     assert backup.inspect_latest(configured, verify_digest=True)["healthy"] is True
 
 
+def test_backup_targets_only_the_configured_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = settings(tmp_path)
+    commands = []
+
+    def run(command, *, stdin=None, stdout=None, capture=False):
+        commands.append(command)
+        if "pg_dump" in command:
+            stdout.write(b"verified custom dump")
+        return "head" if capture else ""
+
+    monkeypatch.setattr(backup, "_run", run)
+    backup.create_backup(configured)
+    assert commands
+    assert all(command[:4] == ["docker", "exec", "-i", "swarm-postgres"] for command in commands)
+    assert all("compose" not in command for command in commands)
+
+
 def test_failed_dump_never_publishes_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

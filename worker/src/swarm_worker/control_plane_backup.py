@@ -30,7 +30,9 @@ class BackupSettings(BaseSettings):
         "/srv/invariance/swarm/control-plane-runtime/backups"
     )
     lock_path: Path = Path("/run/invariance-swarm/control-plane-backup.lock")
-    database_service: str = Field(default="postgres", pattern=r"^[a-z0-9-]+$")
+    database_container: str = Field(
+        default="swarm-postgres", pattern=r"^[a-zA-Z0-9_.-]+$"
+    )
     database_user: str = Field(default="swarm_app", pattern=r"^[a-z_][a-z0-9_]*$")
     database_name: str = Field(
         default="swarm_control", pattern=r"^[a-z_][a-z0-9_]*$"
@@ -83,11 +85,8 @@ def create_backup(settings: BackupSettings) -> BackupManifest:
         try:
             with temporary.open("xb") as output:
                 _run(
-                    _compose(settings)
+                    _database_exec(settings)
                     + [
-                        "exec",
-                        "-T",
-                        settings.database_service,
                         "pg_dump",
                         "--format=custom",
                         "--no-owner",
@@ -103,17 +102,13 @@ def create_backup(settings: BackupSettings) -> BackupManifest:
                 raise RuntimeError("Control-plane backup is empty.")
             with temporary.open("rb") as source:
                 _run(
-                    _compose(settings)
-                    + ["exec", "-T", settings.database_service, "pg_restore", "--list"],
+                    _database_exec(settings) + ["pg_restore", "--list"],
                     stdin=source,
                     stdout=subprocess.DEVNULL,
                 )
             migration = _run(
-                _compose(settings)
+                _database_exec(settings)
                 + [
-                    "exec",
-                    "-T",
-                    settings.database_service,
                     "psql",
                     "--username",
                     settings.database_user,
@@ -312,15 +307,8 @@ def _bucket(value: datetime, kind: str) -> str:
     return value.strftime("%Y-%m")
 
 
-def _compose(settings: BackupSettings) -> list[str]:
-    return [
-        "docker",
-        "compose",
-        "--project-directory",
-        str(settings.runtime),
-        "--file",
-        str(settings.runtime / "compose.yaml"),
-    ]
+def _database_exec(settings: BackupSettings) -> list[str]:
+    return ["docker", "exec", "-i", settings.database_container]
 
 
 def _run(
