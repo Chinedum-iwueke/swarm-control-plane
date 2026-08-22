@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -146,6 +147,59 @@ def recover_pdf_as_inert_text(content: bytes) -> PdfTextRecoveryResult:
         ) from exc
     if not any(pages):
         raise PdfSanitizationError("independent PDF recovery produced no text")
+    visual_pages = sorted({0, page_count // 2, page_count - 1})
+    visual_digest = _visual_digest(content, visual_pages)
+    recovered = "\n\n".join(
+        f"--- Page {page_number} ---\n{text}"
+        for page_number, text in enumerate(pages, start=1)
+    ).encode("utf-8")
+    return PdfTextRecoveryResult(
+        content=recovered,
+        original_digest=original_digest,
+        recovered_digest=hashlib.sha256(recovered).hexdigest(),
+        page_count=page_count,
+        text_digest=_pages_digest(pages),
+        visual_sample_digest=visual_digest,
+        visual_sample_pages=[page + 1 for page in visual_pages],
+    )
+
+
+def recover_pdf_with_offline_ocr(content: bytes) -> PdfTextRecoveryResult:
+    """Render and OCR a bounded PDF without network access."""
+
+    original_digest = hashlib.sha256(content).hexdigest()
+    try:
+        import pypdfium2 as pdfium
+        import pytesseract
+
+        document = pdfium.PdfDocument(content)
+        page_count = len(document)
+        if page_count < 1 or page_count > 800:
+            document.close()
+            raise PdfSanitizationError("PDF page count is outside recovery bounds")
+        deadline = time.monotonic() + 1_800
+        pages: list[str] = []
+        for page_number in range(page_count):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                document.close()
+                raise PdfSanitizationError("offline OCR exceeded its recovery deadline")
+            page = document[page_number]
+            image = page.render(scale=2).to_pil().convert("RGB")
+            pages.append(
+                _normalized_text(
+                    pytesseract.image_to_string(image, timeout=min(60, remaining))
+                )
+            )
+            image.close()
+            page.close()
+        document.close()
+    except PdfSanitizationError:
+        raise
+    except Exception as exc:
+        raise PdfSanitizationError("offline OCR could not render the PDF") from exc
+    if not any(pages):
+        raise PdfSanitizationError("offline OCR recovered no text")
     visual_pages = sorted({0, page_count // 2, page_count - 1})
     visual_digest = _visual_digest(content, visual_pages)
     recovered = "\n\n".join(

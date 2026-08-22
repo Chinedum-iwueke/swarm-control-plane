@@ -42,6 +42,42 @@ After a five-minute settled interval, the steward maps recovered editions back t
 latest founder-inbox inventory and atomically rebuilds retrieval and graph projections.
 An unreadable artifact remains rejected and requires a replacement source edition.
 
+The bounded controller now exhausts at most three allowlisted methods in order:
+
+1. structural inert-PDF repair with text and visual equivalence checks;
+2. independent PDFium text extraction;
+3. offline OCR with bounded page and execution limits.
+
+Every attempt records its method, timestamps, result digest, pipeline outcome, and
+failure category. It terminates as `recovered`, `replacement_required`,
+`security_blocked`, `unsupported_format`, `corrupt_unrecoverable`, or
+`manual_review_required`. A terminal receipt includes the founder action. No loop is
+unbounded and no failed method is repeated for the same recovery record.
+
+Codex is an advisory-only classifier. It receives bounded metadata and failure
+diagnostics, never artifact bytes, secrets, database access, or publication tools. Its
+strict output can only select an untried allowlisted method or recommend a terminal
+classification. The deterministic controller ignores unavailable recommendations;
+the normal scanner, validation, and publication pipeline remain the sole authority.
+
+Create a dedicated credential directory after building the API image. Do not reuse an
+engineering or founder-planner Codex home:
+
+```bash
+sudo install -d -o 10001 -g 10001 -m 0700 \
+  /etc/invariance-swarm/codex-recovery
+
+cd /srv/invariance/swarm/control-plane-runtime
+sudo docker compose run --rm --no-deps \
+  -e CODEX_HOME=/run/codex-recovery \
+  -v /etc/invariance-swarm/codex-recovery:/run/codex-recovery \
+  api codex login --device-auth
+```
+
+The container identity is UID 10001. The installer refuses a credential directory
+with a different owner or mode. Codex authentication is mounted only into the
+recovery-steward container, not the continuously serving API container.
+
 Install and activate on VM2 only after the image and migration are deployed:
 
 ```bash

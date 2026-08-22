@@ -10,9 +10,17 @@ from sqlalchemy.orm import Session
 from app.ingestion.pdf_sanitizer import (
     PdfSanitizationError,
     recover_pdf_as_inert_text,
+    recover_pdf_with_offline_ocr,
     sanitize_pdf,
 )
 from app.ingestion.pipeline import ScientificIngestionPipeline
+from app.ingestion.recovery_controller import (
+    RecoveryAdviser,
+    RecoveryDiagnostic,
+    RecoveryMethod,
+    deterministic_terminal_classification,
+    select_next_method,
+)
 from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
 from app.schemas.ingestion import IngestionRecoveryCreate
 from app.services.object_store import EvidenceObjectStore, ObjectReference
@@ -86,6 +94,7 @@ def process_next_recovery(
     db: Session,
     store: EvidenceObjectStore,
     pipeline: ScientificIngestionPipeline,
+    adviser: RecoveryAdviser | None = None,
 ) -> ScientificIngestionRecovery | None:
     recovery = db.scalar(
         select(ScientificIngestionRecovery)
@@ -101,7 +110,7 @@ def process_next_recovery(
     db.commit()
     recovery_id = recovery.id
     try:
-        return _recover(db, recovery_id, store, pipeline)
+        return _recover(db, recovery_id, store, pipeline, adviser)
     except Exception as exc:
         db.rollback()
         recovery = db.get(ScientificIngestionRecovery, recovery_id)
@@ -116,11 +125,29 @@ def process_next_recovery(
                 "original_retained": True,
             }
         )
-        recovery.status = (
-            "rejected"
-            if isinstance(exc, PdfSanitizationError)
-            else "remediation_required"
-        )
+        attempts = list(receipt.get("attempts", []))
+        if attempts:
+            attempts[-1] = {
+                **attempts[-1],
+                "completed_at": datetime.now(UTC).isoformat(),
+                "outcome": "failed",
+                "failure_category": type(exc).__name__,
+                "failure_detail": str(exc)[:300],
+            }
+            receipt["attempts"] = attempts
+        attempted_methods = [item["method"] for item in attempts]
+        remaining = [item for item in _METHODS if item not in attempted_methods]
+        if isinstance(exc, PdfSanitizationError) and remaining:
+            recovery.status = "queued"
+            receipt["next_attempt_pending"] = True
+        else:
+            recovery.status = "rejected"
+            receipt["terminal_classification"] = deterministic_terminal_classification(
+                rejection_reason=str(exc), attempted_methods=attempted_methods
+            )
+            receipt["founder_action"] = _founder_action(
+                receipt["terminal_classification"]
+            )
         recovery.receipt = receipt
         recovery.updated_at = datetime.now(UTC)
         db.commit()
@@ -133,6 +160,7 @@ def _recover(
     recovery_id: UUID,
     store: EvidenceObjectStore,
     pipeline: ScientificIngestionPipeline,
+    adviser: RecoveryAdviser | None,
 ) -> ScientificIngestionRecovery:
     recovery = db.get(ScientificIngestionRecovery, recovery_id)
     if recovery is None:
@@ -147,24 +175,77 @@ def _recover(
             byte_size=0,
         )
     )
-    try:
+    receipt = dict(recovery.receipt)
+    attempts = list(receipt.get("attempts", []))
+    attempted_methods = [item["method"] for item in attempts]
+    available_methods = [item for item in _METHODS if item not in attempted_methods]
+    diagnostic = RecoveryDiagnostic(
+        filename=original.filename,
+        media_type=original.media_type,
+        rejection_stage=_latest_stage(original) or "unknown",
+        rejection_reason=_latest_reason(original) or "unknown rejection",
+        attempted_methods=attempted_methods,
+        available_methods=available_methods,
+    )
+    method, advice = select_next_method(diagnostic, adviser)
+    if method is None:
+        classification = deterministic_terminal_classification(
+            rejection_reason=diagnostic.rejection_reason,
+            attempted_methods=attempted_methods,
+        )
+        receipt["terminal_classification"] = classification
+        receipt["founder_action"] = _founder_action(classification)
+        recovery.status = "rejected"
+        recovery.receipt = receipt
+        recovery.updated_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(recovery)
+        return recovery
+    attempt = {
+        "number": len(attempts) + 1,
+        "method": method,
+        "started_at": datetime.now(UTC).isoformat(),
+    }
+    if advice is not None:
+        attempt["codex_advice"] = {
+            "action": advice.action,
+            "terminal_classification": advice.terminal_classification,
+            "rationale": advice.rationale,
+            "advisory_only": True,
+        }
+    attempts.append(attempt)
+    receipt["attempts"] = attempts
+    receipt["recovery_attempts"] = len(attempts)
+    recovery.receipt = receipt
+    recovery.updated_at = datetime.now(UTC)
+    db.commit()
+    if method == "structural_repair":
         result = sanitize_pdf(content)
-        recovered_content = result.content
-        recovered_digest = result.sanitized_digest
         recovered_filename = f"{Path(original.filename).stem[:160]}-sanitized.pdf"
         recovered_media_type = "application/pdf"
         recovery_mode = "hermes-inert-pdf-v1"
         removed = result.removed
         text_equivalent = True
-    except PdfSanitizationError:
+    elif method == "independent_parser":
         result = recover_pdf_as_inert_text(content)
-        recovered_content = result.content
-        recovered_digest = result.recovered_digest
         recovered_filename = f"{Path(original.filename).stem[:160]}-recovered.txt"
         recovered_media_type = "text/plain"
         recovery_mode = "hermes-pdfium-text-v1"
         removed = {}
         text_equivalent = False
+    else:
+        result = recover_pdf_with_offline_ocr(content)
+        recovered_filename = f"{Path(original.filename).stem[:160]}-ocr.txt"
+        recovered_media_type = "text/plain"
+        recovery_mode = "hermes-offline-ocr-v1"
+        removed = {}
+        text_equivalent = False
+    recovered_content = result.content
+    recovered_digest = (
+        result.sanitized_digest
+        if method == "structural_repair"
+        else result.recovered_digest
+    )
     reference = store.put(recovered_content, expected_digest=recovered_digest)
     sanitized = db.scalar(
         select(ScientificIngestionJob).where(
@@ -208,6 +289,9 @@ def _recover(
         db.commit()
         db.refresh(sanitized)
     sanitized = process_ingestion(db, sanitized.id, store, pipeline)
+    attempt["completed_at"] = datetime.now(UTC).isoformat()
+    attempt["derived_digest"] = recovered_digest
+    attempt["pipeline_status"] = sanitized.status
     receipt = {
         "schema_version": "pdf-sanitization-receipt-v1.0.0",
         "original_job_id": str(original.id),
@@ -224,16 +308,42 @@ def _recover(
         "visual_samples_equivalent": True,
         "removed": removed,
         "normal_pipeline_status": sanitized.status,
-        "recovery_attempts": int(recovery.receipt.get("recovery_attempts", 1)),
+        "recovery_attempts": len(attempts),
+        "attempts": attempts,
         "completed_at": datetime.now(UTC).isoformat(),
     }
     recovery = db.get(ScientificIngestionRecovery, recovery_id)
     if recovery is None:
         raise RuntimeError("recovery record is unavailable after publication")
     recovery.sanitized_job_id = sanitized.id
-    recovery.status = (
-        "recovered" if sanitized.status == "published" else "remediation_required"
-    )
+    if sanitized.status == "published":
+        recovery.status = "recovered"
+    elif _latest_reason(sanitized) == "document contains instruction-injection content":
+        recovery.status = "rejected"
+        receipt["terminal_classification"] = "security_blocked"
+        receipt["founder_action"] = _founder_action("security_blocked")
+        receipt["redacted_edition_proposal"] = {
+            "schema_version": "provenance-redaction-proposal-v1.0.0",
+            "original_job_id": str(original.id),
+            "original_digest": original.content_digest,
+            "candidate_job_id": str(sanitized.id),
+            "candidate_digest": recovered_digest,
+            "scanner_finding": _latest_reason(sanitized),
+            "proposed_action": "create_reviewed_redacted_edition",
+            "automatic_execution": False,
+            "founder_approval_required": True,
+            "publication_authorized": False,
+        }
+    elif any(item not in attempted_methods + [method] for item in _METHODS):
+        recovery.status = "queued"
+        receipt["next_attempt_pending"] = True
+    else:
+        recovery.status = "rejected"
+        receipt["terminal_classification"] = deterministic_terminal_classification(
+            rejection_reason=_latest_reason(sanitized) or "recovery pipeline rejected",
+            attempted_methods=attempted_methods + [method],
+        )
+        receipt["founder_action"] = _founder_action(receipt["terminal_classification"])
     recovery.receipt = receipt
     recovery.updated_at = datetime.now(UTC)
     db.commit()
@@ -260,6 +370,8 @@ def requeue_recoverable_outcomes(db: Session) -> int:
         if original is None or original.status != "rejected":
             continue
         receipt = dict(record.receipt)
+        if receipt.get("terminal_classification"):
+            continue
         sanitized = (
             db.get(ScientificIngestionJob, record.sanitized_job_id)
             if record.sanitized_job_id
@@ -273,38 +385,18 @@ def requeue_recoverable_outcomes(db: Session) -> int:
             record.status = "recovered"
             record.updated_at = now
             continue
-        attempts = int(receipt.get("recovery_attempts", 1))
-        if attempts >= 2:
-            continue
-        if record.status == "remediation_required":
-            if (
-                sanitized is None
-                or sanitized.status != "rejected"
-                or not receipt.get("visual_samples_equivalent")
-            ):
-                continue
-            report = dict(sanitized.stage_report)
-            stages = list(report.get("stages", []))
-            stages.append(
-                {
-                    "stage": "quarantine",
-                    "status": "requeued",
-                    "reason": "equivalent inert recovery edition retried",
-                    "at": now.isoformat(),
-                }
+        if not receipt.get("attempts"):
+            receipt["legacy_recovery_attempts"] = int(
+                receipt.get("recovery_attempts", 0)
             )
-            report["stages"] = stages
-            sanitized.stage_report = report
-            sanitized.status = "quarantined"
-            sanitized.updated_at = now
-        elif receipt.get("failure_category") != "PdfSanitizationError":
+            receipt["recovery_attempts"] = 0
+            receipt["controller_version"] = "bounded-recovery-v1"
+            receipt["controller_adopted_at"] = now.isoformat()
+            record.receipt = receipt
+            record.status = "queued"
+            record.updated_at = now
+            requeued += 1
             continue
-        receipt["recovery_attempts"] = attempts + 1
-        receipt["requeued_at"] = now.isoformat()
-        record.receipt = receipt
-        record.status = "queued"
-        record.updated_at = now
-        requeued += 1
     db.commit()
     return requeued
 
@@ -332,3 +424,28 @@ def requeue_stale_recoveries(db: Session, *, stale_after_seconds: int) -> int:
 def _latest_reason(job: ScientificIngestionJob) -> str | None:
     stages = job.stage_report.get("stages", [])
     return stages[-1].get("reason") if stages else None
+
+
+def _latest_stage(job: ScientificIngestionJob) -> str | None:
+    stages = job.stage_report.get("stages", [])
+    return stages[-1].get("stage") if stages else None
+
+
+_METHODS: tuple[RecoveryMethod, ...] = (
+    "structural_repair",
+    "independent_parser",
+    "offline_ocr",
+)
+
+
+def _founder_action(classification: str) -> str:
+    return {
+        "replacement_required": "Provide a different source edition.",
+        "security_blocked": (
+            "Review a provenance-preserving redacted-edition proposal; scanner findings "
+            "remain binding."
+        ),
+        "unsupported_format": "Convert the source using an approved format adapter.",
+        "corrupt_unrecoverable": "Provide a verified replacement or request manual review.",
+        "manual_review_required": "Review bounded diagnostics and approve a new method.",
+    }[classification]

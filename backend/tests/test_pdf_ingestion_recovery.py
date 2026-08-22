@@ -12,6 +12,7 @@ from app.ingestion.pdf_sanitizer import (
     sanitize_pdf,
 )
 from app.ingestion.pipeline import ScientificIngestionPipeline, _has_active_pdf_content
+from app.ingestion.recovery_controller import RecoveryAdvice, RecoveryDiagnostic
 from app.services.ingestion_recovery import requeue_recoverable_outcomes
 from pypdf import PdfReader, PdfWriter
 
@@ -103,3 +104,44 @@ def test_published_remediation_is_promoted_to_recovered() -> None:
     assert recovery.receipt["normal_pipeline_status"] == "published"
     assert recovery.receipt["reconciled_after_remediation"] is True
     db.commit.assert_called_once_with()
+
+
+def test_legacy_terminal_recovery_is_adopted_by_bounded_controller() -> None:
+    original_id = UUID("10000000-0000-4000-8000-000000000011")
+    original = SimpleNamespace(id=original_id, status="rejected")
+    recovery = SimpleNamespace(
+        original_job_id=original_id,
+        sanitized_job_id=None,
+        status="rejected",
+        receipt={"recovery_attempts": 2},
+        updated_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [recovery]
+    db.get.return_value = original
+
+    assert requeue_recoverable_outcomes(db) == 1
+    assert recovery.status == "queued"
+    assert recovery.receipt["legacy_recovery_attempts"] == 2
+    assert recovery.receipt["recovery_attempts"] == 0
+    assert recovery.receipt["controller_version"] == "bounded-recovery-v1"
+
+
+def test_codex_recovery_advice_cannot_authorize_publication() -> None:
+    diagnostic = RecoveryDiagnostic(
+        filename="paper.pdf",
+        media_type="application/pdf",
+        rejection_stage="validate",
+        rejection_reason="document contains instruction-injection content",
+        attempted_methods=["structural_repair"],
+        available_methods=["independent_parser", "offline_ocr"],
+    )
+    advice = RecoveryAdvice(
+        action="classify_terminal",
+        terminal_classification="security_blocked",
+        rationale="The scanner finding remains binding.",
+    )
+
+    assert diagnostic.rejection_reason.endswith("instruction-injection content")
+    assert advice.action == "classify_terminal"
+    assert "publish" not in advice.model_dump_json()

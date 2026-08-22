@@ -26,6 +26,9 @@ unit=invariance-swarm-research-ingestion-recovery-steward.service
 test -f "$runtime/compose.yaml"
 test -f "$root/worker/systemd/$unit"
 test -S /var/run/docker.sock
+test -d /etc/invariance-swarm/codex-recovery
+test "$(stat -c %u /etc/invariance-swarm/codex-recovery)" = 10001
+test "$(stat -c %a /etc/invariance-swarm/codex-recovery)" = 700
 install -o root -g root -m 0644 \
   "$root/worker/systemd/$unit" "/etc/systemd/system/$unit"
 systemd-analyze verify "/etc/systemd/system/$unit"

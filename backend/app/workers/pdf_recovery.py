@@ -4,9 +4,11 @@ import argparse
 import json
 import os
 import time
+from pathlib import Path
 
 from app.api.routes.ingestion import _pipeline, _store
 from app.db.session import SessionLocal
+from app.ingestion.recovery_controller import CodexRecoveryAdviser
 from app.schemas.ingestion import IngestionRecoveryCreate
 from app.services.ingestion_recovery import (
     process_next_recovery,
@@ -31,6 +33,7 @@ def run(
     processed = 0
     dirty = False
     last_recovery_at = 0.0
+    adviser = _adviser_from_environment()
     while continuous or processed < max_items:
         with SessionLocal() as db:
             if queue_project is not None:
@@ -73,7 +76,7 @@ def run(
             time.sleep(poll_seconds)
             continue
         with SessionLocal() as db:
-            recovery = process_next_recovery(db, _store(), _pipeline())
+            recovery = process_next_recovery(db, _store(), _pipeline(), adviser)
         if recovery is None:
             if dirty and time.monotonic() - last_recovery_at >= settle_seconds:
                 with SessionLocal() as db:
@@ -102,6 +105,25 @@ def run(
         time.sleep(poll_seconds)
     print(json.dumps({"event": "pdf_recovery_worker_stopped", "processed": processed}))
     return 0
+
+
+def _adviser_from_environment() -> CodexRecoveryAdviser | None:
+    if os.environ.get("SWARM_RECOVERY_CODEX_ENABLED", "false").lower() != "true":
+        return None
+    binary = Path(os.environ.get("SWARM_RECOVERY_CODEX_BINARY", "/usr/bin/codex"))
+    codex_home = Path(
+        os.environ.get("SWARM_RECOVERY_CODEX_HOME", "/run/codex-recovery")
+    )
+    if not binary.is_file() or not codex_home.is_dir():
+        raise RuntimeError("Codex recovery adviser is enabled but unavailable.")
+    return CodexRecoveryAdviser(
+        binary=binary,
+        codex_home=codex_home,
+        model=os.environ.get("SWARM_RECOVERY_CODEX_MODEL", "gpt-5.6-sol"),
+        timeout_seconds=float(
+            os.environ.get("SWARM_RECOVERY_CODEX_TIMEOUT_SECONDS", "90")
+        ),
+    )
 
 
 def main() -> int:

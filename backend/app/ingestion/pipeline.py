@@ -20,6 +20,7 @@ _INJECTION_PATTERNS = tuple(
         r"(?:read|send|upload|print)\s+(?:the\s+)?(?:contents\s+of\s+)?/(?:run|etc)/secrets",
         r"(?:approve|authorize)\s+(?:this|the)\s+(?:task|mission|request)",
         r"(?:execute|call)\s+(?:this\s+)?tool",
+        r"execute\s+(?:this\s+)?(?:bash\s+)?shell\s+command",
         r"run\s+(?:this\s+)?shell",
         r"run\s+commands?\s+in\s+(?:a\s+)?(?:bash\s+)?shell",
         r"treat\s+(?:this|the following)\s+(?:text\s+)?as\s+(?:a\s+)?system\s+instruction",
