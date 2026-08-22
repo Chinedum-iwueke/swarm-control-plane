@@ -304,6 +304,23 @@ class ControlPlaneClient:
             f"Control plane returned HTTP {response.status_code}: {detail}"
         )
 
+    async def scientific_ingestion_by_id(self, job_id: str) -> dict[str, Any] | None:
+        try:
+            response = await self._client.get(
+                f"/v1/research/ingestion/jobs/{job_id}",
+                timeout=self._settings.request_timeout_seconds,
+            )
+        except httpx.TransportError as exc:
+            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        if response.status_code == 404:
+            return None
+        if response.is_success:
+            return response.json()
+        detail = _safe_detail(response)
+        raise ControlPlaneError(
+            f"Control plane returned HTTP {response.status_code}: {detail}"
+        )
+
     async def process_scientific_ingestion(self, job_id: str) -> dict[str, Any]:
         return await self._request(
             "POST",

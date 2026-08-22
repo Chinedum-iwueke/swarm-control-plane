@@ -22,6 +22,7 @@ class FakeResearchClient:
         self.runs: list[dict] = []
         self.projection_rebuilds = 0
         self.recoveries: dict[str, dict] = {}
+        self.jobs_by_id: dict[str, dict] = {}
 
     async def scientific_ingestion_by_digest(self, content_digest: str) -> dict | None:
         return self.jobs.get(content_digest)
@@ -47,6 +48,9 @@ class FakeResearchClient:
 
     async def recovered_scientific_ingestion(self, job_id: str) -> dict | None:
         return self.recoveries.get(job_id)
+
+    async def scientific_ingestion_by_id(self, job_id: str) -> dict | None:
+        return self.jobs_by_id.get(job_id)
 
     async def reconcile_corpus(self, payload: dict) -> dict:
         self.runs.append(payload)
@@ -297,6 +301,31 @@ async def test_finalize_only_reconciles_published_recovery(
     assert item["original_ingestion_job_id"] == original["ingestion_job_id"]
     assert item["recovery_id"] == "recovery-1"
     assert client.runs[-1]["items"][0]["disposition"] == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_finalize_only_reconciles_original_job_published_after_remediation(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "books" / "remediated.pdf"
+    source.write_bytes(b"%PDF remediated edition")
+    client = RetryResearchClient()
+    first = await sync_research_inbox(settings, client)
+    original = first["files"][0]
+    client.jobs_by_id[original["ingestion_job_id"]] = {
+        "id": original["ingestion_job_id"],
+        "content_digest": original["content_digest"],
+        "status": "published",
+        "published_object_ids": ["remediated-object"],
+    }
+
+    report = await sync_research_inbox(settings, client, finalize_only=True)
+
+    item = report["files"][0]
+    assert item["disposition"] == "canonical"
+    assert item["canonical_object_ids"] == ["remediated-object"]
+    assert item["stage_report"] is None
 
 
 @pytest.mark.asyncio
