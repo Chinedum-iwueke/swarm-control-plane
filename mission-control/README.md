@@ -152,6 +152,17 @@ The status includes scanned, remaining, and per-disposition counts. Atomic
 checkpoints permit a later refresh to retain all completed canonical work after
 an interruption. An exclusive lock rejects overlapping refreshes.
 
+If every file is checkpointed but final reconciliation or projection recovery was
+interrupted, finish without retrying noncanonical files:
+
+```bash
+"$HOME/Library/Application Support/Hermes Mission Control/venv/bin/hermes-mission-control" \
+  sync --finalize-only
+```
+
+This mode fails closed unless inbox membership and every cached file fingerprint
+still match the completed checkpoint.
+
 ## Token rotation
 
 1. Stage the replacement token without printing it.

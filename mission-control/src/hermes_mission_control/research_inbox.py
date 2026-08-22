@@ -32,7 +32,10 @@ def research_inbox_status(settings: MissionControlSettings) -> dict[str, Any]:
 
 
 async def sync_research_inbox(
-    settings: MissionControlSettings, client: ControlPlaneClient
+    settings: MissionControlSettings,
+    client: ControlPlaneClient,
+    *,
+    finalize_only: bool = False,
 ) -> dict[str, Any]:
     root = settings.research_inbox
     paths = [
@@ -49,31 +52,44 @@ async def sync_research_inbox(
             ) from exc
         state = _load_index(settings.research_inbox_index_path)
         entries: dict[str, Any] = state["entries"]
-        digest_entries = {
-            entry["item"].get("content_digest"): entry
-            for entry in entries.values()
-            if entry.get("item", {}).get("disposition") == "canonical"
-        }
-        results: list[dict[str, Any]] = []
         corpus_changed = bool(state.get("projection_dirty", False))
-        state["run"] = _progress("running", total=len(paths), scanned=0, results=[])
-        _save_index(settings.research_inbox_index_path, state)
-        for path in paths:
-            relative = path.relative_to(root)
-            key = relative.as_posix()
-            item, entry, changed = await _sync_path(
-                settings, client, root, path, relative, entries.get(key), digest_entries
-            )
-            results.append(item)
-            entries[key] = entry
-            if item.get("disposition") == "canonical":
-                digest_entries[item["content_digest"]] = entry
-            corpus_changed = corpus_changed or changed
-            state["projection_dirty"] = corpus_changed
+        if finalize_only:
+            results = _finalize_results(root, paths, state)
             state["run"] = _progress(
-                "running", total=len(paths), scanned=len(results), results=results
+                "finalizing", total=len(paths), scanned=len(results), results=results
             )
             _save_index(settings.research_inbox_index_path, state)
+        else:
+            digest_entries = {
+                entry["item"].get("content_digest"): entry
+                for entry in entries.values()
+                if entry.get("item", {}).get("disposition") == "canonical"
+            }
+            results = []
+            state["run"] = _progress("running", total=len(paths), scanned=0, results=[])
+            _save_index(settings.research_inbox_index_path, state)
+            for path in paths:
+                relative = path.relative_to(root)
+                key = relative.as_posix()
+                item, entry, changed = await _sync_path(
+                    settings,
+                    client,
+                    root,
+                    path,
+                    relative,
+                    entries.get(key),
+                    digest_entries,
+                )
+                results.append(item)
+                entries[key] = entry
+                if item.get("disposition") == "canonical":
+                    digest_entries[item["content_digest"]] = entry
+                corpus_changed = corpus_changed or changed
+                state["projection_dirty"] = corpus_changed
+                state["run"] = _progress(
+                    "running", total=len(paths), scanned=len(results), results=results
+                )
+                _save_index(settings.research_inbox_index_path, state)
 
         current_keys = {path.relative_to(root).as_posix() for path in paths}
         state["entries"] = {
@@ -122,6 +138,31 @@ async def sync_research_inbox(
             "index": str(settings.research_inbox_index_path),
         },
     }
+
+
+def _finalize_results(
+    root: Path, paths: list[Path], state: dict[str, Any]
+) -> list[dict[str, Any]]:
+    entries: dict[str, Any] = state["entries"]
+    run = state.get("run", {})
+    keys = [path.relative_to(root).as_posix() for path in paths]
+    if (
+        run.get("scanned") != len(paths)
+        or run.get("total") != len(paths)
+        or set(entries) != set(keys)
+    ):
+        raise ResearchUploadError(
+            "Finalize-only requires a complete checkpoint for the current inbox."
+        )
+    results = []
+    for path, key in zip(paths, keys):
+        entry = entries[key]
+        if entry.get("fingerprint") != _safe_fingerprint(path):
+            raise ResearchUploadError(f"Inbox source changed after checkpoint: {key}")
+        item = dict(entry["item"])
+        item["path"] = key
+        results.append(item)
+    return results
 
 
 async def _sync_path(
