@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import Field
@@ -67,7 +67,7 @@ def collect(settings: ProbeSettings) -> dict:
         "schema_version": "fleet-observation-v1.0.0",
         "sample_id": f"{int(time.time())}-{uuid.uuid4().hex[:12]}",
         "machine": settings.machine,
-        "observed_at": datetime.now(UTC).isoformat(),
+        "observed_at": datetime.now(timezone.utc).isoformat(),
         "metrics": {
             "cpu_utilization_percent": _percent(cpu_delta - idle_delta, cpu_delta),
             "load_per_core": round(load, 4),
