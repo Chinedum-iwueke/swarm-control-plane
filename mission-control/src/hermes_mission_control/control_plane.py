@@ -72,6 +72,9 @@ class ControlPlaneClient:
             "/v1/research/ingestion/recoveries/blocked-artifacts",
             {"total": 0, "counts_by_classification": {}, "items": []},
         )
+        fleet_health = await self._optional_object(
+            "/v1/fleet/health", {"generated_at": None, "machines": []}
+        )
         surveillance_sources = await self._optional_collection(
             "/v1/research/surveillance/sources"
         )
@@ -103,6 +106,7 @@ class ControlPlaneClient:
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,
+            "fleet_health": fleet_health,
             "surveillance_sources": surveillance_sources,
             "surveillance_candidates": surveillance_candidates,
             "surveillance_digests": surveillance_digests,

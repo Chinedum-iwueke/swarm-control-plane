@@ -19,6 +19,7 @@ from app.models import (
     ScientificIngestionJob,
     Task,
 )
+from app.models.fleet import FleetIncident, MachineObservation
 from app.models.retrieval import EvidenceRetrievalState
 
 TASKS = Gauge("hermes_tasks", "Tasks by status", ["status"])
@@ -54,6 +55,14 @@ CORPUS_OBJECTS = Gauge(
 )
 CORPUS_STORAGE = Gauge(
     "hermes_corpus_artifact_bytes", "Bytes referenced by canonical corpus artifacts"
+)
+FLEET_INCIDENTS = Gauge(
+    "hermes_fleet_incidents",
+    "Fleet incidents by machine and state",
+    ["machine", "state"],
+)
+FLEET_SAMPLE_AGE = Gauge(
+    "hermes_fleet_sample_age_seconds", "Age of latest fleet sample", ["machine"]
 )
 
 router = APIRouter(
@@ -117,6 +126,23 @@ def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
     OLDEST_LEASE_AGE.set(
         max(0.0, (now - oldest_lease).total_seconds()) if oldest_lease else 0
     )
+    FLEET_INCIDENTS.clear()
+    for machine, state, count in db.execute(
+        select(FleetIncident.machine, FleetIncident.state, func.count()).group_by(
+            FleetIncident.machine, FleetIncident.state
+        )
+    ).all():
+        FLEET_INCIDENTS.labels(machine=machine, state=state).set(count)
+    FLEET_SAMPLE_AGE.clear()
+    for machine, observed_at in db.execute(
+        select(
+            MachineObservation.machine,
+            func.max(MachineObservation.observed_at),
+        ).group_by(MachineObservation.machine)
+    ).all():
+        FLEET_SAMPLE_AGE.labels(machine=machine).set(
+            max(0.0, (now - observed_at).total_seconds())
+        )
     PAUSED_SCOPES.clear()
     for scope_type, count in db.execute(
         select(ControlScope.scope_type, func.count())

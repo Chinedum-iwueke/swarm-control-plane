@@ -614,8 +614,25 @@ function renderInfrastructure() {
   document.getElementById("infra-strip").innerHTML = labels.map(([label, value], index) => `
     <div class="machine-cell"><span class="machine-symbol">${["AP", "PG", "RD", "BK"][index]}</span><div><strong>${label}</strong><small>VM2 production</small></div>${statusBadge(value === "healthy" || value === "verified" ? "success" : value)}</div>
   `).join("");
+  const machines = state.dashboard.fleet_health?.machines || [];
+  document.getElementById("fleet-health").innerHTML = machines.length ? machines.map((machine) => {
+    const metrics = machine.metrics || {};
+    const activeIncidents = machine.incidents || [];
+    return `<article class="entity-row">
+      <div class="entity-primary">
+        <strong>${escapeHtml(machine.machine)}</strong>
+        <div class="entity-meta"><span>CPU ${formatPercent(metrics.cpu_utilization_percent)}</span><span>Memory available ${formatPercent(metrics.memory_available_percent)}</span><span>Disk ${formatPercent(metrics.disk_used_percent)}</span><span>${activeIncidents.length} active incidents</span></div>
+        <div class="entity-meta"><span>Last sample ${relativeTime(machine.last_observed_at)}</span><span>PSI CPU ${formatPercent(metrics.cpu_pressure_avg10)}</span><span>PSI I/O ${formatPercent(metrics.io_pressure_avg10)}</span></div>
+      </div>
+      <div class="entity-side">${statusBadge(machine.status === "healthy" ? "success" : machine.status)}</div>
+    </article>`;
+  }).join("") : empty("No fleet observations received yet.");
   document.getElementById("infra-tasks").innerHTML = tasks.length ? tasks.map((task) => taskEntityRow(task)).join("") : empty("No infrastructure tasks recorded.");
   bindEntityButtons();
+}
+
+function formatPercent(value) {
+  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "–";
 }
 
 function renderResearch() {

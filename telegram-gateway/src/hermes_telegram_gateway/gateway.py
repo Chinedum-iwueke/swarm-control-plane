@@ -93,6 +93,17 @@ class RestrictedTelegramGateway:
                     f"Task ready for execution\n"
                     f"{payload['task_number']} · {payload['task_title']}",
                 )
+            elif kind == "fleet_incident":
+                evidence = payload.get("evidence") or {}
+                detail = ", ".join(
+                    f"{key}={value}" for key, value in sorted(evidence.items())
+                )[:300]
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Fleet {payload['severity']}\n"
+                    f"{payload['machine']} · {payload['signal']}\n"
+                    f"{payload['summary']}\n{detail}",
+                )
             else:
                 continue
             await self._channel.acknowledge_notification(

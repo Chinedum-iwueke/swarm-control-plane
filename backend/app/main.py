@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.routes import (
+    agent_fleet_router,
     agent_notes_router,
     agent_packages_router,
     agent_proposals_router,
@@ -13,6 +14,7 @@ from app.api.routes import (
     curriculum_router,
     data_contracts_router,
     evidence_router,
+    fleet_router,
     founder_channel_router,
     governance_router,
     graph_router,
@@ -62,10 +64,12 @@ app.include_router(agents_router)
 app.include_router(controls_router)
 app.include_router(data_contracts_router)
 app.include_router(evidence_router)
+app.include_router(fleet_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
 app.include_router(graph_router)
 app.include_router(agent_runtime_router)
+app.include_router(agent_fleet_router)
 app.include_router(agent_research_router)
 app.include_router(agent_notes_router)
 app.include_router(tasks_router)

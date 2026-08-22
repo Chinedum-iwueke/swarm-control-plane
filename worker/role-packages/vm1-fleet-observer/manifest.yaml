@@ -1,0 +1,21 @@
+schema_version: 1
+name: vm1-fleet-observer
+version: 1.0.0
+role: Bounded VM1 resource, pressure, capacity, uptime, and approved service observer
+task_types: [fleet_observation]
+workflows: []
+required_capabilities: [fleet-observation, resource-health, service-health]
+allowed_machines: [vm1-developer]
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: read-only-fleet-observation
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots: [probe-state]
+repository_profile:
+  repositories: []
+  primary_checkout_write: false
+  remote_write: false

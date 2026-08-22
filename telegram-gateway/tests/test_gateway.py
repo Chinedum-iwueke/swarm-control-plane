@@ -376,6 +376,42 @@ async def test_outbox_notification_is_acknowledged_after_delivery(
 
 
 @pytest.mark.asyncio
+async def test_fleet_incident_uses_outbox_and_bounded_evidence(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [
+        {
+            "id": "fleet-notification-1",
+            "kind": "fleet_incident",
+            "payload": {
+                "incident_id": "incident-1",
+                "machine": "vm2-deployment",
+                "signal": "memory_pressure",
+                "severity": "critical",
+                "summary": "VM2 memory pressure is sustained",
+                "evidence": {"value": 5.0, "threshold": 10.0},
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+
+    assert "Fleet critical" in telegram.sent[0][1]
+    assert "vm2-deployment" in telegram.sent[0][1]
+    assert len(telegram.sent[0][1]) < 500
+    assert channel.acknowledged == [("fleet-notification-1", "telegram:456")]
+
+
+@pytest.mark.asyncio
 async def test_outbox_is_not_acknowledged_when_delivery_fails(
     tmp_path: Path,
 ) -> None:

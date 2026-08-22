@@ -7,6 +7,8 @@ from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.data_contracts import router as data_contracts_router
 from app.api.routes.evidence import router as evidence_router
+from app.api.routes.fleet import agent_router as agent_fleet_router
+from app.api.routes.fleet import router as fleet_router
 from app.api.routes.founder_channel import router as founder_channel_router
 from app.api.routes.governance import router as governance_router
 from app.api.routes.graph import router as graph_router
@@ -33,6 +35,7 @@ from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
 
 __all__ = [
+    "agent_fleet_router",
     "agent_notes_router",
     "agent_packages_router",
     "agent_proposals_router",
@@ -45,6 +48,7 @@ __all__ = [
     "curriculum_router",
     "data_contracts_router",
     "evidence_router",
+    "fleet_router",
     "founder_channel_router",
     "governance_router",
     "graph_router",

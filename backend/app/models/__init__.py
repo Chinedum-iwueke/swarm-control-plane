@@ -20,6 +20,7 @@ from app.models.evidence import (
     EvidenceLifecycleImpactReport,
     EvidenceLifecycleState,
 )
+from app.models.fleet import FleetIncident, FleetIncidentEvent, MachineObservation
 from app.models.governance import (
     ApprovalEvent,
     Artifact,
@@ -109,8 +110,11 @@ __all__ = [
     "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
+    "FleetIncident",
+    "FleetIncidentEvent",
     "FounderNotification",
     "FounderProposal",
+    "MachineObservation",
     "MissionEvent",
     "OperationalNote",
     "OperationalNoteEvent",
