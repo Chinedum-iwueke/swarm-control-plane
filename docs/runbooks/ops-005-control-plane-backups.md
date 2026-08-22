@@ -58,6 +58,8 @@ connects to or mutates the production database.
 
 Both hardened units keep `ProtectHome=true` and point Docker at a private empty
 `RuntimeDirectory`. Do not redirect Docker to `/root/.docker` or weaken home protection.
+They receive the `docker` supplementary group solely to open the mode-`0660` Docker
+socket; their Linux capability bounding sets remain empty.
 
 ## Failure and recovery
 
