@@ -94,6 +94,8 @@ async def test_research_copilot_uses_only_canonical_read_routes(
     seen: list[tuple[str, str, dict | None]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/replay"):
+            assert request.extensions["timeout"]["read"] == 120.0
         seen.append(
             (
                 request.method,

@@ -165,7 +165,9 @@ class ControlPlaneClient:
 
     async def replay_research_citation(self, object_id: str) -> dict[str, Any]:
         return await self._request(
-            "GET", f"/v1/research/retrieval/objects/{object_id}/replay"
+            "GET",
+            f"/v1/research/retrieval/objects/{object_id}/replay",
+            timeout=120.0,
         )
 
     async def get_evidence_dossier(self, dossier_id: str) -> dict[str, Any]:
