@@ -72,6 +72,14 @@ visualization; the relationship list is the accessible source of truth. Selectin
 node can replay canonical evidence but cannot register edges, rebuild projections or
 change evidence lifecycle state.
 
+The integrated Research Workspace groups these capabilities into three deep-linkable
+modes: **Ask**, **Explore**, and **Library**. A shared working-context strip retains at
+most eight selected canonical identities while the founder moves between modes. It is
+browser-session navigation state only: it does not alter retrieval scope, write graph
+edges, register evidence, or become part of institutional memory. Keyboard arrow keys
+move among the semantic tabs, and mobile keeps the same content and authority model in
+a single-column layout.
+
 The research inbox defaults to
 `~/Library/Application Support/Hermes Mission Control/data/research-inbox` when
 the explicit setting is omitted. It contains optional classification folders:

@@ -1,5 +1,7 @@
 const allowedViews = new Set(["command", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
+const allowedResearchModes = new Set(["ask", "explore", "library"]);
+const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
 const state = {
   dashboard: null,
   activeView: allowedViews.has(requestedView) ? requestedView : "command",
@@ -11,6 +13,8 @@ const state = {
   graphSelectedId: null,
   graphView: window.matchMedia("(max-width: 680px)").matches ? "list" : "visual",
   graphTransform: { scale: 1, x: 0, y: 0 },
+  researchMode: allowedResearchModes.has(requestedResearchMode) ? requestedResearchMode : "ask",
+  researchContext: [],
 };
 
 const intentHeaders = {
@@ -65,6 +69,14 @@ document.querySelectorAll("[data-graph-view]").forEach((button) => {
   });
 });
 document.getElementById("graph-query-form").addEventListener("submit", querySelectedGraphNode);
+document.querySelectorAll("[data-research-mode]").forEach((button) => {
+  button.addEventListener("click", () => setResearchMode(button.dataset.researchMode));
+  button.addEventListener("keydown", (event) => navigateResearchTabs(event, button));
+});
+document.getElementById("clear-research-context").addEventListener("click", () => {
+  state.researchContext = [];
+  renderResearchContext();
+});
 
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -243,6 +255,38 @@ function navigate(view) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function setResearchMode(mode, { focus = false } = {}) {
+  if (!allowedResearchModes.has(mode)) return;
+  state.researchMode = mode;
+  document.querySelectorAll("[data-research-mode]").forEach((button) => {
+    const active = button.dataset.researchMode === mode;
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+    if (active && focus) button.focus();
+  });
+  document.querySelectorAll("[data-research-panel]").forEach((panel) => {
+    const active = panel.dataset.researchPanel === mode;
+    panel.hidden = !active;
+    panel.classList.toggle("active", active);
+  });
+  const url = new URL(window.location.href);
+  if (mode === "ask") url.searchParams.delete("workspace");
+  else url.searchParams.set("workspace", mode);
+  window.history.replaceState({}, "", url);
+  if (mode === "explore" && state.graphData) renderGraph(state.graphData);
+}
+
+function navigateResearchTabs(event, current) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const tabs = [...document.querySelectorAll("[data-research-mode]")];
+  let index = tabs.indexOf(current);
+  if (event.key === "Home") index = 0;
+  else if (event.key === "End") index = tabs.length - 1;
+  else index = (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  setResearchMode(tabs[index].dataset.researchMode, { focus: true });
+}
+
 function openIntake(kind) {
   const dialog = document.getElementById("intake-dialog");
   dialog.querySelector("[name=kind]").value = kind;
@@ -281,6 +325,9 @@ function renderAll() {
   renderResearch();
   renderNotes();
   renderArtifacts();
+  renderResearchWorkspaceStatus();
+  renderResearchContext();
+  setResearchMode(state.researchMode);
 }
 
 function renderNotes() {
@@ -1100,6 +1147,55 @@ function setCopilotState(label, busy) {
   element.innerHTML = `<span class="state-dot"></span>${escapeHtml(label)}`;
 }
 
+function renderResearchWorkspaceStatus() {
+  const element = document.getElementById("research-workspace-status");
+  if (!element) return;
+  const graph = state.graphData || {};
+  const domains = state.dashboard?.research_domains || [];
+  const blocked = state.dashboard?.blocked_artifacts || {};
+  const graphReady = Boolean(graph.projection_version);
+  element.innerHTML = `
+    <div><span>Projection</span><strong>${escapeHtml(graph.projection_version || "Unavailable")}</strong><small>${graphReady ? "Current bounded read model" : "Graph evidence unavailable"}</small></div>
+    <div><span>Visible graph</span><strong>${(graph.nodes || []).length.toLocaleString()} / ${(graph.edges || []).length.toLocaleString()}</strong><small>Nodes / relationships</small></div>
+    <div><span>Qualified domains</span><strong>${domains.length.toLocaleString()}</strong><small>Authorized research curricula</small></div>
+    <div><span>Ingestion attention</span><strong>${Number(blocked.total || 0).toLocaleString()}</strong><small>Blocked or quarantined artifacts</small></div>`;
+}
+
+function addResearchContext(item) {
+  if (!item?.id) return;
+  const normalized = {
+    id: String(item.id),
+    label: String(item.label || item.object_type || "Canonical evidence"),
+    type: String(item.type || item.object_type || "evidence"),
+    digest: String(item.digest || item.content_digest || ""),
+    source: item.source || null,
+  };
+  state.researchContext = [normalized, ...state.researchContext.filter((entry) => entry.id !== normalized.id)].slice(0, 8);
+  renderResearchContext();
+}
+
+function renderResearchContext() {
+  const element = document.getElementById("research-context-items");
+  if (!element) return;
+  const clear = document.getElementById("clear-research-context");
+  clear.disabled = state.researchContext.length === 0;
+  element.innerHTML = state.researchContext.length ? state.researchContext.map((item) => `
+    <span class="research-context-item">
+      <button type="button" data-context-open="${escapeHtml(item.id)}"><strong>${escapeHtml(truncate(item.label, 38))}</strong><small>${escapeHtml(humanize(item.type))}${item.digest ? ` · ${escapeHtml(shortHash(item.digest))}` : ""}</small></button>
+      <button type="button" class="context-remove" data-context-remove="${escapeHtml(item.id)}" aria-label="Remove ${escapeHtml(item.label)} from working context" title="Remove from context">×</button>
+    </span>`).join("") : `<span class="context-empty">Select a citation or graph node to keep it in view.</span>`;
+  element.querySelectorAll("[data-context-remove]").forEach((button) => button.addEventListener("click", () => {
+    state.researchContext = state.researchContext.filter((item) => item.id !== button.dataset.contextRemove);
+    renderResearchContext();
+  }));
+  element.querySelectorAll("[data-context-open]").forEach((button) => button.addEventListener("click", async () => {
+    const item = state.researchContext.find((entry) => entry.id === button.dataset.contextOpen);
+    if (item?.source) return openCopilotSource(item.source);
+    setResearchMode("explore");
+    await queryGraphRoot(item.id);
+  }));
+}
+
 function appendCopilotQuestion(question) {
   const thread = document.getElementById("copilot-thread");
   thread.querySelector(".copilot-empty")?.remove();
@@ -1181,6 +1277,7 @@ function bindCopilotCitations(answer) {
 }
 
 function openCopilotSource(source) {
+  addResearchContext({ id: source.object_id, label: source.object_type, type: source.object_type, digest: source.content_digest, source });
   const coordinates = source.citation?.coordinates || {};
   openInspector("Canonical citation", humanize(source.object_type), `
     <section class="detail-section"><h3>Evidence</h3><p class="replay-excerpt">${escapeHtml(source.excerpt)}</p></section>
@@ -1209,6 +1306,7 @@ function openCopilotSource(source) {
   document.querySelector("[data-explore-object]").addEventListener("click", async (event) => {
     closeInspector();
     navigate("knowledge");
+    setResearchMode("explore");
     await queryGraphRoot(event.currentTarget.dataset.exploreObject);
   });
 }
@@ -1223,6 +1321,7 @@ async function loadGraph() {
 
 function renderGraph(graph) {
   state.graphData = graph;
+  renderResearchWorkspaceStatus();
   document.querySelectorAll("[data-graph-view]").forEach((item) => {
     const active = item.dataset.graphView === state.graphView;
     item.classList.toggle("active", active);
@@ -1262,7 +1361,7 @@ function renderGraph(graph) {
       ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap)).join("") : empty("The selected bounded view contains no explicit relationships.")}
     </div>`;
   document.getElementById("graph").innerHTML = `
-    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${number(nodes.length)} nodes</span><span>${number(edges.length)} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? "<span>Bounded at query limit</span>" : ""}</div>
+    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${nodes.length.toLocaleString()} nodes</span><span>${edges.length.toLocaleString()} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? "<span>Bounded at query limit</span>" : ""}</div>
     <div class="graph-workspace">
       <div class="graph-primary">${state.graphView === "visual" ? visual : relationships}</div>
       ${graphSelectionPanel(selected, edges, nodeMap)}
@@ -1304,7 +1403,7 @@ function graphSelectionPanel(node, edges, nodeMap) {
   const related = edges.filter((edge) => String(edge.source) === String(node.id) || String(edge.target) === String(node.id));
   return `<aside class="graph-selection" aria-label="Selected graph node">
     <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
-    <dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || ""))}</dd><dt>Visible links</dt><dd>${number(related.length)}</dd></dl>
+    <dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || ""))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd></dl>
     <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button></div>
     <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
   </aside>`;
@@ -1314,6 +1413,8 @@ function bindGraphInteractions(nodeMap) {
   document.querySelectorAll("[data-graph-node]").forEach((element) => {
     const select = () => {
       state.graphSelectedId = element.dataset.graphNode;
+      const node = nodeMap.get(String(state.graphSelectedId));
+      addResearchContext({ id: node.id, label: node.label || node.name, type: node.object_type || node.kind, digest: node.content_digest });
       renderGraph(state.graphData);
     };
     element.addEventListener("click", select);

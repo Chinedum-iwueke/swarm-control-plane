@@ -163,6 +163,11 @@ def test_static_application_and_safe_status(
     assert 'id="command"' in page.text
     assert 'id="research"' in page.text
     assert 'id="evidence"' in page.text
+    assert 'role="tablist" aria-label="Research workspace mode"' in page.text
+    assert 'id="research-panel-ask"' in page.text
+    assert 'id="research-panel-explore"' in page.text
+    assert 'id="research-panel-library"' in page.text
+    assert 'id="research-context-items"' in page.text
     assert settings.read_token() not in page.text
     assert status.json()["scope"] == "loopback-only"
     assert fake.closed is True

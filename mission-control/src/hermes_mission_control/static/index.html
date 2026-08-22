@@ -243,8 +243,20 @@
 
       <section id="knowledge" class="view">
         <div class="section-heading">
-          <div><p class="eyebrow">Canonical research intelligence</p><h1>Research Copilot</h1><p class="heading-context">Evidence-grounded answers, replayable citations, and explicit uncertainty</p></div>
+          <div><p class="eyebrow">Canonical research intelligence</p><h1>Research workspace</h1><p class="heading-context">Ask, inspect relationships, and curate the institutional corpus in one bounded surface</p></div>
         </div>
+        <div class="research-workspace-status" id="research-workspace-status" aria-label="Research intelligence status"></div>
+        <div class="research-mode-tabs" role="tablist" aria-label="Research workspace mode">
+          <button id="research-tab-ask" role="tab" aria-selected="true" aria-controls="research-panel-ask" tabindex="0" data-research-mode="ask"><span>Ask</span><small>Grounded synthesis</small></button>
+          <button id="research-tab-explore" role="tab" aria-selected="false" aria-controls="research-panel-explore" tabindex="-1" data-research-mode="explore"><span>Explore</span><small>Canonical relationships</small></button>
+          <button id="research-tab-library" role="tab" aria-selected="false" aria-controls="research-panel-library" tabindex="-1" data-research-mode="library"><span>Library</span><small>Sources and ingestion</small></button>
+        </div>
+        <section class="research-context-strip" aria-labelledby="research-context-title">
+          <div><p class="section-kicker">Working context</p><h2 id="research-context-title">Selected canonical evidence</h2></div>
+          <div id="research-context-items" class="research-context-items"><span class="context-empty">Select a citation or graph node to keep it in view.</span></div>
+          <button id="clear-research-context" class="text-button" type="button" disabled>Clear</button>
+        </section>
+        <div id="research-panel-ask" class="research-mode-panel active" role="tabpanel" aria-labelledby="research-tab-ask" data-research-panel="ask">
         <section class="copilot-workspace" aria-label="Research Copilot">
           <div class="copilot-main">
             <div class="copilot-heading">
@@ -270,6 +282,26 @@
             <div id="copilot-sources" class="copilot-sources"></div>
           </aside>
         </section>
+        </div>
+        <div id="research-panel-explore" class="research-mode-panel" role="tabpanel" aria-labelledby="research-tab-explore" data-research-panel="explore" hidden>
+          <section class="operational-band graph-explorer-band" aria-labelledby="graph-title">
+            <div class="band-heading graph-heading">
+              <div><p class="section-kicker">Canonical relationships</p><h2 id="graph-title">Knowledge graph explorer</h2></div>
+              <div class="graph-view-toggle" role="group" aria-label="Graph view">
+                <button class="secondary active" type="button" data-graph-view="visual" aria-pressed="true">Visual</button>
+                <button class="secondary" type="button" data-graph-view="list" aria-pressed="false">Relationships</button>
+              </div>
+            </div>
+            <form id="graph-query-form" class="graph-query-form">
+              <label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label>
+              <label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
+              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option></select></label>
+              <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button>
+            </form>
+            <div id="graph" class="graph-explorer" aria-live="polite"></div>
+          </section>
+        </div>
+        <div id="research-panel-library" class="research-mode-panel" role="tabpanel" aria-labelledby="research-tab-library" data-research-panel="library" hidden>
         <div class="knowledge-toolbar">
           <form id="search-form" class="search-field knowledge-search"><span>⌕</span><input id="search-query" required minlength="2" placeholder="Ask your indexed knowledge"></form>
           <form id="ingest-form" class="ingest-form"><input id="ingest-path" required placeholder="/Users/ice/…/source.md"><button class="secondary">Index source</button></form>
@@ -288,22 +320,7 @@
         </div>
         <div class="knowledge-layout">
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Mac-local retrieval</p><h2>Private indexed notes</h2></div></div><div id="search-results" class="empty-state">Search your private corpus.</div></section>
-          <section class="operational-band graph-explorer-band" aria-labelledby="graph-title">
-            <div class="band-heading graph-heading">
-              <div><p class="section-kicker">Canonical relationships</p><h2 id="graph-title">Knowledge graph explorer</h2></div>
-              <div class="graph-view-toggle" role="group" aria-label="Graph view">
-                <button class="secondary active" type="button" data-graph-view="visual" aria-pressed="true">Visual</button>
-                <button class="secondary" type="button" data-graph-view="list" aria-pressed="false">Relationships</button>
-              </div>
-            </div>
-            <form id="graph-query-form" class="graph-query-form">
-              <label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label>
-              <label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
-              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option></select></label>
-              <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button>
-            </form>
-            <div id="graph" class="graph-explorer" aria-live="polite"></div>
-          </section>
+        </div>
         </div>
       </section>
 
