@@ -21,6 +21,7 @@ class FakeResearchClient:
         self.ingestions: list[dict] = []
         self.runs: list[dict] = []
         self.projection_rebuilds = 0
+        self.recoveries: dict[str, dict] = {}
 
     async def scientific_ingestion_by_digest(self, content_digest: str) -> dict | None:
         return self.jobs.get(content_digest)
@@ -43,6 +44,9 @@ class FakeResearchClient:
         job = next(item for item in self.jobs.values() if item["id"] == job_id)
         job.update(status="published", published_object_ids=["canonical-source"])
         return job
+
+    async def recovered_scientific_ingestion(self, job_id: str) -> dict | None:
+        return self.recoveries.get(job_id)
 
     async def reconcile_corpus(self, payload: dict) -> dict:
         self.runs.append(payload)
@@ -258,6 +262,41 @@ async def test_finalize_only_reuses_complete_checkpoint_without_ingestion(
     assert len(client.ingestions) == 1
     assert report["incremental"]["projection_rebuilt"] is True
     assert research_inbox_status(settings)["run"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_finalize_only_reconciles_published_recovery(
+    settings: MissionControlSettings,
+) -> None:
+    settings.prepare()
+    source = settings.research_inbox / "books" / "recovered.pdf"
+    source.write_bytes(b"%PDF original active edition")
+    client = RetryResearchClient()
+
+    first = await sync_research_inbox(settings, client)
+    original = first["files"][0]
+    client.recoveries[original["ingestion_job_id"]] = {
+        "recovery": {"id": "recovery-1", "status": "recovered"},
+        "sanitized_job": {
+            "id": "sanitized-job-1",
+            "content_digest": "c" * 64,
+            "status": "published",
+            "published_object_ids": ["sanitized-object-1"],
+            "stage_report": {},
+        },
+    }
+
+    report = await sync_research_inbox(settings, client, finalize_only=True)
+
+    item = report["files"][0]
+    assert report["counts"]["added"] == 1
+    assert item["disposition"] == "canonical"
+    assert item["content_digest"] == "c" * 64
+    assert item["ingestion_job_id"] == "sanitized-job-1"
+    assert item["original_content_digest"] == digest(source.read_bytes())
+    assert item["original_ingestion_job_id"] == original["ingestion_job_id"]
+    assert item["recovery_id"] == "recovery-1"
+    assert client.runs[-1]["items"][0]["disposition"] == "canonical"
 
 
 @pytest.mark.asyncio
