@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from app.services.object_store import EvidenceObjectStore, ObjectReference
 from app.services.retrieval import PROJECTION_NAME, build_projections, corpus_digest
 
 BACKUP_SCHEMA_VERSION = "corpus-backup-v1.1.0"
+_PROJECTION_RECOVERY_LOCK_ID = 7_216_744_133_091_827_451
 _SAFE_FINDINGS = {
     "active_content": ("high", "quarantined"),
     "malware": ("critical", "quarantined"),
@@ -270,9 +271,14 @@ def recover_projections(
     db: Session, project: str, requested_by: str
 ) -> CorpusRecoveryRun:
     started = datetime.now(UTC)
+    bind = db.get_bind()
+    if bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": _PROJECTION_RECOVERY_LOCK_ID},
+        )
     db.execute(delete(EvidenceRetrievalProjection))
     db.execute(delete(EvidenceRetrievalState))
-    db.commit()
     state = build_projections(db)
     evidence = {
         "requested_by": requested_by,

@@ -318,11 +318,32 @@ def test_corrupt_projection_is_dropped_and_rebuilt(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr("app.services.corpus.build_projections", lambda db: state)
     db = MagicMock()
+    db.get_bind.return_value.dialect.name = "sqlite"
     run = recover_projections(db, PROJECT, "sre-reviewer")
     assert run.status == "succeeded"
     assert run.evidence["object_count"] == 4
     assert run.evidence["requested_by"] == "sre-reviewer"
     assert db.execute.call_count == 2
+
+
+def test_projection_recovery_holds_postgres_transaction_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(
+        projection_name="canonical-scientific",
+        projection_version="hybrid-retrieval-v1.0.0",
+        corpus_digest="4" * 64,
+        object_count=5,
+    )
+    monkeypatch.setattr("app.services.corpus.build_projections", lambda db: state)
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+
+    recover_projections(db, PROJECT, "sre-reviewer")
+
+    assert "pg_advisory_xact_lock" in str(db.execute.call_args_list[0].args[0])
+    assert db.execute.call_count == 3
+    db.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
