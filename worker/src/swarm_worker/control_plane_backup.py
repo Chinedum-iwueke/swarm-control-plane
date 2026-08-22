@@ -41,6 +41,7 @@ class BackupSettings(BaseSettings):
     daily_generations: int = Field(default=7, ge=1, le=31)
     weekly_generations: int = Field(default=4, ge=1, le=12)
     monthly_generations: int = Field(default=6, ge=1, le=24)
+    recent_generations: int = Field(default=2, ge=2, le=10)
     restore_image: str = Field(
         default="postgres:17-alpine", pattern=r"^[a-zA-Z0-9._:/-]+$"
     )
@@ -181,8 +182,7 @@ def apply_retention(settings: BackupSettings) -> dict[str, int]:
         ("weekly", settings.weekly_generations),
         ("monthly", settings.monthly_generations),
     )
-    if records:
-        keep.add(records[0][0])
+    keep.update(path for path, _ in records[: settings.recent_generations])
     for kind, limit in buckets:
         seen: set[str] = set()
         for path, manifest in records:

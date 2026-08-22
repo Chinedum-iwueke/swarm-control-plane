@@ -8,7 +8,7 @@
 - Atomic custom-format PostgreSQL dump and strict versioned manifest.
 - Non-empty, `pg_restore --list`, migration-marker, byte-size, and SHA-256 gates.
 - Non-blocking overlap lock, minimum-free-space gate, and partial-file cleanup.
-- Seven-daily, four-weekly, six-monthly verified-generation retention.
+- Two-recent, seven-daily, four-weekly, six-monthly verified-generation retention.
 - Hardened persistent daily systemd timer with bounded jitter.
 - Private runtime Docker configuration directories compatible with `ProtectHome`.
 - Explicit Docker-socket group access with an otherwise empty capability set.

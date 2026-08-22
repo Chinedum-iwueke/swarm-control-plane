@@ -95,8 +95,17 @@ def test_retention_keeps_daily_weekly_monthly_and_latest(tmp_path: Path) -> None
         _generation(configured.backup_directory, now - timedelta(days=offset), str(offset))
     result = backup.apply_retention(configured)
     assert result["retained"] >= 7
-    assert result["retained"] <= 17
+    assert result["retained"] <= 18
     assert len(list(configured.backup_directory.glob("*.dump"))) == result["retained"]
+
+
+def test_retention_always_keeps_two_latest_same_day_generations(tmp_path: Path) -> None:
+    configured = settings(tmp_path)
+    now = datetime(2026, 8, 22, 12, tzinfo=UTC)
+    _generation(configured.backup_directory, now, "newest")
+    _generation(configured.backup_directory, now - timedelta(minutes=5), "previous")
+    result = backup.apply_retention(configured)
+    assert result == {"retained": 2, "removed": 0}
 
 
 def test_overlap_lock_fails_closed(tmp_path: Path) -> None:

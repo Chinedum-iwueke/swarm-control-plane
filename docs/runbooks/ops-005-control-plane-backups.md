@@ -11,8 +11,8 @@ its partial dump.
 The utility uses direct `docker exec` against the validated `swarm-postgres` container;
 it does not depend on Compose plugin discovery or accept a task-supplied container.
 
-Retention preserves the latest verified generation plus at least 7 daily, 4 weekly,
-and 6 monthly buckets. It never deletes the current verified generation. Dumps and
+Retention preserves the two latest verified generations plus at least 7 daily, 4
+weekly, and 6 monthly buckets. It never deletes either current recovery generation. Dumps and
 manifests are root-owned, group-readable by `invariance-swarm-backup-readers`, and are
 not source-controlled.
 
