@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -338,10 +339,24 @@ def _run(
         env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
     )
     if completed.returncode != 0:
+        detail = _safe_error_detail(completed.stderr)
         raise RuntimeError(
-            f"Backup command failed with return code {completed.returncode}."
+            "Backup subprocess failed with return code "
+            f"{completed.returncode}: {detail}"
         )
     return completed.stdout.decode().strip() if capture and completed.stdout else ""
+
+
+def _safe_error_detail(value: bytes | None) -> str:
+    text = (value or b"").decode(errors="replace").strip().splitlines()
+    detail = text[-1][-1000:] if text else "no diagnostic output"
+    detail = re.sub(
+        r"(?i)(password|token|secret|authorization)(\s*[=:]\s*)\S+",
+        r"\1\2[REDACTED]",
+        detail,
+    )
+    detail = re.sub(r"(://[^:/\s]+:)[^@\s]+@", r"\1[REDACTED]@", detail)
+    return detail
 
 
 def _sha256(path: Path) -> str:

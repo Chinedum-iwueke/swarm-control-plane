@@ -116,6 +116,16 @@ def test_restore_drill_is_digest_bound_and_isolated(
     assert (configured.backup_directory / "latest-restore-drill.json").is_file()
 
 
+def test_subprocess_diagnostic_is_bounded_and_redacted() -> None:
+    detail = backup._safe_error_detail(
+        b"old line\npassword=do-not-print https://user:private@example.test\n"
+    )
+    assert "do-not-print" not in detail
+    assert "private" not in detail
+    assert "[REDACTED]" in detail
+    assert len(detail) <= 1000
+
+
 def _generation(directory: Path, completed: datetime, suffix: str) -> None:
     filename = f"swarm_control_{completed:%Y%m%dT%H%M%SZ}_{suffix}.dump"
     content = f"dump-{suffix}".encode()
