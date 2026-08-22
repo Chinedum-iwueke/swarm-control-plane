@@ -1,6 +1,6 @@
 schema_version: 1
 name: research-ingestion-recovery-steward
-version: 1.0.0
+version: 1.1.0
 role: Governed recovery of quarantined scientific source artifacts
 task_types:
 - scientific_ingestion_recovery
@@ -11,6 +11,7 @@ required_capabilities:
 - offline-ocr
 - corpus-reconciliation
 - projection-publication
+- bounded-recovery-planning
 allowed_machines:
 - vm2-deployment
 risk_ceiling: 1
@@ -23,6 +24,7 @@ permission_profile:
   privileged_operations: false
   writable_roots:
   - evidence-object-store
+  - recovery-advice-temporary
 repository_profile:
   repositories: []
   primary_checkout_write: false

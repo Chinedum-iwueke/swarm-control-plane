@@ -8,7 +8,11 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
-ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.workers.pdf_recovery --continuous --queue-project systematic-research --max-items 100 --load-ceiling 12 --poll-seconds 15 --settle-seconds 300 --requested-by recovery-steward
+Environment=SWARM_RECOVERY_CODEX_ENABLED=true
+Environment=SWARM_RECOVERY_CODEX_BINARY=/usr/local/bin/codex
+Environment=SWARM_RECOVERY_CODEX_HOME=/run/codex-recovery
+Environment=SWARM_RECOVERY_CODEX_MODEL=gpt-5.6-sol
+ExecStart=/usr/bin/docker compose run --rm --no-deps -e SWARM_RECOVERY_CODEX_ENABLED=true -e SWARM_RECOVERY_CODEX_BINARY=/usr/local/bin/codex -e SWARM_RECOVERY_CODEX_HOME=/run/codex-recovery -e SWARM_RECOVERY_CODEX_MODEL=gpt-5.6-sol -v /etc/invariance-swarm/codex-recovery:/run/codex-recovery:ro api python -m app.workers.pdf_recovery --continuous --queue-project systematic-research --max-items 100 --load-ceiling 12 --poll-seconds 15 --settle-seconds 300 --requested-by recovery-steward
 Restart=on-failure
 RestartSec=15s
 TimeoutStopSec=90s
