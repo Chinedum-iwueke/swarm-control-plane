@@ -256,7 +256,6 @@ def build_graph_projection(
         progress=progress,
         total=1 + total_nodes + total_edges,
     )
-    now = datetime.now(UTC)
     db.execute(delete(EvidenceGraphProjectionEdge))
     db.execute(delete(EvidenceGraphProjectionNode))
     db.execute(delete(EvidenceGraphProjectionState))
@@ -360,7 +359,7 @@ def build_graph_projection(
         edge_count=edge_count,
         manifest=manifest,
         manifest_digest=digest_document(manifest),
-        built_at=now,
+        built_at=datetime.now(UTC),
     )
     db.add(state)
     db.commit()
