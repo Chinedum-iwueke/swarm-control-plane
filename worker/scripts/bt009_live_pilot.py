@@ -401,91 +401,111 @@ def publish(
 ) -> dict:
     selected = qualification["runs"][0]
     trial = registry["trials"][0]
-    metrics = selected["result"]
-    started = datetime.fromtimestamp(bundle_root.stat().st_mtime, tz=timezone.utc)
-    ended = datetime.now(timezone.utc)
-    result_document = {
-        "summary": "The first prospectively registered CSI variant was negative after Tier2B costs; the full 16-variant search is retained.",
-        "metrics": {
-            key: value
-            for key, value in metrics.items()
-            if isinstance(value, (int, float, bool))
-        },
-        "robustness_status": "failed",
-        "rejection_reason": "Negative net expectancy and no qualifying right-tail evidence in the selected registered variant.",
-        "evidence_artifacts": [
-            selected["bundle"]["bundle_digest"],
-            qualification["search_plan_digest"],
-        ],
-        "output_artifact_digest": selected["bundle"]["bundle_digest"],
-        "started_at": canonical_utc(started),
-        "ended_at": canonical_utc(ended),
-    }
-    result_payload = {
-        "trial_digest": trial["record_digest"],
-        "outcome": "rejected",
-        "result": result_document,
-        "recorded_by": "vm1-m13-research-execution",
-    }
-    result = call(
-        client,
-        "POST",
-        f"/v1/research/trials/{trial['id']}/results",
-        result_payload | {"record_digest": digest(result_payload)},
+    bridge = call(
+        client, "GET", f"/v1/research/governed-bridges/{registry['bridge']['id']}"
     )
-    statistical = call(
-        client,
-        "POST",
-        f"/v1/research/result/{result['id']}/reviews",
-        {
-            "subject_digest": result["record_digest"],
-            "review_kind": "independent_review",
-            "verdict": "approved",
-            "review": {
-                "summary": "Verified 16 prospectively registered trials, truth PASS, and negative selected metrics.",
-                "trial_count": len(qualification["runs"]),
-                "selection_adjustment": "exhaustive finite grid; no hidden optimization",
+    if bridge["state"] == "bundle_finalized":
+        metrics = selected["result"]
+        started = datetime.fromtimestamp(bundle_root.stat().st_mtime, tz=timezone.utc)
+        ended = datetime.now(timezone.utc)
+        result_document = {
+            "summary": "The first prospectively registered CSI variant was negative after Tier2B costs; the full 16-variant search is retained.",
+            "metrics": {
+                key: value
+                for key, value in metrics.items()
+                if isinstance(value, (int, float, bool))
             },
-            "reviewer": "vm1-m13-statistical-reviewer",
-        },
-    )
-    adversarial = call(
-        client,
-        "POST",
-        f"/v1/research/result/{result['id']}/reviews",
-        {
-            "subject_digest": result["record_digest"],
-            "review_kind": "adversarial_review",
-            "verdict": "approved",
-            "review": {
-                "summary": "No live authority; synthetic evidence makes no market-performance claim; negative result retained.",
-                "production_eligible": False,
-                "fast_path_used": False,
+            "robustness_status": "failed",
+            "rejection_reason": "Negative net expectancy and no qualifying right-tail evidence in the selected registered variant.",
+            "evidence_artifacts": [
+                selected["bundle"]["bundle_digest"],
+                qualification["search_plan_digest"],
+            ],
+            "output_artifact_digest": selected["bundle"]["bundle_digest"],
+            "started_at": canonical_utc(started),
+            "ended_at": canonical_utc(ended),
+        }
+        result_payload = {
+            "trial_digest": trial["record_digest"],
+            "outcome": "rejected",
+            "result": result_document,
+            "recorded_by": "vm1-m13-research-execution",
+        }
+        result = call(
+            client,
+            "POST",
+            f"/v1/research/trials/{trial['id']}/results",
+            result_payload | {"record_digest": digest(result_payload)},
+        )
+        statistical = call(
+            client,
+            "POST",
+            f"/v1/research/result/{result['id']}/reviews",
+            {
+                "subject_digest": result["record_digest"],
+                "review_kind": "independent_review",
+                "verdict": "approved",
+                "review": {
+                    "summary": "Verified 16 prospectively registered trials, truth PASS, and negative selected metrics.",
+                    "trial_count": len(qualification["runs"]),
+                    "selection_adjustment": "exhaustive finite grid; no hidden optimization",
+                },
+                "reviewer": "vm1-m13-statistical-reviewer",
             },
-            "reviewer": "vm1-m13-adversarial-auditor",
-        },
-    )
-    decision = call(
-        client,
-        "POST",
-        f"/v1/research/results/{result['id']}/decisions",
-        {
-            "result_digest": result["record_digest"],
-            "decision": "retain",
-            "rationale": "Retain the reproducible negative BT-009 qualification evidence; prohibit production promotion.",
-            "decided_by": "founder-operator",
-        },
-    )
-    bridge = advance(
-        client,
-        registry["bridge"],
-        "independently_reviewed",
-        {
-            "statistical_review_id": statistical["id"],
-            "adversarial_review_id": adversarial["id"],
-            "decision_id": decision["id"],
-        },
-    )
+        )
+        adversarial = call(
+            client,
+            "POST",
+            f"/v1/research/result/{result['id']}/reviews",
+            {
+                "subject_digest": result["record_digest"],
+                "review_kind": "adversarial_review",
+                "verdict": "approved",
+                "review": {
+                    "summary": "No live authority; synthetic evidence makes no market-performance claim; negative result retained.",
+                    "production_eligible": False,
+                    "fast_path_used": False,
+                },
+                "reviewer": "vm1-m13-adversarial-auditor",
+            },
+        )
+        decision = call(
+            client,
+            "POST",
+            f"/v1/research/results/{result['id']}/decisions",
+            {
+                "result_digest": result["record_digest"],
+                "decision": "retain",
+                "rationale": "Retain the reproducible negative BT-009 qualification evidence; prohibit production promotion.",
+                "decided_by": "founder-operator",
+            },
+        )
+        bridge = advance(
+            client,
+            bridge,
+            "independently_reviewed",
+            {
+                "statistical_review_id": statistical["id"],
+                "adversarial_review_id": adversarial["id"],
+                "decision_id": decision["id"],
+            },
+        )
+    else:
+        lineage = call(
+            client,
+            "GET",
+            f"/v1/research/hypotheses/{registry['hypothesis']['id']}/lineage",
+        )
+        matches = [
+            item for item in lineage["results"] if item["trial_id"] == trial["id"]
+        ]
+        if len(matches) != 1 or bridge["state"] not in {
+            "independently_reviewed",
+            "published",
+            "memory_confirmed",
+        }:
+            raise RuntimeError("Hermes publication resume lineage is inconsistent")
+        result = matches[0]
 
     sys.path.insert(0, str(bulletproof_root / "src"))
     from bt.logging.laboratory_publication import (
@@ -504,12 +524,13 @@ def publish(
         memory_database=memory_db,
         timeout_seconds=300,
     )
-    bridge = advance(
-        client,
-        bridge,
-        "published",
-        {"publication_id": publication["id"], "state": publication["state"]},
-    )
+    if bridge["state"] == "independently_reviewed":
+        bridge = advance(
+            client,
+            bridge,
+            "published",
+            {"publication_id": publication["id"], "state": publication["state"]},
+        )
 
     graph = call(client, "GET", "/v1/research/graph/projections/status")
     if graph["stale"]:
@@ -536,22 +557,26 @@ def publish(
         memory_database=memory_db,
         timeout_seconds=300,
     )
-    bridge = advance(client, bridge, "memory_confirmed", publication["memory_receipt"])
+    if bridge["state"] == "published":
+        bridge = advance(
+            client, bridge, "memory_confirmed", publication["memory_receipt"]
+        )
     replay = call(
         client,
         "GET",
         f"/v1/research/laboratory/publications/{publication['id']}/replay",
     )
-    bridge = advance(
-        client,
-        bridge,
-        "complete",
-        {
-            "publication_id": publication["id"],
-            "publication_state": publication["state"],
-            "event_count": len(replay["events"]),
-        },
-    )
+    if bridge["state"] == "memory_confirmed":
+        bridge = advance(
+            client,
+            bridge,
+            "complete",
+            {
+                "publication_id": publication["id"],
+                "publication_state": publication["state"],
+                "event_count": len(replay["events"]),
+            },
+        )
     return {
         "bridge": bridge,
         "publication": publication,
