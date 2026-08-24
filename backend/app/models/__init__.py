@@ -39,6 +39,7 @@ from app.models.graph import (
     EvidenceGraphProjectionState,
 )
 from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
+from app.models.laboratory import LaboratoryPublication, LaboratoryPublicationEvent
 from app.models.memory import (
     EvidenceDossier,
     EvidenceOppositionRecord,
@@ -122,6 +123,8 @@ __all__ = [
     "FounderConversationMessage",
     "FounderNotification",
     "FounderProposal",
+    "LaboratoryPublication",
+    "LaboratoryPublicationEvent",
     "MachineObservation",
     "MissionEvent",
     "OperationalNote",
