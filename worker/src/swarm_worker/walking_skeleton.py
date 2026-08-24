@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from typing import Any
 
 REQUIRED_CANONICAL_IDS = {
@@ -19,6 +20,41 @@ def digest(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def invalid_run_envelope(run_id: uuid.UUID, run_payload: dict, fixture: dict) -> dict:
+    return {
+        "schema_version": "canonical-identity-v1.0.0",
+        "object_schema_version": "canonical-evidence-v1.0.0",
+        "object_id": str(run_id),
+        "object_type": "run",
+        "content_version": "1",
+        "content_digest": digest(run_payload),
+        "producer": {
+            "system": "hermes-walking-skeleton",
+            "native_type": "run",
+            "native_id": str(run_id),
+            "schema_version": fixture["schema_version"],
+        },
+        "aliases": [
+            {
+                "namespace": "hermes-walking-skeleton",
+                "object_type": "run",
+                "value": str(run_id),
+            },
+            {
+                "namespace": "hermes-walking-skeleton",
+                "object_type": "run",
+                "value": f"invalid-causality:{run_id}",
+            }
+        ],
+        "supersedes_object_id": None,
+        "project": "bulletproof-bt",
+        "access_class": "restricted",
+        "authority_class": "operational",
+        "payload": run_payload,
+        "created_by": "ws001-pilot",
+    }
 
 
 def verify_publication_replay(replay: dict[str, Any]) -> dict[str, Any]:

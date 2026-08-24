@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import uuid
@@ -14,18 +13,13 @@ import httpx
 
 from swarm_worker.walking_skeleton import (
     digest,
+    invalid_run_envelope,
     verify_compensation_replay,
     verify_invalid_causality_fixture,
     verify_publication_replay,
 )
 
 NAMESPACE = uuid.UUID("0bf94fc0-1cdb-4c68-8f0f-47874a0b8071")
-
-
-def canonical_digest(payload: dict) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("ascii")
-    ).hexdigest()
 
 
 def register_invalid_fixture(client: httpx.Client, replay: dict, fixture: dict) -> dict:
@@ -35,33 +29,13 @@ def register_invalid_fixture(client: httpx.Client, replay: dict, fixture: dict) 
     run_payload = {
         "kind": "run",
         "dataset_object_ids": dataset_ids,
-        "specification_digest": canonical_digest(fixture),
+        "specification_digest": digest(fixture),
         "code_digest": "0" * 64,
         "environment_digest": "0" * 64,
         "attempt": 1,
     }
-    run_id = uuid.uuid5(NAMESPACE, f"invalid-run:{canonical_digest(fixture)}")
-    envelope = {
-        "schema_version": "canonical-identity-v1.0.0",
-        "object_schema_version": "canonical-evidence-v1.0.0",
-        "object_id": str(run_id),
-        "object_type": "run",
-        "content_version": "1",
-        "content_digest": canonical_digest(run_payload),
-        "producer": {
-            "system": "hermes-walking-skeleton",
-            "native_type": "invalid-causality-fixture",
-            "native_id": str(run_id),
-            "schema_version": fixture["schema_version"],
-        },
-        "aliases": [],
-        "supersedes_object_id": None,
-        "project": "bulletproof-bt",
-        "access_class": "restricted",
-        "authority_class": "operational",
-        "payload": run_payload,
-        "created_by": "ws001-pilot",
-    }
+    run_id = uuid.uuid5(NAMESPACE, f"invalid-run:{digest(fixture)}")
+    envelope = invalid_run_envelope(run_id, run_payload, fixture)
     registered = client.post("/v1/research/evidence/objects", json=envelope)
     registered.raise_for_status()
     outcome_payload = {
