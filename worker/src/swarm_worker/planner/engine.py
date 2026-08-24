@@ -53,9 +53,7 @@ class CodexProposalPlanner:
             output_path = root / "proposal.json"
             schema_path.write_text(
                 json.dumps(
-                    self._strict_output_schema(
-                        FounderProposalDocument.model_json_schema()
-                    )
+                    self._codex_output_schema()
                 ),
                 encoding="utf-8",
             )
@@ -100,9 +98,12 @@ class CodexProposalPlanner:
                 detail = stderr.decode(errors="replace")[-500:]
                 raise PlannerError(f"Founder proposal generation failed: {detail}")
             try:
-                return FounderProposalDocument.model_validate_json(
-                    output_path.read_text(encoding="utf-8")
+                payload = self._normalize_output(
+                    json.loads(output_path.read_text(encoding="utf-8"))
                 )
+                return FounderProposalDocument.model_validate(payload)
+            except PlannerError:
+                raise
             except (OSError, ValueError) as exc:
                 raise PlannerError(
                     "Planner output did not match the proposal contract."
@@ -131,6 +132,52 @@ class CodexProposalPlanner:
         if isinstance(value, list):
             return [cls._strict_output_schema(item) for item in value]
         return value
+
+    @classmethod
+    def _codex_output_schema(cls) -> dict:
+        schema = cls._strict_output_schema(
+            FounderProposalDocument.model_json_schema()
+        )
+        if not isinstance(schema, dict):
+            raise PlannerError("Planner output schema is invalid.")
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            raise PlannerError("Planner output schema has no properties.")
+        properties["specification_format"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "field": {"type": "string"},
+                    "format": {"type": "string"},
+                },
+                "required": ["field", "format"],
+            },
+        }
+        return schema
+
+    @staticmethod
+    def _normalize_output(payload: object) -> dict:
+        if not isinstance(payload, dict):
+            raise PlannerError("Planner output must be an object.")
+        rows = payload.get("specification_format")
+        if not isinstance(rows, list):
+            raise PlannerError("Planner specification format must be a list.")
+        formats: dict[str, str] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                raise PlannerError("Planner specification format entry is invalid.")
+            field = row.get("field")
+            format_value = row.get("format")
+            if not isinstance(field, str) or not isinstance(format_value, str):
+                raise PlannerError("Planner specification format entry is invalid.")
+            if field in formats:
+                raise PlannerError("Planner specification format field is duplicated.")
+            formats[field] = format_value
+        normalized = dict(payload)
+        normalized["specification_format"] = formats
+        return normalized
 
     @staticmethod
     async def _terminate(process: asyncio.subprocess.Process) -> None:
@@ -182,7 +229,8 @@ class CodexProposalPlanner:
             "do not ask the founder to invent program_id, hypothesis_id or task_number. "
             "For each blocking value, include its exact field name in unresolved_fields "
             "and ask one question stating the accepted format and an example. Populate "
-            "specification_format with concise field-to-format guidance. A proposal has no execution "
+            "specification_format as an array of {field, format} objects with concise "
+            "field-to-format guidance. A proposal has no execution "
             "authority and will require founder materialization.\n\n"
             "Use only these canonical routes, exactly as written:\n"
             "- code_validation or engineering_mission: allowed_machines "

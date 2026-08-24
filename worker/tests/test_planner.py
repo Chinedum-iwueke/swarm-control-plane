@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from swarm_worker.models import FounderProposalDocument, Task
 from swarm_worker.planner.config import PlannerSettings
-from swarm_worker.planner.engine import CodexProposalPlanner
+from swarm_worker.planner.engine import CodexProposalPlanner, PlannerError
 from swarm_worker.planner.service import FounderIntakePlannerService
 
 
@@ -95,14 +95,13 @@ def test_planner_child_environment_excludes_worker_token(tmp_path) -> None:
 
 
 def test_planner_output_schema_is_closed_and_requires_declared_fields() -> None:
-    schema = CodexProposalPlanner._strict_output_schema(
-        FounderProposalDocument.model_json_schema()
-    )
+    schema = CodexProposalPlanner._codex_output_schema()
 
     def inspect(value: object) -> None:
         if isinstance(value, dict):
             properties = value.get("properties")
-            if isinstance(properties, dict):
+            if value.get("type") == "object":
+                assert isinstance(properties, dict)
                 assert value["additionalProperties"] is False
                 assert value["required"] == list(properties)
             for nested in value.values():
@@ -112,6 +111,39 @@ def test_planner_output_schema_is_closed_and_requires_declared_fields() -> None:
                 inspect(nested)
 
     inspect(schema)
+    specification_format = schema["properties"]["specification_format"]
+    assert specification_format["type"] == "array"
+    assert specification_format["items"]["required"] == ["field", "format"]
+
+
+def test_planner_normalizes_strict_format_rows_to_public_mapping() -> None:
+    payload = valid_proposal()
+    payload["specification_format"] = [
+        {
+            "field": "dataset",
+            "format": "Canonical dataset ID, for example synthetic-regime-v1",
+        }
+    ]
+
+    normalized = CodexProposalPlanner._normalize_output(payload)
+
+    assert normalized["specification_format"] == {
+        "dataset": "Canonical dataset ID, for example synthetic-regime-v1"
+    }
+    assert FounderProposalDocument.model_validate(normalized).recommended_action == (
+        "create_task"
+    )
+
+
+def test_planner_rejects_duplicate_strict_format_rows() -> None:
+    payload = valid_proposal()
+    payload["specification_format"] = [
+        {"field": "dataset", "format": "Canonical dataset ID"},
+        {"field": "dataset", "format": "Another format"},
+    ]
+
+    with pytest.raises(PlannerError, match="duplicated"):
+        CodexProposalPlanner._normalize_output(payload)
 
 
 def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
@@ -171,7 +203,9 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
         nonlocal command
         command = args
         output_path = Path(args[args.index("--output-last-message") + 1])
-        output_path.write_text(json.dumps(valid_proposal()), encoding="utf-8")
+        payload = valid_proposal()
+        payload["specification_format"] = []
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
         return Process()
 
     monkeypatch.setattr(
