@@ -141,6 +141,32 @@ def reconcile_programs(
             )
         )
         if existing is not None:
+            if (
+                existing.status == "awaiting_brief"
+                and existing.digest.get("selection", {}).get("schema_version")
+                != "daily-research-selection-v1.0.0"
+            ):
+                selection = {
+                    "schema_version": "daily-research-selection-v1.0.0",
+                    "mode": "static_fallback",
+                    "reason": "legacy_cycle_adopted_after_director_deployment",
+                    "candidate_count": 0,
+                }
+                existing.digest = existing.digest | {"selection": selection}
+                _event(
+                    db,
+                    existing,
+                    1,
+                    "proposal_created",
+                    {
+                        "question_digest": existing.question_digest,
+                        "selection": selection,
+                        "approval_required": True,
+                        "execution_authority": False,
+                    },
+                )
+                db.flush()
+                created.append(existing)
             refresh_cycle(db, existing, now=now)
             continue
         week_start = now.date() - timedelta(days=now.weekday())
