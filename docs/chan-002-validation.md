@@ -1,7 +1,7 @@
 # CHAN-002 Validation Record
 
 **Date:** 2026-08-24
-**Status:** Source complete; production restart and live replay pending merge
+**Status:** Production validated
 
 ## Implemented
 
@@ -33,9 +33,19 @@ Validated totals:
 - Control-plane backend: 294 passed.
 - Mission Control: 67 passed.
 
-## Production gate
+## Production evidence
 
-After merge, pull on VM1, reinstall/restart the Telegram gateway and retain one live
-two-thread restart replay. CHAN-002 becomes production-complete only when `/context`
-shows the replied-to thread after restart and the canonical conversation revision
-advances exactly once. No API migration beyond OPS-006 is required.
+The VM2 API was migrated to `c2f8a6d41e90`, recreated from the current image and
+verified healthy with all seven conversation routes. The VM2 Telegram gateway was
+reinstalled and remained active with zero restarts after the replay.
+
+The live two-thread restart replay retained two collecting conversations. Replying to
+the older Alpha acknowledgement after a gateway restart selected Alpha and advanced it
+from revision 1 to revision 2 exactly once. Replying to the Beta acknowledgement while
+Alpha was selected returned to Beta and recorded one reply-bound turn. Canonical
+evidence retained the Telegram message/reply references `343 -> 331` for Alpha and
+`347 -> 336` for Beta. No credentials are present in this record.
+
+One deliberately mis-sent ordinary message advanced Beta before the successful reply
+test. It remains in canonical audit history rather than being rewritten or removed,
+which is the intended immutable behavior.
