@@ -32,11 +32,14 @@ class FounderChannelClient:
         return await self._request("POST", "/v1/founder-channel/requests", json=payload)
 
     async def active_conversation(self, founder_key: str) -> dict[str, Any] | None:
-        return await self._request(
-            "GET",
-            "/v1/founder-channel/conversations/active",
-            params={"founder_key": founder_key},
-        )
+        try:
+            return await self._request(
+                "GET",
+                "/v1/founder-channel/conversations/active",
+                params={"founder_key": founder_key},
+            )
+        except ChannelNotFound:
+            return None
 
     async def conversations(self, founder_key: str) -> list[dict[str, Any]]:
         return await self._request(
@@ -145,6 +148,9 @@ class FounderChannelClient:
         except ValueError:
             pass
         detail = detail.replace(self._token, "[REDACTED]")
-        raise ChannelError(
-            f"Control plane returned HTTP {response.status_code}: {detail}"
-        )
+        error_type = ChannelNotFound if response.status_code == 404 else ChannelError
+        raise error_type(f"Control plane returned HTTP {response.status_code}: {detail}")
+
+
+class ChannelNotFound(ChannelError):
+    """Requested founder-channel resource does not exist."""

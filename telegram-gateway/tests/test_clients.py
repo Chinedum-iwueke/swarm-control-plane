@@ -29,6 +29,25 @@ async def test_channel_uses_scoped_bearer_and_redacts_it() -> None:
 
 
 @pytest.mark.asyncio
+async def test_missing_active_conversation_is_an_empty_state() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/founder-channel/conversations/active"
+        return httpx.Response(404, json={"detail": "No active conversation."})
+
+    client = FounderChannelClient(
+        "http://control-plane.test",
+        "founder-channel-secret-that-is-long-enough",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        active = await client.active_conversation("founder:primary")
+    finally:
+        await client.close()
+
+    assert active is None
+
+
+@pytest.mark.asyncio
 async def test_proposal_decision_body_is_bounded() -> None:
     captured = {}
 
