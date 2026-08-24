@@ -38,6 +38,8 @@ def test_conversation_contracts_are_bounded_and_channel_explicit() -> None:
         founder_key=created.founder_key,
         channel="mission-control",
         message=AUGUST_23_TRANSCRIPT[1],
+        channel_message_id="101",
+        reply_to_channel_message_id="100",
     )
     transition = ConversationTransition(
         founder_key=created.founder_key,
@@ -47,6 +49,7 @@ def test_conversation_contracts_are_bounded_and_channel_explicit() -> None:
 
     assert created.channel == "telegram"
     assert turn.channel == "mission-control"
+    assert turn.reply_to_channel_message_id == "100"
     assert transition.action == "finish"
 
 

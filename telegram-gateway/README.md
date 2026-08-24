@@ -1,9 +1,9 @@
 # Hermes Restricted Telegram Gateway
 
 The gateway is a narrow founder channel. It accepts plain-English requests from
-one configured Telegram user in one configured chat, submits structured
-`founder_request` records, reports status changes, and presents expiring
-digest-bound review links.
+one configured Telegram user in one configured chat, continues canonical founder
+conversation threads, reports status changes, and presents expiring digest-bound
+review links.
 
 It does not hold the orchestrator token. Its dedicated founder-channel
 credential can only create intake requests, read task/proposal/approval status,
@@ -44,7 +44,10 @@ or start the service.
 
 ## Founder interaction
 
-- Send a plain-English request to create structured intake.
+- Send plain English to start or continue the selected canonical thread.
+- Send `/new [title]`, then the first request, to start another job.
+- Send `/threads`, `/switch SHORT_ID`, or `/context` to navigate work.
+- Send `/finish`, `/stop`, or `/resume SHORT_ID` for explicit lifecycle control.
 - Send `/status` for a bounded task summary.
 - Send `/approvals` for fresh links to dependency-eligible approvals only.
 - Open a `t.me` review link to see the exact digest and risk.
@@ -54,3 +57,18 @@ Tokens expire after 15 minutes, are stored only as SHA-256 digests, and are
 consumed after one decision. Any proposal or approval digest change invalidates
 the handoff. Blocked future phases are not announced until every dependency has
 succeeded.
+
+The SQLite channel store retains the committed Telegram update offset, selected
+thread, message-to-conversation bindings, notification state and hashed handoffs.
+Restarting the service therefore resumes after the last accepted update. Updates are
+processed in numeric order and the offset advances only after handling succeeds.
+
+Replying to an accepted founder message or a thread-bound Hermes clarification selects
+that exact conversation even when another thread was active. Unknown reply targets
+fail closed with thread-selection guidance. Edited Telegram messages never mutate an
+accepted turn; send a correction as a new reply. Telegram does not expose reliable
+message-deletion events, so deletion cannot erase canonical conversation history.
+
+Outbound messages are split at safe text boundaries and preserve the complete text;
+review buttons appear only on the final chunk. No notification is acknowledged until
+every Telegram send succeeds.
