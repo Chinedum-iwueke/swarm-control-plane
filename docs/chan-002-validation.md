@@ -19,6 +19,8 @@
   `/cancel`, without retyping or silently mixing jobs.
 - Fifteen-minute conversational continuity for active Telegram threads.
 - Typed daily-research notification bindings and pasted-card recognition.
+- Planner prompt coverage for delegated choices: one numbered decision brief, one
+  marked recommendation, number-only reply, and no false specialist attribution.
 
 ## Automated evidence
 

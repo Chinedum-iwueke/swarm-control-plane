@@ -54,6 +54,14 @@ to the notification to bind the answer to its source thread. Proposal review sel
 the proposal thread; approval refuses a mismatched selected thread and revalidates the
 proposal digest and state before materialization.
 
+When the founder delegates an unresolved choice or asks for the best options, the
+planner returns one numbered decision brief instead of repeating free-form questions.
+It marks one planner-generated recommendation, states each consequence, accepts a
+number-only reply, and never claims a domain specialist was consulted without a
+digest-bound consultation result. A novel research question must preserve its
+scientific meaning and recommend the governed hypothesis-specification route rather
+than silently substituting a convenient fixed-pilot hypothesis.
+
 ## Install and verify
 
 Run on VM2, where the Telegram gateway is currently hosted:
