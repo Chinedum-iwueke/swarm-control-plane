@@ -46,7 +46,7 @@ def invalid_run_envelope(run_id: uuid.UUID, run_payload: dict, fixture: dict) ->
                 "namespace": "hermes-walking-skeleton",
                 "object_type": "run",
                 "value": f"invalid-causality:{run_id}",
-            }
+            },
         ],
         "supersedes_object_id": None,
         "project": "bulletproof-bt",
@@ -54,6 +54,23 @@ def invalid_run_envelope(run_id: uuid.UUID, run_payload: dict, fixture: dict) ->
         "authority_class": "operational",
         "payload": run_payload,
         "created_by": "ws001-pilot",
+    }
+
+
+def invalid_run_payload(dataset_ids: list[str], fixture: dict) -> dict:
+    return {
+        "kind": "run",
+        "dataset_object_ids": dataset_ids,
+        "specification_digest": digest(fixture),
+        "code_digest": "0" * 64,
+        "environment_digest": "0" * 64,
+        "market_model_bundle_digest": None,
+        "representation_contract_digest": None,
+        "search_plan_digest": None,
+        "attempt": 1,
+        "bundle_digest": None,
+        "bundle_manifest_digest": None,
+        "bundle_uri": None,
     }
 
 
