@@ -204,15 +204,23 @@ class RestrictedTelegramGateway:
             if reply_message_id
             else None
         )
-        if reply_message_id and reply_conversation_id is None:
+        research_cycle = (
+            self._store.research_cycle_for_message(reply_message_id)
+            if reply_message_id
+            else None
+        )
+        embedded_cycle = _daily_research_context(text)
+        if reply_message_id and reply_conversation_id is None and research_cycle is None:
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 "That reply target is not linked to a Hermes thread. Use /threads "
                 "and /switch <short-id>, then send the correction again.",
             )
             return
+        if research_cycle is None:
+            research_cycle = embedded_cycle
         active = None
-        if pending_title is None:
+        if pending_title is None and research_cycle is None:
             active = await self._selected_conversation(reply_conversation_id)
         if reply_conversation_id and active is None:
             await self._telegram.send(
@@ -226,11 +234,15 @@ class RestrictedTelegramGateway:
             else None
         )
         if active is None:
+            if research_cycle is not None and embedded_cycle is None:
+                text = _research_follow_up(research_cycle, text)
             result = await self._channel.create_conversation(
                 {
                     "founder_key": founder_key,
                     "channel": "telegram",
-                    "title": pending_title or title_for(text),
+                    "title": pending_title
+                    or _research_title(research_cycle)
+                    or title_for(text),
                     "message": text,
                     "channel_message_id": message_id,
                 }
@@ -250,10 +262,23 @@ class RestrictedTelegramGateway:
         self._store.set_value("selected-conversation-id", conversation["id"])
         if message_id:
             self._store.bind_message(message_id, conversation["id"])
+        if research_cycle is not None:
+            acknowledgement = (
+                f"Research request linked · {conversation['short_id']} · "
+                f"revision {conversation['revision']}\n"
+                f"Question: {str(research_cycle.get('question_digest', ''))[:12]}\n"
+                "I will treat your next messages as refinements to this research "
+                "job until you finish or switch threads."
+            )
+        else:
+            acknowledgement = (
+                f"Turn accepted · {conversation['short_id']} · "
+                f"revision {conversation['revision']}\n"
+                f"{conversation['title']}\nThe planner will continue this thread."
+            )
         sent = await self._telegram.send(
             self._settings.founder_chat_id,
-            f"Turn accepted · {conversation['short_id']} · revision {conversation['revision']}\n"
-            f"{conversation['title']}\nThe planner will continue this thread.",
+            acknowledgement,
         )
         for sent_message in sent or []:
             sent_message_id = sent_message.get("message_id")
@@ -492,11 +517,22 @@ class RestrictedTelegramGateway:
             state_digest = _digest(state)
             if not self._store.is_changed(state_key, state_digest):
                 continue
-            await self._telegram.send(
+            sent = await self._telegram.send(
                 self._settings.founder_chat_id,
                 f"Daily research · {cycle['status']}\n{cycle['question']}\n"
                 f"Question: {cycle['question_digest'][:12]}",
             )
+            context = {
+                "id": cycle["id"],
+                "question": cycle["question"],
+                "question_digest": cycle["question_digest"],
+                "status": cycle["status"],
+            }
+            for message in sent or []:
+                if message.get("message_id") is not None:
+                    self._store.bind_research_cycle(
+                        str(message["message_id"]), context
+                    )
             self._store.mark_seen(state_key, state_digest)
 
     async def _send_research_status(self) -> None:
@@ -905,3 +941,35 @@ def title_for(text: str) -> str:
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _daily_research_context(text: str) -> dict[str, str] | None:
+    match = re.search(
+        r"Daily research\s*[\u00b7-]\s*(?P<status>[a-z_]+)\s*\n"
+        r"(?P<question>[^\n]+)\s*\nQuestion:\s*(?P<digest>[0-9a-f]{12,64})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return {
+        "question": match.group("question").strip(),
+        "question_digest": match.group("digest").lower(),
+        "status": match.group("status").lower(),
+    }
+
+
+def _research_title(cycle: dict[str, Any] | None) -> str | None:
+    if cycle is None:
+        return None
+    question = str(cycle.get("question") or "").strip()
+    return f"Daily research: {question}"[:160] if question else "Daily research"
+
+
+def _research_follow_up(cycle: dict[str, Any], text: str) -> str:
+    return (
+        f"Daily research · {cycle.get('status', 'awaiting_brief')}\n"
+        f"{cycle.get('question', '')}\n"
+        f"Question: {str(cycle.get('question_digest', ''))[:12]}\n\n"
+        f"Founder request:\n{text}"
+    )

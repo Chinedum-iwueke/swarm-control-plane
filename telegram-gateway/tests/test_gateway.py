@@ -519,6 +519,51 @@ async def test_reply_to_prior_message_overrides_selected_thread(
 
 
 @pytest.mark.asyncio
+async def test_daily_research_reply_starts_a_grounded_research_thread(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Prior work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    channel.research_cycle_values = [{"id": "cycle-1", "status": "awaiting_brief", "question": "Do equity shocks predict next-day BTC returns?", "question_digest": "23f98fe93e01" + "0" * 52}]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-old")
+    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+
+    await gateway._notify_research_cycles()
+    await gateway._handle_update({"message": {"message_id": 88, "from": {"id": 123}, "chat": {"id": 456}, "text": "Run the backtest and summarize it. Use one month only.", "reply_to_message": {"message_id": 10001}}})
+
+    created = channel.created[-1]
+    assert created["title"].startswith("Daily research:")
+    assert "23f98fe93e01" in created["message"]
+    assert "Use one month only" in created["message"]
+    assert channel.turns == []
+    assert "Research request linked" in telegram.sent[-1][1]
+    assert "next messages as refinements" in telegram.sent[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_pasted_daily_research_card_does_not_pollute_selected_thread(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Prior work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-old")
+    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    text = "Daily research · awaiting_brief\nDo equity shocks predict next-day BTC returns?\nQuestion: 23f98fe93e01\n\nRun the backtest and summarize it. Short run one month only."
+
+    await gateway._handle_update({"message": {"message_id": 89, "from": {"id": 123}, "chat": {"id": 456}, "text": text}})
+
+    assert channel.created[-1]["message"] == text
+    assert channel.created[-1]["title"].startswith("Daily research:")
+    assert channel.turns == []
+
+
+@pytest.mark.asyncio
 async def test_edited_message_never_rewrites_an_accepted_turn(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()
