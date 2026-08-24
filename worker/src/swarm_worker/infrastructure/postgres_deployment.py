@@ -61,8 +61,7 @@ class PostgresDeploymentManager:
             path = self.root / name
             runtime_directory = name in {"archive", "data", "logs"}
             path.mkdir(mode=0o750 if runtime_directory else 0o700, exist_ok=True)
-            if not runtime_directory:
-                path.chmod(0o700)
+            path.chmod(0o750 if runtime_directory else 0o700)
         for name in ("archive", "data", "logs"):
             if not (self.root / name).is_dir():
                 raise PostgresDeploymentError(
