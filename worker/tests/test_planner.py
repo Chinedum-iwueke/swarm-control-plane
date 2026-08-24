@@ -183,6 +183,10 @@ def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
     assert "do not ask the founder to invent program_id" in prompt
     assert "exact field name" in prompt
     assert "Never call a choice best without evidence" in prompt
+    assert "founder may reply with only the option number" in prompt
+    assert "single clarification_questions entry" in prompt
+    assert "Do not claim that a domain specialist was consulted" in prompt
+    assert "Never ask again for a value the founder already supplied" in prompt
 
 
 @pytest.mark.asyncio
