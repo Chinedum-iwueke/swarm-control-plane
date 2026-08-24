@@ -24,6 +24,7 @@ from app.api.routes.metrics import router as metrics_router
 from app.api.routes.missions import router as missions_router
 from app.api.routes.operational_notes import agent_router as agent_notes_router
 from app.api.routes.operational_notes import router as operational_notes_router
+from app.api.routes.operations import router as operations_router
 from app.api.routes.packages import agent_router as agent_packages_router
 from app.api.routes.packages import router as packages_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
@@ -67,6 +68,7 @@ __all__ = [
     "metrics_router",
     "missions_router",
     "operational_notes_router",
+    "operations_router",
     "packages_router",
     "proposals_router",
     "research_programs_router",

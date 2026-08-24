@@ -7,7 +7,7 @@ import re
 import threading
 import time
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from itertools import chain
 from uuid import UUID
@@ -205,8 +205,20 @@ def _legacy_corpus_digest(db: Session) -> str:
     )
 
 
-def build_projections(db: Session) -> EvidenceRetrievalState:
+def build_projections(
+    db: Session,
+    progress: Callable[[str, int, int, str], None] | None = None,
+) -> EvidenceRetrievalState:
     digest, source_epoch = freshness_snapshot(db)
+    total = int(
+        db.scalar(
+            select(func.count())
+            .select_from(CanonicalEvidenceObject)
+            .where(CanonicalEvidenceObject.object_type == "scientific_object")
+            .where(is_active_expression())
+        )
+        or 0
+    )
     now = datetime.now(UTC)
     db.execute(delete(EvidenceRetrievalProjection))
     db.execute(delete(EvidenceRetrievalState))
@@ -292,6 +304,13 @@ def build_projections(db: Session) -> EvidenceRetrievalState:
         if mappings:
             db.execute(insert(EvidenceRetrievalProjection), mappings)
             projected_count += len(mappings)
+        if progress is not None:
+            progress(
+                "index-scientific-objects",
+                min(projected_count, total),
+                total or 1,
+                "objects",
+            )
     final_digest, final_epoch = freshness_snapshot(db)
     if final_digest != digest or final_epoch != source_epoch:
         db.rollback()
@@ -429,17 +448,12 @@ def _hybrid_search(
             "freshness": _milliseconds(started, freshness_finished),
             "candidates": _milliseconds(freshness_finished, candidates_finished),
             "ranking": _milliseconds(candidates_finished, ranking_finished),
-            "authorization_and_hydration": _milliseconds(
-                ranking_finished, completed
-            ),
+            "authorization_and_hydration": _milliseconds(ranking_finished, completed),
             "total": _milliseconds(started, completed),
         },
         "candidate_counts": {
             "bounded": len(projections),
-            **{
-                channel: len(channel_scores[channel])
-                for channel in request.channels
-            },
+            **{channel: len(channel_scores[channel]) for channel in request.channels},
         },
         "hits": hits,
     }
@@ -636,7 +650,9 @@ def _authorized_projections(
     normalized = request.query.strip().lower()
     exact_conditions = []
     try:
-        exact_conditions.append(EvidenceRetrievalProjection.object_id == UUID(normalized))
+        exact_conditions.append(
+            EvidenceRetrievalProjection.object_id == UUID(normalized)
+        )
     except ValueError:
         pass
     if re.fullmatch(r"[0-9a-f]{64}", normalized):
@@ -656,13 +672,9 @@ def _authorized_projections(
     terms = sorted(candidate_terms(request.query))[:_MAX_QUERY_TERMS]
     lexical = []
     if terms:
-        document = func.to_tsvector(
-            "simple", EvidenceRetrievalProjection.content_text
-        )
+        document = func.to_tsvector("simple", EvidenceRetrievalProjection.content_text)
         if informative:
-            precise_query = func.plainto_tsquery(
-                "simple", " ".join(informative)
-            )
+            precise_query = func.plainto_tsquery("simple", " ".join(informative))
             lexical.extend(
                 db.scalars(
                     statement.where(document.op("@@")(precise_query))
@@ -676,8 +688,9 @@ def _authorized_projections(
         candidate_query = func.to_tsquery("simple", " | ".join(terms))
         lexical.extend(
             db.scalars(
-                statement.where(document.op("@@")(candidate_query))
-                .limit(_DATABASE_CANDIDATE_LIMIT)
+                statement.where(document.op("@@")(candidate_query)).limit(
+                    _DATABASE_CANDIDATE_LIMIT
+                )
             ).all()
         )
 
@@ -747,9 +760,7 @@ def candidate_terms(query: str) -> set[str]:
     terms = informative_terms(query)
     concepts = query_concepts(terms)
     expanded = set(terms)
-    expanded.update(
-        term for term, concept in _CONCEPTS.items() if concept in concepts
-    )
+    expanded.update(term for term, concept in _CONCEPTS.items() if concept in concepts)
     return expanded
 
 

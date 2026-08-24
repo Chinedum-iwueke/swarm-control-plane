@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.schemas.graph import (
     GraphQueryRequest,
     GraphQueryResponse,
 )
+from app.schemas.operation import OperationWrite
 from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import (
     assemble_context_pack,
@@ -26,6 +28,7 @@ from app.services.graph import (
     query_graph,
     register_edge,
 )
+from app.services.operations import OperationReporter
 
 router = APIRouter(
     prefix="/v1/research/graph",
@@ -35,9 +38,7 @@ router = APIRouter(
 
 
 @router.post("/edges", response_model=CanonicalEdgeResponse, status_code=201)
-def create_edge(
-    payload: CanonicalEdgeCreate, db: Annotated[Session, Depends(get_db)]
-):
+def create_edge(payload: CanonicalEdgeCreate, db: Annotated[Session, Depends(get_db)]):
     record = register_edge(db, payload, ORCHESTRATOR_ACCESS)
     return CanonicalEdgeResponse(
         id=record.id,
@@ -49,8 +50,29 @@ def create_edge(
 
 @router.post("/projections/rebuild", response_model=GraphProjectionResponse)
 def rebuild_graph(db: Annotated[Session, Depends(get_db)]):
-    state = build_graph_projection(db)
-    return GraphProjectionResponse.model_validate(state, from_attributes=True)
+    reporter = OperationReporter(
+        OperationWrite(
+            operation_key=f"graph-rebuild:{uuid4()}",
+            kind="knowledge_graph_rebuild",
+            title="Rebuild canonical knowledge graph",
+            project="systematic-research",
+            machine="vm2-deployment",
+            owner_type="service",
+            owner_id="swarm-api",
+            state="running",
+            phase="prepare",
+            links={"surface": "research-intelligence"},
+        ),
+        "founder-operator",
+    )
+    reporter.start()
+    try:
+        state = build_graph_projection(db, progress=reporter.progress)
+        reporter.succeed(detail={"manifest_digest": state.manifest_digest})
+        return GraphProjectionResponse.model_validate(state, from_attributes=True)
+    except Exception as exc:
+        reporter.fail(exc)
+        raise
 
 
 @router.get("/projections/status", response_model=GraphProjectionResponse)
@@ -70,9 +92,7 @@ def graph_status(db: Annotated[Session, Depends(get_db)]):
 
 
 @router.post("/query", response_model=GraphQueryResponse)
-def graph_query(
-    payload: GraphQueryRequest, db: Annotated[Session, Depends(get_db)]
-):
+def graph_query(payload: GraphQueryRequest, db: Annotated[Session, Depends(get_db)]):
     return query_graph(db, payload, ORCHESTRATOR_ACCESS)
 
 

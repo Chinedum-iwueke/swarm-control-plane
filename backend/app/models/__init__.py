@@ -47,6 +47,7 @@ from app.models.memory import (
 )
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
+from app.models.operation import Operation, OperationEvent
 from app.models.package import PackageDeployment, RolePackage
 from app.models.proposal import FounderProposal
 from app.models.research import (
@@ -130,6 +131,8 @@ __all__ = [
     "LaboratoryPublicationEvent",
     "MachineObservation",
     "MissionEvent",
+    "Operation",
+    "OperationEvent",
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",

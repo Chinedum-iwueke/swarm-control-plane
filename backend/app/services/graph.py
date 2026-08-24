@@ -5,6 +5,7 @@ import json
 import math
 import uuid
 from collections import deque
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal, localcontext
 from itertools import chain
@@ -12,7 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, insert, or_, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import CanonicalEvidenceEdge, CanonicalEvidenceObject
@@ -148,7 +149,9 @@ def graph_corpus_digest(db: Session) -> str:
             CanonicalEvidenceObject.object_type,
             CanonicalEvidenceObject.project,
             CanonicalEvidenceObject.access_class,
-        ).where(is_active_expression()).order_by(CanonicalEvidenceObject.id)
+        )
+        .where(is_active_expression())
+        .order_by(CanonicalEvidenceObject.id)
     ).yield_per(_PROJECTION_BATCH_SIZE)
     edges = db.execute(
         select(
@@ -161,10 +164,12 @@ def graph_corpus_digest(db: Session) -> str:
             CanonicalEvidenceEdge.provenance_object_id,
             CanonicalEvidenceEdge.access_class,
             CanonicalEvidenceEdge.record_digest,
-        ).where(
+        )
+        .where(
             CanonicalEvidenceEdge.subject_id.in_(active_ids),
             CanonicalEvidenceEdge.object_id.in_(active_ids),
-        ).order_by(
+        )
+        .order_by(
             CanonicalEvidenceEdge.subject_id,
             CanonicalEvidenceEdge.predicate,
             CanonicalEvidenceEdge.object_id,
@@ -203,9 +208,35 @@ def graph_corpus_digest(db: Session) -> str:
     )
 
 
-def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
+def build_graph_projection(
+    db: Session,
+    progress: Callable[[str, int, int, str], None] | None = None,
+) -> EvidenceGraphProjectionState:
     source_epoch = corpus_epoch(db)
     corpus = graph_corpus_digest(db)
+    total_nodes = int(
+        db.scalar(
+            select(func.count())
+            .select_from(CanonicalEvidenceObject)
+            .where(is_active_expression())
+        )
+        or 0
+    )
+    total_edges = int(
+        db.scalar(
+            select(func.count())
+            .select_from(CanonicalEvidenceEdge)
+            .where(
+                CanonicalEvidenceEdge.subject_id.in_(
+                    select(CanonicalEvidenceObject.id).where(is_active_expression())
+                ),
+                CanonicalEvidenceEdge.object_id.in_(
+                    select(CanonicalEvidenceObject.id).where(is_active_expression())
+                ),
+            )
+        )
+        or 0
+    )
     now = datetime.now(UTC)
     db.execute(delete(EvidenceGraphProjectionEdge))
     db.execute(delete(EvidenceGraphProjectionNode))
@@ -241,6 +272,10 @@ def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
             ],
         )
         node_count += len(objects)
+        if progress is not None:
+            progress(
+                "project-nodes", min(node_count, total_nodes), total_nodes or 1, "nodes"
+            )
         db.expunge_all()
 
     edge_count = 0
@@ -285,6 +320,10 @@ def build_graph_projection(db: Session) -> EvidenceGraphProjectionState:
             ],
         )
         edge_count += len(edges)
+        if progress is not None:
+            progress(
+                "project-edges", min(edge_count, total_edges), total_edges or 1, "edges"
+            )
         db.expunge_all()
     manifest = {
         "schema_version": "knowledge-graph-manifest-v1.1.0",

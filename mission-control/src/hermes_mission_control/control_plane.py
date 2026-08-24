@@ -75,6 +75,11 @@ class ControlPlaneClient:
         fleet_health = await self._optional_object(
             "/v1/fleet/health", {"generated_at": None, "machines": []}
         )
+        operations = await self._optional_collection("/v1/operations")
+        operation_summary = await self._optional_object(
+            "/v1/operations/summary",
+            {"generated_at": None, "counts": {}, "active_total": 0, "terminal_total": 0},
+        )
         surveillance_sources = await self._optional_collection(
             "/v1/research/surveillance/sources"
         )
@@ -107,6 +112,8 @@ class ControlPlaneClient:
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,
             "fleet_health": fleet_health,
+            "operations": operations,
+            "operation_summary": operation_summary,
             "surveillance_sources": surveillance_sources,
             "surveillance_candidates": surveillance_candidates,
             "surveillance_digests": surveillance_digests,

@@ -18,6 +18,10 @@
       <span>Search tasks, agents, evidence</span><kbd>⌘ K</kbd>
     </button>
     <div class="topbar-status">
+      <button class="activity-status" id="activity-status" data-navigate="activity" aria-label="Open activity center">
+        <span class="activity-pulse" aria-hidden="true"></span>
+        <strong id="activity-active-count">0 active</strong>
+      </button>
       <div class="clock"><strong id="clock">--:--</strong><span>UTC</span></div>
       <div class="connection"><span id="health-dot"></span><span id="health">Connecting</span></div>
     </div>
@@ -29,6 +33,7 @@
         <p class="nav-label">Operate</p>
         <button class="nav-item active" data-view="command"><span class="nav-glyph">⌂</span>Command</button>
         <button class="nav-item" data-view="work"><span class="nav-glyph">›_</span>Chat &amp; Work</button>
+        <button class="nav-item" data-view="activity"><span class="nav-glyph">◉</span>Activity <span class="nav-count" id="activity-count">0</span></button>
         <button class="nav-item" data-view="missions"><span class="nav-glyph">◎</span>Missions</button>
         <button class="nav-item" data-view="tasks"><span class="nav-glyph">≡</span>Tasks</button>
         <button class="nav-item" data-view="proposals"><span class="nav-glyph">◆</span>Proposals <span class="nav-count" id="proposal-count">0</span></button>
@@ -158,6 +163,24 @@
                 </aside>
               </div>
             </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="activity" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Fleet-wide operation ledger</p><h1>Activity</h1><p class="heading-context">All governed work across VM1, VM2, Mac, agents, services, and timers</p></div>
+          <button class="secondary" id="refresh-activity">↻ <span>Refresh</span></button>
+        </div>
+        <div id="activity-summary" class="metric-row" aria-live="polite" aria-atomic="true"></div>
+        <div class="activity-layout">
+          <section class="operational-band">
+            <div class="band-heading"><div><p class="section-kicker">Now</p><h2>Active and waiting</h2></div><span id="activity-live-label" class="count" role="status">0 operations</span></div>
+            <div id="activity-live" class="activity-list"></div>
+          </section>
+          <section class="operational-band">
+            <div class="band-heading"><div><p class="section-kicker">Receipts</p><h2>Recently completed</h2></div></div>
+            <div id="activity-recent" class="activity-list"></div>
           </section>
         </div>
       </section>
