@@ -70,7 +70,12 @@ class ResearchDailyCycleResponse(StrictModel):
     question: str
     question_digest: str
     status: Literal[
-        "awaiting_brief", "duplicate_avoided", "registered", "running", "completed", "attention_required"
+        "awaiting_brief",
+        "duplicate_avoided",
+        "registered",
+        "running",
+        "completed",
+        "attention_required",
     ]
     budget: dict
     duplicate_hypothesis_id: UUID | None
@@ -84,6 +89,24 @@ class ResearchDailyCycleResponse(StrictModel):
 class ResearchCycleLink(StrictModel):
     hypothesis_id: UUID
     task_id: UUID
+
+
+class ResearchCycleApproval(StrictModel):
+    expected_question_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: Literal["approved", "rejected"]
+    rationale: str = Field(min_length=10, max_length=4000)
+    decided_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$", max_length=150)
+
+
+class ResearchCycleEventResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    cycle_id: UUID
+    sequence: int
+    event_type: Literal["proposal_created", "approved", "rejected", "task_ready"]
+    detail: dict
+    record_digest: str
+    created_at: datetime
 
 
 class DailyResearchDigest(StrictModel):

@@ -112,6 +112,24 @@ class ControlPlaneClient:
             "surveillance_digests": surveillance_digests,
         }
 
+    async def decide_research_cycle(
+        self,
+        cycle_id: str,
+        expected_question_digest: str,
+        decision: str,
+        rationale: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/research-programs/cycles/{cycle_id}/decision",
+            json={
+                "expected_question_digest": expected_question_digest,
+                "decision": decision,
+                "rationale": rationale,
+                "decided_by": "founder-operator",
+            },
+        )
+
     async def _optional_object(
         self, path: str, fallback: dict[str, Any]
     ) -> dict[str, Any]:
@@ -262,9 +280,7 @@ class ControlPlaneClient:
             "GET", "/v1/conversations", params={"founder_key": "founder:primary"}
         )
 
-    async def conversation_workspace(
-        self, conversation_id: str
-    ) -> dict[str, Any]:
+    async def conversation_workspace(self, conversation_id: str) -> dict[str, Any]:
         return await self._request(
             "GET", f"/v1/conversations/{conversation_id}/workspace"
         )

@@ -21,6 +21,7 @@ class FakeControlPlane:
         self.surveillance_requested: str | None = None
         self.graph_requested = False
         self.conversation_turns: list[tuple[str, str]] = []
+        self.research_cycle_decision: tuple[str, str, str, str] | None = None
 
     async def close(self) -> None:
         self.closed = True
@@ -58,9 +59,7 @@ class FakeControlPlane:
         self.conversation_turns.append((title, message))
         return {"conversation": {"id": "conversation-id", "revision": 1}}
 
-    async def add_conversation_turn(
-        self, conversation_id: str, message: str
-    ) -> dict:
+    async def add_conversation_turn(self, conversation_id: str, message: str) -> dict:
         self.conversation_turns.append((conversation_id, message))
         return {"conversation": {"id": conversation_id, "revision": 2}}
 
@@ -119,6 +118,17 @@ class FakeControlPlane:
         self.memory_sync_requested = True
         return {"id": "memory-proposal-id", "status": "proposed"}
 
+    async def decide_research_cycle(
+        self, cycle_id, expected_question_digest, decision, rationale
+    ) -> dict:
+        self.research_cycle_decision = (
+            cycle_id,
+            expected_question_digest,
+            decision,
+            rationale,
+        )
+        return {"id": cycle_id, "status": "awaiting_brief"}
+
     async def get_evidence_dossier(self, dossier_id: str) -> dict:
         self.dossier_requested = dossier_id
         return {"id": dossier_id, "dossier_key": "RI004-PILOT"}
@@ -131,7 +141,9 @@ class FakeControlPlane:
         self.lifecycle_requested = object_id
         return {"state": {"object_id": object_id, "state": "retracted"}}
 
-    async def transition_evidence_lifecycle(self, object_id: str, payload: dict) -> dict:
+    async def transition_evidence_lifecycle(
+        self, object_id: str, payload: dict
+    ) -> dict:
         self.lifecycle_requested = object_id
         return {"state": {"object_id": object_id, "state": payload["action"]}}
 
@@ -205,13 +217,14 @@ def test_static_application_and_safe_status(
 def test_new_thread_dialog_cancel_bypasses_required_field_validation(
     settings: MissionControlSettings,
 ) -> None:
-    with TestClient(
-        create_app(settings, control_plane=FakeControlPlane())
-    ) as client:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
         html = client.get("/").text
         script = client.get("/static/app.js").text
 
-    assert '<button type="button" class="secondary" data-close-dialog>Cancel</button>' in html
+    assert (
+        '<button type="button" class="secondary" data-close-dialog>Cancel</button>'
+        in html
+    )
     assert 'document.querySelectorAll("[data-close-dialog]")' in script
 
 

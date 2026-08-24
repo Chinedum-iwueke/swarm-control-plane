@@ -11,6 +11,8 @@ from app.db.session import get_db
 from app.models import ResearchDailyCycle, ResearchProgram
 from app.schemas.research_program import (
     DailyResearchDigest,
+    ResearchCycleApproval,
+    ResearchCycleEventResponse,
     ResearchCycleLink,
     ResearchDailyCycleResponse,
     ResearchProgramCreate,
@@ -19,7 +21,9 @@ from app.schemas.research_program import (
 )
 from app.services.daily_research import (
     create_program,
+    cycle_events,
     daily_digest,
+    decide_cycle,
     link_cycle,
     reconcile_programs,
     weekly_metrics,
@@ -41,7 +45,9 @@ def register_program(
 
 @router.get("", response_model=list[ResearchProgramResponse])
 def list_programs(db: Annotated[Session, Depends(get_db)]):
-    records = db.scalars(select(ResearchProgram).order_by(ResearchProgram.created_at)).all()
+    records = db.scalars(
+        select(ResearchProgram).order_by(ResearchProgram.created_at)
+    ).all()
     return [ResearchProgramResponse.model_validate(item) for item in records]
 
 
@@ -57,9 +63,7 @@ def list_cycles(db: Annotated[Session, Depends(get_db)], limit: int = 30):
     return [ResearchDailyCycleResponse.model_validate(item) for item in records]
 
 
-@router.post(
-    "/cycles/{cycle_id}/link", response_model=ResearchDailyCycleResponse
-)
+@router.post("/cycles/{cycle_id}/link", response_model=ResearchDailyCycleResponse)
 def bind_cycle(
     cycle_id: UUID,
     payload: ResearchCycleLink,
@@ -69,6 +73,34 @@ def bind_cycle(
     if cycle is None:
         raise HTTPException(status_code=404, detail="Research cycle not found.")
     return ResearchDailyCycleResponse.model_validate(link_cycle(db, cycle, payload))
+
+
+@router.post("/cycles/{cycle_id}/decision", response_model=ResearchDailyCycleResponse)
+def decide_daily_question(
+    cycle_id: UUID,
+    payload: ResearchCycleApproval,
+    db: Annotated[Session, Depends(get_db)],
+):
+    cycle = db.scalar(
+        select(ResearchDailyCycle)
+        .where(ResearchDailyCycle.id == cycle_id)
+        .with_for_update()
+    )
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="Research cycle not found.")
+    return ResearchDailyCycleResponse.model_validate(decide_cycle(db, cycle, payload))
+
+
+@router.get(
+    "/cycles/{cycle_id}/events", response_model=list[ResearchCycleEventResponse]
+)
+def read_cycle_events(cycle_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    if db.get(ResearchDailyCycle, cycle_id) is None:
+        raise HTTPException(status_code=404, detail="Research cycle not found.")
+    return [
+        ResearchCycleEventResponse.model_validate(item)
+        for item in cycle_events(db, cycle_id)
+    ]
 
 
 @router.post("/reconcile", response_model=list[ResearchDailyCycleResponse])
@@ -88,5 +120,7 @@ def get_weekly_metrics(week_start: date, db: Annotated[Session, Depends(get_db)]
     if week_start.weekday() != 0:
         raise HTTPException(status_code=422, detail="week_start must be a Monday")
     if week_start > datetime.now(UTC).date() + timedelta(days=7):
-        raise HTTPException(status_code=422, detail="week_start is too far in the future")
+        raise HTTPException(
+            status_code=422, detail="week_start is too far in the future"
+        )
     return WeeklyResearchMetrics.model_validate(weekly_metrics(db, week_start))
