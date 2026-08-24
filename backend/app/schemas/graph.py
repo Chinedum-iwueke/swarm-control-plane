@@ -58,6 +58,7 @@ class GraphProjectionResponse(StrictModel):
     projection_name: Literal["canonical-knowledge-graph"]
     projection_version: Literal["knowledge-graph-v1.0.0"]
     corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_epoch: int = Field(ge=0)
     node_count: int = Field(ge=0)
     edge_count: int = Field(ge=0)
     manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

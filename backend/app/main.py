@@ -33,6 +33,7 @@ from app.api.routes import (
     proposals_router,
     research_programs_router,
     research_router,
+    research_bridge_router,
     retrieval_router,
     runbook_packages_router,
     supervisor_router,
@@ -81,6 +82,7 @@ app.include_router(agent_notes_router)
 app.include_router(tasks_router)
 app.include_router(proposals_router)
 app.include_router(research_router)
+app.include_router(research_bridge_router)
 app.include_router(retrieval_router)
 app.include_router(research_programs_router)
 app.include_router(runbook_packages_router)

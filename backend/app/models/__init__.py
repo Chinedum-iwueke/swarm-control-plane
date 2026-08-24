@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.research_bridge import GovernedResearchBridge
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
@@ -137,6 +138,7 @@ __all__ = [
     "ResearchDailyCycle",
     "ResearchDataSnapshot",
     "ResearchDatasetBuild",
+    "GovernedResearchBridge",
     "ResearchDatasetManifest",
     "ResearchDecision",
     "ResearchDocument",

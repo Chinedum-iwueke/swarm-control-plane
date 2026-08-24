@@ -60,6 +60,7 @@ def graph_status(db: Annotated[Session, Depends(get_db)]):
         projection_name=state.projection_name,
         projection_version=state.projection_version,
         corpus_digest=state.corpus_digest,
+        source_epoch=state.source_epoch,
         node_count=state.node_count,
         edge_count=state.edge_count,
         manifest_digest=state.manifest_digest,
