@@ -15,6 +15,10 @@
 - Thread-bound clarification notifications with field and format guidance.
 - Wrong-thread proposal approval refusal without prematurely consuming the handoff.
 - Canonical reply metadata on OPS-006 conversation messages.
+- Held-draft routing for ambiguous plain-English input with `/continue`, `/new`, and
+  `/cancel`, without retyping or silently mixing jobs.
+- Fifteen-minute conversational continuity for active Telegram threads.
+- Typed daily-research notification bindings and pasted-card recognition.
 
 ## Automated evidence
 
@@ -29,7 +33,7 @@ conversation response contract. Ruff, compileall and diff checks pass.
 
 Validated totals:
 
-- Telegram gateway: 27 passed.
+- Telegram gateway: 32 passed.
 - Control-plane backend: 294 passed.
 - Mission Control: 67 passed.
 

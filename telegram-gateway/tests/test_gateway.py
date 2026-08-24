@@ -564,6 +564,46 @@ async def test_pasted_daily_research_card_does_not_pollute_selected_thread(
 
 
 @pytest.mark.asyncio
+async def test_ambiguous_plain_message_is_held_until_continue(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Existing work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-old")
+    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    base = {"from": {"id": 123}, "chat": {"id": 456}}
+
+    await gateway._handle_update({"message": {**base, "message_id": 90, "text": "Do something Hermes has never seen before."}})
+
+    assert channel.turns == []
+    assert "or new work?" in telegram.sent[-1][1]
+    await gateway._handle_update({"message": {**base, "message_id": 91, "text": "/continue"}})
+    assert channel.turns[-1][1]["message"] == "Do something Hermes has never seen before."
+
+
+@pytest.mark.asyncio
+async def test_new_routes_held_message_without_retyping_it(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Existing work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-old")
+    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    base = {"from": {"id": 123}, "chat": {"id": 456}}
+
+    await gateway._handle_update({"message": {**base, "message_id": 92, "text": "Explore a completely new operational idea."}})
+    await gateway._handle_update({"message": {**base, "message_id": 93, "text": "/new Novel operation"}})
+
+    assert channel.created[-1]["title"] == "Novel operation"
+    assert channel.created[-1]["message"] == "Explore a completely new operational idea."
+    assert channel.turns == []
+
+
+@pytest.mark.asyncio
 async def test_edited_message_never_rewrites_an_accepted_turn(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()

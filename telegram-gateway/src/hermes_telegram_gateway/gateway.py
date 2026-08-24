@@ -165,8 +165,26 @@ class RestrictedTelegramGateway:
         if text.startswith("/switch "):
             await self._switch_thread(text.removeprefix("/switch ").strip())
             return
+        if text == "/continue":
+            await self._route_draft("continue")
+            return
+        if text == "/cancel":
+            if self._store.pop_routing_draft() is None:
+                await self._telegram.send(
+                    self._settings.founder_chat_id, "No pending message to cancel."
+                )
+            else:
+                await self._telegram.send(
+                    self._settings.founder_chat_id, "Pending message discarded."
+                )
+            return
         if text == "/new" or text.startswith("/new "):
             title = text.removeprefix("/new").strip()
+            if title.lower() == "thread":
+                title = ""
+            if self._store.get_value("pending-routing-draft") is not None:
+                await self._route_draft("new", title=title)
+                return
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 f"New thread ready{f': {title}' if title else ''}. Send the first request as your next message.",
@@ -187,12 +205,18 @@ class RestrictedTelegramGateway:
         if text.startswith("/"):
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                "Supported: plain-English request, /new, /threads, /switch, /context, "
-                "/finish, /stop, /resume, /status, /approvals, /research, /notes, approval links.",
+                "Supported: plain-English request, /new, /continue, /cancel, "
+                "/threads, /switch, /context, /finish, /stop, /resume, /status, "
+                "/approvals, /research, /notes, approval links.",
             )
             return
         founder_key = self._founder_key
         pending_title = self._store.pop_value("pending-new-title")
+        message_id = (
+            str(message.get("message_id"))
+            if message.get("message_id") is not None
+            else None
+        )
         reply = message.get("reply_to_message") or {}
         reply_message_id = (
             str(reply.get("message_id"))
@@ -222,17 +246,28 @@ class RestrictedTelegramGateway:
         active = None
         if pending_title is None and research_cycle is None:
             active = await self._selected_conversation(reply_conversation_id)
+        if (
+            active is not None
+            and reply_conversation_id is None
+            and pending_title is None
+            and research_cycle is None
+            and not self._store.conversation_session_active(active["id"])
+        ):
+            self._store.hold_routing_draft(text, message_id)
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Is this part of {active['short_id']} · {active['title']}, or new work?\n"
+                "/continue — add the held message to this thread\n"
+                "/new [thread name] — start a new thread with it\n"
+                "/cancel — discard it",
+            )
+            return
         if reply_conversation_id and active is None:
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 "That thread is no longer open. Use /resume <short-id> before replying.",
             )
             return
-        message_id = (
-            str(message.get("message_id"))
-            if message.get("message_id") is not None
-            else None
-        )
         if active is None:
             if research_cycle is not None and embedded_cycle is None:
                 text = _research_follow_up(research_cycle, text)
@@ -259,7 +294,7 @@ class RestrictedTelegramGateway:
                 },
             )
         conversation = result["conversation"]
-        self._store.set_value("selected-conversation-id", conversation["id"])
+        self._store.activate_conversation(conversation["id"])
         if message_id:
             self._store.bind_message(message_id, conversation["id"])
         if research_cycle is not None:
@@ -358,7 +393,7 @@ class RestrictedTelegramGateway:
                 "reason": "Founder resumed thread from Telegram.",
             },
         )
-        self._store.set_value("selected-conversation-id", result["id"])
+        self._store.activate_conversation(result["id"])
         await self._telegram.send(
             self._settings.founder_chat_id, f"Thread {result['short_id']} resumed."
         )
@@ -377,10 +412,62 @@ class RestrictedTelegramGateway:
                 "Open thread not found. Use /resume for a stopped or finished thread.",
             )
             return
-        self._store.set_value("selected-conversation-id", item["id"])
+        self._store.activate_conversation(item["id"])
         await self._telegram.send(
             self._settings.founder_chat_id,
             f"Switched to {item['short_id']} · {item['title']}",
+        )
+
+    async def _route_draft(self, choice: str, *, title: str = "") -> None:
+        draft = self._store.pop_routing_draft()
+        if draft is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "No pending message to route."
+            )
+            return
+        text = str(draft.get("text") or "").strip()
+        message_id = draft.get("message_id")
+        if not text:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "The pending message was empty."
+            )
+            return
+        if choice == "continue":
+            active = await self._selected_conversation()
+            if active is None:
+                self._store.hold_routing_draft(text, message_id)
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "There is no open current thread. Use /new [thread name].",
+                )
+                return
+            result = await self._channel.add_conversation_turn(
+                active["id"],
+                {
+                    "founder_key": self._founder_key,
+                    "channel": "telegram",
+                    "message": text,
+                    "channel_message_id": message_id,
+                },
+            )
+        else:
+            result = await self._channel.create_conversation(
+                {
+                    "founder_key": self._founder_key,
+                    "channel": "telegram",
+                    "title": title or title_for(text),
+                    "message": text,
+                    "channel_message_id": message_id,
+                }
+            )
+        conversation = result["conversation"]
+        self._store.activate_conversation(conversation["id"])
+        if message_id:
+            self._store.bind_message(str(message_id), conversation["id"])
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Message routed · {conversation['short_id']} · revision "
+            f"{conversation['revision']}\n{conversation['title']}",
         )
 
     async def _selected_conversation(

@@ -158,6 +158,31 @@ class HandoffStore:
         parsed = json.loads(value)
         return parsed if isinstance(parsed, dict) else None
 
+    def hold_routing_draft(self, text: str, message_id: str | None) -> None:
+        self.set_value(
+            "pending-routing-draft",
+            json.dumps({"text": text, "message_id": message_id}),
+        )
+
+    def pop_routing_draft(self) -> dict | None:
+        value = self.pop_value("pending-routing-draft")
+        if value is None:
+            return None
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else None
+
+    def activate_conversation(self, conversation_id: str) -> None:
+        self.set_value("selected-conversation-id", conversation_id)
+        self.set_value("selected-conversation-active-at", str(int(time.time())))
+
+    def conversation_session_active(
+        self, conversation_id: str, *, ttl_seconds: int = 900
+    ) -> bool:
+        if self.get_value("selected-conversation-id") != conversation_id:
+            return False
+        value = self.get_value("selected-conversation-active-at")
+        return value is not None and int(time.time()) - int(value) <= ttl_seconds
+
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path)
 
