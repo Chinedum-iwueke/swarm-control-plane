@@ -406,11 +406,11 @@
 
   <dialog id="conversation-dialog" class="modal conversation-dialog">
     <form id="new-conversation-form" method="dialog">
-      <div class="dialog-heading"><div><p class="section-kicker">Canonical founder thread</p><h2>Start new work</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <div class="dialog-heading"><div><p class="section-kicker">Canonical founder thread</p><h2>Start new work</h2></div><button type="button" class="icon-button close" data-close-dialog aria-label="Close" title="Close">×</button></div>
       <label>Thread name<input name="title" required minlength="3" maxlength="160" placeholder="BTC weekend liquidity research"></label>
       <label>What should Hermes accomplish?<textarea name="message" required minlength="1" maxlength="12000" placeholder="Describe the outcome in plain English. Hermes will ask only for details it cannot safely infer."></textarea></label>
       <div class="safety-note"><strong>Governed conversation</strong><span>Discussion does not execute work. Hermes produces a reviewable specification, proposal, approval state, and evidence trail.</span></div>
-      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Start thread</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close-dialog>Cancel</button><button type="submit" value="default" class="command">Start thread</button></div>
     </form>
   </dialog>
 

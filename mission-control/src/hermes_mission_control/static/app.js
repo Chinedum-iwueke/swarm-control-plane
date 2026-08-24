@@ -85,6 +85,9 @@ document.getElementById("new-conversation").addEventListener("click", createConv
 document.getElementById("refresh-conversations").addEventListener("click", loadConversations);
 document.getElementById("conversation-form").addEventListener("submit", continueConversation);
 document.getElementById("new-conversation-form").addEventListener("submit", submitConversation);
+document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+  button.addEventListener("click", () => button.closest("dialog")?.close());
+});
 document.querySelectorAll("[data-conversation-action]").forEach((button) => {
   button.addEventListener("click", () => transitionConversation(button.dataset.conversationAction));
 });

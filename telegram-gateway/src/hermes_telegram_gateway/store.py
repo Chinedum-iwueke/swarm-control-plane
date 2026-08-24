@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import sqlite3
 import time
@@ -143,6 +144,19 @@ class HandoffStore:
 
     def conversation_for_message(self, message_id: str) -> str | None:
         return self.get_value(f"telegram-message:{message_id}")
+
+    def bind_research_cycle(self, message_id: str, cycle: dict) -> None:
+        self.set_value(
+            f"telegram-research-cycle:{message_id}",
+            json.dumps(cycle, separators=(",", ":"), sort_keys=True),
+        )
+
+    def research_cycle_for_message(self, message_id: str) -> dict | None:
+        value = self.get_value(f"telegram-research-cycle:{message_id}")
+        if value is None:
+            return None
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else None
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path)

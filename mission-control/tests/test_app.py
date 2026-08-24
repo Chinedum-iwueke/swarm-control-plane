@@ -202,6 +202,19 @@ def test_static_application_and_safe_status(
     assert fake.closed is True
 
 
+def test_new_thread_dialog_cancel_bypasses_required_field_validation(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(
+        create_app(settings, control_plane=FakeControlPlane())
+    ) as client:
+        html = client.get("/").text
+        script = client.get("/static/app.js").text
+
+    assert '<button type="button" class="secondary" data-close-dialog>Cancel</button>' in html
+    assert 'document.querySelectorAll("[data-close-dialog]")' in script
+
+
 def test_application_routes_construct_for_supported_python(
     settings: MissionControlSettings,
 ) -> None:
