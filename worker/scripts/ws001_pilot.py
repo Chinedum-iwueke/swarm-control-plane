@@ -14,6 +14,7 @@ import httpx
 from swarm_worker.walking_skeleton import (
     digest,
     invalid_run_envelope,
+    invalid_run_payload,
     verify_compensation_replay,
     verify_invalid_causality_fixture,
     verify_publication_replay,
@@ -26,18 +27,15 @@ def register_invalid_fixture(client: httpx.Client, replay: dict, fixture: dict) 
     source_run = client.get(f"/v1/research/evidence/objects/{replay['run_object_id']}")
     source_run.raise_for_status()
     dataset_ids = source_run.json()["payload"]["dataset_object_ids"]
-    run_payload = {
-        "kind": "run",
-        "dataset_object_ids": dataset_ids,
-        "specification_digest": digest(fixture),
-        "code_digest": "0" * 64,
-        "environment_digest": "0" * 64,
-        "attempt": 1,
-    }
+    run_payload = invalid_run_payload(dataset_ids, fixture)
     run_id = uuid.uuid5(NAMESPACE, f"invalid-run:{digest(fixture)}")
     envelope = invalid_run_envelope(run_id, run_payload, fixture)
     registered = client.post("/v1/research/evidence/objects", json=envelope)
-    registered.raise_for_status()
+    if registered.is_error:
+        raise RuntimeError(
+            "Canonical invalid-fixture registration failed "
+            f"with HTTP {registered.status_code}: {registered.text[:2000]}"
+        )
     outcome_payload = {
         "project": "bulletproof-bt",
         "evidence_object_id": str(run_id),

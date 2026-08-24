@@ -4,6 +4,7 @@ import pytest
 
 from swarm_worker.walking_skeleton import (
     invalid_run_envelope,
+    invalid_run_payload,
     verify_compensation_replay,
     verify_invalid_causality_fixture,
     verify_publication_replay,
@@ -36,8 +37,29 @@ def test_invalid_fixture_envelope_has_required_canonical_alias() -> None:
             "namespace": "hermes-walking-skeleton",
             "object_type": "run",
             "value": f"invalid-causality:{run_id}",
-        }
+        },
     ]
+
+
+def test_invalid_run_payload_is_digest_complete() -> None:
+    payload = invalid_run_payload(
+        ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+        {"fixture": "forward-join"},
+    )
+    assert set(payload) == {
+        "kind",
+        "dataset_object_ids",
+        "specification_digest",
+        "code_digest",
+        "environment_digest",
+        "market_model_bundle_digest",
+        "representation_contract_digest",
+        "search_plan_digest",
+        "attempt",
+        "bundle_digest",
+        "bundle_manifest_digest",
+        "bundle_uri",
+    }
 
 
 def replay() -> dict:
