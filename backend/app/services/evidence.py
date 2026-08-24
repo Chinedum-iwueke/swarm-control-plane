@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
+from pydantic_core import to_jsonable_python
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -72,7 +73,7 @@ ORCHESTRATOR_ACCESS = EvidenceAccessContext(
 
 def canonical_payload_digest(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
-        payload,
+        to_jsonable_python(payload),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,

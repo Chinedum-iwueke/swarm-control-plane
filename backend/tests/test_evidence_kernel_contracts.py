@@ -36,6 +36,20 @@ ACCESS = EvidenceAccessContext(
 )
 
 
+def test_canonical_payload_digest_normalizes_typed_json_values() -> None:
+    value = {
+        "recorded_at": datetime(2026, 8, 24, 12, 30, tzinfo=UTC),
+        "object_id": UUID("10000000-0000-4000-8000-000000000001"),
+    }
+
+    assert canonical_payload_digest(value) == canonical_payload_digest(
+        {
+            "recorded_at": "2026-08-24T12:30:00Z",
+            "object_id": "10000000-0000-4000-8000-000000000001",
+        }
+    )
+
+
 def payloads() -> dict[str, tuple[str, dict]]:
     return {
         "source": (
