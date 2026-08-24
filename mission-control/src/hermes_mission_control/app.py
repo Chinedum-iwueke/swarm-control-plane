@@ -165,6 +165,10 @@ def create_app(
     async def conversations() -> list[dict]:
         return await client.conversations()
 
+    @app.get("/api/conversations/{conversation_id}/workspace")
+    async def conversation_workspace(conversation_id: str) -> dict:
+        return await client.conversation_workspace(conversation_id)
+
     @app.post("/api/conversations", dependencies=[Depends(_mutation_intent)])
     async def new_conversation(payload: ConversationCreateRequest) -> dict:
         return await client.create_conversation(payload.title, payload.message)

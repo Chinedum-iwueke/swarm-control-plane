@@ -9,14 +9,30 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_founder_channel, require_orchestrator
 from app.db.session import get_db
-from app.models import FounderConversation
+from app.models import (
+    Artifact,
+    FounderConversation,
+    FounderConversationEvent,
+    FounderProposal,
+    Task,
+    TaskApproval,
+    TaskEvent,
+)
 from app.schemas import (
+    ApprovalResponse,
+    ArtifactResponse,
     ConversationCreate,
+    ConversationEventResponse,
     ConversationMessageResponse,
     ConversationResponse,
     ConversationTransition,
     ConversationTurnCreate,
     ConversationTurnResponse,
+    ConversationWorkspaceResponse,
+    FounderProposalResponse,
+    TaskDetailResponse,
+    TaskEventResponse,
+    TaskResponse,
 )
 from app.services.conversations import (
     active_conversation,
@@ -26,6 +42,7 @@ from app.services.conversations import (
     latest_task,
     transition_conversation,
 )
+from app.services.tasks import serialize_task
 
 router = APIRouter(
     prefix="/v1/conversations",
@@ -94,6 +111,77 @@ def list_conversations(
         statement.order_by(FounderConversation.updated_at.desc()).limit(100)
     ).all()
     return [_response(db, item) for item in items]
+
+
+@router.get("/{conversation_id}/workspace", response_model=ConversationWorkspaceResponse)
+def conversation_workspace(
+    conversation_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> ConversationWorkspaceResponse:
+    item = _get(db, conversation_id)
+    events = db.scalars(
+        select(FounderConversationEvent)
+        .where(FounderConversationEvent.conversation_id == item.id)
+        .order_by(FounderConversationEvent.id.asc())
+    ).all()
+    proposals = db.scalars(
+        select(FounderProposal)
+        .where(FounderProposal.conversation_id == item.id)
+        .order_by(FounderProposal.created_at.asc())
+    ).all()
+    tasks = db.scalars(
+        select(Task)
+        .where(Task.conversation_id == item.id)
+        .order_by(Task.created_at.asc())
+    ).all()
+    task_ids = [task.id for task in tasks]
+    task_events = (
+        db.scalars(
+            select(TaskEvent)
+            .where(TaskEvent.task_id.in_(task_ids))
+            .order_by(TaskEvent.id.asc())
+        ).all()
+        if task_ids
+        else []
+    )
+    events_by_task: dict[uuid.UUID, list[TaskEvent]] = {}
+    for event in task_events:
+        events_by_task.setdefault(event.task_id, []).append(event)
+    approvals = (
+        db.scalars(
+            select(TaskApproval)
+            .where(TaskApproval.task_id.in_(task_ids))
+            .order_by(TaskApproval.created_at.asc())
+        ).all()
+        if task_ids
+        else []
+    )
+    artifacts = (
+        db.scalars(
+            select(Artifact)
+            .where(Artifact.task_id.in_(task_ids))
+            .order_by(Artifact.created_at.asc())
+        ).all()
+        if task_ids
+        else []
+    )
+    return ConversationWorkspaceResponse(
+        conversation=_response(db, item),
+        events=[ConversationEventResponse.model_validate(value) for value in events],
+        proposals=[FounderProposalResponse.model_validate(value) for value in proposals],
+        tasks=[
+            TaskDetailResponse(
+                task=TaskResponse.model_validate(serialize_task(task)),
+                events=[
+                    TaskEventResponse.model_validate(event)
+                    for event in events_by_task.get(task.id, [])
+                ],
+            )
+            for task in tasks
+        ],
+        approvals=[ApprovalResponse.model_validate(value) for value in approvals],
+        artifacts=[ArtifactResponse.model_validate(value) for value in artifacts],
+    )
 
 
 @router.post("", response_model=ConversationTurnResponse, status_code=201)

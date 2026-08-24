@@ -17,6 +17,8 @@ const state = {
   researchContext: [],
   conversations: [],
   activeConversationId: null,
+  conversationWorkspace: null,
+  conversationWorkspaceLoading: false,
 };
 
 const intentHeaders = {
@@ -82,6 +84,7 @@ document.getElementById("clear-research-context").addEventListener("click", () =
 document.getElementById("new-conversation").addEventListener("click", createConversation);
 document.getElementById("refresh-conversations").addEventListener("click", loadConversations);
 document.getElementById("conversation-form").addEventListener("submit", continueConversation);
+document.getElementById("new-conversation-form").addEventListener("submit", submitConversation);
 document.querySelectorAll("[data-conversation-action]").forEach((button) => {
   button.addEventListener("click", () => transitionConversation(button.dataset.conversationAction));
 });
@@ -271,6 +274,7 @@ async function loadConversations() {
     if (state.activeConversationId && !state.conversations.some((item) => item.id === state.activeConversationId)) state.activeConversationId = null;
     if (!state.activeConversationId && state.conversations.length) state.activeConversationId = state.conversations[0].id;
     renderConversations();
+    await loadConversationWorkspace();
   } catch (error) {
     toast(error.message);
   }
@@ -286,7 +290,9 @@ function renderConversations() {
     </button>`).join("") : empty("No conversation threads yet.");
   document.querySelectorAll("[data-conversation-id]").forEach((button) => button.addEventListener("click", () => {
     state.activeConversationId = button.dataset.conversationId;
+    state.conversationWorkspace = null;
     renderConversations();
+    loadConversationWorkspace();
   }));
   const item = state.conversations.find((value) => value.id === state.activeConversationId);
   document.getElementById("conversation-empty").hidden = Boolean(item);
@@ -308,19 +314,180 @@ function renderConversations() {
     <dl><dt>State</dt><dd>${escapeHtml(humanize(item.status))}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(item.specification_digest || "Not compiled")}</dd></dl>
     ${unresolved.length ? `<section><strong>Still needed</strong>${bulletList(unresolved, "")}</section>` : ""}
     ${defaults.length ? `<section><strong>Resolved defaults</strong>${bulletList(defaults.map((value) => `${value.field}: ${value.value} — ${value.basis}`), "")}</section>` : ""}`;
+  renderConversationWork();
   const canWrite = ["collecting", "needs_clarification", "ready_for_review", "attention_required"].includes(item.status);
   document.getElementById("conversation-message").disabled = !canWrite;
   document.querySelector("#conversation-form button").disabled = !canWrite;
+  document.querySelectorAll("[data-conversation-action]").forEach((button) => {
+    const resumes = button.dataset.conversationAction === "resume";
+    button.hidden = resumes ? !["finished", "stopped"].includes(item.status) : !canWrite;
+  });
 }
 
-async function createConversation() {
+async function loadConversationWorkspace() {
+  const conversationId = state.activeConversationId;
+  if (state.demo || !conversationId) {
+    state.conversationWorkspace = null;
+    renderConversationWork();
+    return;
+  }
+  state.conversationWorkspaceLoading = true;
+  renderConversationWork();
+  try {
+    const workspace = await request(`/api/conversations/${conversationId}/workspace`);
+    if (state.activeConversationId !== conversationId) return;
+    state.conversationWorkspace = workspace;
+  } catch (error) {
+    if (state.activeConversationId === conversationId) toast(error.message);
+  } finally {
+    if (state.activeConversationId === conversationId) {
+      state.conversationWorkspaceLoading = false;
+      renderConversationWork();
+    }
+  }
+}
+
+function renderConversationWork() {
+  const progress = document.getElementById("conversation-progress");
+  const evidence = document.getElementById("conversation-evidence");
+  if (!progress || !evidence) return;
+  if (state.conversationWorkspaceLoading) {
+    progress.innerHTML = '<div class="conversation-work-empty">Loading canonical work state…</div>';
+    evidence.innerHTML = '<div class="conversation-work-empty">Loading evidence…</div>';
+    return;
+  }
+  const workspace = state.conversationWorkspace;
+  if (!workspace || workspace.conversation?.id !== state.activeConversationId) {
+    progress.innerHTML = '<div class="conversation-work-empty">No linked execution yet.</div>';
+    evidence.innerHTML = '<div class="conversation-work-empty">Evidence appears after governed execution.</div>';
+    document.getElementById("conversation-progress-count").textContent = "0";
+    document.getElementById("conversation-evidence-count").textContent = "0";
+    return;
+  }
+  const items = conversationTimeline(workspace);
+  document.getElementById("conversation-progress-count").textContent = String(items.length);
+  document.getElementById("conversation-evidence-count").textContent = String((workspace.artifacts || []).length);
+  progress.innerHTML = items.length ? items.map((item) => `
+    <button class="conversation-progress-item" type="button" ${item.entityId ? `data-work-${item.kind}="${escapeHtml(item.entityId)}"` : ""}>
+      <span class="timeline-marker ${escapeHtml(item.state)}" aria-hidden="true"></span>
+      <span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail)} · ${formatDate(item.createdAt)}</small></span>
+    </button>`).join("") : '<div class="conversation-work-empty">No linked execution yet.</div>';
+  evidence.innerHTML = (workspace.artifacts || []).length ? workspace.artifacts.map((artifact) => `
+    <button class="conversation-evidence-item" type="button" data-work-artifact="${escapeHtml(artifact.id)}">
+      <span><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(humanize(artifact.artifact_type))} · ${formatBytes(artifact.size_bytes)}</small></span>
+      <span class="evidence-verification">${escapeHtml(artifact.verification_status || "registered")}</span>
+    </button>`).join("") : '<div class="conversation-work-empty">Evidence appears after governed execution.</div>';
+  document.querySelectorAll("[data-work-task]").forEach((button) => {
+    button.onclick = () => openConversationTask(button.dataset.workTask);
+  });
+  document.querySelectorAll("[data-work-proposal]").forEach((button) => {
+    button.onclick = () => openConversationProposal(button.dataset.workProposal);
+  });
+  document.querySelectorAll("[data-work-artifact]").forEach((button) => {
+    button.onclick = () => openConversationArtifact(button.dataset.workArtifact);
+  });
+}
+
+function conversationTimeline(workspace) {
+  const items = [];
+  (workspace.events || []).forEach((event) => items.push({
+    kind: "event",
+    label: humanize(event.event_type),
+    detail: `Conversation revision ${event.revision}`,
+    state: event.resulting_status,
+    createdAt: event.created_at,
+  }));
+  (workspace.proposals || []).forEach((proposal) => items.push({
+    kind: "proposal",
+    entityId: proposal.id,
+    label: "Planner proposal",
+    detail: `${humanize(proposal.status)} · ${shortHash(proposal.proposal_digest)}`,
+    state: proposal.status,
+    createdAt: proposal.created_at,
+  }));
+  (workspace.tasks || []).forEach((detail) => {
+    const task = detail.task;
+    items.push({ kind: "task", entityId: task.id, label: task.task_number, detail: humanize(task.status), state: task.status, createdAt: task.created_at });
+    (detail.events || []).forEach((event) => items.push({
+      kind: "task",
+      entityId: task.id,
+      label: humanize(event.event_type),
+      detail: task.task_number,
+      state: task.status,
+      createdAt: event.created_at,
+    }));
+  });
+  (workspace.approvals || []).forEach((approval) => items.push({
+    kind: "task",
+    entityId: approval.task_id,
+    label: `Approval ${humanize(approval.status)}`,
+    detail: `Risk ${approval.risk_level} · ${shortHash(approval.plan_digest)}`,
+    state: approval.status,
+    createdAt: approval.updated_at,
+  }));
+  return items.sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt));
+}
+
+function openConversationTask(id) {
+  const detail = (state.conversationWorkspace?.tasks || []).find((item) => String(item.task.id) === String(id));
+  if (!detail) return;
+  const task = detail.task;
+  const artifacts = (state.conversationWorkspace.artifacts || []).filter((item) => item.task_id === task.id);
+  openInspector("Thread task", task.title, `
+    <section class="detail-section"><h3>Lifecycle</h3><dl class="detail-grid">
+      <dt>Status</dt><dd>${statusBadge(task.status)}</dd><dt>Task number</dt><dd class="mono">${escapeHtml(task.task_number)}</dd>
+      <dt>Type</dt><dd>${escapeHtml(humanize(task.task_type))}</dd><dt>Attempt</dt><dd>${task.attempt_count} of ${task.max_attempts}</dd>
+      <dt>Conversation revision</dt><dd>${task.conversation_revision ?? "Not bound"}</dd><dt>Artifacts</dt><dd>${artifacts.length}</dd>
+    </dl></section>
+    <section class="detail-section"><h3>Objective</h3><p>${escapeHtml(task.objective)}</p></section>
+    <section class="detail-section"><h3>Execution events</h3>${(detail.events || []).length ? `<ol class="detail-list">${detail.events.map((event) => `<li><strong>${escapeHtml(humanize(event.event_type))}</strong><br><span class="muted">${escapeHtml(event.message)} · ${formatDate(event.created_at)}</span></li>`).join("")}</ol>` : '<p class="muted">No execution events yet.</p>'}</section>
+    <section class="detail-section"><h3>Structured result</h3><pre class="json-view">${escapeHtml(JSON.stringify(task.result || task.failure || {}, null, 2))}</pre></section>`);
+}
+
+function openConversationProposal(id) {
+  const proposal = (state.conversationWorkspace?.proposals || []).find((item) => String(item.id) === String(id));
+  if (!proposal) return;
+  const reviewAction = proposal.status === "proposed"
+    ? '<div class="detail-actions"><button class="command" id="review-thread-proposal">Open proposal review</button></div>'
+    : "";
+  openInspector("Thread proposal", proposal.proposal.summary, `
+    <section class="detail-section"><h3>Review state</h3><dl class="detail-grid"><dt>Status</dt><dd>${statusBadge(proposal.status)}</dd><dt>Revision</dt><dd>${proposal.conversation_revision}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(proposal.proposal_digest)}</dd></dl></section>
+    <section class="detail-section"><h3>Interpretation</h3><p>${escapeHtml(proposal.proposal.interpretation)}</p></section>
+    <section class="detail-section"><h3>Safety constraints</h3>${bulletList(proposal.proposal.safety_constraints, "No additional constraints recorded.")}</section>${reviewAction}`);
+  document.getElementById("review-thread-proposal")?.addEventListener("click", () => {
+    closeInspector();
+    navigate("proposals");
+    const dashboardProposal = (state.dashboard?.proposals || []).find((item) => String(item.id) === String(id));
+    if (dashboardProposal) openProposal(id);
+  });
+}
+
+function openConversationArtifact(id) {
+  const artifact = (state.conversationWorkspace?.artifacts || []).find((item) => String(item.id) === String(id));
+  if (!artifact) return;
+  openInspector("Thread evidence", artifact.name, `
+    <section class="detail-section"><h3>Verification</h3><dl class="detail-grid"><dt>Status</dt><dd>${statusBadge(artifact.verification_status)}</dd><dt>Type</dt><dd>${escapeHtml(humanize(artifact.artifact_type))}</dd><dt>Attempt</dt><dd>${artifact.attempt_number}</dd><dt>Workflow</dt><dd>${escapeHtml(artifact.workflow)} ${escapeHtml(artifact.workflow_version)}</dd></dl></section>
+    <section class="detail-section"><h3>Digest-bound provenance</h3><dl class="detail-grid"><dt>SHA-256</dt><dd class="mono">${escapeHtml(artifact.sha256)}</dd><dt>Source commit</dt><dd class="mono">${escapeHtml(artifact.source_commit)}</dd><dt>Location</dt><dd class="mono">${escapeHtml(artifact.location)}</dd></dl></section>`);
+}
+
+function createConversation() {
   if (state.demo) return toast("Actions are disabled in demonstration mode.");
-  const title = window.prompt("Name this thread:");
-  if (!title || title.trim().length < 3) return;
-  const message = window.prompt("What should Hermes help you accomplish?");
-  if (!message || !message.trim()) return;
-  const result = await mutate("/api/conversations", { title: title.trim(), message: message.trim() }, "Conversation started.");
+  document.getElementById("new-conversation-form").reset();
+  document.getElementById("conversation-dialog").showModal();
+}
+
+async function submitConversation(event) {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  if (state.demo) return;
+  const form = new FormData(event.currentTarget);
+  const title = String(form.get("title") || "").trim();
+  const message = String(form.get("message") || "").trim();
+  if (!title || !message) return;
+  const result = await mutate("/api/conversations", { title, message }, "Conversation started.");
+  document.getElementById("conversation-dialog").close();
   state.activeConversationId = result.conversation.id;
+  state.conversationWorkspace = null;
   await loadConversations();
 }
 
@@ -383,6 +550,7 @@ async function loadDashboard() {
   setLoading(true);
   try {
     state.dashboard = state.demo ? demoDashboard() : await request("/api/dashboard");
+    if (state.demo) loadDemoConversation();
     document.getElementById("health").textContent = state.demo ? "Demo isolated" : "Control plane online";
     document.getElementById("health-dot").classList.toggle("ok", !state.demo);
     document.getElementById("demo-banner").hidden = !state.demo;
@@ -1723,6 +1891,43 @@ function renderUnavailable() {
 
 function updateClock() {
   document.getElementById("clock").textContent = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date());
+}
+
+function loadDemoConversation() {
+  const now = new Date().toISOString();
+  const conversation = {
+    id: "conversation-demo",
+    short_id: "c7a32fb91e20",
+    title: "BTC weekend liquidity research",
+    project: "bulletproof_bt",
+    status: "ready_for_review",
+    revision: 4,
+    specification_digest: "7dc489f42d1f0dfa45821c76bad2ae17473cad80534f32e2a1d4a8c31c64e9b6",
+    current_specification: {
+      summary: "Test whether weekend liquidity changes short-horizon momentum net of costs.",
+      unresolved_fields: [],
+      resolved_defaults: [{ field: "base_ref", value: "main", basis: "repository default" }],
+    },
+    messages: [
+      { role: "founder", channel: "telegram", content: "Test whether BTC weekend liquidity changes short-horizon momentum after costs.", created_at: now },
+      { role: "assistant", channel: "telegram", content: "I retained the hypothesis and selected bounded research defaults. The specification is ready for review.", created_at: now },
+      { role: "founder", channel: "mission-control", content: "Use the conservative cost tier and retain every negative result.", created_at: now },
+    ],
+  };
+  const task = { ...state.dashboard.tasks[0], conversation_revision: 4, created_at: now };
+  const proposal = { ...state.dashboard.proposals[0], conversation_id: conversation.id, conversation_revision: 4 };
+  const artifact = state.dashboard.artifacts?.[0];
+  state.conversations = [conversation];
+  state.activeConversationId = conversation.id;
+  state.conversationWorkspace = {
+    conversation,
+    events: [{ event_type: "conversation_created", resulting_status: "collecting", revision: 1, created_at: now }],
+    proposals: [proposal],
+    tasks: [{ task, events: [{ event_type: "task_created", message: "Task created from reviewed founder specification.", created_at: now }] }],
+    approvals: [],
+    artifacts: artifact ? [artifact] : [],
+  };
+  renderConversations();
 }
 
 function demoDashboard() {

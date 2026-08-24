@@ -44,6 +44,16 @@ class FakeControlPlane:
     async def conversations(self) -> list[dict]:
         return []
 
+    async def conversation_workspace(self, conversation_id: str) -> dict:
+        return {
+            "conversation": {"id": conversation_id, "revision": 2},
+            "events": [],
+            "proposals": [],
+            "tasks": [],
+            "approvals": [],
+            "artifacts": [],
+        }
+
     async def create_conversation(self, title: str, message: str) -> dict:
         self.conversation_turns.append((title, message))
         return {"conversation": {"id": "conversation-id", "revision": 1}}
@@ -363,6 +373,20 @@ def test_conversation_turns_require_intent_and_reuse_thread(
         ("Research thread", "Test momentum."),
         ("conversation-id", "Use January 2022."),
     ]
+
+
+def test_conversation_workspace_is_read_only_and_canonical(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get("/api/conversations/conversation-id/workspace")
+
+    assert response.status_code == 200
+    assert response.json()["conversation"] == {
+        "id": "conversation-id",
+        "revision": 2,
+    }
 
 
 def test_unknown_intake_fields_are_rejected(
