@@ -19,6 +19,14 @@ and thread-bound Hermes replies. Telegram reply metadata takes precedence over t
 locally selected thread. Unknown or closed reply targets fail closed and request an
 explicit `/switch` or `/resume`.
 
+Bare plain-English input is never silently appended to a stale selected thread. A
+recent Telegram conversation remains conversationally active for 15 minutes; replies
+to bound messages always continue their bound thread. Otherwise the gateway holds the
+message as a draft and asks the founder to choose `/continue`, `/new [title]`, or
+`/cancel`. The choice routes the held text without requiring it to be typed again.
+Daily-research notifications carry typed question context, so replying to or pasting a
+daily card opens a grounded research thread instead of contaminating unrelated work.
+
 Edited messages produce one bounded warning and cannot rewrite an accepted turn.
 Telegram provides no dependable deletion update for ordinary bot conversations;
 deleting chat content therefore has no effect on the canonical audit record.
@@ -27,6 +35,8 @@ deleting chat content therefore has no effect on the canonical audit record.
 
 ```text
 /new [title]
+/continue
+/cancel
 /threads
 /switch <short-id>
 /context
@@ -46,10 +56,10 @@ proposal digest and state before materialization.
 
 ## Install and verify
 
-Run on VM1, where the Telegram gateway is currently hosted:
+Run on VM2, where the Telegram gateway is currently hosted:
 
 ```bash
-cd /home/omenka/Projects/swarm-control-plane/telegram-gateway
+cd /srv/invariance/swarm/repositories/swarm-control-plane/telegram-gateway
 sudo ./systemd/install.sh
 sudo systemctl restart hermes-telegram-gateway.service
 systemctl is-active hermes-telegram-gateway.service
