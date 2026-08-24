@@ -571,6 +571,10 @@ def main() -> int:
     proposal = json.loads(
         (args.qualification_root / "approved-proposal.json").read_text()
     )
+    if proposal.get("state") != "approved":
+        raise SystemExit("BT-009 proposal must carry founder-approved source state")
+    # Hermes owns the durable lifecycle and records approval as its first receipt.
+    proposal = proposal | {"state": "awaiting_approval"}
     snapshot = json.loads((args.qualification_root / "data/snapshot.json").read_text())
     if qualification["truth"]["status"] != "PASS" or len(qualification["runs"]) != 16:
         raise SystemExit("BT-009 qualification must contain 16 truth-valid runs")
