@@ -262,6 +262,13 @@ class ControlPlaneClient:
             "GET", "/v1/conversations", params={"founder_key": "founder:primary"}
         )
 
+    async def conversation_workspace(
+        self, conversation_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/conversations/{conversation_id}/workspace"
+        )
+
     async def create_conversation(self, title: str, message: str) -> dict[str, Any]:
         return await self._request(
             "POST",

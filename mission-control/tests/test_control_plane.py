@@ -177,6 +177,7 @@ async def test_conversation_client_uses_canonical_cross_channel_identity(
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
     try:
         await client.conversations()
+        await client.conversation_workspace("conversation-id")
         await client.create_conversation("BTC research", "Test the risk-off claim.")
         await client.add_conversation_turn("conversation-id", "Use January 2022.")
         await client.transition_conversation(
@@ -186,10 +187,15 @@ async def test_conversation_client_uses_canonical_cross_channel_identity(
         await client.close()
 
     assert seen[0] == ("GET", "/v1/conversations", None)
-    assert seen[1][2]["founder_key"] == "founder:primary"
-    assert seen[1][2]["channel"] == "mission-control"
-    assert seen[2][2]["message"] == "Use January 2022."
-    assert seen[3][2]["action"] == "finish"
+    assert seen[1] == (
+        "GET",
+        "/v1/conversations/conversation-id/workspace",
+        None,
+    )
+    assert seen[2][2]["founder_key"] == "founder:primary"
+    assert seen[2][2]["channel"] == "mission-control"
+    assert seen[3][2]["message"] == "Use January 2022."
+    assert seen[4][2]["action"] == "finish"
 
 
 @pytest.mark.asyncio

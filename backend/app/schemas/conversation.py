@@ -4,6 +4,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.governance import ApprovalResponse, ArtifactResponse
+from app.schemas.proposal import FounderProposalResponse
+from app.schemas.task import TaskDetailResponse
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -76,3 +80,24 @@ class ConversationTurnResponse(StrictModel):
     conversation: ConversationResponse
     task_id: uuid.UUID
     task_number: str
+
+
+class ConversationEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    event_type: str
+    actor: str
+    prior_status: str | None
+    resulting_status: str
+    revision: int
+    payload: dict
+    created_at: datetime
+
+
+class ConversationWorkspaceResponse(StrictModel):
+    conversation: ConversationResponse
+    events: list[ConversationEventResponse]
+    proposals: list[FounderProposalResponse]
+    tasks: list[TaskDetailResponse]
+    approvals: list[ApprovalResponse]
+    artifacts: list[ArtifactResponse]

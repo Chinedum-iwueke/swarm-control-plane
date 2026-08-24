@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
+from app.main import app
 from app.schemas import (
     ConversationCreate,
     ConversationTransition,
@@ -51,6 +52,22 @@ def test_conversation_contracts_are_bounded_and_channel_explicit() -> None:
     assert turn.channel == "mission-control"
     assert turn.reply_to_channel_message_id == "100"
     assert transition.action == "finish"
+
+
+def test_conversation_workspace_contract_exposes_governed_work_lineage() -> None:
+    document = app.openapi()
+    route = document["paths"]["/v1/conversations/{conversation_id}/workspace"]
+    schema = document["components"]["schemas"]["ConversationWorkspaceResponse"]
+
+    assert set(route) == {"get"}
+    assert set(schema["required"]) == {
+        "conversation",
+        "events",
+        "proposals",
+        "tasks",
+        "approvals",
+        "artifacts",
+    }
 
 
 def test_august_23_transcript_retains_research_identity_and_order() -> None:

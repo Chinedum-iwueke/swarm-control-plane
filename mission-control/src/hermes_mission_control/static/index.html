@@ -134,15 +134,29 @@
             <div id="conversation-detail" hidden>
               <header class="conversation-header">
                 <div><p class="section-kicker" id="conversation-thread-id">Thread</p><h2 id="conversation-title">Conversation</h2><p id="conversation-state"></p></div>
-                <div class="conversation-actions"><button class="secondary" data-conversation-action="finish">Finish</button><button class="secondary danger" data-conversation-action="stop">Stop</button></div>
+                <div class="conversation-actions"><button class="secondary" data-conversation-action="resume" hidden>Resume</button><button class="secondary" data-conversation-action="finish">Finish</button><button class="secondary danger" data-conversation-action="stop">Stop</button></div>
               </header>
-              <div id="conversation-messages" class="conversation-messages"></div>
-              <aside id="conversation-specification" class="conversation-specification"></aside>
-              <form id="conversation-form" class="conversation-composer">
-                <label for="conversation-message" class="sr-only">Continue this thread</label>
-                <textarea id="conversation-message" required maxlength="12000" placeholder="Continue this job, answer a question, or ask Hermes to choose reasonable defaults..."></textarea>
-                <button class="command" type="submit">Send</button>
-              </form>
+              <div class="conversation-body">
+                <div class="conversation-dialogue">
+                  <div id="conversation-messages" class="conversation-messages"></div>
+                  <form id="conversation-form" class="conversation-composer">
+                    <label for="conversation-message">Continue this thread</label>
+                    <textarea id="conversation-message" required maxlength="12000" placeholder="Answer a clarification, refine scope, or ask Hermes to choose reasonable defaults..."></textarea>
+                    <button class="command" type="submit">Send</button>
+                  </form>
+                </div>
+                <aside class="conversation-work-rail" aria-label="Thread specification and execution">
+                  <section id="conversation-specification" class="conversation-specification"></section>
+                  <section class="conversation-progress-panel">
+                    <div class="band-heading"><div><p class="section-kicker">Execution</p><h3>Work timeline</h3></div><span id="conversation-progress-count" class="count">0</span></div>
+                    <div id="conversation-progress" class="conversation-progress"></div>
+                  </section>
+                  <section class="conversation-evidence-panel">
+                    <div class="band-heading"><div><p class="section-kicker">Proof</p><h3>Evidence</h3></div><span id="conversation-evidence-count" class="count">0</span></div>
+                    <div id="conversation-evidence" class="conversation-evidence"></div>
+                  </section>
+                </aside>
+              </div>
             </div>
           </section>
         </div>
@@ -387,6 +401,16 @@
       <label>Acceptance criteria<textarea name="criteria" placeholder="One verifiable criterion per line"></textarea></label>
       <div class="safety-note"><strong>Structured request</strong><span>This form cannot submit shell commands or bypass worker policy.</span></div>
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Submit request</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="conversation-dialog" class="modal conversation-dialog">
+    <form id="new-conversation-form" method="dialog">
+      <div class="dialog-heading"><div><p class="section-kicker">Canonical founder thread</p><h2>Start new work</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <label>Thread name<input name="title" required minlength="3" maxlength="160" placeholder="BTC weekend liquidity research"></label>
+      <label>What should Hermes accomplish?<textarea name="message" required minlength="1" maxlength="12000" placeholder="Describe the outcome in plain English. Hermes will ask only for details it cannot safely infer."></textarea></label>
+      <div class="safety-note"><strong>Governed conversation</strong><span>Discussion does not execute work. Hermes produces a reviewable specification, proposal, approval state, and evidence trail.</span></div>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Start thread</button></div>
     </form>
   </dialog>
 
