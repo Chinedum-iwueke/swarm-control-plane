@@ -482,7 +482,7 @@ def _event(
 ) -> None:
     sequence = (
         db.scalar(
-            select(func.count(LaboratoryPublicationEvent.id)).where(
+            select(func.max(LaboratoryPublicationEvent.sequence)).where(
                 LaboratoryPublicationEvent.publication_id == publication.id
             )
         )
@@ -503,3 +503,4 @@ def _event(
             record_digest=digest_document(material),
         )
     )
+    db.flush()

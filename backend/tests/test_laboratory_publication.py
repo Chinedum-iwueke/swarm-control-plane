@@ -187,6 +187,13 @@ def test_memory_publication_is_ordered_and_digest_bound() -> None:
     )
     assert record_memory_receipt(db, PUBLICATION_ID, receipt).state == "complete"
     assert publication.completed_at is not None
+    events = [call.args[0] for call in db.add.call_args_list]
+    assert [event.event_type for event in events] == [
+        "memory_confirmed",
+        "publication_completed",
+    ]
+    assert [event.sequence for event in events] == [1, 2]
+    assert db.flush.call_count == 2
 
 
 def test_partial_failure_remains_retryable_without_deleting_canonical_receipt() -> None:
