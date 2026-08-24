@@ -6,9 +6,6 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
@@ -21,6 +18,7 @@ from app.services.graph import (
     _authorized_edges,
     _frontier_edges,
     _node_response,
+    _stream_digest,
     _traverse,
     _validate_edge_types,
     calculate,
@@ -28,10 +26,29 @@ from app.services.graph import (
     execute_cognitive_tool,
     graph_projection_status,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 ONE = UUID("11111111-1111-4111-8111-111111111111")
 TWO = UUID("22222222-2222-4222-8222-222222222222")
 THREE = UUID("33333333-3333-4333-8333-333333333333")
+
+
+def test_stream_digest_reports_prepare_progress(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.graph._PROJECTION_BATCH_SIZE", 2)
+    updates = []
+
+    digest = _stream_digest(
+        [("version", "v1"), ("object", "one"), ("object", "two")],
+        progress=lambda *update: updates.append(update),
+        total=3,
+    )
+
+    assert len(digest) == 64
+    assert updates == [
+        ("digest-corpus", 2, 3, "records"),
+        ("digest-corpus", 3, 3, "records"),
+    ]
 
 
 def edge(source: UUID, target: UUID, **kwargs):

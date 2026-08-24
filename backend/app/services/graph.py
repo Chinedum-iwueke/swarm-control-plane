@@ -68,12 +68,21 @@ _TYPE_RULES: dict[str, set[tuple[str, str]]] = {
 _PROJECTION_BATCH_SIZE = 2_000
 
 
-def _stream_digest(rows) -> str:
+def _stream_digest(
+    rows,
+    progress: Callable[[str, int, int, str], None] | None = None,
+    total: int = 0,
+) -> str:
     digest = hashlib.sha256()
-    for row in rows:
+    processed = 0
+    for processed, row in enumerate(rows, start=1):
         encoded = _canonical(row)
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
+        if progress is not None and processed % _PROJECTION_BATCH_SIZE == 0:
+            progress("digest-corpus", processed, total or processed, "records")
+    if progress is not None:
+        progress("digest-corpus", processed, total or max(processed, 1), "records")
     return digest.hexdigest()
 
 
@@ -140,7 +149,11 @@ def register_edge(
     return record
 
 
-def graph_corpus_digest(db: Session) -> str:
+def graph_corpus_digest(
+    db: Session,
+    progress: Callable[[str, int, int, str], None] | None = None,
+    total: int = 0,
+) -> str:
     active_ids = select(CanonicalEvidenceObject.id).where(is_active_expression())
     objects = db.execute(
         select(
@@ -204,7 +217,9 @@ def graph_corpus_digest(db: Session) -> str:
                 )
                 for row in edges
             ),
-        )
+        ),
+        progress=progress,
+        total=total,
     )
 
 
@@ -213,7 +228,6 @@ def build_graph_projection(
     progress: Callable[[str, int, int, str], None] | None = None,
 ) -> EvidenceGraphProjectionState:
     source_epoch = corpus_epoch(db)
-    corpus = graph_corpus_digest(db)
     total_nodes = int(
         db.scalar(
             select(func.count())
@@ -236,6 +250,11 @@ def build_graph_projection(
             )
         )
         or 0
+    )
+    corpus = graph_corpus_digest(
+        db,
+        progress=progress,
+        total=1 + total_nodes + total_edges,
     )
     now = datetime.now(UTC)
     db.execute(delete(EvidenceGraphProjectionEdge))
