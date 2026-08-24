@@ -31,6 +31,43 @@ class FounderChannelClient:
     async def create_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/v1/founder-channel/requests", json=payload)
 
+    async def active_conversation(self, founder_key: str) -> dict[str, Any] | None:
+        return await self._request(
+            "GET",
+            "/v1/founder-channel/conversations/active",
+            params={"founder_key": founder_key},
+        )
+
+    async def conversations(self, founder_key: str) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET",
+            "/v1/founder-channel/conversations",
+            params={"founder_key": founder_key},
+        )
+
+    async def create_conversation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/founder-channel/conversations", json=payload
+        )
+
+    async def add_conversation_turn(
+        self, conversation_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/founder-channel/conversations/{conversation_id}/turns",
+            json=payload,
+        )
+
+    async def transition_conversation(
+        self, conversation_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/founder-channel/conversations/{conversation_id}/transitions",
+            json=payload,
+        )
+
     async def tasks(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/tasks")
 

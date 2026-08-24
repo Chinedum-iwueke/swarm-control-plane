@@ -154,9 +154,7 @@ class ControlPlaneClient:
         return await self._request("POST", "/v1/research/graph/query", json=payload)
 
     async def research_retrieval(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request(
-            "POST", "/v1/research/retrieval/query", json=payload
-        )
+        return await self._request("POST", "/v1/research/retrieval/query", json=payload)
 
     async def research_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
@@ -258,6 +256,45 @@ class ControlPlaneClient:
             "max_attempts": 1,
         }
         return await self._request("POST", "/v1/tasks", json=payload)
+
+    async def conversations(self) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET", "/v1/conversations", params={"founder_key": "founder:primary"}
+        )
+
+    async def create_conversation(self, title: str, message: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/conversations",
+            json={
+                "founder_key": "founder:primary",
+                "channel": "mission-control",
+                "title": title,
+                "message": message,
+            },
+        )
+
+    async def add_conversation_turn(
+        self, conversation_id: str, message: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/conversations/{conversation_id}/turns",
+            json={
+                "founder_key": "founder:primary",
+                "channel": "mission-control",
+                "message": message,
+            },
+        )
+
+    async def transition_conversation(
+        self, conversation_id: str, action: str, reason: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/conversations/{conversation_id}/transitions",
+            json={"founder_key": "founder:primary", "action": action, "reason": reason},
+        )
 
     async def decide_proposal(
         self,

@@ -28,6 +28,7 @@
       <div class="nav-group">
         <p class="nav-label">Operate</p>
         <button class="nav-item active" data-view="command"><span class="nav-glyph">⌂</span>Command</button>
+        <button class="nav-item" data-view="work"><span class="nav-glyph">›_</span>Chat &amp; Work</button>
         <button class="nav-item" data-view="missions"><span class="nav-glyph">◎</span>Missions</button>
         <button class="nav-item" data-view="tasks"><span class="nav-glyph">≡</span>Tasks</button>
         <button class="nav-item" data-view="proposals"><span class="nav-glyph">◆</span>Proposals <span class="nav-count" id="proposal-count">0</span></button>
@@ -115,6 +116,35 @@
               <div id="controls"></div>
             </div>
           </aside>
+        </div>
+      </section>
+
+      <section id="work" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Conversational founder intake</p><h1>Chat &amp; Work</h1><p class="heading-context">Develop one governed job from intent through evidence</p></div>
+          <button class="command" id="new-conversation">＋ New thread</button>
+        </div>
+        <div class="conversation-workspace">
+          <aside class="conversation-list-panel" aria-label="Conversation threads">
+            <div class="band-heading"><div><p class="section-kicker">Threads</p><h2>Founder work</h2></div><button class="icon-button" id="refresh-conversations" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div>
+            <div id="conversation-list" class="conversation-list"></div>
+          </aside>
+          <section class="conversation-main" aria-live="polite">
+            <div id="conversation-empty" class="empty-state">Start a thread to give Hermes a task in plain English.</div>
+            <div id="conversation-detail" hidden>
+              <header class="conversation-header">
+                <div><p class="section-kicker" id="conversation-thread-id">Thread</p><h2 id="conversation-title">Conversation</h2><p id="conversation-state"></p></div>
+                <div class="conversation-actions"><button class="secondary" data-conversation-action="finish">Finish</button><button class="secondary danger" data-conversation-action="stop">Stop</button></div>
+              </header>
+              <div id="conversation-messages" class="conversation-messages"></div>
+              <aside id="conversation-specification" class="conversation-specification"></aside>
+              <form id="conversation-form" class="conversation-composer">
+                <label for="conversation-message" class="sr-only">Continue this thread</label>
+                <textarea id="conversation-message" required maxlength="12000" placeholder="Continue this job, answer a question, or ask Hermes to choose reasonable defaults..."></textarea>
+                <button class="command" type="submit">Send</button>
+              </form>
+            </div>
+          </section>
         </div>
       </section>
 

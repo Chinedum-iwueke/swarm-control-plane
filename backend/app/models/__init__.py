@@ -1,6 +1,11 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
+from app.models.conversation import (
+    FounderConversation,
+    FounderConversationEvent,
+    FounderConversationMessage,
+)
 from app.models.corpus import CorpusBackup, CorpusRecoveryRun, CorpusSecurityFinding
 from app.models.corpus_sync import CorpusSyncItem, CorpusSyncRun
 from app.models.curriculum import (
@@ -112,6 +117,9 @@ __all__ = [
     "EvidenceRetrievalState",
     "FleetIncident",
     "FleetIncidentEvent",
+    "FounderConversation",
+    "FounderConversationEvent",
+    "FounderConversationMessage",
     "FounderNotification",
     "FounderProposal",
     "MachineObservation",

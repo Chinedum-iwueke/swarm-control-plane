@@ -26,6 +26,9 @@ from .control_plane import ControlPlaneClient, ControlPlaneError
 from .knowledge import KnowledgePolicyError, KnowledgeStore
 from .models import (
     ApprovalDecision,
+    ConversationCreateRequest,
+    ConversationTransitionRequest,
+    ConversationTurnRequest,
     IntakeRequest,
     KnowledgeIngestRequest,
     ProposalDecision,
@@ -157,6 +160,34 @@ def create_app(
     @app.get("/api/research/surveillance/{publication_id}/replay")
     async def replay_surveillance_candidate(publication_id: str) -> dict:
         return await client.replay_surveillance_candidate(publication_id)
+
+    @app.get("/api/conversations")
+    async def conversations() -> list[dict]:
+        return await client.conversations()
+
+    @app.post("/api/conversations", dependencies=[Depends(_mutation_intent)])
+    async def new_conversation(payload: ConversationCreateRequest) -> dict:
+        return await client.create_conversation(payload.title, payload.message)
+
+    @app.post(
+        "/api/conversations/{conversation_id}/turns",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def conversation_turn(
+        conversation_id: str, payload: ConversationTurnRequest
+    ) -> dict:
+        return await client.add_conversation_turn(conversation_id, payload.message)
+
+    @app.post(
+        "/api/conversations/{conversation_id}/transitions",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def conversation_transition(
+        conversation_id: str, payload: ConversationTransitionRequest
+    ) -> dict:
+        return await client.transition_conversation(
+            conversation_id, payload.action, payload.reason
+        )
 
     @app.post("/api/intake", dependencies=[Depends(_mutation_intent)])
     async def intake(payload: IntakeRequest) -> dict:
@@ -335,7 +366,9 @@ def create_app(
         )
         projection = await client.rebuild_corpus_projections(domain)
         return {
-            "document_id": job["published_object_ids"][0] if disposition == "canonical" else None,
+            "document_id": job["published_object_ids"][0]
+            if disposition == "canonical"
+            else None,
             "document_key": f"canonical-{content_digest[:24]}",
             "content_digest": content_digest,
             "passages": max(0, len(job["published_object_ids"]) - 3),

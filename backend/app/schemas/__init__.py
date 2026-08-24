@@ -14,6 +14,14 @@ from app.schemas.control import (
     ControlScopeResponse,
     EffectiveControlResponse,
 )
+from app.schemas.conversation import (
+    ConversationCreate,
+    ConversationMessageResponse,
+    ConversationResponse,
+    ConversationTransition,
+    ConversationTurnCreate,
+    ConversationTurnResponse,
+)
 from app.schemas.founder_channel import (
     FounderChannelApproval,
     FounderChannelDecision,
@@ -106,6 +114,12 @@ __all__ = [
     "ControlMutation",
     "ControlMutationResponse",
     "ControlScopeResponse",
+    "ConversationCreate",
+    "ConversationMessageResponse",
+    "ConversationResponse",
+    "ConversationTransition",
+    "ConversationTurnCreate",
+    "ConversationTurnResponse",
     "CredentialSecretResponse",
     "EffectiveControlResponse",
     "EngineeringMilestoneManifest",

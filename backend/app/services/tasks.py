@@ -112,6 +112,8 @@ def serialize_task(task: Task) -> dict[str, Any]:
         "risk_level": task.risk_level,
         "assigned_agent_id": task.assigned_agent_id,
         "parent_task_id": task.parent_task_id,
+        "conversation_id": task.conversation_id,
+        "conversation_revision": task.conversation_revision,
         "mission_id": task.mission_id,
         "milestone_step_id": task.milestone_step_id,
         "created_by": task.created_by,

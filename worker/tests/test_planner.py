@@ -57,6 +57,29 @@ def test_planner_proposal_rejects_invented_worker_route() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
+def test_clarification_requires_exact_field_and_format_guidance() -> None:
+    payload = valid_proposal()
+    payload.update(
+        {
+            "recommended_action": "needs_clarification",
+            "proposed_task": None,
+            "clarification_questions": ["Which dataset should be used?"],
+            "unresolved_fields": ["dataset"],
+            "specification_format": {},
+        }
+    )
+
+    with pytest.raises(ValidationError, match="accepted format guidance"):
+        FounderProposalDocument.model_validate(payload)
+
+    payload["specification_format"] = {
+        "dataset": "Canonical dataset ID, for example synthetic-regime-v1"
+    }
+    assert FounderProposalDocument.model_validate(payload).unresolved_fields == [
+        "dataset"
+    ]
+
+
 def test_planner_child_environment_excludes_worker_token(tmp_path) -> None:
     os.environ["SWARM_AGENT_TOKEN"] = "agent-token-must-not-propagate"
     planner = CodexProposalPlanner(
@@ -89,6 +112,45 @@ def test_planner_output_schema_is_closed_and_requires_declared_fields() -> None:
                 inspect(nested)
 
     inspect(schema)
+
+
+def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
+    context = [
+        "Backtest whether an equity risk-off regime predicts BTC residual returns.",
+        "January to February 2022; use a stable universe.",
+        "Use reasonable defaults and do not ask me to invent identifiers.",
+    ]
+    task = Task.model_construct(
+        task_type="founder_request",
+        project="bulletproof_bt",
+        title="BTC residual research",
+        risk_level=1,
+        acceptance_criteria=[],
+        input_contract={
+            "schema_version": 2,
+            "request_kind": "task",
+            "objective": context[0],
+            "conversation_id": "conversation-id",
+            "conversation_revision": 3,
+            "conversation_context": context,
+            "suggested_identifiers": {
+                "program_id": "HERMES-THREAD",
+                "hypothesis_id": "HERMES-THREAD-H1",
+            },
+            "specification_guide": {
+                "reasonable_defaults": {"base_ref": "main"},
+                "formats": {"train_fraction": "decimal 0.50-0.80"},
+            },
+        },
+    )
+
+    prompt = CodexProposalPlanner._prompt(task)
+
+    assert all(turn in prompt for turn in context)
+    assert "HERMES-THREAD-H1" in prompt
+    assert "do not ask the founder to invent program_id" in prompt
+    assert "exact field name" in prompt
+    assert "Never call a choice best without evidence" in prompt
 
 
 @pytest.mark.asyncio

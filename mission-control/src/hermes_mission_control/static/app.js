@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
+const allowedViews = new Set(["command", "work", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
@@ -15,6 +15,8 @@ const state = {
   graphTransform: { scale: 1, x: 0, y: 0 },
   researchMode: allowedResearchModes.has(requestedResearchMode) ? requestedResearchMode : "ask",
   researchContext: [],
+  conversations: [],
+  activeConversationId: null,
 };
 
 const intentHeaders = {
@@ -76,6 +78,12 @@ document.querySelectorAll("[data-research-mode]").forEach((button) => {
 document.getElementById("clear-research-context").addEventListener("click", () => {
   state.researchContext = [];
   renderResearchContext();
+});
+document.getElementById("new-conversation").addEventListener("click", createConversation);
+document.getElementById("refresh-conversations").addEventListener("click", loadConversations);
+document.getElementById("conversation-form").addEventListener("submit", continueConversation);
+document.querySelectorAll("[data-conversation-action]").forEach((button) => {
+  button.addEventListener("click", () => transitionConversation(button.dataset.conversationAction));
 });
 
 document.addEventListener("keydown", (event) => {
@@ -253,6 +261,84 @@ function navigate(view) {
   else url.searchParams.set("view", view);
   window.history.replaceState({}, "", url);
   window.scrollTo({ top: 0, behavior: "smooth" });
+  if (view === "work" && !state.demo) loadConversations();
+}
+
+async function loadConversations() {
+  if (state.demo) return;
+  try {
+    state.conversations = await request("/api/conversations");
+    if (state.activeConversationId && !state.conversations.some((item) => item.id === state.activeConversationId)) state.activeConversationId = null;
+    if (!state.activeConversationId && state.conversations.length) state.activeConversationId = state.conversations[0].id;
+    renderConversations();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function renderConversations() {
+  const list = document.getElementById("conversation-list");
+  list.innerHTML = state.conversations.length ? state.conversations.map((item) => `
+    <button class="conversation-list-item ${item.id === state.activeConversationId ? "active" : ""}" data-conversation-id="${item.id}">
+      <span>${escapeHtml(item.short_id)} · ${escapeHtml(humanize(item.status))}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.project || "Unclassified")} · revision ${item.revision}</small>
+    </button>`).join("") : empty("No conversation threads yet.");
+  document.querySelectorAll("[data-conversation-id]").forEach((button) => button.addEventListener("click", () => {
+    state.activeConversationId = button.dataset.conversationId;
+    renderConversations();
+  }));
+  const item = state.conversations.find((value) => value.id === state.activeConversationId);
+  document.getElementById("conversation-empty").hidden = Boolean(item);
+  document.getElementById("conversation-detail").hidden = !item;
+  if (!item) return;
+  document.getElementById("conversation-thread-id").textContent = `${item.short_id} · revision ${item.revision}`;
+  document.getElementById("conversation-title").textContent = item.title;
+  document.getElementById("conversation-state").textContent = `${humanize(item.status)} · ${item.project || "unclassified"}`;
+  document.getElementById("conversation-messages").innerHTML = (item.messages || []).map((message) => `
+    <article class="conversation-message ${message.role}">
+      <div><strong>${message.role === "founder" ? "Founder" : "Hermes"}</strong><span>${escapeHtml(message.channel)} · ${formatDate(message.created_at)}</span></div>
+      <p>${escapeHtml(message.content).replaceAll("\n", "<br>")}</p>
+    </article>`).join("");
+  const spec = item.current_specification || {};
+  const unresolved = spec.unresolved_fields || [];
+  const defaults = spec.resolved_defaults || [];
+  document.getElementById("conversation-specification").innerHTML = `
+    <div><p class="section-kicker">Live specification</p><h3>${escapeHtml(spec.summary || "Collecting requirements")}</h3></div>
+    <dl><dt>State</dt><dd>${escapeHtml(humanize(item.status))}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(item.specification_digest || "Not compiled")}</dd></dl>
+    ${unresolved.length ? `<section><strong>Still needed</strong>${bulletList(unresolved, "")}</section>` : ""}
+    ${defaults.length ? `<section><strong>Resolved defaults</strong>${bulletList(defaults.map((value) => `${value.field}: ${value.value} — ${value.basis}`), "")}</section>` : ""}`;
+  const canWrite = ["collecting", "needs_clarification", "ready_for_review", "attention_required"].includes(item.status);
+  document.getElementById("conversation-message").disabled = !canWrite;
+  document.querySelector("#conversation-form button").disabled = !canWrite;
+}
+
+async function createConversation() {
+  if (state.demo) return toast("Actions are disabled in demonstration mode.");
+  const title = window.prompt("Name this thread:");
+  if (!title || title.trim().length < 3) return;
+  const message = window.prompt("What should Hermes help you accomplish?");
+  if (!message || !message.trim()) return;
+  const result = await mutate("/api/conversations", { title: title.trim(), message: message.trim() }, "Conversation started.");
+  state.activeConversationId = result.conversation.id;
+  await loadConversations();
+}
+
+async function continueConversation(event) {
+  event.preventDefault();
+  if (state.demo || !state.activeConversationId) return;
+  const textarea = document.getElementById("conversation-message");
+  const message = textarea.value.trim();
+  if (!message) return;
+  await mutate(`/api/conversations/${state.activeConversationId}/turns`, { message }, "Turn added to this thread.");
+  textarea.value = "";
+  await loadConversations();
+}
+
+async function transitionConversation(action) {
+  if (state.demo || !state.activeConversationId) return;
+  await mutate(`/api/conversations/${state.activeConversationId}/transitions`, { action, reason: `Founder requested ${action} in Mission Control.` }, `Thread ${action} recorded.`);
+  await loadConversations();
 }
 
 function setResearchMode(mode, { focus = false } = {}) {

@@ -157,6 +157,42 @@ async def test_graph_explorer_uses_authenticated_read_only_query(
 
 
 @pytest.mark.asyncio
+async def test_conversation_client_uses_canonical_cross_channel_identity(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.method,
+                request.url.path,
+                json.loads(request.content) if request.content else None,
+            )
+        )
+        if request.method == "GET":
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"conversation": {}})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.conversations()
+        await client.create_conversation("BTC research", "Test the risk-off claim.")
+        await client.add_conversation_turn("conversation-id", "Use January 2022.")
+        await client.transition_conversation(
+            "conversation-id", "finish", "Founder completed the thread."
+        )
+    finally:
+        await client.close()
+
+    assert seen[0] == ("GET", "/v1/conversations", None)
+    assert seen[1][2]["founder_key"] == "founder:primary"
+    assert seen[1][2]["channel"] == "mission-control"
+    assert seen[2][2]["message"] == "Use January 2022."
+    assert seen[3][2]["action"] == "finish"
+
+
+@pytest.mark.asyncio
 async def test_dossier_client_uses_authenticated_read_only_routes(
     settings: MissionControlSettings,
 ) -> None:

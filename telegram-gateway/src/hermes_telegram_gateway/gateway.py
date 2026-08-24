@@ -134,6 +134,29 @@ class RestrictedTelegramGateway:
         if text == "/notes" or text.startswith("/notes "):
             await self._send_notes(text.removeprefix("/notes").strip() or None)
             return
+        if text == "/threads":
+            await self._send_threads()
+            return
+        if text == "/context":
+            await self._send_context()
+            return
+        if text == "/finish" or text == "/stop":
+            await self._transition_active(text.removeprefix("/"))
+            return
+        if text.startswith("/resume "):
+            await self._resume_thread(text.removeprefix("/resume ").strip())
+            return
+        if text.startswith("/switch "):
+            await self._switch_thread(text.removeprefix("/switch ").strip())
+            return
+        if text == "/new" or text.startswith("/new "):
+            title = text.removeprefix("/new").strip()
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"New thread ready{f': {title}' if title else ''}. Send the first request as your next message.",
+            )
+            self._store.set_value("pending-new-title", title or "New founder request")
+            return
         if text.startswith("/start review_"):
             await self._review_handoff(text.removeprefix("/start review_"))
             return
@@ -148,26 +171,159 @@ class RestrictedTelegramGateway:
         if text.startswith("/"):
             await self._telegram.send(
                 self._settings.founder_chat_id,
-                "Supported: plain-English request, /status, /approvals, /research, /notes, "
-                "approval links.",
+                "Supported: plain-English request, /new, /threads, /switch, /context, "
+                "/finish, /stop, /resume, /status, /approvals, /research, /notes, approval links.",
             )
             return
-        project, risk = classify_request(text)
-        result = await self._channel.create_request(
-            {
-                "kind": "task",
-                "project": project,
-                "title": title_for(text),
-                "objective": text,
-                "risk_level": risk,
-                "acceptance_criteria": [],
-            }
+        founder_key = self._founder_key
+        pending_title = self._store.pop_value("pending-new-title")
+        active = (
+            None if pending_title is not None else await self._selected_conversation()
         )
+        message_id = (
+            str(message.get("message_id"))
+            if message.get("message_id") is not None
+            else None
+        )
+        if active is None:
+            result = await self._channel.create_conversation(
+                {
+                    "founder_key": founder_key,
+                    "channel": "telegram",
+                    "title": pending_title or title_for(text),
+                    "message": text,
+                    "channel_message_id": message_id,
+                }
+            )
+        else:
+            result = await self._channel.add_conversation_turn(
+                active["id"],
+                {
+                    "founder_key": founder_key,
+                    "channel": "telegram",
+                    "message": text,
+                    "channel_message_id": message_id,
+                },
+            )
+        conversation = result["conversation"]
+        self._store.set_value("selected-conversation-id", conversation["id"])
         await self._telegram.send(
             self._settings.founder_chat_id,
-            f"Request accepted: {result['task_number']}\n"
-            "The planner will return a structured proposal for review.",
+            f"Turn accepted · {conversation['short_id']} · revision {conversation['revision']}\n"
+            f"{conversation['title']}\nThe planner will continue this thread.",
         )
+
+    @property
+    def _founder_key(self) -> str:
+        return "founder:primary"
+
+    async def _send_threads(self) -> None:
+        items = await self._channel.conversations(self._founder_key)
+        if not items:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "No conversation threads recorded."
+            )
+            return
+        lines = ["Founder threads"]
+        lines.extend(
+            f"{item['short_id']} · {item['status']} · {item['title']}"
+            for item in items[:10]
+        )
+        await self._telegram.send(self._settings.founder_chat_id, "\n".join(lines))
+
+    async def _send_context(self) -> None:
+        item = await self._selected_conversation()
+        if item is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "No active thread. Use /new or send a request.",
+            )
+            return
+        unresolved = (item.get("current_specification") or {}).get(
+            "unresolved_fields"
+        ) or []
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Active thread {item['short_id']} · {item['status']} · revision {item['revision']}\n"
+            f"{item['title']}\nProject: {item.get('project') or 'unclassified'}\n"
+            f"Unresolved: {', '.join(unresolved) if unresolved else 'none recorded'}",
+        )
+
+    async def _transition_active(self, action: str) -> None:
+        item = await self._selected_conversation()
+        if item is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "No active thread."
+            )
+            return
+        result = await self._channel.transition_conversation(
+            item["id"],
+            {
+                "founder_key": self._founder_key,
+                "action": action,
+                "reason": f"Founder requested {action} from Telegram.",
+            },
+        )
+        self._store.pop_value("selected-conversation-id")
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Thread {result['short_id']} is {result['status']}.",
+        )
+
+    async def _resume_thread(self, short_id: str) -> None:
+        items = await self._channel.conversations(self._founder_key)
+        item = next((value for value in items if value["short_id"] == short_id), None)
+        if item is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id, "Thread not found."
+            )
+            return
+        result = await self._channel.transition_conversation(
+            item["id"],
+            {
+                "founder_key": self._founder_key,
+                "action": "resume",
+                "reason": "Founder resumed thread from Telegram.",
+            },
+        )
+        self._store.set_value("selected-conversation-id", result["id"])
+        await self._telegram.send(
+            self._settings.founder_chat_id, f"Thread {result['short_id']} resumed."
+        )
+
+    async def _switch_thread(self, short_id: str) -> None:
+        items = await self._channel.conversations(self._founder_key)
+        item = next((value for value in items if value["short_id"] == short_id), None)
+        if item is None or item["status"] not in {
+            "collecting",
+            "needs_clarification",
+            "ready_for_review",
+            "attention_required",
+        }:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "Open thread not found. Use /resume for a stopped or finished thread.",
+            )
+            return
+        self._store.set_value("selected-conversation-id", item["id"])
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Switched to {item['short_id']} · {item['title']}",
+        )
+
+    async def _selected_conversation(self) -> dict[str, Any] | None:
+        selected = self._store.get_value("selected-conversation-id")
+        if selected:
+            items = await self._channel.conversations(self._founder_key)
+            item = next((value for value in items if value["id"] == selected), None)
+            if item and item["status"] in {
+                "collecting",
+                "needs_clarification",
+                "ready_for_review",
+                "attention_required",
+            }:
+                return item
+        return await self._channel.active_conversation(self._founder_key)
 
     async def _notify_proposals(self) -> None:
         for item in await self._channel.proposals():
@@ -443,9 +599,7 @@ class RestrictedTelegramGateway:
                 "Reply with a new plain-English request containing these answers.",
             )
             return
-        detail = (
-            f"\nTask: {task['task_type']} · risk {task['risk_level']}"
-        )
+        detail = f"\nTask: {task['task_type']} · risk {task['risk_level']}"
         await self._telegram.send(
             self._settings.founder_chat_id,
             f"{current['proposal']['summary']}{detail}\n"
@@ -612,7 +766,9 @@ def classify_request(text: str) -> tuple[str, int]:
 def _clarification_text(proposal: dict) -> str:
     questions = proposal.get("clarification_questions") or []
     if not questions:
-        return "Questions:\n1. Provide the missing information requested by the planner."
+        return (
+            "Questions:\n1. Provide the missing information requested by the planner."
+        )
     rendered = "\n".join(
         f"{index}. {str(question)[:500]}"
         for index, question in enumerate(questions[:10], start=1)

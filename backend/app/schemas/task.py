@@ -62,6 +62,8 @@ class TaskResponse(BaseModel):
 
     assigned_agent_id: uuid.UUID | None
     parent_task_id: uuid.UUID | None
+    conversation_id: uuid.UUID | None = None
+    conversation_revision: int | None = None
     mission_id: uuid.UUID | None
     milestone_step_id: str | None
     created_by: str
