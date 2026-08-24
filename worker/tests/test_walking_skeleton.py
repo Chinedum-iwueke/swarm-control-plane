@@ -3,10 +3,41 @@ from __future__ import annotations
 import pytest
 
 from swarm_worker.walking_skeleton import (
+    invalid_run_envelope,
     verify_compensation_replay,
     verify_invalid_causality_fixture,
     verify_publication_replay,
 )
+
+
+def test_invalid_fixture_envelope_has_required_canonical_alias() -> None:
+    import uuid
+
+    run_id = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    envelope = invalid_run_envelope(
+        run_id,
+        {
+            "kind": "run",
+            "dataset_object_ids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+            "specification_digest": "a" * 64,
+            "code_digest": "0" * 64,
+            "environment_digest": "0" * 64,
+            "attempt": 1,
+        },
+        {"schema_version": "ws001-invalid-causality-v1.0.0"},
+    )
+    assert envelope["aliases"] == [
+        {
+            "namespace": "hermes-walking-skeleton",
+            "object_type": "run",
+            "value": str(run_id),
+        },
+        {
+            "namespace": "hermes-walking-skeleton",
+            "object_type": "run",
+            "value": f"invalid-causality:{run_id}",
+        }
+    ]
 
 
 def replay() -> dict:
