@@ -80,6 +80,20 @@ def test_stage_creates_private_digest_bound_layout(tmp_path: Path) -> None:
             assert line.split("=", 1)[1] not in rendered
 
 
+def test_stage_enforces_runtime_modes_under_restrictive_umask(
+    tmp_path: Path,
+) -> None:
+    prior_umask = os.umask(0o077)
+    try:
+        root = tmp_path / "postgres"
+        manager(root).stage()
+    finally:
+        os.umask(prior_umask)
+
+    for name in ("archive", "data", "logs"):
+        assert (root / name).stat().st_mode & 0o777 == 0o750
+
+
 def test_stage_supports_isolated_rehearsal_binding(tmp_path: Path) -> None:
     root = tmp_path / "postgres"
     PostgresDeploymentManager(
