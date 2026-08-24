@@ -15,20 +15,25 @@ from typing import Any
 
 import httpx
 
-
 NAMESPACE = uuid.UUID("d8bf5bb7-e72e-49ed-8493-d4c323e92c61")
 
 
 def digest(value: Any) -> str:
-    payload = value if isinstance(value, bytes) else json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("ascii")
+    payload = (
+        value
+        if isinstance(value, bytes)
+        else json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("ascii")
+    )
     return hashlib.sha256(payload).hexdigest()
 
 
 def canonical_utc(value: str | datetime) -> str:
-    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(
-        value.replace("Z", "+00:00")
+    parsed = (
+        value
+        if isinstance(value, datetime)
+        else datetime.fromisoformat(value.replace("Z", "+00:00"))
     )
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -71,12 +76,18 @@ def evidence_object(
             "schema_version": "bt009-qualification-execution-v1.0.0",
         },
         "aliases": [
-            {"namespace": "bulletproof-bt", "object_type": object_type, "value": native_id}
+            {
+                "namespace": "bulletproof-bt",
+                "object_type": object_type,
+                "value": native_id,
+            }
         ],
         "supersedes_object_id": None,
         "project": "bulletproof-bt",
         "access_class": "restricted",
-        "authority_class": "primary" if object_type in {"source", "dataset"} else "operational",
+        "authority_class": "primary"
+        if object_type in {"source", "dataset"}
+        else "operational",
         "payload": payload,
         "created_by": "bulletproof-producer",
     }
@@ -87,20 +98,29 @@ def advance(client: httpx.Client, bridge: dict, next_state: str, receipt: dict) 
         client,
         "POST",
         f"/v1/research/governed-bridges/{bridge['id']}/advance",
-        {"expected_state": bridge["state"], "next_state": next_state, "receipt": receipt},
+        {
+            "expected_state": bridge["state"],
+            "next_state": next_state,
+            "receipt": receipt,
+        },
     )
 
 
 def register(
     client: httpx.Client, qualification: dict, proposal: dict, snapshot: dict
 ) -> dict:
-    bridge = call(client, "POST", "/v1/research/governed-bridges", {"proposal": proposal})
+    bridge = call(
+        client, "POST", "/v1/research/governed-bridges", {"proposal": proposal}
+    )
     if bridge["state"] == "awaiting_approval":
         bridge = advance(
             client,
             bridge,
             "approved",
-            {"approved_by": "founder-operator", "proposal_digest": proposal["proposal_digest"]},
+            {
+                "approved_by": "founder-operator",
+                "proposal_digest": proposal["proposal_digest"],
+            },
         )
 
     source_key = f"BT009-SOURCE-{snapshot['content_digest'][:16]}"
@@ -226,7 +246,9 @@ def register(
             "subject_digest": hypothesis["record_digest"],
             "review_kind": "approval",
             "verdict": "approved",
-            "review": {"summary": "Founder approved the immutable 16-variant exhaustive proposal."},
+            "review": {
+                "summary": "Founder approved the immutable 16-variant exhaustive proposal."
+            },
             "reviewer": "founder-operator",
         },
     )
@@ -239,7 +261,14 @@ def register(
         "date_start": None,
         "date_end": None,
         "sample_range": f"{snapshot['start']}..{snapshot['end']}",
-        "features": ["CSI", "D_t", "ATR_14", "S_t", "funding percentile", "OI acceleration"],
+        "features": [
+            "CSI",
+            "D_t",
+            "ATR_14",
+            "S_t",
+            "funding percentile",
+            "OI acceleration",
+        ],
         "target": "Tier2B net portfolio outcome",
         "model_or_rule": "existing l7_h1_csi_gated_displacement_trend strategy",
         "parameters": {
@@ -251,7 +280,11 @@ def register(
         "slippage_bps": 2.0,
         "delay_bars": 1,
         "validation_method": "native classic engine, causal auxiliary joins, truth gate, exact exhaustive grid",
-        "success_criteria": ["positive net expectancy", "right-tail evidence", "truth gate PASS"],
+        "success_criteria": [
+            "positive net expectancy",
+            "right-tail evidence",
+            "truth gate PASS",
+        ],
         "rejection_criteria": ["no positive robust registered variant"],
         "engine_version": f"bulletproof_bt:{qualification['repository_commit']}",
         "data_snapshot_digest": snapshot["content_digest"],
@@ -279,7 +312,9 @@ def register(
             "subject_digest": experiment_digest,
             "review_kind": "approval",
             "verdict": "approved",
-            "review": {"summary": "Founder approved the exact experiment manifest before publication."},
+            "review": {
+                "summary": "Founder approved the exact experiment manifest before publication."
+            },
             "reviewer": "founder-operator",
         },
     )
@@ -329,14 +364,21 @@ def register(
         client,
         bridge,
         "executed",
-        {"run_count": len(qualification["runs"]), "repository_commit": qualification["repository_commit"]},
+        {
+            "run_count": len(qualification["runs"]),
+            "repository_commit": qualification["repository_commit"],
+        },
     )
     bridge = advance(client, bridge, "truth_validated", qualification["truth"])
     bridge = advance(
         client,
         bridge,
         "bundle_finalized",
-        {"bundle_digests": [item["bundle"]["bundle_digest"] for item in qualification["runs"]]},
+        {
+            "bundle_digests": [
+                item["bundle"]["bundle_digest"] for item in qualification["runs"]
+            ]
+        },
     )
     return {
         "bridge": bridge,
@@ -364,10 +406,17 @@ def publish(
     ended = datetime.now(timezone.utc)
     result_document = {
         "summary": "The first prospectively registered CSI variant was negative after Tier2B costs; the full 16-variant search is retained.",
-        "metrics": {key: value for key, value in metrics.items() if isinstance(value, (int, float, bool))},
+        "metrics": {
+            key: value
+            for key, value in metrics.items()
+            if isinstance(value, (int, float, bool))
+        },
         "robustness_status": "failed",
         "rejection_reason": "Negative net expectancy and no qualifying right-tail evidence in the selected registered variant.",
-        "evidence_artifacts": [selected["bundle"]["bundle_digest"], qualification["search_plan_digest"]],
+        "evidence_artifacts": [
+            selected["bundle"]["bundle_digest"],
+            qualification["search_plan_digest"],
+        ],
         "output_artifact_digest": selected["bundle"]["bundle_digest"],
         "started_at": canonical_utc(started),
         "ended_at": canonical_utc(ended),
@@ -431,11 +480,18 @@ def publish(
         client,
         registry["bridge"],
         "independently_reviewed",
-        {"statistical_review_id": statistical["id"], "adversarial_review_id": adversarial["id"], "decision_id": decision["id"]},
+        {
+            "statistical_review_id": statistical["id"],
+            "adversarial_review_id": adversarial["id"],
+            "decision_id": decision["id"],
+        },
     )
 
     sys.path.insert(0, str(bulletproof_root / "src"))
-    from bt.logging.laboratory_publication import confirm_projections, publish_certified_bundle
+    from bt.logging.laboratory_publication import (
+        confirm_projections,
+        publish_certified_bundle,
+    )
 
     bundle_digest = selected["bundle"]["bundle_digest"]
     bundle_dir = bundle_root / "output/run-bundles/bundles" / bundle_digest
@@ -448,7 +504,12 @@ def publish(
         memory_database=memory_db,
         timeout_seconds=300,
     )
-    bridge = advance(client, bridge, "published", {"publication_id": publication["id"], "state": publication["state"]})
+    bridge = advance(
+        client,
+        bridge,
+        "published",
+        {"publication_id": publication["id"], "state": publication["state"]},
+    )
 
     graph = call(client, "GET", "/v1/research/graph/projections/status")
     if graph["stale"]:
@@ -476,14 +537,27 @@ def publish(
         timeout_seconds=300,
     )
     bridge = advance(client, bridge, "memory_confirmed", publication["memory_receipt"])
-    replay = call(client, "GET", f"/v1/research/laboratory/publications/{publication['id']}/replay")
+    replay = call(
+        client,
+        "GET",
+        f"/v1/research/laboratory/publications/{publication['id']}/replay",
+    )
     bridge = advance(
         client,
         bridge,
         "complete",
-        {"publication_id": publication["id"], "publication_state": publication["state"], "event_count": len(replay["events"])},
+        {
+            "publication_id": publication["id"],
+            "publication_state": publication["state"],
+            "event_count": len(replay["events"]),
+        },
     )
-    return {"bridge": bridge, "publication": publication, "replay": replay, "result": result}
+    return {
+        "bridge": bridge,
+        "publication": publication,
+        "replay": replay,
+        "result": result,
+    }
 
 
 def main() -> int:
@@ -494,7 +568,9 @@ def main() -> int:
     parser.add_argument("--memory-db", type=Path, required=True)
     args = parser.parse_args()
     qualification = json.loads((args.qualification_root / "result.json").read_text())
-    proposal = json.loads((args.qualification_root / "approved-proposal.json").read_text())
+    proposal = json.loads(
+        (args.qualification_root / "approved-proposal.json").read_text()
+    )
     snapshot = json.loads((args.qualification_root / "data/snapshot.json").read_text())
     if qualification["truth"]["status"] != "PASS" or len(qualification["runs"]) != 16:
         raise SystemExit("BT-009 qualification must contain 16 truth-valid runs")
@@ -507,20 +583,30 @@ def main() -> int:
         state = register(client, qualification, proposal, snapshot)
         write_state(args.state, state)
         outcome = publish(
-            client, qualification, state, args.qualification_root,
-            args.bulletproof_root, args.memory_db,
+            client,
+            qualification,
+            state,
+            args.qualification_root,
+            args.bulletproof_root,
+            args.memory_db,
         )
         state.update(outcome)
         write_state(args.state, state)
-    print(json.dumps({
-        "bridge_id": state["bridge"]["id"],
-        "bridge_state": state["bridge"]["state"],
-        "publication_id": state["publication"]["id"],
-        "publication_state": state["publication"]["state"],
-        "registered_trials": len(state["trials"]),
-        "outcome": state["result"]["outcome"],
-        "event_count": len(state["replay"]["events"]),
-    }, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "bridge_id": state["bridge"]["id"],
+                "bridge_state": state["bridge"]["state"],
+                "publication_id": state["publication"]["id"],
+                "publication_state": state["publication"]["state"],
+                "registered_trials": len(state["trials"]),
+                "outcome": state["result"]["outcome"],
+                "event_count": len(state["replay"]["events"]),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 
