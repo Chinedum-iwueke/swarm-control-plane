@@ -116,6 +116,35 @@ def test_reconcile_respects_weekly_cycle_budget() -> None:
     db.add.assert_not_called()
 
 
+def test_reconcile_adopts_unapproved_legacy_cycle_after_deployment() -> None:
+    payload = ResearchProgramCreate.model_validate(program_payload())
+    program = SimpleNamespace(
+        id=uuid4(),
+        mandate=[item.model_dump(mode="json") for item in payload.mandate],
+        schedule=payload.schedule.model_dump(mode="json"),
+        budget=payload.budget.model_dump(mode="json"),
+        created_at=NOW,
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        status="awaiting_brief",
+        digest={"source": "founder_priority"},
+        question_digest="a" * 64,
+        task_id=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [program]
+    db.scalar.return_value = cycle
+
+    assert reconcile_programs(db, now=NOW) == [cycle]
+    assert cycle.digest["selection"]["reason"] == (
+        "legacy_cycle_adopted_after_director_deployment"
+    )
+    event = db.add.call_args.args[0]
+    assert event.event_type == "proposal_created"
+    assert event.detail["execution_authority"] is False
+
+
 def test_reconcile_marks_exact_prior_question_as_duplicate() -> None:
     payload = ResearchProgramCreate.model_validate(program_payload())
     program = SimpleNamespace(
