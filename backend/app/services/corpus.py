@@ -268,7 +268,10 @@ def restore_backup(
 
 
 def recover_projections(
-    db: Session, project: str, requested_by: str
+    db: Session,
+    project: str,
+    requested_by: str,
+    progress=None,
 ) -> CorpusRecoveryRun:
     started = datetime.now(UTC)
     bind = db.get_bind()
@@ -279,7 +282,11 @@ def recover_projections(
         )
     db.execute(delete(EvidenceRetrievalProjection))
     db.execute(delete(EvidenceRetrievalState))
-    state = build_projections(db)
+    state = (
+        build_projections(db, progress=progress)
+        if progress is not None
+        else build_projections(db)
+    )
     evidence = {
         "requested_by": requested_by,
         "projection_name": state.projection_name,

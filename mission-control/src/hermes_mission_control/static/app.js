@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "work", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
+const allowedViews = new Set(["command", "work", "activity", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
@@ -40,6 +40,7 @@ document.querySelectorAll(".open-intake-copy").forEach((button) => {
 });
 document.getElementById("open-intake").addEventListener("click", () => openIntake("task"));
 document.getElementById("refresh").addEventListener("click", loadDashboard);
+document.getElementById("refresh-activity").addEventListener("click", loadDashboard);
 document.getElementById("task-filter").addEventListener("input", renderTasks);
 document.getElementById("status-filter").addEventListener("change", renderTasks);
 document.getElementById("project-filter").addEventListener("change", renderTasks);
@@ -573,6 +574,7 @@ async function loadDashboard() {
 
 function renderAll() {
   renderCommand();
+  renderActivity();
   renderMissions();
   renderTasks();
   renderProposals();
@@ -585,6 +587,48 @@ function renderAll() {
   renderResearchWorkspaceStatus();
   renderResearchContext();
   setResearchMode(state.researchMode);
+}
+
+function renderActivity() {
+  const operations = state.dashboard?.operations || [];
+  const summary = state.dashboard?.operation_summary || { counts: {}, active_total: 0 };
+  const activeStates = new Set(["queued", "waiting_approval", "running", "blocked", "stalled"]);
+  const active = operations.filter((item) => activeStates.has(item.state));
+  const recent = operations.filter((item) => !activeStates.has(item.state)).slice(0, 50);
+  const activeCount = Number(summary.active_total ?? active.length);
+  document.getElementById("activity-count").textContent = activeCount;
+  document.getElementById("activity-active-count").textContent = `${activeCount} active`;
+  document.getElementById("activity-status").classList.toggle("has-work", activeCount > 0);
+  document.getElementById("activity-live-label").textContent = `${active.length} ${active.length === 1 ? "operation" : "operations"}`;
+  document.getElementById("activity-summary").innerHTML = [
+    metric(active.filter((item) => item.state === "running").length, "Running", "Fresh execution heartbeats"),
+    metric(active.filter((item) => item.state === "waiting_approval").length, "Waiting approval", "Founder decision required"),
+    metric(active.filter((item) => item.state === "stalled").length, "Stalled", "Heartbeat outside SLO"),
+    metric((summary.counts || {}).failed || 0, "Failed retained", "Exact failure evidence preserved"),
+  ].join("");
+  document.getElementById("activity-live").innerHTML = active.length
+    ? active.map(operationRow).join("")
+    : empty("No active, waiting, blocked, or stalled operations.");
+  document.getElementById("activity-recent").innerHTML = recent.length
+    ? recent.map(operationRow).join("")
+    : empty("No terminal operation receipts yet.");
+}
+
+function operationRow(operation) {
+  const determinate = operation.progress_mode === "determinate" && operation.progress_total;
+  const percentage = determinate ? Math.min(100, Math.round((operation.progress_current / operation.progress_total) * 100)) : null;
+  const progress = determinate
+    ? `<div class="operation-progress"><div class="operation-progress-track"><span style="width:${percentage}%"></span></div><span>${operation.progress_current}/${operation.progress_total} ${escapeHtml(operation.progress_unit || "")}</span></div>`
+    : operation.state === "running" ? '<div class="operation-progress indeterminate"><div class="operation-progress-track"><span></span></div><span>Progress not measurable</span></div>' : "";
+  const error = operation.error_summary ? `<p class="operation-error" role="alert">${escapeHtml(operation.error_summary)}</p>` : "";
+  return `<article class="operation-row" data-operation-id="${operation.id}">
+    <div class="operation-main">
+      <div class="operation-heading"><strong>${escapeHtml(operation.title)}</strong>${statusBadge(operation.state)}</div>
+      <div class="entity-meta"><span>${escapeHtml(humanize(operation.phase))}</span><span>${escapeHtml(operation.machine || "machine pending")}</span><span>${escapeHtml(operation.owner_type)}${operation.owner_id ? ` · ${escapeHtml(operation.owner_id)}` : ""}</span><span>Heartbeat ${relativeTime(operation.heartbeat_at)}</span></div>
+      ${progress}${error}
+    </div>
+    <div class="operation-side"><span class="mono">${escapeHtml(operation.kind)}</span><small>${relativeTime(operation.updated_at)}</small></div>
+  </article>`;
 }
 
 function renderNotes() {
@@ -2046,6 +2090,12 @@ function demoDashboard() {
       demoDeployment("23c62000-1fad-48bb-8ce5-3f4cb26f3779", "vm1-research-runner", "Restricted VM1 reproducible research runner", ["research_experiment"], ["research-experiment"], ["bulletproof_bt"], 1, ["workspace"]),
       demoDeployment("agent-infra", "vm2-infrastructure-operator", "Restricted VM2 infrastructure observer and controlled operator", ["infrastructure_observation", "infrastructure_operation"], ["infrastructure-observer", "controlled-restart"], ["swarm-control-plane"], 3, ["infrastructure-workspace"]),
     ],
+    operation_summary: { counts: { running: 1, waiting_approval: 1, succeeded: 4, failed: 1 }, active_total: 2, terminal_total: 5 },
+    operations: [
+      { id: "op-rebuild", operation_key: "graph-rebuild:demo", kind: "knowledge_graph_rebuild", title: "Rebuild canonical knowledge graph", project: "systematic-research", machine: "vm2-deployment", owner_type: "service", owner_id: "swarm-api", state: "running", phase: "project-edges", progress_mode: "determinate", progress_current: 684210, progress_total: 1368759, progress_unit: "edges", heartbeat_at: now, started_at: new Date(Date.now() - 16 * 60_000).toISOString(), completed_at: null, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: null, record_digest: "b".repeat(64), created_at: now, updated_at: now },
+      { id: "op-approval", operation_key: "task:demo-approval", kind: "infrastructure_operation", title: "Rotate the application database certificate", project: "invariance-research", machine: "vm2-deployment", owner_type: "task", owner_id: "demo-approval", state: "waiting_approval", phase: "approval", progress_mode: "indeterminate", progress_current: null, progress_total: null, progress_unit: null, heartbeat_at: now, started_at: null, completed_at: null, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: "c".repeat(64), record_digest: "d".repeat(64), created_at: now, updated_at: now },
+      { id: "op-complete", operation_key: "task:demo-complete", kind: "research_experiment", title: "Validate the bounded BTC momentum hypothesis", project: "bulletproof_bt", machine: "vm1-developer", owner_type: "task", owner_id: "demo-complete", state: "succeeded", phase: "complete", progress_mode: "determinate", progress_current: 1, progress_total: 1, progress_unit: "task", heartbeat_at: now, started_at: new Date(Date.now() - 25 * 60_000).toISOString(), completed_at: now, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: "e".repeat(64), record_digest: "f".repeat(64), created_at: now, updated_at: now },
+    ],
     artifacts: [
       { id: "artifact-evidence", task_id: task.id, attempt_number: 1, artifact_type: "result", name: "research-evidence.json", size_bytes: 1917, sha256: "a68317817f2b39c760f1c4743050ad6a5d5719b51db543c5b0eb9983b4d398c8", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },
       { id: "artifact-audit", task_id: task.id, attempt_number: 1, artifact_type: "evidence", name: "research-audit.json", size_bytes: 818, sha256: "3c34b883b29be9214640e66e8103051e334f1cabd7570a2ffcf3d29b698c8b88", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },
@@ -2098,6 +2148,7 @@ window.setInterval(() => {
   const activeMemoryTask = (state.dashboard?.tasks || []).some(
     (task) => task.task_type === "research_memory_sync" && activeStatuses.has(task.status),
   );
-  if (!state.demo && activeMemoryTask) loadDashboard();
+  const activeOperation = Number(state.dashboard?.operation_summary?.active_total || 0) > 0;
+  if (!state.demo && (activeMemoryTask || activeOperation || state.activeView === "activity")) loadDashboard();
 }, 15000);
 loadDashboard();

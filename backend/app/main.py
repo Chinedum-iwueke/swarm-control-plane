@@ -29,6 +29,7 @@ from app.api.routes import (
     metrics_router,
     missions_router,
     operational_notes_router,
+    operations_router,
     packages_router,
     proposals_router,
     research_programs_router,
@@ -62,6 +63,7 @@ app.include_router(metrics_router)
 app.include_router(memory_router)
 app.include_router(missions_router)
 app.include_router(operational_notes_router)
+app.include_router(operations_router)
 app.include_router(packages_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)

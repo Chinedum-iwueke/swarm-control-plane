@@ -1,6 +1,6 @@
 from functools import lru_cache
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -20,6 +20,7 @@ from app.schemas.corpus import (
     RecoveryRunResponse,
     SecurityFindingResponse,
 )
+from app.schemas.operation import OperationWrite
 from app.services.corpus import (
     corpus_health,
     create_backup,
@@ -28,6 +29,7 @@ from app.services.corpus import (
     restore_backup,
 )
 from app.services.object_store import FilesystemEvidenceObjectStore
+from app.services.operations import OperationReporter
 
 router = APIRouter(
     prefix="/v1/research/corpus",
@@ -91,7 +93,32 @@ def rebuild_corpus_projections(
     payload: ProjectionRecoveryCreate,
     db: Annotated[Session, Depends(get_db)],
 ):
-    return recover_projections(db, payload.project, payload.requested_by)
+    reporter = OperationReporter(
+        OperationWrite(
+            operation_key=f"projection-rebuild:{payload.project}:{uuid4()}",
+            kind="retrieval_projection_rebuild",
+            title=f"Rebuild {payload.project} retrieval projection",
+            project=payload.project,
+            machine="vm2-deployment",
+            owner_type="service",
+            owner_id="swarm-api",
+            state="running",
+            phase="prepare",
+            links={"surface": "research-intelligence"},
+            detail={"requested_by": payload.requested_by},
+        ),
+        payload.requested_by,
+    )
+    reporter.start()
+    try:
+        result = recover_projections(
+            db, payload.project, payload.requested_by, progress=reporter.progress
+        )
+        reporter.succeed(detail={"recovery_run_id": str(result.id)})
+        return result
+    except Exception as exc:
+        reporter.fail(exc)
+        raise
 
 
 @router.post("/queue/recover", response_model=RecoveryRunResponse, status_code=201)
