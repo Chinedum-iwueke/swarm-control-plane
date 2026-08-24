@@ -27,6 +27,11 @@ two independent reviews, retains the negative decision, publishes canonical run
 evidence, refreshes stale projections, writes research memory, and verifies the
 event replay.
 
+If publication is interrupted after registry binding, rerun the same command with
+the same state path. It validates the proposal digest, `bundle_finalized` bridge
+state, and complete trial count, then resumes publication without re-registering
+or mutating prospective records.
+
 ## Verify
 
 The final output must report:
