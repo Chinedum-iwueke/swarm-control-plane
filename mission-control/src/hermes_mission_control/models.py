@@ -23,6 +23,20 @@ class IntakeRequest(StrictModel):
     acceptance_criteria: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ConversationCreateRequest(StrictModel):
+    title: str = Field(min_length=3, max_length=160)
+    message: str = Field(min_length=1, max_length=12000)
+
+
+class ConversationTurnRequest(StrictModel):
+    message: str = Field(min_length=1, max_length=12000)
+
+
+class ConversationTransitionRequest(StrictModel):
+    action: Literal["finish", "stop", "resume", "archive"]
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class ApprovalDecision(StrictModel):
     reason: str = Field(min_length=10, max_length=500)
     expires_in_seconds: int = Field(default=900, ge=60, le=3600)

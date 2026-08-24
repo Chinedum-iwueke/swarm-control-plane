@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Agent, FounderProposal, Task
+from app.models import Agent, FounderConversation, FounderProposal, Task
 from app.schemas import FounderProposalDocument, ProposedTask, TaskCreate
 from app.services.tasks import build_task, persist_new_task
 
@@ -41,10 +41,22 @@ def create_proposal(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent is not authorized to plan founder requests.",
         )
-    existing = db.scalar(
-        select(FounderProposal).where(
-            FounderProposal.source_task_id == source_task.id
+    if source_task.conversation_id is not None:
+        conversation = db.scalar(
+            select(FounderConversation)
+            .where(FounderConversation.id == source_task.conversation_id)
+            .with_for_update()
         )
+        if (
+            conversation is None
+            or source_task.conversation_revision != conversation.revision
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A newer founder turn superseded this planning revision.",
+            )
+    existing = db.scalar(
+        select(FounderProposal).where(FounderProposal.source_task_id == source_task.id)
     )
     if existing is not None:
         raise HTTPException(
@@ -53,6 +65,8 @@ def create_proposal(
         )
     proposal = FounderProposal(
         source_task_id=source_task.id,
+        conversation_id=source_task.conversation_id,
+        conversation_revision=source_task.conversation_revision,
         planner_agent_id=planner.id,
         status="proposed",
         proposal=document.model_dump(mode="json"),
@@ -60,6 +74,14 @@ def create_proposal(
     )
     db.add(proposal)
     db.flush()
+    from app.services.conversations import record_planner_response
+
+    record_planner_response(
+        db,
+        source_task,
+        proposal.proposal,
+        proposal.proposal_digest,
+    )
     return proposal
 
 
@@ -82,12 +104,29 @@ def materialize_proposal(
             status_code=status.HTTP_409_CONFLICT,
             detail="This proposal does not recommend task creation.",
         )
+    if proposal.conversation_id is not None:
+        conversation = db.scalar(
+            select(FounderConversation)
+            .where(FounderConversation.id == proposal.conversation_id)
+            .with_for_update()
+        )
+        if (
+            conversation is None
+            or proposal.conversation_revision != conversation.revision
+            or conversation.specification_digest != proposal.proposal_digest
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A newer conversation revision superseded this proposal.",
+            )
     source = db.get(Task, proposal.source_task_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source request not found.")
     created_at = now or datetime.now(UTC)
     payload = _task_create(document.proposed_task, source, actor, created_at)
     task = build_task(payload)
+    task.conversation_id = source.conversation_id
+    task.conversation_revision = source.conversation_revision
     persist_new_task(db, task)
     proposal.status = "materialized"
     proposal.materialized_task_id = task.id

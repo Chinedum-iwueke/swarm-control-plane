@@ -34,7 +34,15 @@ class CodexProposalPlanner:
         if task.task_type != "founder_request":
             raise PlannerError("Planner only accepts founder_request tasks.")
         contract = task.input_contract
-        if set(contract) != {"schema_version", "request_kind", "objective"}:
+        v1 = {"schema_version", "request_kind", "objective"}
+        v2 = v1 | {
+            "conversation_id",
+            "conversation_revision",
+            "conversation_context",
+            "suggested_identifiers",
+            "specification_guide",
+        }
+        if frozenset(contract) not in {frozenset(v1), frozenset(v2)}:
             raise PlannerError("Founder request contract is invalid.")
         self._working_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(
@@ -113,8 +121,7 @@ class CodexProposalPlanner:
     def _strict_output_schema(cls, value: object) -> object:
         if isinstance(value, dict):
             normalized = {
-                key: cls._strict_output_schema(nested)
-                for key, nested in value.items()
+                key: cls._strict_output_schema(nested) for key, nested in value.items()
             }
             properties = normalized.get("properties")
             if isinstance(properties, dict):
@@ -143,40 +150,58 @@ class CodexProposalPlanner:
 
     @staticmethod
     def _prompt(task: Task) -> str:
+        contract = task.input_contract
         request = {
-            "request_kind": task.input_contract["request_kind"],
+            "request_kind": contract["request_kind"],
             "project": task.project,
             "title": task.title,
-            "objective": task.input_contract["objective"],
+            "objective": contract["objective"],
             "risk_level": task.risk_level,
             "acceptance_criteria": task.acceptance_criteria,
+            "conversation_id": contract.get("conversation_id"),
+            "conversation_revision": contract.get("conversation_revision"),
+            "conversation_context": contract.get(
+                "conversation_context", [contract["objective"]]
+            ),
+            "suggested_identifiers": contract.get("suggested_identifiers", {}),
+            "specification_guide": contract.get("specification_guide", {}),
         }
         return (
             "You are the restricted Hermes Founder Intake Planner. Convert the "
             "founder's request into one reviewable proposal. You may propose only "
             "the task types in the supplied JSON schema. Never provide commands, "
-            "shell, scripts, credentials, or direct execution. Prefer "
-            "needs_clarification when permissions, target, acceptance criteria, "
-            "or safety boundaries are uncertain. A proposal has no execution "
+            "shell, scripts, credentials, or direct execution. Treat ordered "
+            "conversation_context entries as turns in one job; later turns refine "
+            "earlier ones. Prefer needs_clarification only when permissions, target, "
+            "scientific meaning, unavailable data, or safety boundaries remain "
+            "uncertain. If the founder authorizes reasonable defaults, fill "
+            "non-safety-critical fields from specification_guide.reasonable_defaults "
+            "and record field, value, basis, policy_version, confidence and "
+            "alternatives in resolved_defaults. Never call a choice best without "
+            "evidence. Use suggested_identifiers for omitted administrative IDs; "
+            "do not ask the founder to invent program_id, hypothesis_id or task_number. "
+            "For each blocking value, include its exact field name in unresolved_fields "
+            "and ask one question stating the accepted format and an example. Populate "
+            "specification_format with concise field-to-format guidance. A proposal has no execution "
             "authority and will require founder materialization.\n\n"
             "Use only these canonical routes, exactly as written:\n"
             "- code_validation or engineering_mission: allowed_machines "
-            "[\"vm1-developer\"], required_capabilities "
-            "[\"git\", \"python\", \"testing\"].\n"
-            "- research_experiment: allowed_machines [\"vm1-developer\"], "
-            "required_capabilities [\"git\", \"python\", \"backtesting\", "
-            "\"research-audit\"].\n"
-            "- research_memory_sync: allowed_machines [\"vm1-developer\"], "
-            "required_capabilities [\"git\", \"python\", "
-            "\"research-memory-sync\"].\n"
+            '["vm1-developer"], required_capabilities '
+            '["git", "python", "testing"].\n'
+            '- research_experiment: allowed_machines ["vm1-developer"], '
+            'required_capabilities ["git", "python", "backtesting", '
+            '"research-audit"].\n'
+            '- research_memory_sync: allowed_machines ["vm1-developer"], '
+            'required_capabilities ["git", "python", '
+            '"research-memory-sync"].\n'
             "- vm2-infrastructure runbook tasks: allowed_machines "
-            "[\"vm2-deployment\"], required_capabilities "
-            "[\"infrastructure-observation\", \"service-health\", "
-            "\"controlled-restart\"].\n"
+            '["vm2-deployment"], required_capabilities '
+            '["infrastructure-observation", "service-health", '
+            '"controlled-restart"].\n'
             "- other infrastructure runbook tasks: allowed_machines "
-            "[\"vm2-deployment\"], required_capabilities "
-            "[\"deployment-architecture\", \"infrastructure-observation\", "
-            "\"postgres-deployment\", \"service-health\"].\n"
+            '["vm2-deployment"], required_capabilities '
+            '["deployment-architecture", "infrastructure-observation", '
+            '"postgres-deployment", "service-health"].\n'
             "The approval policy risk must exactly equal risk_level. Never "
             "invent a machine, capability, workflow, runbook, repository, "
             "digest, or permission. Use needs_clarification if the request "

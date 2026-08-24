@@ -36,6 +36,15 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProposalDefaultDecision(StrictModel):
+    field: str = Field(min_length=1, max_length=100)
+    value: str = Field(min_length=1, max_length=1000)
+    basis: str = Field(min_length=3, max_length=1000)
+    policy_version: str = Field(min_length=1, max_length=100)
+    confidence: Literal["high", "medium", "low"]
+    alternatives: list[str] = Field(default_factory=list, max_length=10)
+
+
 class ProposalCodeValidationContract(StrictModel):
     repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     workflow: Literal["code-validation"]
@@ -177,7 +186,9 @@ class ProposedTask(StrictModel):
             if isinstance(value, dict):
                 for key, nested in value.items():
                     if str(key).lower() in _FORBIDDEN_KEYS:
-                        raise ValueError("proposal contains an execution command surface")
+                        raise ValueError(
+                            "proposal contains an execution command surface"
+                        )
                     inspect(nested)
             elif isinstance(value, list):
                 for nested in value:
@@ -237,6 +248,11 @@ class FounderProposalDocument(StrictModel):
     target_role: str | None = Field(default=None, max_length=150)
     target_role_reason: str | None = Field(default=None, max_length=1000)
     safety_constraints: list[str] = Field(default_factory=list, max_length=20)
+    unresolved_fields: list[str] = Field(default_factory=list, max_length=30)
+    specification_format: dict[str, str] = Field(default_factory=dict)
+    resolved_defaults: list[ProposalDefaultDecision] = Field(
+        default_factory=list, max_length=30
+    )
     proposed_task: ProposedTask | None = None
 
     @model_validator(mode="after")
@@ -245,6 +261,20 @@ class FounderProposalDocument(StrictModel):
             raise ValueError("create_task requires proposed_task")
         if self.recommended_action != "create_task" and self.proposed_task is not None:
             raise ValueError("only create_task may include proposed_task")
+        if self.recommended_action == "needs_clarification":
+            if not self.clarification_questions or not self.unresolved_fields:
+                raise ValueError(
+                    "needs_clarification requires questions and unresolved fields"
+                )
+            missing_formats = set(self.unresolved_fields) - set(
+                self.specification_format
+            )
+            if missing_formats:
+                raise ValueError(
+                    "each unresolved field requires accepted format guidance"
+                )
+        elif self.unresolved_fields:
+            raise ValueError("only needs_clarification may contain unresolved fields")
         return self
 
 
@@ -266,6 +296,8 @@ class FounderProposalResponse(StrictModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
     id: uuid.UUID
     source_task_id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
+    conversation_revision: int | None = None
     planner_agent_id: uuid.UUID
     status: str
     proposal: FounderProposalDocument | dict[str, Any]

@@ -27,6 +27,10 @@ class HandoffStore:
                     entity_key TEXT PRIMARY KEY,
                     state_digest TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS values_store (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
                 """
             )
 
@@ -93,6 +97,28 @@ class HandoffStore:
                 (key, state_digest),
             )
         return row is None or row[0] != state_digest
+
+    def set_value(self, key: str, value: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO values_store(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+
+    def pop_value(self, key: str) -> str | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT value FROM values_store WHERE key = ?", (key,)
+            ).fetchone()
+            db.execute("DELETE FROM values_store WHERE key = ?", (key,))
+        return row[0] if row else None
+
+    def get_value(self, key: str) -> str | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT value FROM values_store WHERE key = ?", (key,)
+            ).fetchone()
+        return row[0] if row else None
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path)

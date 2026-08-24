@@ -20,6 +20,7 @@ class FakeControlPlane:
         self.lifecycle_requested: str | None = None
         self.surveillance_requested: str | None = None
         self.graph_requested = False
+        self.conversation_turns: list[tuple[str, str]] = []
 
     async def close(self) -> None:
         self.closed = True
@@ -39,6 +40,24 @@ class FakeControlPlane:
     async def create_intake(self, payload) -> dict:
         self.intake = payload
         return {"id": "task-id"}
+
+    async def conversations(self) -> list[dict]:
+        return []
+
+    async def create_conversation(self, title: str, message: str) -> dict:
+        self.conversation_turns.append((title, message))
+        return {"conversation": {"id": "conversation-id", "revision": 1}}
+
+    async def add_conversation_turn(
+        self, conversation_id: str, message: str
+    ) -> dict:
+        self.conversation_turns.append((conversation_id, message))
+        return {"conversation": {"id": conversation_id, "revision": 2}}
+
+    async def transition_conversation(
+        self, conversation_id: str, action: str, reason: str
+    ) -> dict:
+        return {"id": conversation_id, "status": action, "reason": reason}
 
     async def decide_approval(self, approval_id, action, decision) -> dict:
         return {"id": approval_id, "status": f"{action}d", "reason": decision.reason}
@@ -314,6 +333,36 @@ def test_mutations_require_founder_intent_header(
     assert denied.status_code == 403
     assert accepted.status_code == 200
     assert fake.intake.project == "swarm-control-plane"
+
+
+def test_conversation_turns_require_intent_and_reuse_thread(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    headers = {"X-Hermes-Intent": "founder-action"}
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        denied = client.post(
+            "/api/conversations",
+            json={"title": "Research thread", "message": "Test momentum."},
+        )
+        created = client.post(
+            "/api/conversations",
+            headers=headers,
+            json={"title": "Research thread", "message": "Test momentum."},
+        )
+        continued = client.post(
+            "/api/conversations/conversation-id/turns",
+            headers=headers,
+            json={"message": "Use January 2022."},
+        )
+
+    assert denied.status_code == 403
+    assert created.status_code == 200
+    assert continued.json()["conversation"]["revision"] == 2
+    assert fake.conversation_turns == [
+        ("Research thread", "Test momentum."),
+        ("conversation-id", "Use January 2022."),
+    ]
 
 
 def test_unknown_intake_fields_are_rejected(

@@ -2,6 +2,8 @@ from app.api.routes.agent_research import router as agent_research_router
 from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.controls import router as controls_router
+from app.api.routes.conversations import channel_router as channel_conversations_router
+from app.api.routes.conversations import router as conversations_router
 from app.api.routes.corpus import router as corpus_router
 from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
@@ -42,7 +44,9 @@ __all__ = [
     "agent_research_router",
     "agent_runtime_router",
     "agents_router",
+    "channel_conversations_router",
     "controls_router",
+    "conversations_router",
     "corpus_router",
     "corpus_sync_router",
     "curriculum_router",

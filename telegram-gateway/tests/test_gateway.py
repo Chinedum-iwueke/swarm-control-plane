@@ -46,6 +46,8 @@ class Telegram:
 class Channel:
     def __init__(self) -> None:
         self.created: list[dict] = []
+        self.conversation_values: list[dict] = []
+        self.turns: list[tuple[str, dict]] = []
         self.proposal_decisions: list[tuple[str, str, str]] = []
         self.proposal_values: list[dict] = []
         self.approval_values: list[dict] = []
@@ -58,6 +60,53 @@ class Channel:
     async def create_request(self, payload):
         self.created.append(payload)
         return {"task_number": "FOUNDER-1"}
+
+    async def create_conversation(self, payload):
+        self.created.append(payload)
+        conversation = {
+            "id": "conversation-1",
+            "short_id": "thread000001",
+            "status": "collecting",
+            "title": payload["title"],
+            "project": "bulletproof_bt",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [{"role": "founder", "content": payload["message"]}],
+        }
+        self.conversation_values = [conversation]
+        return {
+            "conversation": conversation,
+            "task_id": "task-1",
+            "task_number": "FOUNDER-CONVERSATION-1",
+        }
+
+    async def add_conversation_turn(self, conversation_id, payload):
+        self.turns.append((conversation_id, payload))
+        conversation = self.conversation_values[0]
+        conversation["revision"] += 1
+        conversation["messages"].append(
+            {"role": "founder", "content": payload["message"]}
+        )
+        return {
+            "conversation": conversation,
+            "task_id": f"task-{conversation['revision']}",
+            "task_number": f"FOUNDER-CONVERSATION-{conversation['revision']}",
+        }
+
+    async def conversations(self, founder_key):
+        return self.conversation_values
+
+    async def active_conversation(self, founder_key):
+        return self.conversation_values[0] if self.conversation_values else None
+
+    async def transition_conversation(self, conversation_id, payload):
+        conversation = self.conversation_values[0]
+        conversation["status"] = {
+            "finish": "finished",
+            "stop": "stopped",
+            "resume": "collecting",
+        }[payload["action"]]
+        return conversation
 
     async def proposals(self):
         return self.proposal_values
@@ -189,9 +238,52 @@ async def test_plain_english_is_structured_and_sender_is_allowlisted(
             }
         }
     )
-    assert channel.created[0]["project"] == "swarm-control-plane"
-    assert "command" not in channel.created[0]
-    assert channel.created[0]["objective"].startswith("Please verify")
+    assert channel.created[0]["founder_key"] == "founder:primary"
+    assert channel.created[0]["channel"] == "telegram"
+    assert channel.created[0]["message"].startswith("Please verify")
+
+
+@pytest.mark.asyncio
+async def test_august_23_followups_remain_one_conversation(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    turns = [
+        "Backtest whether an equity risk-off regime predicts BTC residual returns over one month.",
+        "Choose the best options and select a random one month range.",
+        "January to February 2022; use a stable universe and choose the best net-EV option.",
+        "Do not ask for more clarification. Run the most reasonable test.",
+        "Answer all remaining questions yourself and do the test.",
+    ]
+
+    for index, text in enumerate(turns, 1):
+        await gateway._handle_update(
+            {
+                "message": {
+                    "message_id": index,
+                    "from": {"id": 123},
+                    "chat": {"id": 456},
+                    "text": text,
+                }
+            }
+        )
+
+    assert len(channel.created) == 1
+    assert len(channel.turns) == 4
+    assert {conversation_id for conversation_id, _ in channel.turns} == {
+        "conversation-1"
+    }
+    assert channel.conversation_values[0]["revision"] == 5
+    assert [
+        message["content"] for message in channel.conversation_values[0]["messages"]
+    ] == turns
 
 
 def test_handoff_is_expiring_digest_bound_and_single_use(tmp_path: Path) -> None:
@@ -370,9 +462,7 @@ async def test_outbox_notification_is_acknowledged_after_delivery(
     await gateway._notify_outbox()
 
     assert len(telegram.sent) == 1
-    assert channel.acknowledged == [
-        ("notification-02", "telegram:456")
-    ]
+    assert channel.acknowledged == [("notification-02", "telegram:456")]
 
 
 @pytest.mark.asyncio

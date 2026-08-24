@@ -8,7 +8,9 @@ from app.api.routes import (
     agent_research_router,
     agent_runtime_router,
     agents_router,
+    channel_conversations_router,
     controls_router,
+    conversations_router,
     corpus_router,
     corpus_sync_router,
     curriculum_router,
@@ -62,6 +64,8 @@ app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)
 app.include_router(agents_router)
 app.include_router(controls_router)
+app.include_router(conversations_router)
+app.include_router(channel_conversations_router)
 app.include_router(data_contracts_router)
 app.include_router(evidence_router)
 app.include_router(fleet_router)

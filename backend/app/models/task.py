@@ -78,6 +78,13 @@ class Task(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("founder_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    conversation_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mission_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("engineering_missions.id", ondelete="SET NULL"),
