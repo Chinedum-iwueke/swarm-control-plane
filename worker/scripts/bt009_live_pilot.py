@@ -584,8 +584,19 @@ def main() -> int:
         headers={"Authorization": f"Bearer {token}"},
         timeout=3600,
     ) as client:
-        state = register(client, qualification, proposal, snapshot)
-        write_state(args.state, state)
+        if args.state.is_file():
+            state = json.loads(args.state.read_text(encoding="utf-8"))
+            if (
+                state["bridge"]["proposal_digest"] != proposal["proposal_digest"]
+                or state["bridge"]["state"] != "bundle_finalized"
+                or len(state["trials"]) != len(qualification["runs"])
+            ):
+                raise SystemExit(
+                    "Existing BT-009 state is not a resumable registry receipt"
+                )
+        else:
+            state = register(client, qualification, proposal, snapshot)
+            write_state(args.state, state)
         outcome = publish(
             client,
             qualification,
