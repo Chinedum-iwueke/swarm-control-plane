@@ -73,6 +73,7 @@ def create_conversation(
             channel=payload.channel,
             message=payload.message,
             channel_message_id=payload.channel_message_id,
+            reply_to_channel_message_id=payload.reply_to_channel_message_id,
         ),
     )
     _event(
@@ -128,6 +129,16 @@ def append_turn(
         + 1
     )
     digest = hashlib.sha256(payload.message.encode()).hexdigest()
+    reply_to = None
+    if payload.reply_to_channel_message_id:
+        reply_to = db.scalar(
+            select(FounderConversationMessage).where(
+                FounderConversationMessage.conversation_id == conversation.id,
+                FounderConversationMessage.channel == payload.channel,
+                FounderConversationMessage.channel_message_id
+                == payload.reply_to_channel_message_id,
+            )
+        )
     db.add(
         FounderConversationMessage(
             conversation_id=conversation.id,
@@ -135,9 +146,14 @@ def append_turn(
             role="founder",
             channel=payload.channel,
             channel_message_id=payload.channel_message_id,
+            reply_to_message_id=reply_to.id if reply_to else None,
             content=payload.message,
             content_digest=digest,
-            detail={},
+            detail={
+                "reply_to_channel_message_id": payload.reply_to_channel_message_id
+            }
+            if payload.reply_to_channel_message_id
+            else {},
         )
     )
     conversation.revision += 1

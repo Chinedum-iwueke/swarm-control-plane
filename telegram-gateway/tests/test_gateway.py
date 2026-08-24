@@ -32,15 +32,21 @@ def settings(tmp_path: Path) -> GatewaySettings:
 class Telegram:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str, dict]] = []
+        self.update_values: list[dict] = []
+        self.offsets: list[int] = []
 
     async def get_me(self):
         return {"username": "hermes_test_bot"}
 
-    async def updates(self, *_):
-        return []
+    async def updates(self, offset, *_):
+        self.offsets.append(offset)
+        return [
+            value for value in self.update_values if int(value["update_id"]) >= offset
+        ]
 
     async def send(self, chat_id, text, **kwargs):
         self.sent.append((chat_id, text, kwargs))
+        return [{"message_id": 10_000 + len(self.sent)}]
 
 
 class Channel:
@@ -55,6 +61,7 @@ class Channel:
         self.mission_approvals: list[tuple[str, str]] = []
         self.note_values: list[dict] = []
         self.notification_values: list[dict] = []
+        self.research_cycle_values: list[dict] = []
         self.acknowledged: list[tuple[str, str]] = []
 
     async def create_request(self, payload):
@@ -63,9 +70,10 @@ class Channel:
 
     async def create_conversation(self, payload):
         self.created.append(payload)
+        number = len(self.conversation_values) + 1
         conversation = {
-            "id": "conversation-1",
-            "short_id": "thread000001",
+            "id": f"conversation-{number}",
+            "short_id": f"thread{number:06d}",
             "status": "collecting",
             "title": payload["title"],
             "project": "bulletproof_bt",
@@ -73,7 +81,7 @@ class Channel:
             "current_specification": {},
             "messages": [{"role": "founder", "content": payload["message"]}],
         }
-        self.conversation_values = [conversation]
+        self.conversation_values.insert(0, conversation)
         return {
             "conversation": conversation,
             "task_id": "task-1",
@@ -82,7 +90,9 @@ class Channel:
 
     async def add_conversation_turn(self, conversation_id, payload):
         self.turns.append((conversation_id, payload))
-        conversation = self.conversation_values[0]
+        conversation = next(
+            value for value in self.conversation_values if value["id"] == conversation_id
+        )
         conversation["revision"] += 1
         conversation["messages"].append(
             {"role": "founder", "content": payload["message"]}
@@ -97,10 +107,25 @@ class Channel:
         return self.conversation_values
 
     async def active_conversation(self, founder_key):
-        return self.conversation_values[0] if self.conversation_values else None
+        return next(
+            (
+                value
+                for value in self.conversation_values
+                if value["status"]
+                in {
+                    "collecting",
+                    "needs_clarification",
+                    "ready_for_review",
+                    "attention_required",
+                }
+            ),
+            None,
+        )
 
     async def transition_conversation(self, conversation_id, payload):
-        conversation = self.conversation_values[0]
+        conversation = next(
+            value for value in self.conversation_values if value["id"] == conversation_id
+        )
         conversation["status"] = {
             "finish": "finished",
             "stop": "stopped",
@@ -132,6 +157,9 @@ class Channel:
     async def missions(self):
         return self.mission_values
 
+    async def research_cycles(self):
+        return self.research_cycle_values
+
     async def operational_notes(self, query=None):
         if not query:
             return self.note_values
@@ -147,6 +175,9 @@ class Channel:
 
     async def decide_proposal(self, proposal_id, action, reason):
         self.proposal_decisions.append((proposal_id, action, reason))
+        return {}
+
+    async def decide_approval(self, approval_id, action, reason):
         return {}
 
 
@@ -190,6 +221,7 @@ def clarification_proposal() -> dict:
         "id": "proposal-clarification",
         "status": "proposed",
         "proposal_digest": "c" * 64,
+        "conversation_id": "conversation-1",
         "proposal": {
             "summary": "The research request needs immutable identifiers.",
             "recommended_action": "needs_clarification",
@@ -199,6 +231,32 @@ def clarification_proposal() -> dict:
                 "What base reference should be used?",
                 "What hypothesis ID should identify the trial?",
             ],
+            "unresolved_fields": ["base_ref", "hypothesis_id"],
+            "specification_format": {
+                "base_ref": "Git ref, for example main",
+                "hypothesis_id": "Safe identifier, for example HERMES-BTC-H1",
+            },
+        },
+    }
+
+
+def executable_proposal() -> dict:
+    return {
+        "id": "proposal-executable",
+        "status": "proposed",
+        "proposal_digest": "e" * 64,
+        "conversation_id": "conversation-1",
+        "proposal": {
+            "summary": "Run one bounded research experiment.",
+            "recommended_action": "create_task",
+            "target_role": "research runner",
+            "proposed_task": {
+                "task_type": "research_experiment",
+                "risk_level": 1,
+            },
+            "clarification_questions": [],
+            "unresolved_fields": [],
+            "specification_format": {},
         },
     }
 
@@ -296,6 +354,261 @@ def test_handoff_is_expiring_digest_bound_and_single_use(tmp_path: Path) -> None
     assert store.consume(token) is False
 
 
+def test_polling_offset_and_message_binding_survive_restart(tmp_path: Path) -> None:
+    path = tmp_path / "gateway.sqlite3"
+    first = HandoffStore(path)
+    first.initialize()
+    first.commit_polling_offset(42)
+    first.bind_message("telegram-message-7", "conversation-7")
+
+    restarted = HandoffStore(path)
+    restarted.initialize()
+
+    assert restarted.polling_offset() == 42
+    assert (
+        restarted.conversation_for_message("telegram-message-7")
+        == "conversation-7"
+    )
+    with pytest.raises(ValueError, match="cannot move backwards"):
+        restarted.commit_polling_offset(41)
+
+
+@pytest.mark.asyncio
+async def test_run_once_commits_sorted_updates_only_after_acceptance(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    telegram.update_values = [
+        {
+            "update_id": 12,
+            "message": {
+                "message_id": 2,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "Use January 2022.",
+            },
+        },
+        {
+            "update_id": 11,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "Run a bounded BTC research experiment.",
+            },
+        },
+    ]
+    channel = Channel()
+    path = tmp_path / "gateway.sqlite3"
+    store = HandoffStore(path)
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    await gateway.run_once()
+
+    assert store.polling_offset() == 13
+    assert channel.created[0]["message"].startswith("Run a bounded")
+    assert channel.turns[0][1]["message"] == "Use January 2022."
+    restarted = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    await restarted.run_once()
+    assert telegram.offsets[-1] == 13
+    assert len(channel.turns) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_update_does_not_advance_durable_offset(tmp_path: Path) -> None:
+    class FailingChannel(Channel):
+        async def create_conversation(self, payload):
+            raise RuntimeError("control plane unavailable")
+
+    telegram = Telegram()
+    telegram.update_values = [
+        {
+            "update_id": 21,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "Start a research job.",
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=FailingChannel(), store=store
+    )
+
+    with pytest.raises(RuntimeError, match="control plane unavailable"):
+        await gateway.run_once()
+
+    assert store.polling_offset() == 0
+
+
+@pytest.mark.asyncio
+async def test_duplicate_update_id_is_handled_once(tmp_path: Path) -> None:
+    update = {
+        "update_id": 31,
+        "message": {
+            "message_id": 1,
+            "from": {"id": 123},
+            "chat": {"id": 456},
+            "text": "Start one bounded research job.",
+        },
+    }
+    telegram = Telegram()
+    telegram.update_values = [update, update]
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    await gateway.run_once()
+
+    assert len(channel.created) == 1
+    assert channel.turns == []
+    assert store.polling_offset() == 32
+
+
+@pytest.mark.asyncio
+async def test_reply_to_prior_message_overrides_selected_thread(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    base = {
+        "from": {"id": 123},
+        "chat": {"id": 456},
+    }
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 1, "text": "First research job."}}
+    )
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 2, "text": "/new Infrastructure"}}
+    )
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 3, "text": "Second job."}}
+    )
+    assert store.get_value("selected-conversation-id") == "conversation-2"
+
+    await gateway._handle_update(
+        {
+            "message": {
+                **base,
+                "message_id": 4,
+                "text": "Continue the first job.",
+                "reply_to_message": {"message_id": 1},
+            }
+        }
+    )
+
+    assert channel.turns[-1][0] == "conversation-1"
+    assert channel.turns[-1][1]["reply_to_channel_message_id"] == "1"
+    assert store.get_value("selected-conversation-id") == "conversation-1"
+
+
+@pytest.mark.asyncio
+async def test_edited_message_never_rewrites_an_accepted_turn(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    update = {
+        "edited_message": {
+            "message_id": 7,
+            "from": {"id": 123},
+            "chat": {"id": 456},
+            "text": "Changed instruction",
+        }
+    }
+
+    await gateway._handle_update(update)
+    await gateway._handle_update(update)
+
+    assert channel.created == []
+    assert channel.turns == []
+    assert len(telegram.sent) == 1
+    assert "do not rewrite" in telegram.sent[0][1]
+
+
+@pytest.mark.asyncio
+async def test_clarification_notification_reply_is_bound_to_its_thread(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [
+        {
+            "id": "conversation-1",
+            "short_id": "thread000001",
+            "status": "needs_clarification",
+            "title": "Research",
+            "project": "bulletproof_bt",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
+    channel.proposal_values = [clarification_proposal()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    await gateway._notify_proposals()
+    notification_id = telegram.sent[0][2]
+    assert store.conversation_for_message("10001") == "conversation-1"
+    await gateway._handle_update(
+        {
+            "message": {
+                "message_id": 88,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "Use main and the generated hypothesis ID.",
+                "reply_to_message": {"message_id": 10001},
+            }
+        }
+    )
+
+    assert notification_id["button_url"] is None
+    assert channel.turns[-1][0] == "conversation-1"
+
+
+@pytest.mark.asyncio
+async def test_wrong_thread_proposal_cannot_be_approved(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.proposal_values = [executable_proposal()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-2")
+    token = store.create("proposal", "proposal-executable", "e" * 64, 300)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    await gateway._decide_handoff(token, "approve")
+
+    assert channel.proposal_decisions == []
+    assert store.resolve(token) is not None
+    assert "different founder thread" in telegram.sent[-1][1]
+
+
 def test_domain_classification_is_bounded() -> None:
     assert classify_request("Run a research hypothesis") == ("bulletproof_bt", 1)
     assert classify_request("Restart the API") == ("swarm-control-plane", 3)
@@ -324,7 +637,7 @@ async def test_clarification_proposal_sends_questions_without_approval_link(
     message = telegram.sent[0][1]
     assert "Clarification required" in message
     assert "What base reference" in message
-    assert "button_url" not in telegram.sent[0][2]
+    assert telegram.sent[0][2]["button_url"] is None
 
 
 @pytest.mark.asyncio
@@ -526,6 +839,36 @@ async def test_outbox_is_not_acknowledged_when_delivery_fails(
         await gateway._notify_outbox()
 
     assert channel.acknowledged == []
+
+
+@pytest.mark.asyncio
+async def test_failed_proposal_notification_is_retried(tmp_path: Path) -> None:
+    class RecoveringTelegram(Telegram):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail = True
+
+        async def send(self, chat_id, text, **kwargs):
+            if self.fail:
+                raise RuntimeError("temporary delivery failure")
+            return await super().send(chat_id, text, **kwargs)
+
+    telegram = RecoveringTelegram()
+    channel = Channel()
+    channel.proposal_values = [executable_proposal()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    with pytest.raises(RuntimeError, match="temporary delivery failure"):
+        await gateway._notify_proposals()
+    telegram.fail = False
+    await gateway._notify_proposals()
+
+    assert len(telegram.sent) == 1
+    assert "Proposal ready" in telegram.sent[0][1]
 
 
 @pytest.mark.asyncio

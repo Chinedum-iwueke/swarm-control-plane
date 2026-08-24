@@ -24,7 +24,7 @@ class RestrictedTelegramGateway:
         self._telegram = telegram
         self._channel = channel
         self._store = store
-        self._offset = 0
+        self._offset = store.polling_offset()
         self._username = ""
 
     async def check(self) -> None:
@@ -46,9 +46,12 @@ class RestrictedTelegramGateway:
             self._notify_missions(),
             self._notify_research_cycles(),
         )
-        for update in updates:
-            self._offset = max(self._offset, int(update["update_id"]) + 1)
+        for update in sorted(updates, key=lambda item: int(item["update_id"])):
+            if int(update["update_id"]) < self._offset:
+                continue
             await self._handle_update(update)
+            self._offset = max(self._offset, int(update["update_id"]) + 1)
+            self._store.commit_polling_offset(self._offset)
 
     async def _notify_outbox(self) -> None:
         for notification in await self._channel.notifications():
@@ -111,7 +114,8 @@ class RestrictedTelegramGateway:
             )
 
     async def _handle_update(self, update: dict[str, Any]) -> None:
-        message = update.get("message") or {}
+        edited = update.get("edited_message")
+        message = update.get("message") or edited or {}
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
         if (
@@ -121,6 +125,18 @@ class RestrictedTelegramGateway:
             return
         text = str(message.get("text", "")).strip()
         if not text:
+            return
+        if edited is not None:
+            message_id = str(message.get("message_id", "unknown"))
+            state_key = f"telegram-edit:{message_id}"
+            state_digest = _digest(text)
+            if self._store.is_changed(state_key, state_digest):
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Edited messages do not rewrite an accepted Hermes turn. "
+                    "Send the correction as a new reply in the same thread.",
+                )
+                self._store.mark_seen(state_key, state_digest)
             return
         if text == "/status":
             await self._send_status()
@@ -177,9 +193,33 @@ class RestrictedTelegramGateway:
             return
         founder_key = self._founder_key
         pending_title = self._store.pop_value("pending-new-title")
-        active = (
-            None if pending_title is not None else await self._selected_conversation()
+        reply = message.get("reply_to_message") or {}
+        reply_message_id = (
+            str(reply.get("message_id"))
+            if reply.get("message_id") is not None
+            else None
         )
+        reply_conversation_id = (
+            self._store.conversation_for_message(reply_message_id)
+            if reply_message_id
+            else None
+        )
+        if reply_message_id and reply_conversation_id is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "That reply target is not linked to a Hermes thread. Use /threads "
+                "and /switch <short-id>, then send the correction again.",
+            )
+            return
+        active = None
+        if pending_title is None:
+            active = await self._selected_conversation(reply_conversation_id)
+        if reply_conversation_id and active is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "That thread is no longer open. Use /resume <short-id> before replying.",
+            )
+            return
         message_id = (
             str(message.get("message_id"))
             if message.get("message_id") is not None
@@ -203,15 +243,22 @@ class RestrictedTelegramGateway:
                     "channel": "telegram",
                     "message": text,
                     "channel_message_id": message_id,
+                    "reply_to_channel_message_id": reply_message_id,
                 },
             )
         conversation = result["conversation"]
         self._store.set_value("selected-conversation-id", conversation["id"])
-        await self._telegram.send(
+        if message_id:
+            self._store.bind_message(message_id, conversation["id"])
+        sent = await self._telegram.send(
             self._settings.founder_chat_id,
             f"Turn accepted · {conversation['short_id']} · revision {conversation['revision']}\n"
             f"{conversation['title']}\nThe planner will continue this thread.",
         )
+        for sent_message in sent or []:
+            sent_message_id = sent_message.get("message_id")
+            if sent_message_id is not None:
+                self._store.bind_message(str(sent_message_id), conversation["id"])
 
     @property
     def _founder_key(self) -> str:
@@ -311,7 +358,24 @@ class RestrictedTelegramGateway:
             f"Switched to {item['short_id']} · {item['title']}",
         )
 
-    async def _selected_conversation(self) -> dict[str, Any] | None:
+    async def _selected_conversation(
+        self, preferred_id: str | None = None
+    ) -> dict[str, Any] | None:
+        if preferred_id:
+            items = await self._channel.conversations(self._founder_key)
+            preferred = next(
+                (value for value in items if value["id"] == preferred_id), None
+            )
+            if preferred is None:
+                return None
+            if preferred["status"] not in {
+                "collecting",
+                "needs_clarification",
+                "ready_for_review",
+                "attention_required",
+            }:
+                return None
+            return preferred
         selected = self._store.get_value("selected-conversation-id")
         if selected:
             items = await self._channel.conversations(self._founder_key)
@@ -329,17 +393,20 @@ class RestrictedTelegramGateway:
         for item in await self._channel.proposals():
             digest = item["proposal_digest"]
             state = f"{item['status']}:{digest}"
-            if not self._store.changed(f"proposal:{item['id']}", state):
+            state_key = f"proposal:{item['id']}"
+            if not self._store.is_changed(state_key, state):
                 continue
             proposal = item["proposal"]
             if item["status"] == "proposed":
                 if proposal["recommended_action"] == "needs_clarification":
-                    await self._telegram.send(
-                        self._settings.founder_chat_id,
+                    await self._send_thread_message(
+                        item.get("conversation_id"),
                         f"Clarification required\n{proposal['summary']}\n\n"
                         f"{_clarification_text(proposal)}\n\n"
-                        "Reply with a new plain-English request containing these answers.",
+                        "Reply to this message with the answers, or switch to the "
+                        "named thread first.",
                     )
+                    self._store.mark_seen(state_key, state)
                     continue
                 token = self._store.create(
                     "proposal",
@@ -348,8 +415,8 @@ class RestrictedTelegramGateway:
                     self._settings.handoff_ttl_seconds,
                 )
                 url = f"https://t.me/{self._username}?start=review_{token}"
-                await self._telegram.send(
-                    self._settings.founder_chat_id,
+                await self._send_thread_message(
+                    item.get("conversation_id"),
                     f"Proposal ready\n{proposal['summary']}\n"
                     f"Target: {proposal.get('target_role') or 'unassigned'}\n"
                     f"Action: {proposal['recommended_action']}\n"
@@ -362,17 +429,21 @@ class RestrictedTelegramGateway:
                     self._settings.founder_chat_id,
                     f"Proposal {digest[:12]} is now {item['status']}.",
                 )
+            self._store.mark_seen(state_key, state)
 
     async def _notify_tasks(self) -> None:
         for task in await self._channel.tasks():
             state = f"{task['status']}:{task['attempt_count']}:{task['updated_at']}"
-            if not self._store.changed(f"task:{task['id']}", _digest(state)):
+            state_key = f"task:{task['id']}"
+            state_digest = _digest(state)
+            if not self._store.is_changed(state_key, state_digest):
                 continue
             if task["status"] in {"succeeded", "failed"}:
                 await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"{task['task_number']} · {task['status']}\n{task['title']}",
                 )
+            self._store.mark_seen(state_key, state_digest)
 
     async def _notify_approvals(self) -> None:
         for approval in await self._channel.approvals():
@@ -382,9 +453,11 @@ class RestrictedTelegramGateway:
                 f"{approval['status']}:{approval['actionable']}:"
                 f"{approval['plan_digest']}"
             )
-            if not self._store.changed(f"approval:{approval['id']}", state):
+            state_key = f"approval:{approval['id']}"
+            if not self._store.is_changed(state_key, state):
                 continue
             await self._send_approval(approval)
+            self._store.mark_seen(state_key, state)
 
     async def _notify_missions(self) -> None:
         for mission in await self._channel.missions():
@@ -392,7 +465,9 @@ class RestrictedTelegramGateway:
             if status != "attention_required":
                 continue
             state = f"{status}:{mission['manifest_digest']}:{mission['supervision_exception']}"
-            if not self._store.changed(f"mission:{mission['id']}", _digest(state)):
+            state_key = f"mission:{mission['id']}"
+            state_digest = _digest(state)
+            if not self._store.is_changed(state_key, state_digest):
                 continue
             exception = mission.get("supervision_exception") or {}
             await self._telegram.send(
@@ -401,6 +476,7 @@ class RestrictedTelegramGateway:
                 f"Checkpoint: {exception.get('task_number', 'unknown')}\n"
                 f"Category: {exception.get('category', 'unknown')}",
             )
+            self._store.mark_seen(state_key, state_digest)
 
     async def _notify_research_cycles(self) -> None:
         for cycle in await self._channel.research_cycles():
@@ -412,13 +488,16 @@ class RestrictedTelegramGateway:
             }:
                 continue
             state = f"{cycle['status']}:{cycle['question_digest']}"
-            if not self._store.changed(f"research-cycle:{cycle['id']}", _digest(state)):
+            state_key = f"research-cycle:{cycle['id']}"
+            state_digest = _digest(state)
+            if not self._store.is_changed(state_key, state_digest):
                 continue
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 f"Daily research · {cycle['status']}\n{cycle['question']}\n"
                 f"Question: {cycle['question_digest'][:12]}",
             )
+            self._store.mark_seen(state_key, state_digest)
 
     async def _send_research_status(self) -> None:
         cycles = await self._channel.research_cycles()
@@ -590,13 +669,17 @@ class RestrictedTelegramGateway:
                 "Proposal state changed. Open Mission Control for the latest record.",
             )
             return
+        if current.get("conversation_id"):
+            self._store.set_value(
+                "selected-conversation-id", current["conversation_id"]
+            )
         task = current["proposal"].get("proposed_task")
         if task is None:
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 f"This proposal cannot be approved yet.\n\n"
                 f"{_clarification_text(current['proposal'])}\n\n"
-                "Reply with a new plain-English request containing these answers.",
+                "Reply in this thread with the requested answers.",
             )
             return
         detail = f"\nTask: {task['task_type']} · risk {task['risk_level']}"
@@ -690,13 +773,25 @@ class RestrictedTelegramGateway:
                 "Proposal digest or state no longer matches.",
             )
             return
+        conversation_id = current.get("conversation_id")
         if action == "approve" and current["proposal"].get("proposed_task") is None:
             self._store.consume(token)
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 "This proposal cannot be approved because clarification is required.\n\n"
                 f"{_clarification_text(current['proposal'])}\n\n"
-                "Reply with a new plain-English request containing these answers.",
+                "Reply in this thread with the requested answers.",
+            )
+            return
+        if (
+            conversation_id
+            and self._store.get_value("selected-conversation-id")
+            != conversation_id
+        ):
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "This proposal belongs to a different founder thread. Switch to that "
+                "thread, reopen this review link, and verify the digest again.",
             )
             return
         api_action = "materialize" if action == "approve" else "reject"
@@ -727,6 +822,26 @@ class RestrictedTelegramGateway:
             f"Supervised missions: {sum(item['supervision_status'] == 'active' for item in missions)} active, "
             f"{sum(item['supervision_status'] == 'attention_required' for item in missions)} need attention",
         )
+
+    async def _send_thread_message(
+        self,
+        conversation_id: str | None,
+        text: str,
+        *,
+        button_text: str | None = None,
+        button_url: str | None = None,
+    ) -> None:
+        sent = await self._telegram.send(
+            self._settings.founder_chat_id,
+            text,
+            button_text=button_text,
+            button_url=button_url,
+        )
+        if conversation_id:
+            for message in sent or []:
+                message_id = message.get("message_id")
+                if message_id is not None:
+                    self._store.bind_message(str(message_id), conversation_id)
 
 
 def classify_request(text: str) -> tuple[str, int]:
@@ -765,14 +880,21 @@ def classify_request(text: str) -> tuple[str, int]:
 
 def _clarification_text(proposal: dict) -> str:
     questions = proposal.get("clarification_questions") or []
+    fields = proposal.get("unresolved_fields") or []
+    formats = proposal.get("specification_format") or {}
     if not questions:
         return (
             "Questions:\n1. Provide the missing information requested by the planner."
         )
-    rendered = "\n".join(
-        f"{index}. {str(question)[:500]}"
-        for index, question in enumerate(questions[:10], start=1)
-    )
+    rendered_items = []
+    for index, question in enumerate(questions[:10], start=1):
+        field = fields[index - 1] if index <= len(fields) else None
+        label = f"`{field}` — " if field else ""
+        guidance = f"\n   Format: {formats[field]}" if field in formats else ""
+        rendered_items.append(
+            f"{index}. {label}{str(question)[:500]}{guidance}"
+        )
+    rendered = "\n".join(rendered_items)
     return f"Questions:\n{rendered}"
 
 

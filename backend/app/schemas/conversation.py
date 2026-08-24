@@ -17,6 +17,7 @@ class ConversationCreate(StrictModel):
     title: str = Field(min_length=3, max_length=160)
     message: str = Field(min_length=1, max_length=12000)
     channel_message_id: str | None = Field(default=None, max_length=160)
+    reply_to_channel_message_id: str | None = Field(default=None, max_length=160)
 
 
 class ConversationTurnCreate(StrictModel):
@@ -26,6 +27,7 @@ class ConversationTurnCreate(StrictModel):
     channel: Literal["telegram", "mission-control"]
     message: str = Field(min_length=1, max_length=12000)
     channel_message_id: str | None = Field(default=None, max_length=160)
+    reply_to_channel_message_id: str | None = Field(default=None, max_length=160)
 
 
 class ConversationTransition(StrictModel):
@@ -42,6 +44,8 @@ class ConversationMessageResponse(BaseModel):
     sequence: int
     role: str
     channel: str
+    channel_message_id: str | None
+    reply_to_message_id: uuid.UUID | None
     content: str
     content_digest: str
     detail: dict

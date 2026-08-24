@@ -84,10 +84,19 @@ class HandoffStore:
         return cursor.rowcount == 1
 
     def changed(self, key: str, state_digest: str) -> bool:
+        changed = self.is_changed(key, state_digest)
+        self.mark_seen(key, state_digest)
+        return changed
+
+    def is_changed(self, key: str, state_digest: str) -> bool:
         with self._connect() as db:
             row = db.execute(
                 "SELECT state_digest FROM seen WHERE entity_key = ?", (key,)
             ).fetchone()
+        return row is None or row[0] != state_digest
+
+    def mark_seen(self, key: str, state_digest: str) -> None:
+        with self._connect() as db:
             db.execute(
                 """
                 INSERT INTO seen(entity_key, state_digest) VALUES (?, ?)
@@ -96,7 +105,6 @@ class HandoffStore:
                 """,
                 (key, state_digest),
             )
-        return row is None or row[0] != state_digest
 
     def set_value(self, key: str, value: str) -> None:
         with self._connect() as db:
@@ -119,6 +127,22 @@ class HandoffStore:
                 "SELECT value FROM values_store WHERE key = ?", (key,)
             ).fetchone()
         return row[0] if row else None
+
+    def polling_offset(self) -> int:
+        value = self.get_value("telegram-update-offset")
+        return int(value) if value is not None else 0
+
+    def commit_polling_offset(self, offset: int) -> None:
+        current = self.polling_offset()
+        if offset < current:
+            raise ValueError("Telegram polling offset cannot move backwards.")
+        self.set_value("telegram-update-offset", str(offset))
+
+    def bind_message(self, message_id: str, conversation_id: str) -> None:
+        self.set_value(f"telegram-message:{message_id}", conversation_id)
+
+    def conversation_for_message(self, message_id: str) -> str | None:
+        return self.get_value(f"telegram-message:{message_id}")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path)

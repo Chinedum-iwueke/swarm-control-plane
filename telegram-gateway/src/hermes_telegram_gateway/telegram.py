@@ -34,7 +34,11 @@ class TelegramClient:
     ) -> list[dict[str, Any]]:
         return await self._call(
             "getUpdates",
-            {"offset": offset, "timeout": timeout, "allowed_updates": ["message"]},
+            {
+                "offset": offset,
+                "timeout": timeout,
+                "allowed_updates": ["message", "edited_message"],
+            },
         )
 
     async def send(
@@ -44,17 +48,23 @@ class TelegramClient:
         *,
         button_text: str | None = None,
         button_url: str | None = None,
-    ) -> None:
-        payload: dict[str, Any] = {
-            "chat_id": chat_id,
-            "text": text[:4000],
-            "disable_web_page_preview": True,
-        }
-        if button_text and button_url:
-            payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": button_text, "url": button_url}]]
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        chunks = split_message(text)
+        for index, chunk in enumerate(chunks):
+            payload: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "disable_web_page_preview": True,
             }
-        await self._call("sendMessage", payload)
+            if index == len(chunks) - 1 and button_text and button_url:
+                payload["reply_markup"] = {
+                    "inline_keyboard": [[{"text": button_text, "url": button_url}]]
+                }
+            result = await self._call("sendMessage", payload)
+            if isinstance(result, dict):
+                results.append(result)
+        return results
 
     async def _call(
         self, method: str, payload: dict[str, Any] | None = None
@@ -73,3 +83,22 @@ class TelegramClient:
                 description.replace(self._token, "[REDACTED]")[:500]
             )
         return body["result"]
+
+
+def split_message(text: str, limit: int = 4000) -> list[str]:
+    if limit < 1:
+        raise ValueError("Telegram message limit must be positive.")
+    remaining = text or " "
+    chunks: list[str] = []
+    while len(remaining) > limit:
+        boundary = remaining.rfind("\n", 0, limit + 1)
+        if boundary < limit // 2:
+            boundary = remaining.rfind(" ", 0, limit + 1)
+        if boundary < 1:
+            boundary = limit
+        elif remaining[boundary].isspace():
+            boundary += 1
+        chunks.append(remaining[:boundary])
+        remaining = remaining[boundary:]
+    chunks.append(remaining)
+    return chunks
