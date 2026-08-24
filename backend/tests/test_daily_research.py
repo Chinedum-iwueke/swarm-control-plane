@@ -1,14 +1,19 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from app.models import ResearchDailyCycle, ResearchDataSnapshot
-from app.schemas.research_program import ResearchProgramCreate
-from app.services.daily_research import question_digest, reconcile_programs
+from app.schemas.research_program import ResearchCycleApproval, ResearchProgramCreate
+from app.services.daily_research import (
+    decide_cycle,
+    question_digest,
+    rank_daily_candidates,
+    reconcile_programs,
+)
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 NOW = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
 
@@ -74,7 +79,10 @@ def test_reconcile_creates_only_one_budgeted_daily_cycle() -> None:
         created_at=NOW,
     )
     db = MagicMock()
-    db.scalars.side_effect = [SimpleNamespace(all=lambda: [program]), SimpleNamespace(all=list)]
+    db.scalars.side_effect = [
+        SimpleNamespace(all=lambda: [program]),
+        SimpleNamespace(all=list),
+    ]
     db.scalar.side_effect = [None, 0, 0]
 
     records = reconcile_programs(db, now=NOW)
@@ -82,7 +90,30 @@ def test_reconcile_creates_only_one_budgeted_daily_cycle() -> None:
     assert len(records) == 1
     assert records[0].status == "awaiting_brief"
     assert records[0].budget["max_trials_per_cycle"] == 1
-    db.add.assert_called_once_with(records[0])
+    assert records[0].digest["selection"] == {
+        "schema_version": "daily-research-selection-v1.0.0",
+        "mode": "static_fallback",
+        "reason": "no_approved_current_novel_candidate",
+        "candidate_count": 0,
+    }
+    assert db.add.call_count == 2
+
+
+def test_reconcile_respects_weekly_cycle_budget() -> None:
+    payload = ResearchProgramCreate.model_validate(program_payload())
+    program = SimpleNamespace(
+        id=uuid4(),
+        mandate=[item.model_dump(mode="json") for item in payload.mandate],
+        schedule=payload.schedule.model_dump(mode="json"),
+        budget=payload.budget.model_dump(mode="json"),
+        created_at=NOW,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [program]
+    db.scalar.side_effect = [None, payload.budget.max_cycles_per_week]
+
+    assert reconcile_programs(db, now=NOW) == []
+    db.add.assert_not_called()
 
 
 def test_reconcile_marks_exact_prior_question_as_duplicate() -> None:
@@ -111,3 +142,119 @@ def test_reconcile_marks_exact_prior_question_as_duplicate() -> None:
     assert cycle.status == "duplicate_avoided"
     assert cycle.duplicate_hypothesis_id == prior.id
     assert cycle.completed_at == NOW
+
+
+def test_director_ranks_current_approved_candidates_deterministically() -> None:
+    candidates = [
+        {
+            "publication_id": "b",
+            "question": "Does a novel execution signal improve BTC outcomes?",
+            "priority_score": 0.8,
+            "novelty_score": 0.9,
+            "evidence_quality": 0.8,
+            "publication_status": "published",
+            "created_at": NOW - timedelta(days=1),
+        },
+        {
+            "publication_id": "a",
+            "question": "Does another execution signal improve BTC outcomes?",
+            "priority_score": 0.8,
+            "novelty_score": 0.9,
+            "evidence_quality": 0.8,
+            "publication_status": "published",
+            "created_at": NOW - timedelta(days=1),
+        },
+    ]
+    first = rank_daily_candidates(candidates, [], now=NOW)
+    second = rank_daily_candidates(list(reversed(candidates)), [], now=NOW)
+    assert [item["publication_id"] for item in first] == [
+        item["publication_id"] for item in second
+    ]
+
+
+def test_director_excludes_stale_retracted_and_duplicate_families() -> None:
+    candidates = [
+        {
+            "publication_id": "stale",
+            "question": "Does stale funding evidence predict BTC returns?",
+            "priority_score": 1.0,
+            "novelty_score": 1.0,
+            "evidence_quality": 1.0,
+            "publication_status": "published",
+            "created_at": NOW - timedelta(days=31),
+        },
+        {
+            "publication_id": "retracted",
+            "question": "Does retracted evidence predict BTC returns?",
+            "priority_score": 1.0,
+            "novelty_score": 1.0,
+            "evidence_quality": 1.0,
+            "publication_status": "retracted",
+            "created_at": NOW,
+        },
+        {
+            "publication_id": "duplicate",
+            "question": "Do funding extremes predict BTC residual returns?",
+            "priority_score": 1.0,
+            "novelty_score": 1.0,
+            "evidence_quality": 1.0,
+            "publication_status": "published",
+            "created_at": NOW,
+        },
+    ]
+    assert (
+        rank_daily_candidates(
+            candidates,
+            ["Do funding extremes predict BTC residual returns?"],
+            now=NOW,
+        )
+        == []
+    )
+
+
+def test_founder_decision_emits_task_ready_without_execution_authority() -> None:
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        status="awaiting_brief",
+        question_digest="a" * 64,
+        digest={"selection": {"schema_version": "daily-research-selection-v1.0.0"}},
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+
+    decided = decide_cycle(
+        db,
+        cycle,
+        ResearchCycleApproval(
+            expected_question_digest="a" * 64,
+            decision="approved",
+            rationale="The evidence provenance and bounded research budget are acceptable.",
+            decided_by="founder-operator",
+        ),
+    )
+
+    assert decided.digest["approval"]["decision"] == "approved"
+    events = [call.args[0] for call in db.add.call_args_list]
+    assert [event.event_type for event in events] == ["approved", "task_ready"]
+    assert events[-1].detail["approval_required_for_execution"] is True
+    db.commit.assert_called_once()
+
+
+def test_founder_decision_rejects_digest_race() -> None:
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        status="awaiting_brief",
+        question_digest="a" * 64,
+        digest={},
+    )
+    with pytest.raises(HTTPException, match="digest changed"):
+        decide_cycle(
+            MagicMock(),
+            cycle,
+            ResearchCycleApproval(
+                expected_question_digest="b" * 64,
+                decision="approved",
+                rationale="This stale approval must not apply to a changed question.",
+                decided_by="founder-operator",
+            ),
+        )

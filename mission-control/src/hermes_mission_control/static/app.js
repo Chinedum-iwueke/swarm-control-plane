@@ -993,6 +993,26 @@ function formatPercent(value) {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "–";
 }
 
+async function decideResearchCycle(button) {
+  const decision = button.dataset.researchCycleDecision;
+  const rationale = decision === "approved"
+    ? "Founder approved this evidence-grounded daily research question."
+    : window.prompt("Why should this daily research question be rejected?");
+  if (!rationale) return;
+  button.disabled = true;
+  try {
+    await mutate(`/api/research/cycles/${button.dataset.cycleId}/decision`, {
+      expected_question_digest: button.dataset.cycleDigest,
+      decision,
+      rationale,
+    }, `Daily research question ${decision}.`);
+    await loadDashboard();
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
+}
+
 function formatDuration(seconds) {
   const value = Number(seconds);
   if (!Number.isFinite(value)) return "unknown age";
@@ -1037,10 +1057,13 @@ function renderResearch() {
   `;
   document.getElementById("research-cycles").innerHTML = cycles.length ? cycles.map((cycle) => `
     <div class="entity-row">
-      <div class="entity-primary"><strong>${escapeHtml(cycle.question)}</strong><div class="entity-meta"><span>${escapeHtml(cycle.cycle_date)}</span><span>${escapeHtml(cycle.question_key)}</span><span class="mono">${shortHash(cycle.question_digest)}</span></div></div>
-      ${statusBadge(cycle.status)}
+      <div class="entity-primary"><strong>${escapeHtml(cycle.question)}</strong><div class="entity-meta"><span>${escapeHtml(cycle.cycle_date)}</span><span>${escapeHtml(cycle.question_key)}</span><span>${escapeHtml(cycle.digest?.selection?.mode === "approved_research_intelligence" ? "Research Intelligence" : "mandate fallback")}</span><span>${escapeHtml(cycle.digest?.approval?.decision || "founder review required")}</span><span class="mono">${shortHash(cycle.question_digest)}</span></div>${cycle.digest?.selection?.ranking ? `<p>Director score ${number(cycle.digest.selection.ranking.director_score)} · novelty ${number(cycle.digest.selection.ranking.novelty_score)} · evidence ${number(cycle.digest.selection.ranking.evidence_quality)}</p>` : ""}</div>
+      <div class="entity-side">${cycle.status === "awaiting_brief" && !cycle.digest?.approval ? `<button class="secondary compact" data-research-cycle-decision="rejected" data-cycle-id="${cycle.id}" data-cycle-digest="${cycle.question_digest}">Reject</button><button class="primary compact" data-research-cycle-decision="approved" data-cycle-id="${cycle.id}" data-cycle-digest="${cycle.question_digest}">Approve</button>` : ""}${statusBadge(cycle.status)}</div>
     </div>
   `).join("") : empty("No supervised daily research cycle has been scheduled.");
+  document.querySelectorAll("[data-research-cycle-decision]").forEach((button) => {
+    button.addEventListener("click", () => decideResearchCycle(button));
+  });
   document.getElementById("research-datasets").innerHTML = datasetManifests.length ? datasetManifests.map((item) => {
     const builds = datasetBuilds.filter((build) => build.manifest_id === item.id);
     const latest = builds[0];

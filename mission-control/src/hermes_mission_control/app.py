@@ -32,6 +32,7 @@ from .models import (
     IntakeRequest,
     KnowledgeIngestRequest,
     ProposalDecision,
+    ResearchCycleDecision,
 )
 from .research_copilot import (
     AnswerGenerator,
@@ -203,6 +204,20 @@ def create_app(
     )
     async def propose_research_memory_sync() -> dict:
         return await client.propose_research_memory_sync()
+
+    @app.post(
+        "/api/research/cycles/{cycle_id}/decision",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def decide_research_cycle(
+        cycle_id: str, payload: ResearchCycleDecision
+    ) -> dict:
+        return await client.decide_research_cycle(
+            cycle_id,
+            payload.expected_question_digest,
+            payload.decision,
+            payload.rationale,
+        )
 
     @app.post(
         "/api/approvals/{approval_id}/{action}",

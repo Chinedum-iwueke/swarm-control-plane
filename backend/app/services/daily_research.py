@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import statistics
 from datetime import UTC, date, datetime, timedelta
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ResearchDailyCycle,
+    ResearchDailyCycleEvent,
     ResearchDecision,
     ResearchExperiment,
     ResearchHypothesis,
@@ -21,12 +23,75 @@ from app.models import (
     ResearchTrial,
     Task,
 )
-from app.schemas.research_program import ResearchCycleLink, ResearchProgramCreate
+from app.models.surveillance import SurveillancePublication, SurveillanceRoutingEvent
+from app.schemas.research_program import (
+    ResearchCycleApproval,
+    ResearchCycleLink,
+    ResearchProgramCreate,
+)
 
 
 def question_digest(question: str) -> str:
     normalized = " ".join(re.findall(r"[a-z0-9]+", question.lower()))
     return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def _record_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+    ).hexdigest()
+
+
+def rank_daily_candidates(
+    candidates: list[dict],
+    prior_questions: list[str],
+    *,
+    now: datetime,
+    max_age_days: int = 30,
+) -> list[dict]:
+    prior_tokens = [_tokens(item) for item in prior_questions]
+    ranked: list[dict] = []
+    for candidate in candidates:
+        if candidate["publication_status"] == "retracted":
+            continue
+        age_days = max(0.0, (now - candidate["created_at"]).total_seconds() / 86400)
+        if age_days > max_age_days:
+            continue
+        tokens = _tokens(candidate["question"])
+        duplicate_score = max(
+            (
+                len(tokens & prior) / len(tokens | prior)
+                for prior in prior_tokens
+                if tokens | prior
+            ),
+            default=0.0,
+        )
+        if duplicate_score >= 0.8:
+            continue
+        freshness = max(0.0, 1.0 - age_days / max_age_days)
+        score = (
+            0.40 * float(candidate["priority_score"])
+            + 0.25 * float(candidate["novelty_score"])
+            + 0.20 * float(candidate["evidence_quality"])
+            + 0.10 * freshness
+            + 0.05 * (1.0 - duplicate_score)
+        )
+        ranked.append(
+            candidate
+            | {
+                "duplicate_score": round(duplicate_score, 6),
+                "freshness_score": round(freshness, 6),
+                "director_score": round(score, 6),
+            }
+        )
+    return sorted(
+        ranked,
+        key=lambda item: (-item["director_score"], question_digest(item["question"])),
+    )
+
+
+def _tokens(value: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.lower()))
 
 
 def create_program(db: Session, payload: ResearchProgramCreate) -> ResearchProgram:
@@ -44,7 +109,9 @@ def create_program(db: Session, payload: ResearchProgramCreate) -> ResearchProgr
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Research program key exists.") from exc
+        raise HTTPException(
+            status_code=409, detail="Research program key exists."
+        ) from exc
     db.refresh(record)
     return record
 
@@ -62,7 +129,10 @@ def reconcile_programs(
     created: list[ResearchDailyCycle] = []
     for program in programs:
         schedule = program.schedule
-        if now.weekday() not in schedule["weekdays_utc"] or now.hour < schedule["hour_utc"]:
+        if (
+            now.weekday() not in schedule["weekdays_utc"]
+            or now.hour < schedule["hour_utc"]
+        ):
             continue
         existing = db.scalar(
             select(ResearchDailyCycle).where(
@@ -74,25 +144,137 @@ def reconcile_programs(
             refresh_cycle(db, existing, now=now)
             continue
         week_start = now.date() - timedelta(days=now.weekday())
-        weekly_count = db.scalar(
-            select(func.count(ResearchDailyCycle.id)).where(
-                ResearchDailyCycle.program_id == program.id,
-                ResearchDailyCycle.cycle_date >= week_start,
+        weekly_count = (
+            db.scalar(
+                select(func.count(ResearchDailyCycle.id)).where(
+                    ResearchDailyCycle.program_id == program.id,
+                    ResearchDailyCycle.cycle_date >= week_start,
+                )
             )
-        ) or 0
+            or 0
+        )
         if weekly_count >= int(program.budget["max_cycles_per_week"]):
             continue
-        total_count = db.scalar(
-            select(func.count(ResearchDailyCycle.id)).where(
-                ResearchDailyCycle.program_id == program.id
+        total_count = (
+            db.scalar(
+                select(func.count(ResearchDailyCycle.id)).where(
+                    ResearchDailyCycle.program_id == program.id
+                )
             )
-        ) or 0
-        question = program.mandate[total_count % len(program.mandate)]
+            or 0
+        )
+        prior_hypotheses = list(db.scalars(select(ResearchHypothesis)).all())
+        candidate_rows = list(
+            db.execute(
+                select(SurveillancePublication, SurveillanceRoutingEvent)
+                .join(
+                    SurveillanceRoutingEvent,
+                    SurveillanceRoutingEvent.publication_id
+                    == SurveillancePublication.id,
+                )
+                .where(SurveillanceRoutingEvent.decision == "propose_question")
+                .where(SurveillanceRoutingEvent.decided_by == "founder-operator")
+                .order_by(SurveillanceRoutingEvent.created_at.desc())
+            ).all()
+        )
+        prior_cycles = db.execute(
+            select(
+                ResearchDailyCycle.id,
+                ResearchDailyCycle.question,
+                ResearchDailyCycle.digest,
+            ).where(ResearchDailyCycle.program_id == program.id)
+        ).all()
+        prior_questions = [
+            item.specification["research_question"] for item in prior_hypotheses
+        ] + [cycle_question for _, cycle_question, _ in prior_cycles]
+        used_publication_ids = {
+            str((cycle_digest or {})["selection"]["publication_id"])
+            for _, _, cycle_digest in prior_cycles
+            if (cycle_digest or {}).get("selection", {}).get("publication_id")
+        }
+        candidates = []
+        considered_publication_ids: set[str] = set()
+        for publication, event in candidate_rows:
+            publication_id = str(publication.id)
+            if (
+                publication_id in used_publication_ids
+                or publication_id in considered_publication_ids
+            ):
+                continue
+            considered_publication_ids.add(publication_id)
+            candidates.append(
+                {
+                    "publication_id": publication_id,
+                    "content_digest": publication.content_digest,
+                    "question": event.proposal["proposed_question"],
+                    "rationale": event.rationale,
+                    "source": "approved_research_intelligence",
+                    "tags": list(
+                        publication.assessment["technique_brief"][
+                            "applicability_domains"
+                        ]
+                    ),
+                    "priority_score": publication.routing["priority_score"],
+                    "novelty_score": publication.assessment["novelty_score"],
+                    "evidence_quality": publication.assessment["evidence_quality"],
+                    "publication_status": publication.publication_status,
+                    "created_at": publication.created_at,
+                    "approval_event_id": str(event.id),
+                    "approval_event_digest": event.event_digest,
+                    "citation": publication.provenance,
+                }
+            )
+        ranked = rank_daily_candidates(candidates, prior_questions, now=now)
+        if ranked:
+            selected = ranked[0]
+            question = {
+                "question_key": f"ri-{selected['content_digest'][:16]}",
+                "question": selected["question"],
+                "rationale": selected["rationale"],
+                "source": selected["source"],
+                "tags": selected["tags"],
+            }
+            selection = {
+                "schema_version": "daily-research-selection-v1.0.0",
+                "mode": "approved_research_intelligence",
+                "publication_id": selected["publication_id"],
+                "publication_digest": selected["content_digest"],
+                "approval_event_id": selected["approval_event_id"],
+                "approval_event_digest": selected["approval_event_digest"],
+                "citation": selected["citation"],
+                "institutional_gap": {
+                    "domains": selected["tags"],
+                    "nearest_prior_similarity": round(
+                        1.0 - selected["novelty_score"], 6
+                    ),
+                    "requires_independent_validation": True,
+                    "limitations": [
+                        "surveillance evidence is not institutional validation",
+                        "an approved question remains untested",
+                    ],
+                },
+                "ranking": {
+                    "director_score": selected["director_score"],
+                    "novelty_score": selected["novelty_score"],
+                    "evidence_quality": selected["evidence_quality"],
+                    "duplicate_score": selected["duplicate_score"],
+                    "freshness_score": selected["freshness_score"],
+                    "candidate_count": len(ranked),
+                },
+            }
+        else:
+            question = program.mandate[total_count % len(program.mandate)]
+            selection = {
+                "schema_version": "daily-research-selection-v1.0.0",
+                "mode": "static_fallback",
+                "reason": "no_approved_current_novel_candidate",
+                "candidate_count": len(candidates),
+            }
         digest = question_digest(question["question"])
         duplicate = next(
             (
                 item
-                for item in db.scalars(select(ResearchHypothesis)).all()
+                for item in prior_hypotheses
                 if question_digest(item.specification["research_question"]) == digest
             ),
             None,
@@ -111,11 +293,24 @@ def reconcile_programs(
                 "rationale": question["rationale"],
                 "source": question["source"],
                 "tags": question["tags"],
+                "selection": selection,
             },
             completed_at=now if duplicate else None,
         )
         db.add(cycle)
         db.flush()
+        _event(
+            db,
+            cycle,
+            1,
+            "proposal_created",
+            {
+                "question_digest": digest,
+                "selection": selection,
+                "approval_required": True,
+                "execution_authority": False,
+            },
+        )
         created.append(cycle)
     return created
 
@@ -124,13 +319,26 @@ def link_cycle(
     db: Session, cycle: ResearchDailyCycle, payload: ResearchCycleLink
 ) -> ResearchDailyCycle:
     if cycle.status != "awaiting_brief":
-        raise HTTPException(status_code=409, detail="Cycle is not awaiting registration.")
+        raise HTTPException(
+            status_code=409, detail="Cycle is not awaiting registration."
+        )
+    if (
+        cycle.digest.get("selection", {}).get("schema_version")
+        == "daily-research-selection-v1.0.0"
+        and cycle.digest.get("approval", {}).get("decision") != "approved"
+    ):
+        raise HTTPException(status_code=409, detail="Cycle proposal is not approved.")
     hypothesis = db.get(ResearchHypothesis, payload.hypothesis_id)
     task = db.get(Task, payload.task_id)
     if hypothesis is None or task is None:
         raise HTTPException(status_code=404, detail="Hypothesis or task not found.")
-    if question_digest(hypothesis.specification["research_question"]) != cycle.question_digest:
-        raise HTTPException(status_code=422, detail="Hypothesis question does not match cycle.")
+    if (
+        question_digest(hypothesis.specification["research_question"])
+        != cycle.question_digest
+    ):
+        raise HTTPException(
+            status_code=422, detail="Hypothesis question does not match cycle."
+        )
     cycle.hypothesis_id = hypothesis.id
     cycle.task_id = task.id
     cycle.status = "registered"
@@ -138,6 +346,88 @@ def link_cycle(
     db.commit()
     db.refresh(cycle)
     return cycle
+
+
+def decide_cycle(
+    db: Session, cycle: ResearchDailyCycle, payload: ResearchCycleApproval
+) -> ResearchDailyCycle:
+    if cycle.status != "awaiting_brief":
+        raise HTTPException(status_code=409, detail="Cycle is not awaiting approval.")
+    if payload.expected_question_digest != cycle.question_digest:
+        raise HTTPException(status_code=409, detail="Cycle question digest changed.")
+    existing = list(
+        db.scalars(
+            select(ResearchDailyCycleEvent).where(
+                ResearchDailyCycleEvent.cycle_id == cycle.id,
+                ResearchDailyCycleEvent.event_type.in_(("approved", "rejected")),
+            )
+        ).all()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409, detail="Cycle proposal is already decided."
+        )
+    detail = {
+        "question_digest": cycle.question_digest,
+        "decision": payload.decision,
+        "rationale": payload.rationale,
+        "decided_by": payload.decided_by,
+        "execution_authority": False,
+    }
+    cycle.digest = cycle.digest | {"approval": detail}
+    _event(db, cycle, 2, payload.decision, detail)
+    if payload.decision == "approved":
+        _event(
+            db,
+            cycle,
+            3,
+            "task_ready",
+            {
+                "question_digest": cycle.question_digest,
+                "next_action": "compile_hypothesis_brief",
+                "approval_required_for_execution": True,
+            },
+        )
+    else:
+        cycle.status = "attention_required"
+        cycle.completed_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+def cycle_events(db: Session, cycle_id) -> list[ResearchDailyCycleEvent]:
+    return list(
+        db.scalars(
+            select(ResearchDailyCycleEvent)
+            .where(ResearchDailyCycleEvent.cycle_id == cycle_id)
+            .order_by(ResearchDailyCycleEvent.sequence)
+        ).all()
+    )
+
+
+def _event(
+    db: Session,
+    cycle: ResearchDailyCycle,
+    sequence: int,
+    event_type: str,
+    detail: dict,
+) -> None:
+    document = {
+        "cycle_id": str(cycle.id),
+        "sequence": sequence,
+        "event_type": event_type,
+        "detail": detail,
+    }
+    db.add(
+        ResearchDailyCycleEvent(
+            cycle_id=cycle.id,
+            sequence=sequence,
+            event_type=event_type,
+            detail=detail,
+            record_digest=_record_digest(document),
+        )
+    )
 
 
 def refresh_cycle(
@@ -186,11 +476,14 @@ def daily_digest(db: Session, day: date) -> dict:
     ).all()
     next_questions = []
     for program in programs:
-        count = db.scalar(
-            select(func.count(ResearchDailyCycle.id)).where(
-                ResearchDailyCycle.program_id == program.id
+        count = (
+            db.scalar(
+                select(func.count(ResearchDailyCycle.id)).where(
+                    ResearchDailyCycle.program_id == program.id
+                )
             )
-        ) or 0
+            or 0
+        )
         next_questions.append(program.mandate[count % len(program.mandate)]["question"])
     return {
         "date": day,
@@ -210,7 +503,9 @@ def weekly_metrics(db: Session, week_start: date) -> dict:
             ResearchDailyCycle.cycle_date < week_end,
         )
     ).all()
-    completed = [item for item in cycles if refresh_cycle(db, item).status == "completed"]
+    completed = [
+        item for item in cycles if refresh_cycle(db, item).status == "completed"
+    ]
     outcomes = [_cycle_outcome(db, item) for item in completed]
     negative = sum(item == "rejected" for item in outcomes)
     accepted = sum(item == "accepted" for item in outcomes)
@@ -249,12 +544,20 @@ def weekly_metrics(db: Session, week_start: date) -> dict:
         "week_start": week_start,
         "cycle_count": len(cycles),
         "completed_count": len(completed),
-        "duplicate_work_avoided": sum(item.status == "duplicate_avoided" for item in cycles),
+        "duplicate_work_avoided": sum(
+            item.status == "duplicate_avoided" for item in cycles
+        ),
         "negative_results_retained": negative,
-        "reproduction_rate": sum(reproductions) / len(reproductions) if reproductions else 0.0,
+        "reproduction_rate": sum(reproductions) / len(reproductions)
+        if reproductions
+        else 0.0,
         "trial_adjusted_survivor_rate": accepted / trial_count if trial_count else 0.0,
-        "median_seconds_to_registered_experiment": statistics.median(durations) if durations else None,
-        "terminal_babysitting_events": sum(item.status == "attention_required" for item in cycles),
+        "median_seconds_to_registered_experiment": statistics.median(durations)
+        if durations
+        else None,
+        "terminal_babysitting_events": sum(
+            item.status == "attention_required" for item in cycles
+        ),
     }
 
 

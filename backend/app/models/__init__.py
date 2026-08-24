@@ -1,5 +1,4 @@
 from app.models.agent import Agent
-from app.models.research_bridge import GovernedResearchBridge
 from app.models.agent_credential import AgentCredential
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
@@ -54,6 +53,7 @@ from app.models.research import (
     ResearchBrief,
     ResearchChunk,
     ResearchDailyCycle,
+    ResearchDailyCycleEvent,
     ResearchDataSnapshot,
     ResearchDecision,
     ResearchDocument,
@@ -69,6 +69,7 @@ from app.models.research import (
     ResearchSource,
     ResearchTrial,
 )
+from app.models.research_bridge import GovernedResearchBridge
 from app.models.retrieval import (
     EvidenceCorpusFreshness,
     EvidenceRetrievalProjection,
@@ -124,6 +125,7 @@ __all__ = [
     "FounderConversationMessage",
     "FounderNotification",
     "FounderProposal",
+    "GovernedResearchBridge",
     "LaboratoryPublication",
     "LaboratoryPublicationEvent",
     "MachineObservation",
@@ -136,9 +138,9 @@ __all__ = [
     "ResearchChunk",
     "ResearchCurriculumPortfolio",
     "ResearchDailyCycle",
+    "ResearchDailyCycleEvent",
     "ResearchDataSnapshot",
     "ResearchDatasetBuild",
-    "GovernedResearchBridge",
     "ResearchDatasetManifest",
     "ResearchDecision",
     "ResearchDocument",

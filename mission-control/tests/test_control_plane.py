@@ -35,9 +35,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
         if request.url.path.endswith("/evidence/lifecycle/objects"):
             return httpx.Response(200, json={"items": [], "count": 0})
         if request.url.path == "/v1/fleet/health":
-            return httpx.Response(
-                200, json={"generated_at": None, "machines": []}
-            )
+            return httpx.Response(200, json={"generated_at": None, "machines": []})
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -447,3 +445,36 @@ async def test_projection_rebuild_uses_maintenance_timeout(
 
     assert captured["path"] == "/v1/research/corpus/projections/recover"
     assert captured["timeout"]["read"] == 600.0
+
+
+@pytest.mark.asyncio
+async def test_daily_research_decision_is_digest_bound(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": "cycle-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.decide_research_cycle(
+            "cycle-id",
+            "a" * 64,
+            "approved",
+            "Founder approved the evidence-grounded question.",
+        )
+    finally:
+        await client.close()
+
+    assert captured == {
+        "path": "/v1/research-programs/cycles/cycle-id/decision",
+        "body": {
+            "expected_question_digest": "a" * 64,
+            "decision": "approved",
+            "rationale": "Founder approved the evidence-grounded question.",
+            "decided_by": "founder-operator",
+        },
+    }
