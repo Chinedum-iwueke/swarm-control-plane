@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -10,6 +11,14 @@ from app.schemas.laboratory import (
     ProjectionReceiptCreate,
     PublicationFailureCreate,
 )
+
+
+def test_canonical_result_object_is_allowed_by_head_migration() -> None:
+    migration = (
+        Path(__file__).parents[1]
+        / "alembic/versions/f1a6d3c84b20_allow_canonical_result_objects.py"
+    ).read_text(encoding="utf-8")
+    assert "'run','result','review'" in migration
 from app.services.laboratory import (
     create_publication,
     digest_document,
