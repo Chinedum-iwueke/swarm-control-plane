@@ -19,6 +19,7 @@ from app.api.routes import (
     evidence_router,
     fleet_router,
     founder_channel_router,
+    governance_audit_router,
     governance_router,
     graph_router,
     health_router,
@@ -86,6 +87,7 @@ app.include_router(evidence_router)
 app.include_router(fleet_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
+app.include_router(governance_audit_router)
 app.include_router(graph_router)
 app.include_router(agent_runtime_router)
 app.include_router(agent_fleet_router)
