@@ -14,6 +14,7 @@ from app.api.routes.fleet import agent_router as agent_fleet_router
 from app.api.routes.fleet import router as fleet_router
 from app.api.routes.founder_channel import router as founder_channel_router
 from app.api.routes.governance import router as governance_router
+from app.api.routes.governance_audit import router as governance_audit_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingestion import router as ingestion_router
@@ -65,6 +66,7 @@ __all__ = [
     "evidence_router",
     "fleet_router",
     "founder_channel_router",
+    "governance_audit_router",
     "governance_router",
     "graph_router",
     "health_router",

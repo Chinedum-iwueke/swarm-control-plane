@@ -38,6 +38,7 @@ from app.models.governance import (
     FounderNotification,
     TaskApproval,
 )
+from app.models.governance_audit import GovernanceAuditExport
 from app.models.graph import (
     CognitiveToolReceipt,
     EvidenceGraphProjectionEdge,
@@ -152,6 +153,7 @@ __all__ = [
     "FounderConversationMessage",
     "FounderNotification",
     "FounderProposal",
+    "GovernanceAuditExport",
     "GovernedResearchBridge",
     "InstitutionalLifecycleEvent",
     "InstitutionalLifecycleProjection",
