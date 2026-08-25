@@ -22,7 +22,9 @@ from app.models import (
     TaskDependency,
     TaskEvent,
 )
+from app.schemas.agent_governance import EffectiveAuthorityRequest
 from app.schemas.task import TaskCreate
+from app.services.agent_governance import resolve as resolve_agent_authority
 from app.services.governance import (
     consume_task_approval,
     create_approval,
@@ -32,6 +34,26 @@ from app.services.governance import (
 )
 
 ACTIVE_LEASE_STATUSES = {"leased", "running"}
+
+
+def resolve_task_authority(
+    db: Session, task: Task, agent: Agent, now: datetime
+) -> list[dict]:
+    return [
+        resolve_agent_authority(
+            db,
+            agent.id,
+            EffectiveAuthorityRequest(
+                capability=capability,
+                machine=agent.machine,
+                task_type=task.task_type,
+                repository=task.project,
+                risk_level=task.risk_level,
+            ),
+            now,
+        )
+        for capability in task.required_capabilities
+    ]
 
 
 def build_task(payload: TaskCreate) -> Task:
@@ -296,6 +318,10 @@ def lease_next_task(
     if task is None:
         return None, None, None
 
+    authority_snapshots = resolve_task_authority(db, task, agent, now)
+    if not authority_snapshots or not all(item["allowed"] for item in authority_snapshots):
+        return None, None, None
+
     consume_task_approval(db, task, now)
 
     generated = create_task_lease_token()
@@ -319,6 +345,19 @@ def lease_next_task(
         payload={
             "lease_expires_at": (task.lease_expires_at.isoformat()),
             "lease_seconds": lease_seconds,
+            "effective_authority": [
+                {
+                    "capability": capability,
+                    "snapshot_digest": snapshot["snapshot_digest"],
+                    "charter_digest": snapshot["charter_digest"],
+                    "package_digest": snapshot["package_digest"],
+                    "grant_digest": snapshot["grant_digest"],
+                    "accountable_owner": snapshot["accountable_owner"],
+                }
+                for capability, snapshot in zip(
+                    task.required_capabilities, authority_snapshots, strict=True
+                )
+            ],
         },
     )
 
