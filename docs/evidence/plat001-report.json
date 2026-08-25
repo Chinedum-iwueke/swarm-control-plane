@@ -1,25 +1,41 @@
 {
   "adversarial_reconciliation": {
-    "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+    "catalog_digest": "793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96",
     "findings": [
-      {"code":"incompatible_interface","expected":"17","interface":"postgres","observed":"16","service_key":"control-plane-postgres","severity":"error"},
-      {"code":"orphan_service","service_key":"orphan-daemon","severity":"error"},
-      {"age_seconds":301.0,"code":"stale_observation","service_key":"control-plane-postgres","severity":"error"}
+      {
+        "code": "incompatible_interface",
+        "expected": "17",
+        "interface": "postgres",
+        "observed": "16",
+        "service_key": "control-plane-postgres",
+        "severity": "error"
+      },
+      {
+        "code": "orphan_service",
+        "service_key": "orphan-daemon",
+        "severity": "error"
+      },
+      {
+        "age_seconds": 301.0,
+        "code": "stale_observation",
+        "service_key": "control-plane-postgres",
+        "severity": "error"
+      }
     ],
     "observation_digest": "808410e245a6089b74614539549c95188a9edfa510de785e937cd03c733914da",
-    "report_digest": "ff958ce1f38c3fbe4f7cc118f00b69de3b655a9e4576a43d458eac7783cf9f13",
+    "report_digest": "27e730cbe3f7d7a9561a2abca930096e5d5b6927a1925d13923f6d9fc0c7a1a1",
     "status": "failed"
   },
-  "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+  "catalog_digest": "793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96",
   "catalog_version": "1.0.0",
   "clean_reconciliation": {
-    "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+    "catalog_digest": "793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96",
     "findings": [],
     "observation_digest": "5001f7cbb2bcee70ef772409a77b5215f86f736b8237bd4c8a15d646979ac190",
-    "report_digest": "74e3c9f2d4a18ab8417fabf3d0f76e6f6c8f3bffe72cbe05d07792ffdafbf178",
+    "report_digest": "833589178efdc25c6e94d00c4ee37cda02208f12084177955f58d300a520babc",
     "status": "passed"
   },
-  "report_digest": "9a2c7d868c07783086ad3df410e7ca49385ff750bb58587c1554f0e01a7433d4",
+  "report_digest": "381e1aafd02e20820aaf3b53015f44679b7ba6bf300562db410f1eef5321698a",
   "rollback_contract": "activate any retained prior immutable snapshot",
   "schema_version": "plat001-validation-v1.0.0",
   "service_count": 12,

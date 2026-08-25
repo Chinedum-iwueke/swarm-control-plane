@@ -2,7 +2,7 @@
   "schema_version": "service-catalog-v1.0.0",
   "catalog_version": "1.0.0",
   "source_repository": "swarm-control-plane",
-  "source_commit": "6224d06",
+  "source_commit": "2d3927355d2cddd8a94c3adb76a5ae9adcfa4c55",
   "entries": [
     {"service_key":"control-plane-postgres","display_name":"Hermes control-plane PostgreSQL","owner":"platform-operations","recovery_owner":"vm2-deployment-architect","runtime_kind":"docker","intended_machines":["vm2-deployment"],"interfaces":[{"name":"postgres","version":"17","kind":"database"}],"dependencies":[],"data_classes":["restricted-operational-state"],"slo":{"availability_percent":99.0,"rpo_seconds":86400,"rto_seconds":1800},"recovery_plan":{"runbook":"ops-003-disaster-recovery"}},
     {"service_key":"control-plane-redis","display_name":"Hermes control-plane Redis","owner":"platform-operations","recovery_owner":"vm2-deployment-architect","runtime_kind":"docker","intended_machines":["vm2-deployment"],"interfaces":[{"name":"redis","version":"7","kind":"database"}],"dependencies":[],"data_classes":["ephemeral-coordination"],"slo":{"availability_percent":99.0},"recovery_plan":{"runbook":"vm2-platform-operations"}},

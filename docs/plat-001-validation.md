@@ -13,7 +13,7 @@ PLAT-001 introduces an immutable, versioned service catalog and digest-bound run
 - Adversarial reconciliation detects orphan services, stale observations, incompatible interface versions, missing services, unhealthy dependencies, wrong placement, and runtime-kind drift.
 - Reports bind the catalog and observations to SHA-256 digests.
 
-The retained report is `docs/evidence/plat001-report.json`; its digest is `9a2c7d868c07783086ad3df410e7ca49385ff750bb58587c1554f0e01a7433d4`.
+The retained report is `docs/evidence/plat001-report.json`; its semantic report digest is `381e1aafd02e20820aaf3b53015f44679b7ba6bf300562db410f1eef5321698a` and its catalog digest is `793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96`.
 
 ## Commands
 
