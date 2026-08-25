@@ -1,0 +1,57 @@
+{
+  "accepted_residual_risks": [
+    "Workflow network egress is not yet uniformly restricted to explicit destinations.",
+    "Third-party dependency artifacts do not yet have a complete signed provenance chain.",
+    "A third always-on host is still required for independent simultaneous VM1/VM2 outage alerting.",
+    "Host-root compromise is outside agent and infrastructure-broker containment boundaries."
+  ],
+  "coverage": {
+    "catalog_sha256": "793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96",
+    "catalog_version": "1.0.0",
+    "covered_service_count": 12,
+    "service_count": 12
+  },
+  "model_digest": "951e49ff0764001c94b6effda37013f45ea81314db342b60494e78387f4ba6b8",
+  "model_version": "1.0.0",
+  "report_digest": "db7e75b91110f3a64a27ef28c3b5330a3c7ba0c602bf4883bf84dc0fac816e7a",
+  "scenario_results": [
+    {
+      "category": "injection",
+      "control": "instruction-injection scanner and quarantine",
+      "outcome": "quarantined",
+      "passed": true,
+      "scenario_id": "ADV-001"
+    },
+    {
+      "category": "exfiltration",
+      "control": "structured secret redaction",
+      "outcome": "redacted",
+      "passed": true,
+      "scenario_id": "ADV-002"
+    },
+    {
+      "category": "privilege_escalation",
+      "control": "role-package machine and privilege ceiling",
+      "outcome": "blocked",
+      "passed": true,
+      "scenario_id": "ADV-003"
+    },
+    {
+      "category": "supply_chain",
+      "control": "digest-bound artifact verification",
+      "outcome": "blocked",
+      "passed": true,
+      "scenario_id": "ADV-004"
+    },
+    {
+      "category": "capital_mutation",
+      "control": "explicit no-capital authority boundary",
+      "outcome": "no_authority",
+      "passed": true,
+      "scenario_id": "ADV-005"
+    }
+  ],
+  "schema_version": "security-assurance-report-v1.0.0",
+  "success": true,
+  "threat_count": 10
+}
