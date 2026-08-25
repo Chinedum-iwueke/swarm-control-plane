@@ -1,4 +1,6 @@
+import json
 from datetime import UTC, datetime
+from enum import StrEnum
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
@@ -72,6 +74,29 @@ def test_secret_shaped_evidence_is_redacted_and_bounded() -> None:
     assert result["nested"]["Authorization"] == "[REDACTED]"
     assert len(result["safe"]) == 500
     assert "must-not-escape" not in result["message"]
+
+
+def test_structured_evidence_scalars_are_json_serializable() -> None:
+    observed_at = datetime(2026, 8, 25, 15, 0, tzinfo=UTC)
+    evidence_id = uuid4()
+
+    class Health(StrEnum):
+        HEALTHY = "healthy"
+
+    result = sanitized(
+        {
+            "observed_at": observed_at,
+            "evidence_id": evidence_id,
+            "health": Health.HEALTHY,
+        }
+    )
+
+    assert result == {
+        "observed_at": "2026-08-25T15:00:00+00:00",
+        "evidence_id": str(evidence_id),
+        "health": "healthy",
+    }
+    json.dumps(result)
 
 
 def test_alert_requires_three_consecutive_breaches_and_routes_once() -> None:
