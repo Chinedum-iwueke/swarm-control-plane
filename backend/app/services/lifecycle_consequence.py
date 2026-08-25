@@ -216,6 +216,7 @@ def apply_consequence(
         ),
     )
     db.add(record)
+    db.flush()
     if prior_consequence is not None:
         prior_consequence.status = "superseded"
         prior_consequence.reversed_by_id = record.id
