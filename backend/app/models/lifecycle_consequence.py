@@ -14,7 +14,9 @@ class LifecycleConsequence(Base):
         CheckConstraint(
             "action IN ('promote','demote','quarantine','retire','reinstate')"
         ),
-        CheckConstraint("status IN ('active','reversed','expired','reversal')"),
+        CheckConstraint(
+            "status IN ('active','reversed','expired','reversal','superseded')"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

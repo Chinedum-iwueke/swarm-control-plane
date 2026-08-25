@@ -156,6 +156,20 @@ def apply_consequence(
             active_veto_roles=payload.active_veto_roles,
         ),
     )
+    prior_consequence = db.scalar(
+        select(LifecycleConsequence)
+        .join(
+            InstitutionalLifecycleEvent,
+            LifecycleConsequence.event_id == InstitutionalLifecycleEvent.id,
+        )
+        .where(
+            InstitutionalLifecycleEvent.projection_id == projection.id,
+            LifecycleConsequence.status == "active",
+            LifecycleConsequence.resulting_state == projection.state,
+        )
+        .order_by(LifecycleConsequence.created_at.desc())
+        .limit(1)
+    )
     event = _event(
         db,
         projection,
@@ -180,6 +194,7 @@ def apply_consequence(
         "expires_at": payload.expires_at.isoformat(),
     }
     record = LifecycleConsequence(
+        id=uuid4(),
         event_id=event.id,
         command_id=payload.command_id,
         action=payload.action,
@@ -193,8 +208,17 @@ def apply_consequence(
         expires_at=payload.expires_at,
         reason=payload.reason,
         record_digest=digest_document(body),
+        reversal_of_id=(
+            prior_consequence.id
+            if prior_consequence is not None
+            and resulting == prior_consequence.rollback_state
+            else None
+        ),
     )
     db.add(record)
+    if prior_consequence is not None:
+        prior_consequence.status = "superseded"
+        prior_consequence.reversed_by_id = record.id
     db.commit()
     db.refresh(record)
     return record
