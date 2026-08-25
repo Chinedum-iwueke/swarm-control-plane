@@ -89,6 +89,9 @@ class ControlPlaneClient:
             "/v1/authority/overview",
             {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
         )
+        institutional_lifecycles = await self._optional_object(
+            "/v1/lifecycles/projections", {"items": [], "count": 0}
+        )
         operations = await self._optional_collection("/v1/operations")
         operation_summary = await self._optional_object(
             "/v1/operations/summary",
@@ -128,6 +131,7 @@ class ControlPlaneClient:
             "fleet_health": fleet_health,
             "observability": observability,
             "authority": authority,
+            "institutional_lifecycles": institutional_lifecycles,
             "operations": operations,
             "operation_summary": operation_summary,
             "surveillance_sources": surveillance_sources,

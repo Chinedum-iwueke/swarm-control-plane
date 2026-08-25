@@ -1,0 +1,30 @@
+name: Governance lifecycles
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gov002:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bounded test surfaces
+        run: |
+          python -m pip install -r backend/requirements-dev.txt
+          python -m pip install -e mission-control
+      - name: Verify orthogonal lifecycle contracts
+        env:
+          PYTHONPATH: backend:mission-control/src
+          POSTGRES_PASSWORD_FILE: /etc/hostname
+        run: |
+          pytest -q backend/tests/test_institutional_lifecycles.py backend/tests/test_authority_policy.py
+          pytest -q mission-control/tests/test_control_plane.py
+          node --check mission-control/src/hermes_mission_control/static/app.js

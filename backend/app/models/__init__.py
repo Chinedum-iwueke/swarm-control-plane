@@ -45,6 +45,10 @@ from app.models.graph import (
     EvidenceGraphProjectionState,
 )
 from app.models.ingestion import ScientificIngestionJob, ScientificIngestionRecovery
+from app.models.institutional_lifecycle import (
+    InstitutionalLifecycleEvent,
+    InstitutionalLifecycleProjection,
+)
 from app.models.laboratory import LaboratoryPublication, LaboratoryPublicationEvent
 from app.models.memory import (
     EvidenceDossier,
@@ -148,6 +152,8 @@ __all__ = [
     "FounderNotification",
     "FounderProposal",
     "GovernedResearchBridge",
+    "InstitutionalLifecycleEvent",
+    "InstitutionalLifecycleProjection",
     "LaboratoryPublication",
     "LaboratoryPublicationEvent",
     "MachineObservation",
