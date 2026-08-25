@@ -13,9 +13,9 @@
   },
   "migration": "c5e8a2f41d70",
   "production_deployed": false,
-  "report_digest": "b17dac7361e93f77c1011ca2add9182c296de31cd31115ca092c4a86a99523b5",
+  "report_digest": "0f525ce1334705c8731b59b6fc909622fa7c7989541fe73262f6bf24c6479ded",
   "schema_version": "plat005-validation-v1.0.0",
-  "source_commit": "5b9b995",
+  "source_commit": "b022586",
   "success": true,
   "tests": {
     "backend": 323,
