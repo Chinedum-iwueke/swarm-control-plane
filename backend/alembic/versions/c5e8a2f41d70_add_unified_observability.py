@@ -34,9 +34,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("service_key", "indicator"),
     )
-    op.create_index("ix_service_slo_states_service_key", "service_slo_states", ["service_key"])
+    op.create_index(
+        "ix_service_slo_states_service_key", "service_slo_states", ["service_key"]
+    )
     op.create_index("ix_service_slo_states_status", "service_slo_states", ["status"])
-    op.create_index("ix_service_slo_states_evaluated_at", "service_slo_states", ["evaluated_at"])
+    op.create_index(
+        "ix_service_slo_states_evaluated_at", "service_slo_states", ["evaluated_at"]
+    )
     op.create_table(
         "routed_service_alerts",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -59,8 +63,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("alert_key"),
     )
-    op.create_index("ix_routed_service_alerts_service_key", "routed_service_alerts", ["service_key"])
-    op.create_index("ix_routed_service_alerts_state", "routed_service_alerts", ["state"])
+    op.create_index(
+        "ix_routed_service_alerts_service_key", "routed_service_alerts", ["service_key"]
+    )
+    op.create_index(
+        "ix_routed_service_alerts_state", "routed_service_alerts", ["state"]
+    )
     op.create_table(
         "alert_routing_events",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -70,12 +78,22 @@ def upgrade() -> None:
         sa.Column("actor", sa.String(100), nullable=False),
         sa.Column("detail", postgresql.JSONB(), nullable=False),
         sa.Column("record_digest", sa.String(64), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["alert_id"], ["routed_service_alerts.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("alert_id", "sequence"),
         sa.UniqueConstraint("record_digest"),
     )
-    op.create_index("ix_alert_routing_events_alert_id", "alert_routing_events", ["alert_id"])
+    op.create_index(
+        "ix_alert_routing_events_alert_id", "alert_routing_events", ["alert_id"]
+    )
 
 
 def downgrade() -> None:
