@@ -1,0 +1,27 @@
+{
+  "catalog_digest": "793b67cf1c447887b374df53efe87bfd58bc7281ba839e9cd63402576ff9ef96",
+  "checks": {
+    "alert_hysteresis": true,
+    "bounded_cardinality": true,
+    "bounded_silence": true,
+    "catalog_attribution": true,
+    "deduplication": true,
+    "missing_telemetry_visible": true,
+    "recovery_hysteresis": true,
+    "secret_redaction": true,
+    "unknown_not_healthy": true
+  },
+  "migration": "c5e8a2f41d70",
+  "production_deployed": false,
+  "report_digest": "b17dac7361e93f77c1011ca2add9182c296de31cd31115ca092c4a86a99523b5",
+  "schema_version": "plat005-validation-v1.0.0",
+  "source_commit": "5b9b995",
+  "success": true,
+  "tests": {
+    "backend": 323,
+    "javascript_syntax": true,
+    "mission_control": 71,
+    "ruff": true,
+    "telegram_gateway": 37
+  }
+}
