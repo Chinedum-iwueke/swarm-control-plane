@@ -6,7 +6,12 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from app.models.observability import ServiceSLOState
-from app.services.observability import _route_state, _service_rows, sanitized
+from app.services.observability import (
+    _persist_state,
+    _route_state,
+    _service_rows,
+    sanitized,
+)
 
 
 class RouteDB:
@@ -21,6 +26,20 @@ class RouteDB:
 
     def flush(self):
         return None
+
+
+class PersistenceDB(RouteDB):
+    def flush(self):
+        state = self.values[-1]
+        state.consecutive_breaches = state.consecutive_breaches or 0
+        state.consecutive_healthy = state.consecutive_healthy or 0
+        json.dumps(
+            {
+                "objective": state.objective,
+                "measurement": state.measurement,
+                "evidence": state.evidence,
+            }
+        )
 
 
 def entry(**slo):
@@ -59,6 +78,28 @@ def test_missing_restore_measurement_is_unknown_not_green() -> None:
     assert rows[0]["indicator"] == "recovery_time"
     assert rows[0]["status"] == "unknown"
     assert rows[0]["measurement"]["measured_seconds"] is None
+
+
+def test_telemetry_freshness_row_is_json_serializable() -> None:
+    now = datetime(2026, 8, 25, 15, 0, tzinfo=UTC)
+    machine = SimpleNamespace(
+        machine="vm2-deployment",
+        observed_at=now,
+        metrics={"memory_available_percent": 80, "disk_used_percent": 20},
+    )
+
+    rows = _service_rows(
+        entry(heartbeat_seconds=30),
+        None,
+        {"vm2-deployment": machine},
+        now,
+    )
+    freshness = next(
+        item for item in rows if item["indicator"] == "telemetry_freshness"
+    )
+
+    state = _persist_state(PersistenceDB(), freshness, now)
+    assert state.measurement["last_observed_at"] == now.isoformat()
 
 
 def test_secret_shaped_evidence_is_redacted_and_bounded() -> None:

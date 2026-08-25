@@ -313,6 +313,9 @@ def _row(
 
 
 def _persist_state(db: Session, row: dict, now: datetime) -> ServiceSLOState:
+    objective = sanitized(row["objective"])
+    measurement = sanitized(row["measurement"])
+    evidence = sanitized(row["evidence"])
     state = db.scalar(
         select(ServiceSLOState).where(
             ServiceSLOState.service_key == row["service_key"],
@@ -325,9 +328,9 @@ def _persist_state(db: Session, row: dict, now: datetime) -> ServiceSLOState:
             indicator=row["indicator"],
             owner=row["owner"],
             status=row["status"],
-            objective=row["objective"],
-            measurement=row["measurement"],
-            evidence=row["evidence"],
+            objective=objective,
+            measurement=measurement,
+            evidence=evidence,
             evaluated_at=now,
             record_digest="0" * 64,
         )
@@ -336,11 +339,11 @@ def _persist_state(db: Session, row: dict, now: datetime) -> ServiceSLOState:
     state.owner, state.status, state.objective = (
         row["owner"],
         row["status"],
-        row["objective"],
+        objective,
     )
     state.measurement, state.evidence, state.evaluated_at = (
-        row["measurement"],
-        row["evidence"],
+        measurement,
+        evidence,
         now,
     )
     if state.status in {"breached", "missing"}:
