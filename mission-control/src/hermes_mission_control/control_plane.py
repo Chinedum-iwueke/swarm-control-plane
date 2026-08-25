@@ -85,6 +85,10 @@ class ControlPlaneClient:
                 "alerts": [],
             },
         )
+        authority = await self._optional_object(
+            "/v1/authority/overview",
+            {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
+        )
         operations = await self._optional_collection("/v1/operations")
         operation_summary = await self._optional_object(
             "/v1/operations/summary",
@@ -123,6 +127,7 @@ class ControlPlaneClient:
             "blocked_artifact_register": blocked_artifacts,
             "fleet_health": fleet_health,
             "observability": observability,
+            "authority": authority,
             "operations": operations,
             "operation_summary": operation_summary,
             "surveillance_sources": surveillance_sources,

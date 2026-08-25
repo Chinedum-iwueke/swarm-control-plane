@@ -34,6 +34,7 @@ from app.schemas import (
 )
 from app.schemas.operational_note import OperationalNoteResponse
 from app.schemas.research_program import ResearchDailyCycleResponse
+from app.services.authority import resolve_task_approval
 from app.services.founder_notifications import (
     acknowledge_notification,
     approval_readiness,
@@ -314,6 +315,13 @@ def decide_approval(
                 status_code=409,
                 detail="Approval is blocked by task dependencies or mission state.",
             )
+        resolve_task_approval(
+            db,
+            approval,
+            actor="founder-telegram",
+            action="approve",
+            exception_id=payload.authority_exception_id,
+        )
         approve_task(
             db,
             approval,
@@ -322,6 +330,13 @@ def decide_approval(
             expires_in_seconds=payload.expires_in_seconds,
         )
     elif action == "reject":
+        resolve_task_approval(
+            db,
+            approval,
+            actor="founder-telegram",
+            action="reject",
+            exception_id=payload.authority_exception_id,
+        )
         decide_task(
             db,
             approval,

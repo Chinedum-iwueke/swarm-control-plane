@@ -27,6 +27,7 @@ class FounderChannelRequest(StrictModel):
 class FounderChannelDecision(StrictModel):
     reason: str = Field(min_length=10, max_length=1000)
     expires_in_seconds: int = Field(default=900, ge=60, le=3600)
+    authority_exception_id: uuid.UUID | None = None
 
 
 class FounderChannelApproval(ApprovalResponse):
