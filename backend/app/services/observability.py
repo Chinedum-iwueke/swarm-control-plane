@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from enum import Enum
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -41,6 +43,14 @@ def digest(value: Any) -> str:
 def sanitized(value: Any, *, depth: int = 0) -> Any:
     if depth > 6:
         return "[TRUNCATED]"
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Enum):
+        return sanitized(value.value, depth=depth + 1)
     if isinstance(value, dict):
         return {
             str(key)[:100]: "[REDACTED]"
