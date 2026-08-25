@@ -1,0 +1,33 @@
+name: Security assurance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sec001:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install worker test dependencies
+        run: python -m pip install -e 'worker[dev]'
+      - name: Exercise threat model and adversarial suite
+        run: |
+          pytest -q worker/tests/test_security_assurance.py
+          python worker/scripts/sec001_adversarial_suite.py \
+            --model worker/security/hermes-system-threat-model-v1.json \
+            --catalog worker/service-catalog/hermes-platform-v1.json \
+            --output /tmp/sec001-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sec001-security-assurance-${{ github.sha }}
+          path: /tmp/sec001-report.json
+          if-no-files-found: error
+          retention-days: 90
