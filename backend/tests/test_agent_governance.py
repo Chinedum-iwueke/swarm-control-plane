@@ -37,6 +37,7 @@ def test_charter_is_strict_and_digest_stable():
 def test_grant_requires_separate_grantor_and_owner():
     with pytest.raises(ValidationError, match="distinct"):
         AgentCapabilityGrantCreate(agent_id=uuid4(), charter_id=uuid4(), capability="testing",
+            package_id=uuid4(),
             machine="vm1-developer", task_types=["code_validation"], repositories=["bulletproof_bt"],
             risk_ceiling=1, accountable_owner="founder-operator", granted_by="founder-operator",
             reason="pilot", expires_at=datetime.now(UTC) + timedelta(days=1))
@@ -48,7 +49,8 @@ def test_effective_authority_intersects_registration_charter_package_and_grant()
     charter = SimpleNamespace(id=charter_id, manifest=manifest().model_dump(mode="json"), manifest_digest="a" * 64)
     package = SimpleNamespace(manifest={"required_capabilities": ["testing"], "allowed_machines": ["vm1-developer"],
         "task_types": ["code_validation"], "risk_ceiling": 1, "repository_profile": {"repositories": ["bulletproof_bt"]}}, manifest_digest="b" * 64)
-    grant = SimpleNamespace(capability="testing", status="active", machine="vm1-developer", task_types=["code_validation"],
+    package.id = uuid4()
+    grant = SimpleNamespace(capability="testing", status="active", package_id=package.id, machine="vm1-developer", task_types=["code_validation"],
         repositories=["bulletproof_bt"], risk_ceiling=1, expires_at=datetime.now(UTC) + timedelta(days=1),
         accountable_owner="research-operations", record_digest="c" * 64)
     db = MagicMock(); db.get.return_value = agent; db.scalar.side_effect = [charter, package, grant]
@@ -63,7 +65,8 @@ def test_expired_grant_and_conflict_fail_closed():
     charter_manifest = manifest().model_dump(mode="json"); charter_manifest["conflicts"] = ["testing"]
     charter = SimpleNamespace(manifest=charter_manifest, manifest_digest="a" * 64)
     package = SimpleNamespace(manifest={"required_capabilities": ["testing"], "allowed_machines": ["vm1-developer"], "task_types": ["code_validation"], "risk_ceiling": 1, "repository_profile": {"repositories": []}}, manifest_digest="b" * 64)
-    grant = SimpleNamespace(machine="vm1-developer", task_types=["code_validation"], repositories=[], risk_ceiling=1,
+    package.id = uuid4()
+    grant = SimpleNamespace(package_id=package.id, machine="vm1-developer", task_types=["code_validation"], repositories=[], risk_ceiling=1,
         expires_at=datetime.now(UTC) - timedelta(seconds=1), accountable_owner="research-operations", record_digest="c" * 64)
     db = MagicMock(); db.get.return_value = agent; db.scalar.side_effect = [charter, package, grant]
     result = resolve(db, agent_id, EffectiveAuthorityRequest(capability="testing", machine="vm1-developer", task_type="code_validation", risk_level=0))

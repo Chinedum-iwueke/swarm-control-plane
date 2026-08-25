@@ -61,6 +61,7 @@ class AgentCapabilityGrantCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID
     charter_id: uuid.UUID
+    package_id: uuid.UUID
     capability: str = Field(pattern=SAFE)
     machine: str = Field(pattern=SAFE)
     task_types: list[str] = Field(min_length=1, max_length=50)
@@ -83,6 +84,7 @@ class AgentCapabilityGrantResponse(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     charter_id: uuid.UUID
+    package_id: uuid.UUID
     capability: str
     machine: str
     task_types: list[str]

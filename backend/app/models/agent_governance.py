@@ -31,6 +31,7 @@ class AgentCapabilityGrant(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False, index=True)
     charter_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agent_charters.id"), nullable=False, index=True)
+    package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("role_packages.id"), nullable=False, index=True)
     capability: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     machine: Mapped[str] = mapped_column(String(100), nullable=False)
     task_types: Mapped[list] = mapped_column(JSONB, nullable=False)
