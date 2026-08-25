@@ -1,3 +1,4 @@
+from app.api.routes.agent_governance import router as agent_governance_router
 from app.api.routes.agent_research import router as agent_research_router
 from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
@@ -49,6 +50,7 @@ from app.api.routes.tasks import router as tasks_router
 
 __all__ = [
     "agent_fleet_router",
+    "agent_governance_router",
     "agent_notes_router",
     "agent_packages_router",
     "agent_proposals_router",

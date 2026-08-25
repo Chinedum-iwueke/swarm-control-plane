@@ -1,5 +1,10 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
+from app.models.agent_governance import (
+    AgentCapabilityGrant,
+    AgentCharter,
+    AgentGrantEvent,
+)
 from app.models.authority import (
     AuthorityDecisionRecord,
     AuthorityDelegation,
@@ -111,7 +116,10 @@ from app.models.task_event import TaskEvent
 
 __all__ = [
     "Agent",
+    "AgentCapabilityGrant",
+    "AgentCharter",
     "AgentCredential",
+    "AgentGrantEvent",
     "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",

@@ -996,6 +996,8 @@ function renderAgents() {
   const agents = state.dashboard.agents || [];
   document.getElementById("agent-matrix").innerHTML = agents.length ? agents.map((agent) => {
     const deployment = activeDeployment(agent.id);
+    const charter = (state.dashboard.agent_charters || []).find((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
+    const grants = (state.dashboard.agent_capability_grants || []).filter((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const manifest = deployment?.package?.manifest;
     return `
     <article class="agent-card" data-agent-id="${agent.id}">
@@ -1003,7 +1005,7 @@ function renderAgents() {
       <div class="capabilities">${(agent.capabilities || []).map((capability) => `<span class="capability">${escapeHtml(capability)}</span>`).join("")}</div>
       <p class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</p>
       <div class="agent-envelope"><span>${manifest?.task_types?.length || 0} task types</span><span>${manifest?.repository_profile?.repositories?.length || 0} repositories</span><span>${manifest?.permission_profile?.privileged_operations ? "Privileged" : "Unprivileged"}</span></div>
-      <div class="agent-footer"><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"}</span></div>
+      <div class="agent-footer"><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"}</span><span>${charter ? `Charter ${escapeHtml(charter.version)}` : "No active charter"}</span><span>${grants.length} active grants</span></div>
     </article>`;
   }).join("") : empty("No agents registered.");
   bindEntityButtons();
