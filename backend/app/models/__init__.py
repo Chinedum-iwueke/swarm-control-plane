@@ -50,6 +50,7 @@ from app.models.institutional_lifecycle import (
     InstitutionalLifecycleProjection,
 )
 from app.models.laboratory import LaboratoryPublication, LaboratoryPublicationEvent
+from app.models.lifecycle_consequence import LifecycleConsequence
 from app.models.memory import (
     EvidenceDossier,
     EvidenceOppositionRecord,
@@ -156,6 +157,7 @@ __all__ = [
     "InstitutionalLifecycleProjection",
     "LaboratoryPublication",
     "LaboratoryPublicationEvent",
+    "LifecycleConsequence",
     "MachineObservation",
     "MissionEvent",
     "Operation",

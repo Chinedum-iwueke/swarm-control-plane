@@ -1129,6 +1129,7 @@ function renderResearch() {
   const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
+  const consequenceItems = state.dashboard.lifecycle_consequences?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
   const lifecycleSubjects = new Map();
   lifecycleItems.forEach((item) => {
@@ -1147,6 +1148,14 @@ function renderResearch() {
         }).join("")}</div>
       </div>
     </article>`).join("") : empty("No governed lifecycle subjects have been registered.");
+  document.getElementById("consequence-count").textContent = `${consequenceItems.length} retained decisions`;
+  document.getElementById("lifecycle-consequences").innerHTML = consequenceItems.length ? consequenceItems.slice(0, 12).map((item) => `
+    <article class="entity-row">
+      <div class="entity-primary"><strong>${humanize(item.action)} · ${humanize(item.status)}</strong>
+        <div class="entity-meta"><span>${escapeHtml(item.prior_state)} → ${escapeHtml(item.resulting_state)}</span><span>Rollback: ${escapeHtml(item.rollback_state)}</span><span>${item.affected_descendants.length} descendants</span><span class="mono">${shortHash(item.record_digest)}</span></div>
+        <p>${escapeHtml(item.reason)}</p>
+      </div>
+    </article>`).join("") : empty("No lifecycle consequences have been recorded.");
   const latestMemoryTask = memoryTasks[0];
   const latestMemory = memoryExports[0];
   const memoryStatus = document.getElementById("memory-sync-status");

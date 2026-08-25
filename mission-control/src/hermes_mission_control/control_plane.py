@@ -92,10 +92,18 @@ class ControlPlaneClient:
         institutional_lifecycles = await self._optional_object(
             "/v1/lifecycles/projections", {"items": [], "count": 0}
         )
+        lifecycle_consequences = await self._optional_object(
+            "/v1/lifecycle-consequences", {"items": [], "count": 0}
+        )
         operations = await self._optional_collection("/v1/operations")
         operation_summary = await self._optional_object(
             "/v1/operations/summary",
-            {"generated_at": None, "counts": {}, "active_total": 0, "terminal_total": 0},
+            {
+                "generated_at": None,
+                "counts": {},
+                "active_total": 0,
+                "terminal_total": 0,
+            },
         )
         surveillance_sources = await self._optional_collection(
             "/v1/research/surveillance/sources"
@@ -132,6 +140,7 @@ class ControlPlaneClient:
             "observability": observability,
             "authority": authority,
             "institutional_lifecycles": institutional_lifecycles,
+            "lifecycle_consequences": lifecycle_consequences,
             "operations": operations,
             "operation_summary": operation_summary,
             "surveillance_sources": surveillance_sources,
