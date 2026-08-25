@@ -20,9 +20,7 @@ async def run(command: str) -> int:
     store = HandoffStore(settings.data_root / "gateway.sqlite3")
     store.initialize()
     telegram = TelegramClient(settings.bot_token)
-    channel = FounderChannelClient(
-        settings.api_url, settings.founder_channel_token
-    )
+    channel = FounderChannelClient(settings.api_url, settings.founder_channel_token)
     gateway = RestrictedTelegramGateway(
         settings, telegram=telegram, channel=channel, store=store
     )
@@ -55,8 +53,16 @@ def main() -> int:
     except (ValidationError, ValueError, RuntimeError) as exc:
         print(
             json.dumps(
-                {"event": "telegram_gateway_error", "error": type(exc).__name__}
-            )
+                {
+                    "event": "telegram_gateway_error",
+                    "error": type(exc).__name__,
+                    "detail": str(exc),
+                    "retryable": getattr(exc, "retryable", False),
+                    "method": getattr(exc, "method", None),
+                    "status_code": getattr(exc, "status_code", None),
+                }
+            ),
+            flush=True,
         )
         return 2
 

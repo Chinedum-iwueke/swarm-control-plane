@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import re
 from typing import Any
 
 from .config import GatewaySettings
-from .control_plane import FounderChannelClient
+from .control_plane import ChannelError, FounderChannelClient
 from .store import HandoffStore
-from .telegram import TelegramClient
+from .telegram import TelegramClient, TelegramError
 
 
 class RestrictedTelegramGateway:
@@ -33,9 +34,40 @@ class RestrictedTelegramGateway:
         await self._channel.proposals()
 
     async def run(self, stop: asyncio.Event) -> None:
-        await self.check()
+        delay = self._settings.retry_initial_seconds
+        checked = False
         while not stop.is_set():
-            await self.run_once()
+            try:
+                if not checked:
+                    await self.check()
+                    checked = True
+                    print(json.dumps({"event": "telegram_gateway_ready"}), flush=True)
+                await self.run_once()
+                delay = self._settings.retry_initial_seconds
+            except (TelegramError, ChannelError) as exc:
+                if not exc.retryable:
+                    raise
+                print(
+                    json.dumps(
+                        {
+                            "event": "telegram_gateway_dependency_retry",
+                            "dependency": "telegram"
+                            if isinstance(exc, TelegramError)
+                            else "control-plane",
+                            "error": type(exc).__name__,
+                            "detail": str(exc),
+                            "method": exc.method,
+                            "status_code": exc.status_code,
+                            "retry_seconds": delay,
+                        }
+                    ),
+                    flush=True,
+                )
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    pass
+                delay = min(delay * 2, self._settings.retry_max_seconds)
 
     async def run_once(self) -> None:
         updates, _, _, _, _, _ = await asyncio.gather(
@@ -234,7 +266,11 @@ class RestrictedTelegramGateway:
             else None
         )
         embedded_cycle = _daily_research_context(text)
-        if reply_message_id and reply_conversation_id is None and research_cycle is None:
+        if (
+            reply_message_id
+            and reply_conversation_id is None
+            and research_cycle is None
+        ):
             await self._telegram.send(
                 self._settings.founder_chat_id,
                 "That reply target is not linked to a Hermes thread. Use /threads "
@@ -617,9 +653,7 @@ class RestrictedTelegramGateway:
             }
             for message in sent or []:
                 if message.get("message_id") is not None:
-                    self._store.bind_research_cycle(
-                        str(message["message_id"]), context
-                    )
+                    self._store.bind_research_cycle(str(message["message_id"]), context)
             self._store.mark_seen(state_key, state_digest)
 
     async def _send_research_status(self) -> None:
@@ -908,8 +942,7 @@ class RestrictedTelegramGateway:
             return
         if (
             conversation_id
-            and self._store.get_value("selected-conversation-id")
-            != conversation_id
+            and self._store.get_value("selected-conversation-id") != conversation_id
         ):
             await self._telegram.send(
                 self._settings.founder_chat_id,
@@ -1014,9 +1047,7 @@ def _clarification_text(proposal: dict) -> str:
         field = fields[index - 1] if index <= len(fields) else None
         label = f"`{field}` — " if field else ""
         guidance = f"\n   Format: {formats[field]}" if field in formats else ""
-        rendered_items.append(
-            f"{index}. {label}{str(question)[:500]}{guidance}"
-        )
+        rendered_items.append(f"{index}. {label}{str(question)[:500]}{guidance}")
     rendered = "\n".join(rendered_items)
     return f"Questions:\n{rendered}"
 

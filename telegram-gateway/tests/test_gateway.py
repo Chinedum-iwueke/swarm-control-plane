@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from hermes_telegram_gateway.gateway import (
     classify_request,
 )
 from hermes_telegram_gateway.store import HandoffStore
+from hermes_telegram_gateway.telegram import TelegramError
 
 
 def settings(tmp_path: Path) -> GatewaySettings:
@@ -47,6 +49,20 @@ class Telegram:
     async def send(self, chat_id, text, **kwargs):
         self.sent.append((chat_id, text, kwargs))
         return [{"message_id": 10_000 + len(self.sent)}]
+
+
+class TransientTelegram(Telegram):
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_calls = 0
+
+    async def updates(self, offset, *_):
+        self.update_calls += 1
+        if self.update_calls == 1:
+            raise TelegramError(
+                "Telegram is unavailable.", retryable=True, method="getUpdates"
+            )
+        return []
 
 
 class Channel:
@@ -91,7 +107,9 @@ class Channel:
     async def add_conversation_turn(self, conversation_id, payload):
         self.turns.append((conversation_id, payload))
         conversation = next(
-            value for value in self.conversation_values if value["id"] == conversation_id
+            value
+            for value in self.conversation_values
+            if value["id"] == conversation_id
         )
         conversation["revision"] += 1
         conversation["messages"].append(
@@ -124,7 +142,9 @@ class Channel:
 
     async def transition_conversation(self, conversation_id, payload):
         conversation = next(
-            value for value in self.conversation_values if value["id"] == conversation_id
+            value
+            for value in self.conversation_values
+            if value["id"] == conversation_id
         )
         conversation["status"] = {
             "finish": "finished",
@@ -262,6 +282,35 @@ def executable_proposal() -> dict:
 
 
 @pytest.mark.asyncio
+async def test_daemon_retries_transient_telegram_failure_without_exiting(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    telegram = TransientTelegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    configured = settings(tmp_path).model_copy(
+        update={"retry_initial_seconds": 0.01, "retry_max_seconds": 0.02}
+    )
+    gateway = RestrictedTelegramGateway(
+        configured,
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(gateway.run(stop))
+    await asyncio.sleep(0.04)
+    stop.set()
+    await task
+
+    assert telegram.update_calls >= 2
+    output = capsys.readouterr().out
+    assert "telegram_gateway_ready" in output
+    assert "telegram_gateway_dependency_retry" in output
+
+
+@pytest.mark.asyncio
 async def test_plain_english_is_structured_and_sender_is_allowlisted(
     tmp_path: Path,
 ) -> None:
@@ -365,10 +414,7 @@ def test_polling_offset_and_message_binding_survive_restart(tmp_path: Path) -> N
     restarted.initialize()
 
     assert restarted.polling_offset() == 42
-    assert (
-        restarted.conversation_for_message("telegram-message-7")
-        == "conversation-7"
-    )
+    assert restarted.conversation_for_message("telegram-message-7") == "conversation-7"
     with pytest.raises(ValueError, match="cannot move backwards"):
         restarted.commit_polling_offset(41)
 
@@ -524,15 +570,45 @@ async def test_daily_research_reply_starts_a_grounded_research_thread(
 ) -> None:
     telegram = Telegram()
     channel = Channel()
-    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Prior work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
-    channel.research_cycle_values = [{"id": "cycle-1", "status": "awaiting_brief", "question": "Do equity shocks predict next-day BTC returns?", "question_digest": "23f98fe93e01" + "0" * 52}]
+    channel.conversation_values = [
+        {
+            "id": "conversation-old",
+            "short_id": "oldthread0001",
+            "status": "collecting",
+            "title": "Prior work",
+            "project": "swarm-control-plane",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
+    channel.research_cycle_values = [
+        {
+            "id": "cycle-1",
+            "status": "awaiting_brief",
+            "question": "Do equity shocks predict next-day BTC returns?",
+            "question_digest": "23f98fe93e01" + "0" * 52,
+        }
+    ]
     store = HandoffStore(tmp_path / "gateway.sqlite3")
     store.initialize()
     store.set_value("selected-conversation-id", "conversation-old")
-    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
 
     await gateway._notify_research_cycles()
-    await gateway._handle_update({"message": {"message_id": 88, "from": {"id": 123}, "chat": {"id": 456}, "text": "Run the backtest and summarize it. Use one month only.", "reply_to_message": {"message_id": 10001}}})
+    await gateway._handle_update(
+        {
+            "message": {
+                "message_id": 88,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "Run the backtest and summarize it. Use one month only.",
+                "reply_to_message": {"message_id": 10001},
+            }
+        }
+    )
 
     created = channel.created[-1]
     assert created["title"].startswith("Daily research:")
@@ -549,14 +625,36 @@ async def test_pasted_daily_research_card_does_not_pollute_selected_thread(
 ) -> None:
     telegram = Telegram()
     channel = Channel()
-    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Prior work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    channel.conversation_values = [
+        {
+            "id": "conversation-old",
+            "short_id": "oldthread0001",
+            "status": "collecting",
+            "title": "Prior work",
+            "project": "swarm-control-plane",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
     store = HandoffStore(tmp_path / "gateway.sqlite3")
     store.initialize()
     store.set_value("selected-conversation-id", "conversation-old")
-    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
     text = "Daily research · awaiting_brief\nDo equity shocks predict next-day BTC returns?\nQuestion: 23f98fe93e01\n\nRun the backtest and summarize it. Short run one month only."
 
-    await gateway._handle_update({"message": {"message_id": 89, "from": {"id": 123}, "chat": {"id": 456}, "text": text}})
+    await gateway._handle_update(
+        {
+            "message": {
+                "message_id": 89,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": text,
+            }
+        }
+    )
 
     assert channel.created[-1]["message"] == text
     assert channel.created[-1]["title"].startswith("Daily research:")
@@ -569,37 +667,87 @@ async def test_ambiguous_plain_message_is_held_until_continue(
 ) -> None:
     telegram = Telegram()
     channel = Channel()
-    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Existing work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    channel.conversation_values = [
+        {
+            "id": "conversation-old",
+            "short_id": "oldthread0001",
+            "status": "collecting",
+            "title": "Existing work",
+            "project": "swarm-control-plane",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
     store = HandoffStore(tmp_path / "gateway.sqlite3")
     store.initialize()
     store.set_value("selected-conversation-id", "conversation-old")
-    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
     base = {"from": {"id": 123}, "chat": {"id": 456}}
 
-    await gateway._handle_update({"message": {**base, "message_id": 90, "text": "Do something Hermes has never seen before."}})
+    await gateway._handle_update(
+        {
+            "message": {
+                **base,
+                "message_id": 90,
+                "text": "Do something Hermes has never seen before.",
+            }
+        }
+    )
 
     assert channel.turns == []
     assert "or new work?" in telegram.sent[-1][1]
-    await gateway._handle_update({"message": {**base, "message_id": 91, "text": "/continue"}})
-    assert channel.turns[-1][1]["message"] == "Do something Hermes has never seen before."
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 91, "text": "/continue"}}
+    )
+    assert (
+        channel.turns[-1][1]["message"] == "Do something Hermes has never seen before."
+    )
 
 
 @pytest.mark.asyncio
 async def test_new_routes_held_message_without_retyping_it(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()
-    channel.conversation_values = [{"id": "conversation-old", "short_id": "oldthread0001", "status": "collecting", "title": "Existing work", "project": "swarm-control-plane", "revision": 1, "current_specification": {}, "messages": []}]
+    channel.conversation_values = [
+        {
+            "id": "conversation-old",
+            "short_id": "oldthread0001",
+            "status": "collecting",
+            "title": "Existing work",
+            "project": "swarm-control-plane",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
     store = HandoffStore(tmp_path / "gateway.sqlite3")
     store.initialize()
     store.set_value("selected-conversation-id", "conversation-old")
-    gateway = RestrictedTelegramGateway(settings(tmp_path), telegram=telegram, channel=channel, store=store)
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
     base = {"from": {"id": 123}, "chat": {"id": 456}}
 
-    await gateway._handle_update({"message": {**base, "message_id": 92, "text": "Explore a completely new operational idea."}})
-    await gateway._handle_update({"message": {**base, "message_id": 93, "text": "/new Novel operation"}})
+    await gateway._handle_update(
+        {
+            "message": {
+                **base,
+                "message_id": 92,
+                "text": "Explore a completely new operational idea.",
+            }
+        }
+    )
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 93, "text": "/new Novel operation"}}
+    )
 
     assert channel.created[-1]["title"] == "Novel operation"
-    assert channel.created[-1]["message"] == "Explore a completely new operational idea."
+    assert (
+        channel.created[-1]["message"] == "Explore a completely new operational idea."
+    )
     assert channel.turns == []
 
 
