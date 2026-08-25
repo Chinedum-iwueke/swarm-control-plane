@@ -2,7 +2,7 @@
 import hashlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -73,7 +73,7 @@ def main() -> int:
                     "environment": "internal",
                     "requester": "gov002-pilot",
                     "originator": originator,
-                    "effective_at": datetime.now(UTC).isoformat(),
+                    "effective_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             response.raise_for_status()
@@ -112,7 +112,7 @@ def main() -> int:
                     "environment": "internal",
                     "requester": "gov002-pilot",
                     "originator": "research-execution-agent",
-                    "effective_at": datetime.now(UTC).isoformat(),
+                    "effective_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             nominated.raise_for_status()
