@@ -1,0 +1,27 @@
+{
+  "adversarial_reconciliation": {
+    "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+    "findings": [
+      {"code":"incompatible_interface","expected":"17","interface":"postgres","observed":"16","service_key":"control-plane-postgres","severity":"error"},
+      {"code":"orphan_service","service_key":"orphan-daemon","severity":"error"},
+      {"age_seconds":301.0,"code":"stale_observation","service_key":"control-plane-postgres","severity":"error"}
+    ],
+    "observation_digest": "808410e245a6089b74614539549c95188a9edfa510de785e937cd03c733914da",
+    "report_digest": "ff958ce1f38c3fbe4f7cc118f00b69de3b655a9e4576a43d458eac7783cf9f13",
+    "status": "failed"
+  },
+  "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+  "catalog_version": "1.0.0",
+  "clean_reconciliation": {
+    "catalog_digest": "81572750e65e73fe46afbd2a2ca6c50b51aa86be499425e0b592d02b47a82d96",
+    "findings": [],
+    "observation_digest": "5001f7cbb2bcee70ef772409a77b5215f86f736b8237bd4c8a15d646979ac190",
+    "report_digest": "74e3c9f2d4a18ab8417fabf3d0f76e6f6c8f3bffe72cbe05d07792ffdafbf178",
+    "status": "passed"
+  },
+  "report_digest": "9a2c7d868c07783086ad3df410e7ca49385ff750bb58587c1554f0e01a7433d4",
+  "rollback_contract": "activate any retained prior immutable snapshot",
+  "schema_version": "plat001-validation-v1.0.0",
+  "service_count": 12,
+  "success": true
+}
