@@ -8,6 +8,19 @@ import httpx
 class ChannelError(RuntimeError):
     """Credential-free founder-channel failure."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        method: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.method = method
+        self.status_code = status_code
+
 
 class FounderChannelClient:
     def __init__(
@@ -137,7 +150,9 @@ class FounderChannelClient:
         try:
             response = await self._client.request(method, path, **kwargs)
         except httpx.RequestError as exc:
-            raise ChannelError("Control plane is unavailable.") from exc
+            raise ChannelError(
+                "Control plane is unavailable.", retryable=True, method=method
+            ) from exc
         if response.is_success:
             return response.json()
         detail = "Request rejected."
@@ -149,7 +164,12 @@ class FounderChannelClient:
             pass
         detail = detail.replace(self._token, "[REDACTED]")
         error_type = ChannelNotFound if response.status_code == 404 else ChannelError
-        raise error_type(f"Control plane returned HTTP {response.status_code}: {detail}")
+        raise error_type(
+            f"Control plane returned HTTP {response.status_code}: {detail}",
+            retryable=response.status_code == 429 or response.status_code >= 500,
+            method=method,
+            status_code=response.status_code,
+        )
 
 
 class ChannelNotFound(ChannelError):

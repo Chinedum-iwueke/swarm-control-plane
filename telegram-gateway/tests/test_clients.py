@@ -4,7 +4,11 @@ import httpx
 import pytest
 
 from hermes_telegram_gateway.control_plane import FounderChannelClient
-from hermes_telegram_gateway.telegram import TelegramClient, split_message
+from hermes_telegram_gateway.telegram import (
+    TelegramClient,
+    TelegramError,
+    split_message,
+)
 
 
 @pytest.mark.asyncio
@@ -119,3 +123,31 @@ async def test_telegram_client_requests_edits_and_places_button_on_last_chunk() 
     assert "reply_markup" not in sends[0]["body"]
     assert sends[1]["body"]["reply_markup"]["inline_keyboard"][0][0]["text"] == "Review"
     assert len(sent) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "retryable"), [(429, True), (503, True), (401, False)]
+)
+async def test_telegram_errors_classify_retryability_without_leaking_token(
+    status_code: int, retryable: bool
+) -> None:
+    token = "telegram-secret-that-must-not-leak"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            json={"ok": False, "error_code": status_code, "description": token},
+        )
+
+    client = TelegramClient(token, transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(TelegramError) as raised:
+            await client.get_me()
+    finally:
+        await client.close()
+
+    assert raised.value.retryable is retryable
+    assert raised.value.method == "getMe"
+    assert raised.value.status_code == status_code
+    assert token not in str(raised.value)
