@@ -139,6 +139,17 @@ class RestrictedTelegramGateway:
                     f"{payload['machine']} · {payload['signal']}\n"
                     f"{payload['summary']}\n{detail}",
                 )
+            elif kind == "service_slo_alert":
+                evidence = payload.get("evidence") or {}
+                detail = ", ".join(
+                    f"{key}={value}" for key, value in sorted(evidence.items())
+                )[:300]
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Service SLO {payload['state']} · {payload['severity']}\n"
+                    f"{payload['service_key']} · {payload['indicator']}\n"
+                    f"Owner: {payload['owner']}\n{payload['summary']}\n{detail}",
+                )
             else:
                 continue
             await self._channel.acknowledge_notification(

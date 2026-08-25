@@ -20,6 +20,7 @@ from app.models import (
     Task,
 )
 from app.models.fleet import FleetIncident, MachineObservation
+from app.models.observability import RoutedServiceAlert, ServiceSLOState
 from app.models.retrieval import EvidenceRetrievalState
 
 TASKS = Gauge("hermes_tasks", "Tasks by status", ["status"])
@@ -63,6 +64,16 @@ FLEET_INCIDENTS = Gauge(
 )
 FLEET_SAMPLE_AGE = Gauge(
     "hermes_fleet_sample_age_seconds", "Age of latest fleet sample", ["machine"]
+)
+SERVICE_SLO = Gauge(
+    "hermes_service_slo_state",
+    "Service SLO state (1 for current state)",
+    ["service", "indicator", "status"],
+)
+ROUTED_ALERTS = Gauge(
+    "hermes_routed_service_alerts",
+    "Routed service alerts by state and severity",
+    ["state", "severity"],
 )
 
 router = APIRouter(
@@ -143,6 +154,18 @@ def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
         FLEET_SAMPLE_AGE.labels(machine=machine).set(
             max(0.0, (now - observed_at).total_seconds())
         )
+    SERVICE_SLO.clear()
+    for service, indicator, status in db.execute(
+        select(ServiceSLOState.service_key, ServiceSLOState.indicator, ServiceSLOState.status)
+    ).all():
+        SERVICE_SLO.labels(service=service, indicator=indicator, status=status).set(1)
+    ROUTED_ALERTS.clear()
+    for state, severity, count in db.execute(
+        select(RoutedServiceAlert.state, RoutedServiceAlert.severity, func.count()).group_by(
+            RoutedServiceAlert.state, RoutedServiceAlert.severity
+        )
+    ).all():
+        ROUTED_ALERTS.labels(state=state, severity=severity).set(count)
     PAUSED_SCOPES.clear()
     for scope_type, count in db.execute(
         select(ControlScope.scope_type, func.count())

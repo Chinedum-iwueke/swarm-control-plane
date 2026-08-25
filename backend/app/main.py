@@ -28,6 +28,7 @@ from app.api.routes import (
     memory_router,
     metrics_router,
     missions_router,
+    observability_router,
     operational_notes_router,
     operations_router,
     packages_router,
@@ -65,6 +66,7 @@ app.include_router(memory_router)
 app.include_router(missions_router)
 app.include_router(operational_notes_router)
 app.include_router(operations_router)
+app.include_router(observability_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(agent_packages_router)

@@ -1029,8 +1029,46 @@ function renderInfrastructure() {
       <div class="entity-side">${statusBadge(machine.status === "healthy" ? "success" : machine.status)}</div>
     </article>`;
   }).join("") : empty("No fleet observations received yet.");
+  const observability = state.dashboard.observability || { summary: {}, services: [], alerts: [] };
+  const sloStates = observability.services || [];
+  const routedAlerts = observability.alerts || [];
+  const sloSummary = observability.summary || {};
+  document.getElementById("slo-freshness").textContent = observability.generated_at
+    ? `Evaluated ${relativeTime(observability.generated_at)}`
+    : "No current evaluation";
+  document.getElementById("slo-summary").innerHTML = [
+    metric(sloSummary.healthy || 0, "Healthy", "Current evidence meets objective"),
+    metric(sloSummary.breached || 0, "Breached", "Sustained breach routes once"),
+    metric(sloSummary.missing || 0, "Missing", "Required telemetry absent"),
+    metric(sloSummary.unknown || 0, "Unknown", "No measurement; never assumed healthy"),
+  ].join("");
+  document.getElementById("service-slos").innerHTML = sloStates.length ? sloStates.map((item) => `
+    <article class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(item.service_key)} · ${escapeHtml(humanize(item.indicator))}</strong>
+        <div class="entity-meta"><span>Owner ${escapeHtml(item.owner)}</span><span>Evaluated ${relativeTime(item.evaluated_at)}</span><span>${item.consecutive_breaches || 0} consecutive breaches</span></div>
+      </div><div class="entity-side">${statusBadge(item.status === "healthy" ? "success" : item.status)}</div>
+    </article>`).join("") : empty("No catalog-bound SLO states exist yet.");
+  document.getElementById("routed-alerts").innerHTML = routedAlerts.length ? routedAlerts.map((alert) => `
+    <article class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(alert.summary)}</strong>
+        <div class="entity-meta"><span>${escapeHtml(alert.severity)}</span><span>Owner ${escapeHtml(alert.owner)}</span><span>Route ${escapeHtml(alert.route)}</span><span>Updated ${relativeTime(alert.updated_at)}</span></div>
+      </div><div class="entity-side">${statusBadge(alert.state)}${alert.state === "firing" ? `<button class="text-button" data-slo-alert="${alert.id}" data-alert-action="acknowledge">Acknowledge</button><button class="text-button" data-slo-alert="${alert.id}" data-alert-action="silence">Silence</button>` : ""}${alert.state === "silenced" ? `<button class="text-button" data-slo-alert="${alert.id}" data-alert-action="unsilence">Unsilence</button>` : ""}</div>
+    </article>`).join("") : empty("No active routed service alerts.");
+  document.querySelectorAll("[data-slo-alert]").forEach((button) => {
+    button.onclick = () => transitionServiceAlert(button.dataset.sloAlert, button.dataset.alertAction);
+  });
   document.getElementById("infra-tasks").innerHTML = tasks.length ? tasks.map((task) => taskEntityRow(task)).join("") : empty("No infrastructure tasks recorded.");
   bindEntityButtons();
+}
+
+async function transitionServiceAlert(alertId, action) {
+  if (state.demo) return toast("Actions are disabled in demonstration mode.");
+  const reason = window.prompt(`Reason to ${action} this service alert:`);
+  if (!reason || reason.trim().length < 10) return toast("A reason of at least 10 characters is required.");
+  const payload = { action, reason: reason.trim() };
+  if (action === "silence") payload.silence_seconds = 3600;
+  await mutate(`/api/observability/alerts/${alertId}`, payload, `Service alert ${action} recorded.`);
+  await loadDashboard();
 }
 
 function formatPercent(value) {
