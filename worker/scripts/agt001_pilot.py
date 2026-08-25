@@ -24,7 +24,7 @@ def main() -> int:
     client = httpx.Client(base_url=base, headers={"Authorization": f"Bearer {token}"}, timeout=60)
     agents = client.get("/v1/agents").raise_for_status().json()
     deployments = client.get("/v1/packages/deployments").raise_for_status().json()
-    chosen = next((row for row in deployments if row["deployment"]["is_active"] and
+    chosen = next((row for row in reversed(deployments) if row["deployment"]["is_active"] and
                    next((a for a in agents if a["id"] == row["deployment"]["agent_id"] and a["is_enabled"]), None)), None)
     if not chosen:
         raise RuntimeError("No enabled agent with an active role package is available.")
@@ -47,7 +47,7 @@ def main() -> int:
     if charter["status"] != "active":
         charter = client.post(f"/v1/agent-governance/charters/{charter['id']}/activate", json={"activated_by": "founder-operator"}).raise_for_status().json()
     expiry = datetime.now(UTC) + timedelta(hours=1)
-    grant_payload = {"agent_id": agent["id"], "charter_id": charter["id"], "capability": capability,
+    grant_payload = {"agent_id": agent["id"], "charter_id": charter["id"], "package_id": package["id"], "capability": capability,
         "machine": agent["machine"], "task_types": [task_type], "repositories": pm["repository_profile"]["repositories"],
         "risk_ceiling": manifest["risk_ceiling"], "accountable_owner": "company-operations", "granted_by": "founder-operator",
         "reason": "AGT-001 bounded production replay", "expires_at": expiry.isoformat()}

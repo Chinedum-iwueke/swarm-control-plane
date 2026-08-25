@@ -84,8 +84,15 @@ def create_grant(db: Session, payload: AgentCapabilityGrantCreate) -> AgentCapab
     ]
     for valid, message in checks:
         if not valid: raise HTTPException(422, message)
-    package = _active_package(db, agent.id)
-    if package is None:
+    package = db.get(RolePackage, payload.package_id)
+    active_deployment = db.scalar(
+        select(PackageDeployment).where(
+            PackageDeployment.agent_id == agent.id,
+            PackageDeployment.package_id == payload.package_id,
+            PackageDeployment.is_active.is_(True),
+        )
+    )
+    if package is None or active_deployment is None:
         raise HTTPException(409, "An active role-package deployment is required.")
     pm = package.manifest
     if payload.capability not in pm["required_capabilities"] or not set(payload.task_types).issubset(pm["task_types"]):
@@ -111,8 +118,14 @@ def resolve(db: Session, agent_id: UUID, request: EffectiveAuthorityRequest, now
     agent = db.get(Agent, agent_id)
     charter = db.scalar(select(AgentCharter).where(AgentCharter.agent_id == agent_id, AgentCharter.status == "active"))
     package = _active_package(db, agent_id)
-    grant = db.scalar(select(AgentCapabilityGrant).where(AgentCapabilityGrant.agent_id == agent_id,
-        AgentCapabilityGrant.capability == request.capability, AgentCapabilityGrant.status == "active").order_by(AgentCapabilityGrant.created_at.desc()))
+    grant_query = select(AgentCapabilityGrant).where(
+        AgentCapabilityGrant.agent_id == agent_id,
+        AgentCapabilityGrant.capability == request.capability,
+        AgentCapabilityGrant.status == "active",
+    )
+    if package:
+        grant_query = grant_query.where(AgentCapabilityGrant.package_id == package.id)
+    grant = db.scalar(grant_query.order_by(AgentCapabilityGrant.created_at.desc()))
     if not agent or not agent.is_enabled: reasons.append("agent-disabled-or-missing")
     if not charter: reasons.append("active-charter-missing")
     if not package: reasons.append("active-package-missing")
@@ -126,6 +139,8 @@ def resolve(db: Session, agent_id: UUID, request: EffectiveAuthorityRequest, now
         m = package.manifest
         if request.capability not in m["required_capabilities"] or request.machine not in m["allowed_machines"] or request.task_type not in m["task_types"] or request.risk_level > m["risk_ceiling"] or (request.repository and request.repository not in m["repository_profile"]["repositories"]): reasons.append("package-boundary-violation")
     if grant:
+        if not package or grant.package_id != package.id:
+            reasons.append("grant-package-mismatch")
         if grant.expires_at <= now: reasons.append("grant-expired")
         if request.machine != grant.machine or request.task_type not in grant.task_types or request.risk_level > grant.risk_ceiling or (request.repository and request.repository not in grant.repositories): reasons.append("grant-boundary-violation")
     result = {"agent_id": agent_id, "allowed": not reasons, "reasons": sorted(set(reasons)),
