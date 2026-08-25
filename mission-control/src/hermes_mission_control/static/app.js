@@ -1128,7 +1128,25 @@ function renderResearch() {
   const surveillanceSources = state.dashboard.surveillance_sources || [];
   const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
+  const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
+  const lifecycleSubjects = new Map();
+  lifecycleItems.forEach((item) => {
+    const key = `${item.subject_type}:${item.subject_id}`;
+    const subject = lifecycleSubjects.get(key) || { subject_type: item.subject_type, subject_id: item.subject_id, states: {} };
+    subject.states[item.dimension] = item;
+    lifecycleSubjects.set(key, subject);
+  });
+  document.getElementById("lifecycle-count").textContent = `${lifecycleSubjects.size} governed subjects`;
+  document.getElementById("institutional-lifecycles").innerHTML = lifecycleSubjects.size ? [...lifecycleSubjects.values()].map((subject) => `
+    <article class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(subject.subject_type)} · ${escapeHtml(subject.subject_id)}</strong>
+        <div class="entity-meta">${["research", "evidence", "operations", "capital"].map((dimension) => {
+          const projection = subject.states[dimension];
+          return `<span>${humanize(dimension)}: ${escapeHtml(projection?.state || "missing")} · v${projection?.version ?? 0}</span>`;
+        }).join("")}</div>
+      </div>
+    </article>`).join("") : empty("No governed lifecycle subjects have been registered.");
   const latestMemoryTask = memoryTasks[0];
   const latestMemory = memoryExports[0];
   const memoryStatus = document.getElementById("memory-sync-status");
