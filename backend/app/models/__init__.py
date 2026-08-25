@@ -1,5 +1,11 @@
 from app.models.agent import Agent
 from app.models.agent_credential import AgentCredential
+from app.models.authority import (
+    AuthorityDecisionRecord,
+    AuthorityDelegation,
+    AuthorityException,
+    AuthorityPolicySnapshot,
+)
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
     FounderConversation,
@@ -103,6 +109,10 @@ __all__ = [
     "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",
+    "AuthorityDecisionRecord",
+    "AuthorityDelegation",
+    "AuthorityException",
+    "AuthorityPolicySnapshot",
     "CanonicalEvidenceAuditEvent",
     "CanonicalEvidenceEdge",
     "CanonicalEvidenceObject",

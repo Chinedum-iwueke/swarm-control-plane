@@ -11,6 +11,7 @@ class ApprovalDecision(BaseModel):
     actor: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     reason: str = Field(min_length=1, max_length=2000)
     expires_in_seconds: int = Field(default=3600, ge=60, le=86400)
+    authority_exception_id: uuid.UUID | None = None
 
 
 class ApprovalResponse(BaseModel):

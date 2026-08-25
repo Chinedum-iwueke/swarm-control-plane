@@ -15,6 +15,7 @@ from app.schemas import (
     ArtifactCreate,
     ArtifactResponse,
 )
+from app.services.authority import resolve_task_approval
 from app.services.governance import approve_task, decide_task
 from app.services.tasks import lock_task, verify_task_lease
 
@@ -65,6 +66,13 @@ def grant_approval(
     db: Annotated[Session, Depends(get_db)],
 ) -> ApprovalResponse:
     approval = _approval(db, approval_id)
+    resolve_task_approval(
+        db,
+        approval,
+        actor=payload.actor,
+        action="approve",
+        exception_id=payload.authority_exception_id,
+    )
     approve_task(
         db,
         approval,
@@ -91,6 +99,13 @@ def reject_or_revoke_approval(
     if action not in {"reject", "revoke"}:
         raise HTTPException(status_code=404, detail="Unknown approval action.")
     approval = _approval(db, approval_id)
+    resolve_task_approval(
+        db,
+        approval,
+        actor=payload.actor,
+        action=action,
+        exception_id=payload.authority_exception_id,
+    )
     decide_task(
         db, approval, actor=payload.actor, reason=payload.reason, action=action
     )

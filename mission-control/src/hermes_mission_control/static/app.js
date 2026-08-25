@@ -961,6 +961,15 @@ function renderApprovals() {
   document.querySelectorAll("[data-decision]").forEach((button) => {
     button.addEventListener("click", () => openDecision(button.dataset.id, button.dataset.decision));
   });
+  const authority = state.dashboard.authority || {};
+  const policy = authority.policy;
+  const activeDelegations = (authority.delegations || []).filter((item) => item.status === "active");
+  const activeExceptions = (authority.exceptions || []).filter((item) => item.status === "approved");
+  document.getElementById("authority-policy").innerHTML = policy ? `
+    <div class="policy-row"><strong>Policy</strong><span>${escapeHtml(policy.version)}</span>${statusBadge(policy.status)}</div>
+    <div class="policy-row"><strong>Digest</strong><span class="mono">${shortHash(policy.manifest_digest)}</span><span>${policy.manifest?.decisions?.length || 0} rights</span></div>
+    <div class="policy-row"><strong>Delegated</strong><span>${activeDelegations.length} active</span><span>${activeExceptions.length} exceptions</span></div>
+  ` : empty("No active authority policy. Consequential decisions fail closed.");
 }
 
 function openDecision(id, action) {

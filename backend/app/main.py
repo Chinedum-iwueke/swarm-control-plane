@@ -8,6 +8,7 @@ from app.api.routes import (
     agent_research_router,
     agent_runtime_router,
     agents_router,
+    authority_router,
     channel_conversations_router,
     controls_router,
     conversations_router,
@@ -54,6 +55,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(authority_router)
 app.include_router(corpus_router)
 app.include_router(corpus_sync_router)
 app.include_router(curriculum_router)
