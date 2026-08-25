@@ -36,6 +36,17 @@ async def test_dashboard_uses_bearer_without_exposing_token(
             return httpx.Response(200, json={"items": [], "count": 0})
         if request.url.path == "/v1/fleet/health":
             return httpx.Response(200, json={"generated_at": None, "machines": []})
+        if request.url.path == "/v1/observability/overview":
+            return httpx.Response(
+                200,
+                json={
+                    "generated_at": None,
+                    "catalog": None,
+                    "summary": {},
+                    "services": [],
+                    "alerts": [],
+                },
+            )
         if request.url.path == "/v1/operations/summary":
             return httpx.Response(
                 200,
@@ -66,6 +77,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert "surveillance_candidates" in result
     assert result["blocked_artifact_register"]["total"] == 0
     assert result["fleet_health"]["machines"] == []
+    assert result["observability"]["services"] == []
     assert result["operations"] == []
     assert result["operation_summary"]["active_total"] == 0
 
@@ -93,6 +105,33 @@ async def test_surveillance_replay_uses_authenticated_read_only_route(
         (
             "GET",
             "/v1/research/surveillance/candidates/publication-id/replay",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_alert_action_uses_bounded_authenticated_route(
+    settings: MissionControlSettings,
+) -> None:
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"state": "acknowledged"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.transition_service_alert(
+            "alert-id", {"action": "acknowledge", "reason": "Founder owns response."}
+        )
+    finally:
+        await client.close()
+    assert result["state"] == "acknowledged"
+    assert seen == [
+        (
+            "POST",
+            "/v1/observability/alerts/alert-id",
+            {"action": "acknowledge", "reason": "Founder owns response."},
         )
     ]
 

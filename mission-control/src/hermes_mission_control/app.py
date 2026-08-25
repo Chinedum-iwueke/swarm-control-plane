@@ -206,6 +206,13 @@ def create_app(
         return await client.propose_research_memory_sync()
 
     @app.post(
+        "/api/observability/alerts/{alert_id}",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def transition_service_alert(alert_id: str, payload: dict) -> dict:
+        return await client.transition_service_alert(alert_id, payload)
+
+    @app.post(
         "/api/research/cycles/{cycle_id}/decision",
         dependencies=[Depends(_mutation_intent)],
     )

@@ -46,6 +46,11 @@ from app.models.memory import (
     EvidenceOutcomeRecord,
 )
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
+from app.models.observability import (
+    AlertRoutingEvent,
+    RoutedServiceAlert,
+    ServiceSLOState,
+)
 from app.models.operation import Operation, OperationEvent
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
 from app.models.package import PackageDeployment, RolePackage
@@ -95,6 +100,7 @@ from app.models.task_event import TaskEvent
 __all__ = [
     "Agent",
     "AgentCredential",
+    "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",
     "CanonicalEvidenceAuditEvent",
@@ -165,6 +171,7 @@ __all__ = [
     "ResearchSource",
     "ResearchTrial",
     "RolePackage",
+    "RoutedServiceAlert",
     "RunbookPackage",
     "RunbookPromotion",
     "ScientificIngestionJob",
@@ -172,6 +179,7 @@ __all__ = [
     "ServiceCatalogActivation",
     "ServiceCatalogReconciliation",
     "ServiceCatalogSnapshot",
+    "ServiceSLOState",
     "SurveillanceDigest",
     "SurveillanceFetchReceipt",
     "SurveillancePublication",

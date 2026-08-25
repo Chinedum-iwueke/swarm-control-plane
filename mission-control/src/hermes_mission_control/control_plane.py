@@ -75,6 +75,16 @@ class ControlPlaneClient:
         fleet_health = await self._optional_object(
             "/v1/fleet/health", {"generated_at": None, "machines": []}
         )
+        observability = await self._optional_object(
+            "/v1/observability/overview",
+            {
+                "generated_at": None,
+                "catalog": None,
+                "summary": {},
+                "services": [],
+                "alerts": [],
+            },
+        )
         operations = await self._optional_collection("/v1/operations")
         operation_summary = await self._optional_object(
             "/v1/operations/summary",
@@ -112,6 +122,7 @@ class ControlPlaneClient:
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,
             "fleet_health": fleet_health,
+            "observability": observability,
             "operations": operations,
             "operation_summary": operation_summary,
             "surveillance_sources": surveillance_sources,
@@ -234,6 +245,16 @@ class ControlPlaneClient:
             "POST",
             f"/v1/operational-notes/{note_id}/transitions",
             json={"actor": "founder-mission-control", **payload},
+        )
+
+    async def transition_service_alert(
+        self, alert_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        allowed = {"action", "reason", "silence_seconds"}
+        if set(payload) - allowed:
+            raise ValueError("Unsupported service-alert fields.")
+        return await self._request(
+            "POST", f"/v1/observability/alerts/{alert_id}", json=payload
         )
 
     async def request_operational_note_proposal(

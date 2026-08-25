@@ -1048,6 +1048,44 @@ async def test_fleet_incident_uses_outbox_and_bounded_evidence(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_service_slo_alert_is_attributable_and_bounded(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [
+        {
+            "id": "slo-notification-1",
+            "kind": "service_slo_alert",
+            "payload": {
+                "alert_id": "alert-1",
+                "service_key": "control-plane-api",
+                "indicator": "availability",
+                "severity": "critical",
+                "state": "firing",
+                "owner": "platform-operations",
+                "summary": "API availability evidence is missing",
+                "evidence": {"age_seconds": 400},
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+
+    assert "Service SLO firing" in telegram.sent[0][1]
+    assert "platform-operations" in telegram.sent[0][1]
+    assert len(telegram.sent[0][1]) < 600
+    assert channel.acknowledged == [("slo-notification-1", "telegram:456")]
+
+
+@pytest.mark.asyncio
 async def test_outbox_is_not_acknowledged_when_delivery_fails(
     tmp_path: Path,
 ) -> None:

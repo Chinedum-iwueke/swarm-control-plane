@@ -59,6 +59,11 @@ def record_observation(
     evaluate_observation(db, observation)
     evaluate_staleness(db, datetime.now(UTC))
     db.commit()
+    # Fleet samples are the common observability clock; evaluate only after the
+    # authenticated observation is durable so a failed SLO pass cannot lose it.
+    from app.services.observability import evaluate_observability
+
+    evaluate_observability(db, payload.observed_at)
     db.refresh(observation)
     return observation
 
