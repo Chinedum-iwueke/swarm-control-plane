@@ -69,6 +69,8 @@ async def test_dashboard_uses_bearer_without_exposing_token(
             )
         if request.url.path == "/v1/lifecycles/projections":
             return httpx.Response(200, json={"items": [], "count": 0})
+        if request.url.path == "/v1/lifecycle-consequences":
+            return httpx.Response(200, json={"items": [], "count": 0})
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -94,6 +96,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["operation_summary"]["active_total"] == 0
     assert result["authority"]["policy"]["status"] == "active"
     assert result["institutional_lifecycles"]["count"] == 0
+    assert result["lifecycle_consequences"]["count"] == 0
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,7 @@ from app.api.routes.institutional_lifecycle import (
 )
 from app.api.routes.laboratory import router as laboratory_router
 from app.api.routes.lifecycle import router as lifecycle_router
+from app.api.routes.lifecycle_consequence import router as lifecycle_consequence_router
 from app.api.routes.memory import router as memory_router
 from app.api.routes.metrics import router as metrics_router
 from app.api.routes.missions import router as missions_router
@@ -71,6 +72,7 @@ __all__ = [
     "ingestion_router",
     "institutional_lifecycle_router",
     "laboratory_router",
+    "lifecycle_consequence_router",
     "lifecycle_router",
     "memory_router",
     "metrics_router",
