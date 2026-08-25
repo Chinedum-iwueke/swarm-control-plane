@@ -31,10 +31,11 @@ from app.api.routes import (
     operational_notes_router,
     operations_router,
     packages_router,
+    platform_router,
     proposals_router,
+    research_bridge_router,
     research_programs_router,
     research_router,
-    research_bridge_router,
     retrieval_router,
     runbook_packages_router,
     supervisor_router,
@@ -65,6 +66,7 @@ app.include_router(missions_router)
 app.include_router(operational_notes_router)
 app.include_router(operations_router)
 app.include_router(packages_router)
+app.include_router(platform_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)
 app.include_router(agents_router)

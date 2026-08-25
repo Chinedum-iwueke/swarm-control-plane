@@ -27,6 +27,7 @@ from app.api.routes.operational_notes import router as operational_notes_router
 from app.api.routes.operations import router as operations_router
 from app.api.routes.packages import agent_router as agent_packages_router
 from app.api.routes.packages import router as packages_router
+from app.api.routes.platform import router as platform_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
 from app.api.routes.research import router as research_router
@@ -70,9 +71,10 @@ __all__ = [
     "operational_notes_router",
     "operations_router",
     "packages_router",
+    "platform_router",
     "proposals_router",
-    "research_programs_router",
     "research_bridge_router",
+    "research_programs_router",
     "research_router",
     "retrieval_router",
     "runbook_packages_router",
