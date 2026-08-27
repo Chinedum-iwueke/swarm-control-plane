@@ -132,6 +132,14 @@ def test_registration_requires_hypothesis() -> None:
         register_factor_program(db, payload())
 
 
+def test_registration_requires_dataset_manifest() -> None:
+    db = MagicMock()
+    db.get.return_value = object()
+    db.scalar.return_value = None
+    with pytest.raises(FactorLanguageConflict, match="dataset manifest"):
+        register_factor_program(db, payload())
+
+
 def test_route_surface_is_registered() -> None:
     paths = {route.path for route in router.routes}
     assert paths == {
