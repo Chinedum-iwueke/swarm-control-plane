@@ -1,0 +1,14 @@
+{
+  "audit_digest": "f8bf5a21bf539e0b4e46cf4b54405d0cd4e0fcaa9d0a1c47950d43ec487dd62f",
+  "audit_id": "45b83a75-8831-4ced-a0f3-93a5d78e981e",
+  "conclusion": "selection_risk_detected",
+  "execution_order_or_capital_authority": false,
+  "failed_and_cancelled_trials_retained": true,
+  "family_wise_p": 0.08,
+  "ledger_digest": "2501ebf92252f312d07f6a6da8e24f87717ef52f9bd764105a3e2553727da1e7",
+  "nominal_winner_p": 0.02,
+  "promotion_authority": false,
+  "report_digest": "bad4c9db76f3aceec9a06cc8652519707c517e5e223e3434f56a9867b71ed8a0",
+  "schema_version": "disc007-pilot-report-v1.0.0",
+  "success": true
+}
