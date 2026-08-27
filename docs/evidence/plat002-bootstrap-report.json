@@ -1,0 +1,210 @@
+{
+  "created": 0,
+  "existing": 14,
+  "credentials_bound": 0,
+  "identities": [
+    {
+      "agent": "vm1-developer-coder",
+      "identity_id": "2279aa3d-a68f-458b-9575-dfb583607256",
+      "manifest_digest": "a13881e4812204a9d6193bd0156d1381c4b9cb65d60686f176d2a3be7410cb9d",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm2-infrastructure-operator",
+      "identity_id": "5c769430-234a-4ead-98e8-3565d906585f",
+      "manifest_digest": "bb399c044fa57e4e46664afaf92f7b58a1c948c8bb5f8ecc6fa26676f6bee297",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "infrastructure:broker",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-research-runner",
+      "identity_id": "aca08fcb-87cc-493f-bf45-e53864678714",
+      "manifest_digest": "84d2a562013e45b594b08d8b7339f580d129690ccfe3d9d251b84aa8dec7f432",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm2-deployment-architect",
+      "identity_id": "b3b6e185-8cb4-4424-bff6-0a818c0f242b",
+      "manifest_digest": "7da84b270fa7c0d82b925ba6d19520fa5ddfd119124c1975c2614cf8a441bc3a",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "infrastructure:broker",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-m13-senior-research-specialist",
+      "identity_id": "2b508ddc-ef49-4295-825c-ed0d903a8e63",
+      "manifest_digest": "473292e8ccb8987316ecd49d557d8fcafb1e0968836a7039b98f0f37590701ab",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-m13-experiment-specification",
+      "identity_id": "14429e0a-63e0-46a5-8ff4-b88a155854f0",
+      "manifest_digest": "3fe19d6125cf178666e1313484274ade1735fe6230528acd186bc29ebc182fd9",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-m13-research-execution",
+      "identity_id": "bd8e9526-4b9a-4310-b86f-f48c6381c304",
+      "manifest_digest": "b80b4bad52965973417739e7712d28d8d58ec87e393db35e3c859f8ac266248a",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-m13-statistical-reviewer",
+      "identity_id": "a6e33a8e-d875-4c8e-afd2-8fda27b968bf",
+      "manifest_digest": "b06066b58c1cf48e4cda426c55a794a913ac8f73f0a4e4af0cedc11f1d54e2b5",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-m13-adversarial-auditor",
+      "identity_id": "f7e17b0d-932c-4aae-8f75-5c25e250cf7d",
+      "manifest_digest": "f6c7e604dba623484462164fb20acb35a5d4bcbd6430a4648aad92896f1ba6e4",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-research-memory-steward",
+      "identity_id": "3d406d39-c47a-49fc-bfcc-ceddf71e1e44",
+      "manifest_digest": "b5299b081ba28bdbcf5925838634ae23b08cbb3312c7c7ffabcade8e5fb0af9d",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "research:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-operational-memory-steward",
+      "identity_id": "fb570130-6aa5-4373-88fb-26b4721357bb",
+      "manifest_digest": "6d4c9def13d771b45a740d2b63a5d41bf0e9e1a3732945d5b4e943ee96b5cb34",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "notes:write",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-founder-intake-planner",
+      "identity_id": "fcf4ee7f-4875-465f-868b-b66b2c862a7f",
+      "manifest_digest": "e330f61769b145edb184249c582e368524841eb382e545e166e8ea240e9f678d",
+      "scopes": [
+        "control:read",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "proposal:write",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm1-fleet-observer",
+      "identity_id": "b1ce9e61-6d96-4ea1-b9e2-0f0b6faf645f",
+      "manifest_digest": "9fc4a53de7c012921b56bedfb0b7941799355580f577f94a48c0850de6556227",
+      "scopes": [
+        "control:read",
+        "fleet:write",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    },
+    {
+      "agent": "vm2-fleet-observer",
+      "identity_id": "680accf6-3258-4dcc-b31b-7deec795be0b",
+      "manifest_digest": "6c291a7b4a180c2080e1a88e4ea2af9b39df7c843767b80c9159fe90825a0076",
+      "scopes": [
+        "control:read",
+        "fleet:write",
+        "heartbeat:write",
+        "identity:read",
+        "package:read",
+        "task:execute",
+        "task:lease"
+      ]
+    }
+  ],
+  "enforcement": {
+    "enforcement_active": true,
+    "policy_version": "workload-identity-v1.0.0",
+    "policy_digest": "af9fac124585405567eea5ac54fbb0a1bf01ca62ec5623f14ecc78de8be0cb74",
+    "covered_credentials": 14,
+    "uncovered_credentials": 0
+  },
+  "report_digest": "1a1cf583746e13a3bedb511f616664460ab4c9702dbbcdba85278c30e90105b0"
+}
