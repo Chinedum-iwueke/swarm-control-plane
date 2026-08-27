@@ -20,6 +20,7 @@ from app.api.routes import (
     corpus_sync_router,
     curriculum_router,
     data_contracts_router,
+    discovery_portfolio_router,
     discovery_router,
     evaluator_routing_router,
     evidence_router,
@@ -58,8 +59,8 @@ from app.api.routes import (
     selection_audit_router,
     statistical_search_router,
     supervisor_router,
-    symbolic_search_router,
     surveillance_router,
+    symbolic_search_router,
     task_graphs_router,
     task_runtime_router,
     tasks_router,
@@ -83,6 +84,7 @@ app.include_router(curriculum_router)
 app.include_router(falsification_router)
 app.include_router(ingestion_router)
 app.include_router(discovery_router)
+app.include_router(discovery_portfolio_router)
 app.include_router(laboratory_router)
 app.include_router(lake_operations_router)
 app.include_router(ingestion_recovery_router)
