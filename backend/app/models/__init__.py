@@ -12,6 +12,10 @@ from app.models.authority import (
     AuthorityException,
     AuthorityPolicySnapshot,
 )
+from app.models.autonomous_research import (
+    AutonomousResearchSession,
+    AutonomousResearchSessionEvent,
+)
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
     FounderConversation,
@@ -161,6 +165,8 @@ __all__ = [
     "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",
+    "AutonomousResearchSession",
+    "AutonomousResearchSessionEvent",
     "AuthorityDecisionRecord",
     "AuthorityDelegation",
     "AuthorityException",
