@@ -228,6 +228,7 @@
         <div class="section-heading">
           <div><p class="eyebrow">Human authority</p><h1>Approvals</h1><p class="heading-context">Review scope and effect before authorizing change</p></div>
         </div>
+        <div id="approval-summary" class="metric-row approval-summary"></div>
         <div class="approval-layout">
           <div id="approval-list"></div>
           <aside class="policy-panel">
@@ -454,7 +455,9 @@
       <div id="decision-summary" class="decision-summary"></div>
       <input type="hidden" name="approval_id">
       <input type="hidden" name="action">
+      <input type="hidden" name="review_digest">
       <label>Decision reason<textarea name="reason" required minlength="10" maxlength="500" placeholder="Record why this decision is appropriate."></textarea></label>
+      <label id="decision-acknowledgement" class="decision-acknowledgement"><input type="checkbox" name="digest_acknowledged" value="yes"> <span>I reviewed the exact digest, scope, prerequisites, and bounded effect shown above.</span></label>
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command" id="decision-submit">Approve</button></div>
     </form>
   </dialog>

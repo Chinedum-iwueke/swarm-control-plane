@@ -40,6 +40,14 @@ class ControlPlaneClient:
         tasks = await self._request("GET", "/v1/tasks", params={"limit": 100})
         agents = await self._request("GET", "/v1/agents")
         approvals = await self._request("GET", "/v1/approvals")
+        approval_center = await self._optional_object(
+            "/v1/approval-center",
+            {
+                "generated_at": None,
+                "counts": {"pending": 0, "actionable": 0, "blocked": 0, "decided": 0},
+                "items": [],
+            },
+        )
         artifacts = await self._request("GET", "/v1/artifacts", params={"limit": 100})
         scopes = await self._request("GET", "/v1/control/scopes")
         deployments = await self._request("GET", "/v1/packages/deployments")
@@ -135,6 +143,7 @@ class ControlPlaneClient:
             "tasks": tasks,
             "agents": agents,
             "approvals": approvals,
+            "approval_center": approval_center,
             "artifacts": artifacts,
             "control_scopes": scopes,
             "package_deployments": deployments,
@@ -411,11 +420,12 @@ class ControlPlaneClient:
             raise ValueError("Unsupported approval action.")
         return await self._request(
             "POST",
-            f"/v1/approvals/{approval_id}/{action}",
+            f"/v1/approval-center/{approval_id}/{action}",
             json={
                 "actor": "founder-mission-control",
                 "reason": decision.reason,
                 "expires_in_seconds": decision.expires_in_seconds,
+                "expected_review_digest": decision.expected_review_digest,
             },
         )
 

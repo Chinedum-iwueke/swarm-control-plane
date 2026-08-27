@@ -22,6 +22,7 @@ class FakeControlPlane:
         self.graph_requested = False
         self.conversation_turns: list[tuple[str, str]] = []
         self.research_cycle_decision: tuple[str, str, str, str] | None = None
+        self.approval_decision: Any = None
 
     async def close(self) -> None:
         self.closed = True
@@ -69,6 +70,7 @@ class FakeControlPlane:
         return {"id": conversation_id, "status": action, "reason": reason}
 
     async def decide_approval(self, approval_id, action, decision) -> dict:
+        self.approval_decision = decision
         return {"id": approval_id, "status": f"{action}d", "reason": decision.reason}
 
     async def set_pause(self, **kwargs) -> dict:
@@ -226,6 +228,34 @@ def test_new_thread_dialog_cancel_bypasses_required_field_validation(
         in html
     )
     assert 'document.querySelectorAll("[data-close-dialog]")' in script
+
+
+def test_approval_center_binds_displayed_review_digest(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    payload = {
+        "reason": "Founder reviewed the exact displayed approval envelope.",
+        "expires_in_seconds": 900,
+        "expected_review_digest": "a" * 64,
+    }
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        page = client.get("/").text
+        accepted = client.post(
+            "/api/approvals/approval-id/approve",
+            headers={"X-Hermes-Intent": "founder-action"},
+            json=payload,
+        )
+        missing = client.post(
+            "/api/approvals/approval-id/approve",
+            headers={"X-Hermes-Intent": "founder-action"},
+            json={"reason": payload["reason"], "expires_in_seconds": 900},
+        )
+    assert accepted.status_code == 200
+    assert missing.status_code == 422
+    assert fake.approval_decision.expected_review_digest == "a" * 64
+    assert 'name="review_digest"' in page
+    assert 'name="digest_acknowledged"' in page
 
 
 def test_application_routes_construct_for_supported_python(

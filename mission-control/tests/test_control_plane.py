@@ -68,12 +68,34 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                 },
             )
         if request.url.path == "/v1/workload-identities/overview":
-            return httpx.Response(200, json={"enforcement_active": True, "identities": [],
-                "active_secret_policies": 0, "active_emergency_grants": 0, "expiring_credentials": 0})
+            return httpx.Response(
+                200,
+                json={
+                    "enforcement_active": True,
+                    "identities": [],
+                    "active_secret_policies": 0,
+                    "active_emergency_grants": 0,
+                    "expiring_credentials": 0,
+                },
+            )
         if request.url.path == "/v1/lifecycles/projections":
             return httpx.Response(200, json={"items": [], "count": 0})
         if request.url.path == "/v1/lifecycle-consequences":
             return httpx.Response(200, json={"items": [], "count": 0})
+        if request.url.path == "/v1/approval-center":
+            return httpx.Response(
+                200,
+                json={
+                    "generated_at": None,
+                    "counts": {
+                        "pending": 0,
+                        "actionable": 0,
+                        "blocked": 0,
+                        "decided": 0,
+                    },
+                    "items": [],
+                },
+            )
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -411,6 +433,7 @@ async def test_approval_body_is_explicit(
             ApprovalDecision(
                 reason="Founder reviewed the exact bounded plan.",
                 expires_in_seconds=600,
+                expected_review_digest="a" * 64,
             ),
         )
     finally:
@@ -419,6 +442,7 @@ async def test_approval_body_is_explicit(
         "actor": "founder-mission-control",
         "reason": "Founder reviewed the exact bounded plan.",
         "expires_in_seconds": 600,
+        "expected_review_digest": "a" * 64,
     }
 
 

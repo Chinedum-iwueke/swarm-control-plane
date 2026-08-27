@@ -33,6 +33,10 @@ from app.schemas.founder_channel import (
     FounderNotificationResponse,
 )
 from app.schemas.governance import (
+    ApprovalCenterDecision,
+    ApprovalCenterDecisionReceipt,
+    ApprovalCenterItem,
+    ApprovalCenterResponse,
     ApprovalDecision,
     ApprovalEventResponse,
     ApprovalResponse,
@@ -111,6 +115,10 @@ __all__ = [
     "AgentRegistrationResponse",
     "AgentResponse",
     "AgentRevocationResponse",
+    "ApprovalCenterDecision",
+    "ApprovalCenterDecisionReceipt",
+    "ApprovalCenterItem",
+    "ApprovalCenterResponse",
     "ApprovalDecision",
     "ApprovalEventResponse",
     "ApprovalResponse",
