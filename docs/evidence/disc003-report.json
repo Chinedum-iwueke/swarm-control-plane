@@ -1,0 +1,11 @@
+{
+  "schema_version": "disc003-pilot-report-v1.0.0",
+  "program_id": "096bdcf9-4325-48e7-a699-5b1f86ba494a",
+  "source_digest": "85cbeba05960177246650498d70fd7b6318fbcad364c425909140b72d9752e5a",
+  "semantic_digest": "2d15586abe1ed0f9d470cb767191d99f8a734a5dc9db365e00b1e18627519289",
+  "compiled_digest": "09c91fd6710454f1a10acca4d9fc63cc91290495d7bbdac0619c40fb5b3de95e",
+  "trial_count": 4,
+  "unsafe_current_bar_rejected": true,
+  "action_authority": false,
+  "report_digest": "11f75d928ddf521e68540cbec013ed3497ab5308e7fb00050e8538575757034f"
+}
