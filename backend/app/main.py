@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
 from app.api.routes import (
+    agent_context_router,
+    agent_context_runtime_router,
     agent_fleet_router,
     agent_governance_router,
     agent_notes_router,
@@ -94,6 +96,8 @@ app.include_router(graph_router)
 app.include_router(agent_runtime_router)
 app.include_router(agent_fleet_router)
 app.include_router(agent_governance_router)
+app.include_router(agent_context_router)
+app.include_router(agent_context_runtime_router)
 app.include_router(agent_research_router)
 app.include_router(agent_notes_router)
 app.include_router(tasks_router)

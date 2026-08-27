@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal, Protocol
@@ -173,6 +175,8 @@ class AgentAPI(Protocol):
         task_id: UUID | str,
         request: ArtifactCreateRequest,
     ) -> ArtifactResponse: ...
+
+    async def get_task_context(self, task_id: UUID | str, lease_token: str): ...
 
 
 class WorkspacePreparer(Protocol):
@@ -378,6 +382,26 @@ class WorkerService:
                 )
                 if not isinstance(workspace, TaskWorkspace):
                     raise TypeError("Workspace manager returned an invalid result.")
+                if task.input_contract.get("governed_context_required") is True:
+                    context = await api.get_task_context(task.id, lease_token)
+                    if (
+                        context.task_id != task.id
+                        or context.attempt_number != task.attempt_count
+                    ):
+                        raise WorkerConfigurationError(
+                            "Context manifest does not match the leased attempt."
+                        )
+                    context_path = (
+                        workspace.plan.attempt_directory / "context-manifest.json"
+                    )
+                    encoded = json.dumps(
+                        context.model_dump(mode="json"), sort_keys=True, indent=2
+                    ).encode("utf-8")
+                    descriptor = os.open(
+                        context_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+                    )
+                    with os.fdopen(descriptor, "wb") as stream:
+                        stream.write(encoded)
             except Exception as exc:  # noqa: BLE001 - workspace boundary
                 return await self._release_or_lease_lost(
                     api=api,

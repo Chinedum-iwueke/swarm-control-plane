@@ -11,6 +11,7 @@ from swarm_worker.api_client import AuthenticationError, ConflictError
 from swarm_worker.config import WorkerSettings
 from swarm_worker.executors.code_validation import LeaseLost
 from swarm_worker.models import (
+    AgentContextManifest,
     AgentHeartbeatResponse,
     AgentIdentity,
     LeaseResponse,
@@ -59,6 +60,8 @@ def verified_role_package():
     )
     package.manifest.repository_profile.repositories.append("project")
     return package
+
+
 NOW = "2026-07-29T12:00:00Z"
 
 
@@ -286,6 +289,28 @@ class FakeAPI:
             raise self.start_error
         return object()
 
+    async def get_task_context(self, task_id: UUID, lease_token: str):
+        self.events.append("context")
+        assert lease_token == LEASE_TOKEN
+        return AgentContextManifest(
+            id=UUID("33333333-3333-4333-8333-333333333333"),
+            task_id=task_id,
+            agent_id=AGENT_ID,
+            attempt_number=1,
+            schema_version="agent-context-manifest-v1.0.0",
+            purpose="Bounded test context.",
+            authorization_snapshot_digest="a" * 64,
+            items=[],
+            context_pack_digest="b" * 64,
+            manifest_digest="c" * 64,
+            item_count=0,
+            byte_count=100,
+            status="locked",
+            expires_at=datetime.now(timezone.utc),
+            created_by="founder-operator",
+            created_at=datetime.now(timezone.utc),
+        )
+
     async def heartbeat_task(self, task_id: UUID, request: object) -> object:
         self.events.append("task_heartbeat")
         self.requests["heartbeat_task"].append(request)
@@ -428,6 +453,30 @@ async def test_happy_path_exact_order_and_complete_once(
     assert len(api.requests["artifacts"]) == 2
     assert api.requests["artifacts"][0].location.startswith("workspace://")
     assert api.closed is True
+
+
+@pytest.mark.asyncio
+async def test_governed_context_is_fetched_and_materialized_before_start(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    task = make_task(
+        input_contract={
+            "repository": "project",
+            "workflow": "code-validation",
+            "base_ref": "main",
+            "governed_context_required": True,
+        }
+    )
+    api = FakeAPI(events, lease=LeaseResponse(task=task, lease_token=LEASE_TOKEN))
+    outcome = await make_service(tmp_path, api, events).run_once()
+
+    assert isinstance(outcome, SucceededOutcome)
+    assert events.index("context") < events.index("start")
+    context_path = outcome.workspace / "context-manifest.json"
+    assert context_path.exists()
+    assert context_path.stat().st_mode & 0o777 == 0o600
+    assert '"manifest_digest": "cccc' in context_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

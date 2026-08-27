@@ -248,6 +248,10 @@ def complete_task(
         },
     )
 
+    from app.services.agent_context import discard_working_memory
+
+    discarded = discard_working_memory(db, task.id)
+    event.payload = {**event.payload, "working_memory_discarded": discarded}
     clear_lease(task)
     if task.mission_id is not None:
         refresh_mission(db, task.mission_id)
@@ -319,6 +323,10 @@ def fail_task(
         task.status = "failed"
         task.completed_at = now
 
+    from app.services.agent_context import discard_working_memory
+
+    discarded = discard_working_memory(db, task.id)
+    event.payload = {**event.payload, "working_memory_discarded": discarded}
     clear_lease(task)
     if task.mission_id is not None:
         refresh_mission(db, task.mission_id)
@@ -386,6 +394,10 @@ def release_task(
             payload={},
         )
 
+    from app.services.agent_context import discard_working_memory
+
+    discarded = discard_working_memory(db, task.id)
+    event.payload = {**event.payload, "working_memory_discarded": discarded}
     clear_lease(task)
 
     db.commit()

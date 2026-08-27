@@ -1,3 +1,5 @@
+from app.api.routes.agent_context import agent_router as agent_context_runtime_router
+from app.api.routes.agent_context import router as agent_context_router
 from app.api.routes.agent_governance import router as agent_governance_router
 from app.api.routes.agent_research import router as agent_research_router
 from app.api.routes.agent_runtime import router as agent_runtime_router
@@ -50,6 +52,8 @@ from app.api.routes.tasks import router as tasks_router
 from app.api.routes.workload_identities import router as workload_identities_router
 
 __all__ = [
+    "agent_context_router",
+    "agent_context_runtime_router",
     "agent_fleet_router",
     "agent_governance_router",
     "agent_notes_router",

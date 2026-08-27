@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from swarm_worker.config import WorkerSettings
 from swarm_worker.models import (
+    AgentContextManifest,
     AgentHeartbeat,
     AgentHeartbeatResponse,
     AgentIdentity,
@@ -17,6 +18,7 @@ from swarm_worker.models import (
     ArtifactResponse,
     BrokerTicketRequest,
     BrokerTicketResponse,
+    ContextReplayRequest,
     FounderProposalCreate,
     FounderProposalResponse,
     LeaseResponse,
@@ -182,6 +184,17 @@ class SwarmAPIClient:
             BrokerTicketResponse,
             payload=request,
             secrets=(request.lease_token,),
+        )
+
+    async def get_task_context(
+        self, task_id: UUID | str, lease_token: str
+    ) -> AgentContextManifest:
+        return await self._request(
+            "POST",
+            f"/v1/agent/tasks/{task_id}/context",
+            AgentContextManifest,
+            payload=ContextReplayRequest(lease_token=lease_token),
+            secrets=(lease_token,),
         )
 
     async def submit_founder_proposal(
