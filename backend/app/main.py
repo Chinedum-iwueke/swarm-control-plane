@@ -22,6 +22,7 @@ from app.api.routes import (
     discovery_router,
     evaluator_routing_router,
     evidence_router,
+    falsification_router,
     fleet_router,
     founder_channel_router,
     governance_audit_router,
@@ -73,6 +74,7 @@ app.include_router(authority_router)
 app.include_router(corpus_router)
 app.include_router(corpus_sync_router)
 app.include_router(curriculum_router)
+app.include_router(falsification_router)
 app.include_router(ingestion_router)
 app.include_router(discovery_router)
 app.include_router(laboratory_router)

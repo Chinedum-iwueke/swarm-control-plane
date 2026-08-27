@@ -2,10 +2,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
 from app.db.session import get_db
+from app.models.memory import EvidenceOppositionRecord
 from app.schemas.evidence import EvidenceObjectResponse
 from app.schemas.memory import (
     BeliefLedgerCreate,
@@ -47,6 +49,16 @@ def register_opposition(
     db: Annotated[Session, Depends(get_db)],
 ):
     return create_opposition(db, payload, ORCHESTRATOR_ACCESS)
+
+
+@router.get("/oppositions", response_model=list[OppositionResponse])
+def read_oppositions(db: Annotated[Session, Depends(get_db)]):
+    records = db.scalars(
+        select(EvidenceOppositionRecord).order_by(
+            EvidenceOppositionRecord.created_at.desc()
+        )
+    ).all()
+    return [OppositionResponse.model_validate(item) for item in records]
 
 
 @router.post(
@@ -116,9 +128,7 @@ def read_dossier(
     return get_dossier(db, dossier_id, ORCHESTRATOR_ACCESS)
 
 
-@router.get(
-    "/dossiers/{dossier_id}/replay", response_model=DossierReplayResponse
-)
+@router.get("/dossiers/{dossier_id}/replay", response_model=DossierReplayResponse)
 def replay_frozen_dossier(
     dossier_id: UUID,
     db: Annotated[Session, Depends(get_db)],
