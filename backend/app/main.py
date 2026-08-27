@@ -33,6 +33,7 @@ from app.api.routes import (
     laboratory_router,
     lifecycle_consequence_router,
     lifecycle_router,
+    market_data_catalog_router,
     memory_router,
     metrics_router,
     missions_router,
@@ -75,6 +76,7 @@ app.include_router(laboratory_router)
 app.include_router(ingestion_recovery_router)
 app.include_router(institutional_lifecycle_router)
 app.include_router(lifecycle_router)
+app.include_router(market_data_catalog_router)
 app.include_router(evaluator_routing_router)
 app.include_router(lifecycle_consequence_router)
 app.include_router(metrics_router)
