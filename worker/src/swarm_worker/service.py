@@ -427,7 +427,7 @@ class WorkerService:
             async def send_task_heartbeat(
                 progress: dict[str, object],
             ) -> None:
-                await api.heartbeat_task(
+                heartbeat_result = await api.heartbeat_task(
                     task.id,
                     TaskExecutionHeartbeatRequest(
                         lease_token=lease_token,
@@ -436,6 +436,14 @@ class WorkerService:
                         progress=progress,
                     ),
                 )
+                heartbeat_task = getattr(heartbeat_result, "task", None)
+                if (
+                    heartbeat_task is not None
+                    and heartbeat_task.cancel_requested_at is not None
+                ):
+                    raise asyncio.CancelledError(
+                        heartbeat_task.cancel_reason or "Task graph cancelled."
+                    )
 
             try:
                 executor = self._executor_factory(settings)

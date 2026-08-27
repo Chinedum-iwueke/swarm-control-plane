@@ -21,6 +21,8 @@ from app.models import (
     TaskApproval,
     TaskDependency,
     TaskEvent,
+    TaskGraph,
+    TaskGraphNode,
 )
 from app.schemas.agent_governance import EffectiveAuthorityRequest
 from app.schemas.task import TaskCreate
@@ -138,6 +140,7 @@ def serialize_task(task: Task) -> dict[str, Any]:
         "conversation_revision": task.conversation_revision,
         "mission_id": task.mission_id,
         "milestone_step_id": task.milestone_step_id,
+        "task_graph_node_id": task.task_graph_node_id,
         "created_by": task.created_by,
         "input_contract": task.input_contract,
         "expected_outputs": task.expected_outputs,
@@ -158,6 +161,8 @@ def serialize_task(task: Task) -> dict[str, Any]:
         "updated_at": task.updated_at,
         "started_at": task.started_at,
         "completed_at": task.completed_at,
+        "cancel_requested_at": task.cancel_requested_at,
+        "cancel_reason": task.cancel_reason,
     }
 
 
@@ -282,6 +287,27 @@ def lease_next_task(
             )
         ),
     )
+    active_graph_tasks = aliased(Task)
+    active_graph_nodes = aliased(TaskGraphNode)
+    graph_parallelism_available = or_(
+        Task.task_graph_node_id.is_(None),
+        exists(
+            select(TaskGraphNode.id)
+            .join(TaskGraph, TaskGraph.id == TaskGraphNode.graph_id)
+            .where(
+                TaskGraphNode.id == Task.task_graph_node_id,
+                TaskGraph.status == "active",
+                select(func.count(active_graph_tasks.id))
+                .join(active_graph_nodes, active_graph_tasks.task_graph_node_id == active_graph_nodes.id)
+                .where(
+                    active_graph_nodes.graph_id == TaskGraph.id,
+                    active_graph_tasks.status.in_(ACTIVE_LEASE_STATUSES),
+                )
+                .scalar_subquery()
+                < TaskGraph.max_parallelism,
+            )
+        ),
+    )
 
     task = db.scalar(
         select(Task)
@@ -291,6 +317,7 @@ def lease_next_task(
             Task.risk_level <= agent.risk_ceiling,
             Task.required_capabilities.contained_by(agent.capabilities),
             valid_approval,
+            graph_parallelism_available,
             or_(
                 Task.mission_id.is_(None),
                 exists(

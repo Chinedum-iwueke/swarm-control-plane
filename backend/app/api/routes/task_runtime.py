@@ -4,7 +4,7 @@ import uuid
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -42,6 +42,42 @@ router = APIRouter(
     prefix="/v1/agent/tasks",
     tags=["agent-task-runtime"],
 )
+
+
+def _reconcile_task_graph(db: Session, task) -> None:
+    if task.task_graph_node_id is None:
+        return
+    from app.models import TaskGraph, TaskGraphNode
+    from app.services.task_graphs import reconcile_graph
+
+    node = db.get(TaskGraphNode, task.task_graph_node_id)
+    graph = db.get(TaskGraph, node.graph_id) if node is not None else None
+    if graph is not None:
+        reconcile_graph(db, graph)
+
+
+def _record_graph_task_message(db: Session, task, *, succeeded: bool) -> None:
+    if task.task_graph_node_id is None:
+        return
+    from app.models import TaskGraph, TaskGraphNode
+    from app.schemas.task_graph import TaskGraphMessageCreate
+    from app.services.task_graphs import append_message
+
+    node = db.get(TaskGraphNode, task.task_graph_node_id)
+    graph = db.get(TaskGraph, node.graph_id) if node is not None else None
+    if graph is None:
+        return
+    append_message(
+        db,
+        graph,
+        TaskGraphMessageCreate(
+            node_key=node.node_key,
+            message_type=node.output_type if succeeded else "failure.report",
+            sender=node.role,
+            recipient="task-graph-controller",
+            payload=task.result if succeeded else task.failure,
+        ),
+    )
 
 
 @router.post(
@@ -231,6 +267,11 @@ def complete_task(
         payload.lease_token,
         allowed_statuses={"running"},
     )
+    if task.cancel_requested_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Task graph cancellation is pending; completion is no longer accepted.",
+        )
 
     task.status = "succeeded"
     task.result = payload.result
@@ -252,9 +293,11 @@ def complete_task(
 
     discarded = discard_working_memory(db, task.id)
     event.payload = {**event.payload, "working_memory_discarded": discarded}
+    _record_graph_task_message(db, task, succeeded=True)
     clear_lease(task)
     if task.mission_id is not None:
         refresh_mission(db, task.mission_id)
+    _reconcile_task_graph(db, task)
 
     db.commit()
     db.refresh(task)
@@ -327,9 +370,11 @@ def fail_task(
 
     discarded = discard_working_memory(db, task.id)
     event.payload = {**event.payload, "working_memory_discarded": discarded}
+    _record_graph_task_message(db, task, succeeded=False)
     clear_lease(task)
     if task.mission_id is not None:
         refresh_mission(db, task.mission_id)
+    _reconcile_task_graph(db, task)
 
     db.commit()
     db.refresh(task)
@@ -361,7 +406,11 @@ def release_task(
     )
 
     previous_status = task.status
-    task.status = "queued" if task.attempt_count < task.max_attempts else "failed"
+    if task.cancel_requested_at is not None:
+        task.status = "cancelled"
+        task.completed_at = now
+    else:
+        task.status = "queued" if task.attempt_count < task.max_attempts else "failed"
     if task.status == "queued":
         rearm_task_approval(db, task, "A new approval is required after lease release.")
 
@@ -399,6 +448,7 @@ def release_task(
     discarded = discard_working_memory(db, task.id)
     event.payload = {**event.payload, "working_memory_discarded": discarded}
     clear_lease(task)
+    _reconcile_task_graph(db, task)
 
     db.commit()
     db.refresh(task)

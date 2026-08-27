@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_mission_supervisor
 from app.db.session import get_db
-from app.models import EngineeringMission
+from app.models import EngineeringMission, TaskGraph
 from app.schemas import MissionReconcileResponse, MissionResponse
 from app.services.daily_research import reconcile_programs
 from app.services.supervision import reconcile_mission
+from app.services.task_graphs import reconcile_graph
 
 router = APIRouter(
     prefix="/v1/supervisor",
@@ -24,6 +25,14 @@ def reconcile_supervised_missions(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[MissionReconcileResponse]:
     reconcile_programs(db)
+    graphs = db.scalars(
+        select(TaskGraph)
+        .where(TaskGraph.status.in_(["active", "cancelling", "compensating"]))
+        .order_by(TaskGraph.created_at)
+        .with_for_update(skip_locked=True)
+    ).all()
+    for graph in graphs:
+        reconcile_graph(db, graph)
     missions = db.scalars(
         select(EngineeringMission)
         .where(
