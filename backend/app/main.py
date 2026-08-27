@@ -44,6 +44,7 @@ from app.api.routes import (
     memory_router,
     metrics_router,
     missions_router,
+    model_evaluations_router,
     observability_router,
     operational_notes_router,
     operations_router,
@@ -96,6 +97,7 @@ app.include_router(market_data_catalog_router)
 app.include_router(evaluator_routing_router)
 app.include_router(lifecycle_consequence_router)
 app.include_router(metrics_router)
+app.include_router(model_evaluations_router)
 app.include_router(memory_router)
 app.include_router(missions_router)
 app.include_router(operational_notes_router)
