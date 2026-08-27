@@ -1,0 +1,23 @@
+{
+  "backup_digest": "e8f3d13e065407ecb4c768ff330a97c37acb4ad062a44cc057448abf66544928",
+  "capital_or_order_authority": false,
+  "catalog_digest": "3c5352526ef607d02502144cf8623dc53098322c4bf84f8395e0650384aa2e07",
+  "checks": {
+    "append_only_events_visible": true,
+    "capacity_warning_observable": true,
+    "clean_read_allowed": true,
+    "corrupt_partition_denied": true,
+    "protected_payload_absent": true,
+    "publication_disabled": true,
+    "retention_hold_blocks_delete": true,
+    "unknown_principal_denied": true,
+    "verified_restore_succeeded": true
+  },
+  "event_count": 6,
+  "partition_digest": "d0bab8689d1bd65155b97bcbdde4be8fa014ab1f5c3286d40f5aaa4e29849396",
+  "schema_version": "data003-pilot-report-v1.0.0",
+  "snapshot_digest": "5fe1a1999733551358b09f72f32c4f67dd21c6f144de4eeb5ba0ad9edb27fc03",
+  "snapshot_id": "0acbf36c-29d4-427d-a83b-f943b004d3ba",
+  "source_write_authority": false,
+  "success": true
+}
