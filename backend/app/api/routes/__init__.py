@@ -56,6 +56,7 @@ from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.selection_audit import router as selection_audit_router
 from app.api.routes.statistical_search import router as statistical_search_router
 from app.api.routes.supervisor import router as supervisor_router
+from app.api.routes.symbolic_search import router as symbolic_search_router
 from app.api.routes.surveillance import router as surveillance_router
 from app.api.routes.task_graphs import router as task_graphs_router
 from app.api.routes.task_runtime import router as task_runtime_router
@@ -119,6 +120,7 @@ __all__ = [
     "selection_audit_router",
     "statistical_search_router",
     "supervisor_router",
+    "symbolic_search_router",
     "surveillance_router",
     "task_graphs_router",
     "task_runtime_router",
