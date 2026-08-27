@@ -1,0 +1,58 @@
+{
+  "schema_version": "agt006-pilot-report-v1.0.0",
+  "route_id": "68fd264d-f956-477a-8d8c-90946d5a7716",
+  "route_digest": "41e898c91f45155fb017e0b6e4d2f160f17e981d43d6fa44eae58ef99a9e6f4b",
+  "status": "completed",
+  "review_kinds": [
+    "adversarial",
+    "statistical"
+  ],
+  "distinct_agents": 2,
+  "distinct_packages": 2,
+  "shared_runtime_dimensions": [
+    "machine",
+    "model_family",
+    "provider"
+  ],
+  "independence_receipt_digest": "9ed893dd2c37fd7cc51605416966ccbd5cd2e41a6e5b53d0a4e333f69b221d86",
+  "strict_correlation_route_status": "blocked",
+  "strict_correlation_block_reason": {
+    "category": "independent_evaluator_unavailable",
+    "excluded": [
+      {
+        "reasons": [
+          "review_kind"
+        ],
+        "review_kind": "statistical",
+        "profile_digest": "32ded289a46ce1160472b1f036a123e66a49120ffa2d8d313b38ed492390e9ab"
+      },
+      {
+        "reasons": [
+          "pairwise_correlation_ceiling"
+        ],
+        "review_kind": "adversarial",
+        "profile_digest": "32ded289a46ce1160472b1f036a123e66a49120ffa2d8d313b38ed492390e9ab"
+      },
+      {
+        "reasons": [
+          "pairwise_correlation_ceiling",
+          "review_kind",
+          "selected_evaluator_hard_conflict"
+        ],
+        "review_kind": "adversarial",
+        "profile_digest": "51bd446049780bf63dd2f4e3c3286b60ea31f733e23b0cf859c7a58f317c6909"
+      }
+    ],
+    "unfilled_review_kind": "adversarial"
+  },
+  "action_authority": false,
+  "event_chain": [
+    "1bd59fd6e3857a47642e93688b585c4e4604e950fda4189c5ca2233cd1fc791e",
+    "c74a9746d9131afbe99e4b2ed156214b79a3d4e77e69f305b9554ed2a16d2354",
+    "77e47b79c1dc49c9d13dab2ffd77a278ee8da2a0a536075860bc0302dd79198b",
+    "d08e843092932f240f3313969b2f3ab344c868714789bfa386484fc138de6e16",
+    "992744ac9287ea73af8b1043d99d588d8e8cc633dd4dd06419af26fc910c601d",
+    "7962e608e097f3ecbd4f94fb74d29962e11eb8303770429e9e81e20cb11651be"
+  ],
+  "report_digest": "9f5462ac1c665c1b878086d6662c309f58ab8e92247e70e4ff25f80f4eb5169a"
+}
