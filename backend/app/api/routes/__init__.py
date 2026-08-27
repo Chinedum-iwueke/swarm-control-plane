@@ -6,6 +6,7 @@ from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.authority import router as authority_router
 from app.api.routes.autonomous_research import router as autonomous_research_router
+from app.api.routes.calibrations import router as calibrations_router
 from app.api.routes.causal_pipelines import router as causal_pipelines_router
 from app.api.routes.controls import router as controls_router
 from app.api.routes.conversations import channel_router as channel_conversations_router
@@ -80,6 +81,7 @@ __all__ = [
     "agents_router",
     "authority_router",
     "autonomous_research_router",
+    "calibrations_router",
     "causal_pipelines_router",
     "channel_conversations_router",
     "controls_router",
