@@ -22,6 +22,7 @@ from app.api.routes import (
     discovery_router,
     evaluator_routing_router,
     evidence_router,
+    factor_language_router,
     falsification_router,
     fleet_router,
     founder_channel_router,
@@ -103,6 +104,7 @@ app.include_router(conversations_router)
 app.include_router(channel_conversations_router)
 app.include_router(data_contracts_router)
 app.include_router(evidence_router)
+app.include_router(factor_language_router)
 app.include_router(fleet_router)
 app.include_router(founder_channel_router)
 app.include_router(governance_router)
