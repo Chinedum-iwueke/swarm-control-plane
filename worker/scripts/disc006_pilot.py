@@ -9,6 +9,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
@@ -63,7 +64,44 @@ def main() -> int:
                 if item["stage"] in {"mechanism", "opportunity"}
             )
             hypothesis = call(client, "GET", "/v1/research/hypotheses")[0]
-            opposition = call(client, "GET", "/v1/research/memory/oppositions")[0]
+            result = call(
+                client,
+                "GET",
+                "/v1/research/evidence/objects?object_type=result&limit=1",
+            )["items"][0]
+            claims = call(
+                client,
+                "GET",
+                f"/v1/research/evidence/objects?object_type=claim&project={result['project']}&limit=1",
+            )["items"]
+            claim = claims[0] if claims else register_claim(client, result)
+            oppositions = call(client, "GET", "/v1/research/memory/oppositions")
+            opposition = (
+                oppositions[0]
+                if oppositions
+                else call(
+                    client,
+                    "POST",
+                    "/v1/research/memory/oppositions",
+                    json={
+                        "project": result["project"],
+                        "subject_claim_id": claim["object_id"],
+                        "opposing_object_id": result["object_id"],
+                        "opposition_type": "alternative_explanation",
+                        "comparability": {
+                            "population": "Existing governed Bulletproof research result",
+                            "horizon": "Existing result horizon",
+                            "method": "Provenance fixture for the DISC-006 governance replay",
+                            "materially_comparable": False,
+                            "unresolved_differences": [
+                                "The replay proves governance behavior, not economic comparability."
+                            ],
+                        },
+                        "rationale": "The retained negative result is an explicit rival to an unqualified positive mechanism claim.",
+                        "recorded_by": "disc006-pilot",
+                    },
+                )
+            )
             claim = call(
                 client,
                 "GET",
@@ -246,6 +284,50 @@ def evaluation(
             "The pilot proves governance behavior, not the economic mechanism."
         ],
     }
+
+
+def register_claim(client: httpx.Client, result: dict) -> dict:
+    native_id = "disc006-live-claim-r1"
+    payload = {
+        "kind": "claim",
+        "proposition": "Reduced liquidity amplifies the price response to directional forced flow.",
+        "evidence_object_ids": [result["object_id"]],
+        "qualifiers": [
+            "Governance fixture only; the referenced result does not establish the mechanism."
+        ],
+        "status": "disputed",
+    }
+    return call(
+        client,
+        "POST",
+        "/v1/research/evidence/objects",
+        json={
+            "schema_version": "canonical-identity-v1.0.0",
+            "object_schema_version": "canonical-evidence-v1.0.0",
+            "object_id": str(uuid5(NAMESPACE_URL, native_id)),
+            "object_type": "claim",
+            "content_version": "1.0.0",
+            "content_digest": digest(payload),
+            "producer": {
+                "system": "disc006-pilot",
+                "native_type": "claim",
+                "native_id": native_id,
+                "schema_version": "disc006-pilot-v1.0.0",
+            },
+            "aliases": [
+                {
+                    "namespace": "disc006-pilot",
+                    "object_type": "claim",
+                    "value": native_id,
+                }
+            ],
+            "project": result["project"],
+            "access_class": "internal",
+            "authority_class": "derived",
+            "payload": payload,
+            "created_by": "disc006-pilot",
+        },
+    )
 
 
 def make_report(falsified: dict, unresolved: dict) -> dict:
