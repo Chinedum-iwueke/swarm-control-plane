@@ -31,6 +31,7 @@ from app.api.routes import (
     ingestion_router,
     institutional_lifecycle_router,
     laboratory_router,
+    lake_operations_router,
     lifecycle_consequence_router,
     lifecycle_router,
     market_data_catalog_router,
@@ -73,6 +74,7 @@ app.include_router(corpus_sync_router)
 app.include_router(curriculum_router)
 app.include_router(ingestion_router)
 app.include_router(laboratory_router)
+app.include_router(lake_operations_router)
 app.include_router(ingestion_recovery_router)
 app.include_router(institutional_lifecycle_router)
 app.include_router(lifecycle_router)
