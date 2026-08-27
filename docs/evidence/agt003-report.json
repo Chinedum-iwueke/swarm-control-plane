@@ -1,0 +1,15 @@
+{
+  "schema_version": "agt003-pilot-report-v1.0.0",
+  "success": true,
+  "graph_id": "11a85aae-abdf-4452-8a30-5916a18d77d4",
+  "manifest_digest": "ef38ec20fddc92080db2a2b85392c92dc4278769a2968ca994f1ed56a3556463",
+  "status": "cancelled",
+  "node_count": 2,
+  "message_digests": [
+    "c1c3b6e4e991e8777236728b858745551d3604aabd5c228492154bd864ee5c70"
+  ],
+  "event_chain_head": "d52646f5f0a7f3daade23a9503d261a0490f55b68aa94eb44c20644897fc81a1",
+  "execution_authority": false,
+  "capital_authority": false,
+  "report_digest": "3db36e82c88622629381137bf89ce072620489b9027f677609ee1cae8a614295"
+}
