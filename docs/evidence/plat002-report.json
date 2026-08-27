@@ -1,0 +1,22 @@
+{
+  "schema_version": "plat002-pilot-v1.0.0",
+  "identity_id": "2279aa3d-a68f-458b-9575-dfb583607256",
+  "manifest_digest": "a13881e4812204a9d6193bd0156d1381c4b9cb65d60686f176d2a3be7410cb9d",
+  "checks": {
+    "enforcement_active": true,
+    "scoped_identity_allowed": true,
+    "confused_deputy_denied": true,
+    "secret_value_redacted": true,
+    "secret_policy_rotated_and_revoked": true,
+    "privilege_expanding_break_glass_denied": true,
+    "reduction_only_break_glass_revoked": true,
+    "rotation_rollback_restored_prior": true,
+    "rolled_back_credential_revoked": true
+  },
+  "credential_prefixes": {
+    "new": "1f1eb5c60936"
+  },
+  "capital_or_order_authority": false,
+  "success": true,
+  "report_digest": "ae388619c5987dc231974fa26fc61a5eecd6b749fb02e9efb31f3d26bfcecad0"
+}
