@@ -1,0 +1,12 @@
+{
+  "cost_erased_opportunity_rejected": true,
+  "execution_order_or_capital_authority": false,
+  "map_digest": "c68df954976315f42ecce88eb974e56f0467a50aa11f457c500e9ad83eceff3a",
+  "map_id": "358f8ec0-700e-4c39-af52-b2515b54cf7c",
+  "report_digest": "fa46dcb44d1a913b72193f114cc69148dbf0a5f1e0bb4a832a60fb70cfa8db9d",
+  "schema_version": "disc002-pilot-report-v1.0.0",
+  "semantic_fingerprint": "6255e465d3181d4b6f1fc00ac8c0a44718745a31f28659f33f66af17e9381f21",
+  "source_write_authority": false,
+  "success": true,
+  "supersession_event_retained": true
+}
