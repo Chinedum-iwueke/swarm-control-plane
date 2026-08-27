@@ -1,0 +1,26 @@
+{
+  "schema_version": "agt004-pilot-report-v1.0.0",
+  "bundle_id": "12d23600-6ee5-401b-b43e-0f016641e046",
+  "bundle_digest": "b00090c9cef72f22eeb56b096854f48bfe81ffefcd4f7b48b2a6ff9a28cf81e3",
+  "status": "active",
+  "evaluation_categories": [
+    "instruction_collision",
+    "malformed_output",
+    "prompt_injection",
+    "secret_exfiltration",
+    "valid_output"
+  ],
+  "action_authority": false,
+  "event_chain": [
+    "d82864c4f274ac3b1c3111283f2580550c78562a08b9c3896dcafc64b7f25f77",
+    "3f8b66f2797b86cc176f9c9874c37a922a8a6cb19fe9ef8179b2e3b1b00caee4",
+    "a57056c6968b188f5e488e68904cce93bc9cc6ce52604f6778b39aab9b24e26b",
+    "6f53944f44b4be64101618624746586cf46ce5d689b18e36c8f40fa3fb49876c",
+    "3883d58422cc737de7e4e09ae6871ba17baf4d24fa2d3023635ad3859554a8ac",
+    "bf6e4f57f38f95d28bf9c2d4a0dfdfbc9ec4e08df18abafe8912c80d12d742e8",
+    "3a45105086b00f118c352e277aa3f8aae244ec984fb1f1ac3d8c534ba08249e7",
+    "2b05b408195b2bf96006f4cf5e10c3c6489179a4c4f9487cd83406545c5c4978",
+    "fa0c29e6f3bc0588b877c09b6f000c9f5ce55f40f919548623a39c759da8edf1"
+  ],
+  "report_digest": "8fc5f2047ebce3be5d9f204e05eef1aadebc029d1c3e4bafc99f0cba9aa99c99"
+}
