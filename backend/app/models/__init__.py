@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_context import AgentContextManifest, AgentWorkingMemoryReceipt
 from app.models.agent_credential import AgentCredential
 from app.models.agent_governance import (
     AgentCapabilityGrant,
@@ -126,8 +127,10 @@ __all__ = [
     "Agent",
     "AgentCapabilityGrant",
     "AgentCharter",
+    "AgentContextManifest",
     "AgentCredential",
     "AgentGrantEvent",
+    "AgentWorkingMemoryReceipt",
     "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",

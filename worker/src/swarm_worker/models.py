@@ -96,6 +96,29 @@ class LeaseResponse(BaseModel):
     pause_reasons: list[str] = Field(default_factory=list)
 
 
+class AgentContextManifest(BaseModel):
+    id: UUID
+    task_id: UUID
+    agent_id: UUID
+    attempt_number: int
+    schema_version: str
+    purpose: str
+    authorization_snapshot_digest: str
+    items: list[dict[str, Any]]
+    context_pack_digest: str
+    manifest_digest: str
+    item_count: int
+    byte_count: int
+    status: str
+    expires_at: datetime
+    created_by: str
+    created_at: datetime
+
+
+class ContextReplayRequest(BaseModel):
+    lease_token: str
+
+
 class TaskStartRequest(BaseModel):
     lease_token: str = Field(min_length=1)
     message: str = Field(
