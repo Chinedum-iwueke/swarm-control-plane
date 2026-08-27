@@ -86,10 +86,21 @@ class QualityAssertion(StrictModel):
     maximum: int = Field(ge=0)
 
 
+class InstrumentReferenceBinding(StrictModel):
+    requested_instrument: str = Field(pattern=_KEY, max_length=150)
+    venue_id: str = Field(pattern=_KEY, max_length=100)
+    instrument_id: str = Field(pattern=_KEY, max_length=150)
+    listing_id: str = Field(pattern=_KEY, max_length=150)
+
+
 class PointInTimeDatasetManifest(StrictModel):
     schema_version: Literal[1]
     provider: ProviderIdentity
     instruments: list[str] = Field(min_length=1, max_length=500)
+    reference_snapshot_digest: str | None = Field(default=None, pattern=_DIGEST)
+    instrument_reference_bindings: list[InstrumentReferenceBinding] = Field(
+        default_factory=list, max_length=500
+    )
     timeframe: str = Field(pattern=_KEY, max_length=50)
     date_start: datetime
     date_end: datetime
@@ -125,6 +136,15 @@ class PointInTimeDatasetManifest(StrictModel):
         checks = [assertion.check for assertion in self.quality_assertions]
         if len(checks) != len(set(checks)):
             raise ValueError("quality checks must be unique")
+        bound = [item.requested_instrument for item in self.instrument_reference_bindings]
+        if self.reference_snapshot_digest is None and bound:
+            raise ValueError("instrument bindings require a reference snapshot digest")
+        if self.reference_snapshot_digest is not None and set(bound) != set(
+            self.instruments
+        ):
+            raise ValueError("reference bindings must cover every manifest instrument")
+        if len(bound) != len(set(bound)):
+            raise ValueError("instrument reference bindings must be unique")
         if self.fallback_policy == "forbidden" and (
             self.fallback_provider is not None or self.fallback_reason is not None
         ):

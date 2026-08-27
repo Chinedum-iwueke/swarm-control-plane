@@ -42,6 +42,7 @@ from app.api.routes.platform import router as platform_router
 from app.api.routes.prompt_policies import router as prompt_policies_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
+from app.api.routes.reference_data import router as reference_data_router
 from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
 from app.api.routes.research_programs import router as research_programs_router
@@ -97,6 +98,7 @@ __all__ = [
     "platform_router",
     "prompt_policies_router",
     "proposals_router",
+    "reference_data_router",
     "research_bridge_router",
     "research_programs_router",
     "research_router",

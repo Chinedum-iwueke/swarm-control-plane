@@ -90,6 +90,7 @@ from app.models.prompt_policy import (
     PromptPolicyEvent,
 )
 from app.models.proposal import FounderProposal
+from app.models.reference_data import ReferenceDataSnapshot
 from app.models.research import (
     ResearchBrief,
     ResearchChunk,
@@ -212,6 +213,7 @@ __all__ = [
     "PromptPolicyBundle",
     "PromptPolicyEvaluation",
     "PromptPolicyEvent",
+    "ReferenceDataSnapshot",
     "ResearchBrainEvaluation",
     "ResearchBrief",
     "ResearchChunk",
