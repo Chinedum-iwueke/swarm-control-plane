@@ -97,6 +97,7 @@ def _tokens(value: str) -> set[str]:
 def create_program(db: Session, payload: ResearchProgramCreate) -> ResearchProgram:
     record = ResearchProgram(
         program_key=payload.program_key,
+        project=payload.project,
         title=payload.title,
         mandate=[item.model_dump(mode="json") for item in payload.mandate],
         schedule=payload.schedule.model_dump(mode="json"),

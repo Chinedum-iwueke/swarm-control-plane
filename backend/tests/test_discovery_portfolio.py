@@ -235,9 +235,7 @@ def test_selection_audit_uncertainty_requires_complete_same_project_lineage():
             document={"source_daily_cycle_id": str(cycle_id), "question": question},
         ),
         cycle_id: SimpleNamespace(id=cycle_id, program_id=program_id),
-        program_id: SimpleNamespace(
-            id=program_id, mandate={"project": "bulletproof-bt"}
-        ),
+        program_id: SimpleNamespace(id=program_id, project="bulletproof-bt"),
     }
     db = MagicMock()
     db.get.side_effect = lambda _model, identifier: records.get(UUID(str(identifier)))

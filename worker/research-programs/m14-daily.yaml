@@ -1,4 +1,5 @@
 program_key: M14-DAILY-SUPERVISED-RESEARCH
+project: bulletproof-bt
 title: Invariance daily supervised signal discovery
 mandate:
 - question_key: btc-hourly-lagged-return

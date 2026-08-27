@@ -21,6 +21,7 @@ NOW = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
 def program_payload() -> dict:
     return {
         "program_key": "M14-DAILY",
+        "project": "bulletproof-bt",
         "title": "Daily supervised research",
         "mandate": [
             {
