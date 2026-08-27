@@ -4,10 +4,12 @@
 import hashlib
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
+
+UTC = timezone.utc
 
 
 def scopes(manifest: dict) -> list[str]:

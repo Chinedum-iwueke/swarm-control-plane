@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """Exercise PLAT-002 identity, rotation, revocation, confused-deputy and secret boundaries."""
 
+import argparse
 import hashlib
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 
+UTC = timezone.utc
+
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/var/lib/invariance-swarm/plat002/report.json"),
+    )
+    args = parser.parse_args()
     base = os.environ["SWARM_API_URL"].rstrip("/")
     token = os.environ.get("SWARM_ORCHESTRATOR_TOKEN")
     if not token and os.environ.get("SWARM_ORCHESTRATOR_TOKEN_FILE"):
@@ -104,7 +114,7 @@ def main() -> int:
     report["report_digest"] = hashlib.sha256(
         json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    output = Path("/var/lib/invariance-swarm/plat002/report.json")
+    output = args.output
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n")
     output.chmod(0o600)
