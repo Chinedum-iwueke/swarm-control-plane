@@ -23,6 +23,9 @@ class GatewaySettings(BaseSettings):
     handoff_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     retry_initial_seconds: float = Field(default=5, ge=1, le=60)
     retry_max_seconds: float = Field(default=300, ge=5, le=900)
+    max_message_chars: int = Field(default=12_000, ge=256, le=50_000)
+    rate_limit_messages: int = Field(default=20, ge=2, le=100)
+    rate_limit_window_seconds: int = Field(default=60, ge=10, le=600)
 
     def prepare(self) -> None:
         for path in (self.bot_token_file, self.founder_channel_token_file):
