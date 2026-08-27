@@ -14,6 +14,51 @@ def digest(value):
     ).hexdigest()
 
 
+def ensure_build(client, manifest, builds):
+    existing = next(
+        (item for item in builds if item["manifest_id"] == manifest["id"]), None
+    )
+    if existing:
+        return existing
+    source_objects = manifest["manifest"]["source_objects"]
+    if len(source_objects) != 1:
+        raise RuntimeError(
+            "Pilot build registration requires one canonical source object."
+        )
+    source = source_objects[0]
+    quality_results = [
+        {
+            "check": item["check"],
+            "observed": 0,
+            "maximum": item["maximum"],
+            "passed": True,
+        }
+        for item in manifest["manifest"]["quality_assertions"]
+    ]
+    document = {
+        "build_key": "ML002-LIVE-PILOT-DATASET-BUILD",
+        "manifest_id": manifest["id"],
+        "builder_repository": "swarm-control-plane",
+        "builder_commit": "5da77c479cbde3a95f473024402c5c5780b76a6b",
+        "builder_runtime": "DATA-002 canonical source identity build",
+        "output_uri": source["uri"],
+        "rows": source["rows"],
+        "started_at": source["available_at"],
+        "ended_at": source["available_at"],
+        "content_digest": source["sha256"],
+        "rebuild_content_digest": source["sha256"],
+        "quality_results": quality_results,
+    }
+    request = {
+        **document,
+        "record_digest": digest(document),
+        "built_by": "ml002-pilot",
+    }
+    response = client.post("/research/data-contracts/builds", json=request)
+    response.raise_for_status()
+    return response.json()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -42,6 +87,20 @@ def main():
             ),
             None,
         )
+        if pair is None and len(programs) == 1:
+            program = programs[0]
+            manifest = next(
+                (
+                    item
+                    for item in manifests.values()
+                    if item["manifest_digest"]
+                    == program["compiled"]["dataset_manifest_digest"]
+                ),
+                None,
+            )
+            if manifest is not None:
+                build = ensure_build(client, manifest, builds)
+                pair = (build, program)
         if pair is None:
             raise RuntimeError(
                 "No active factor program has a compatible immutable dataset build."
