@@ -8,6 +8,7 @@ from app.schemas.data_contract import (
     DatasetBuildCreate,
     DatasetManifestCreate,
     FeatureDefinition,
+    InstrumentReferenceBinding,
     PointInTimeDatasetManifest,
     ProviderIdentity,
     QualityAssertion,
@@ -103,6 +104,38 @@ def test_manifest_preserves_provider_as_of_and_feature_lineage() -> None:
     assert value.as_of == AS_OF
     assert value.features[0].availability_lag_bars == 1
     assert value.fallback_policy == "forbidden"
+
+
+def test_manifest_can_bind_exact_temporal_reference_identity() -> None:
+    value = manifest(
+        reference_snapshot_digest="f" * 64,
+        instrument_reference_bindings=[
+            InstrumentReferenceBinding(
+                requested_instrument="BTCUSDT",
+                venue_id="binance",
+                instrument_id="crypto:btc-usdt-perpetual",
+                listing_id="binance:btc-perpetual",
+            )
+        ],
+    )
+    assert value.reference_snapshot_digest == "f" * 64
+    assert value.instrument_reference_bindings[0].instrument_id.startswith("crypto:")
+
+
+def test_reference_identity_binding_must_be_complete_and_digest_bound() -> None:
+    with pytest.raises(ValidationError, match="require a reference snapshot"):
+        manifest(
+            instrument_reference_bindings=[
+                {
+                    "requested_instrument": "BTCUSDT",
+                    "venue_id": "binance",
+                    "instrument_id": "crypto:btc-usdt-perpetual",
+                    "listing_id": "binance:btc-perpetual",
+                }
+            ]
+        )
+    with pytest.raises(ValidationError, match="cover every"):
+        manifest(reference_snapshot_digest="f" * 64)
 
 
 def test_source_unavailable_at_as_of_is_rejected() -> None:
