@@ -122,6 +122,7 @@ from app.models.retrieval import (
     EvidenceRetrievalState,
 )
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
+from app.models.selection_audit import SelectionBiasAudit
 from app.models.surveillance import (
     SurveillanceDigest,
     SurveillanceFetchReceipt,
@@ -254,6 +255,7 @@ __all__ = [
     "RunbookPromotion",
     "ScientificIngestionJob",
     "ScientificIngestionRecovery",
+    "SelectionBiasAudit",
     "ServiceCatalogActivation",
     "ServiceCatalogReconciliation",
     "ServiceCatalogSnapshot",

@@ -53,6 +53,7 @@ from app.api.routes import (
     research_router,
     retrieval_router,
     runbook_packages_router,
+    selection_audit_router,
     supervisor_router,
     surveillance_router,
     task_graphs_router,
@@ -122,6 +123,7 @@ app.include_router(research_bridge_router)
 app.include_router(retrieval_router)
 app.include_router(research_programs_router)
 app.include_router(runbook_packages_router)
+app.include_router(selection_audit_router)
 app.include_router(task_runtime_router)
 app.include_router(task_graphs_router)
 app.include_router(supervisor_router)
