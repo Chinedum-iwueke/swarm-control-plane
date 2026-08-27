@@ -108,8 +108,8 @@ def main() -> int:
             "objective": "Allocate the next bounded discovery attention across canonical uncertainty sources.",
             "source_epoch": datetime.now(UTC).isoformat(),
             "policy": {
-                "attention_budget": 3,
-                "maximum_selected": 3,
+                "attention_budget": 2,
+                "maximum_selected": 2,
                 "minimum_distinct_domains": 2,
                 "maximum_per_domain": 1,
                 "maximum_per_cluster": 1,
