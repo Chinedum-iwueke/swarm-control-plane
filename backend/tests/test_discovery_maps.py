@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -229,3 +230,9 @@ def test_routes_expose_map_replay_and_event_chain() -> None:
     assert "/v1/research/discovery-maps" in paths
     assert "/v1/research/discovery-maps/{map_id}" in paths
     assert "/v1/research/discovery-maps/{map_id}/events" in paths
+
+
+def test_pilot_consumes_canonical_evidence_object_identity() -> None:
+    source = Path("worker/scripts/disc002_pilot.py").read_text(encoding="utf-8")
+    assert 'item["object_id"]' in source
+    assert 'item["id"] for item in selected' not in source

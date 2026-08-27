@@ -110,7 +110,7 @@ def main() -> int:
                     "upper": 2.9,
                     "confidence_level": 0.95,
                 },
-                "evidence_object_ids": [item["id"] for item in selected],
+                "evidence_object_ids": [item["object_id"] for item in selected],
                 "evidence_digests": [item["content_digest"] for item in selected],
                 "regime_controls": ["btc-volatility-quintile", "calendar-regime"],
                 "null_controls": [
