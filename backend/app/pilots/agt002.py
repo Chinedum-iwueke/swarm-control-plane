@@ -62,7 +62,7 @@ def main() -> int:
                     ]
                 ),
             )
-            .order_by(CanonicalEvidenceObject.created_at.desc())
+            .limit(1)
         )
         if source is None:
             raise RuntimeError("No admissible canonical evidence source is available.")
