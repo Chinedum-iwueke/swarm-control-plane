@@ -125,6 +125,7 @@ from app.models.retrieval import (
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.selection_audit import SelectionBiasAudit
 from app.models.statistical_search import StatisticalSearchCampaign, StatisticalSearchEvent
+from app.models.symbolic_search import SymbolicSearchCandidate, SymbolicSearchRun
 from app.models.surveillance import (
     SurveillanceDigest,
     SurveillanceFetchReceipt,
@@ -267,6 +268,8 @@ __all__ = [
     "SurveillancePublication",
     "SurveillanceRoutingEvent",
     "SurveillanceSource",
+    "SymbolicSearchCandidate",
+    "SymbolicSearchRun",
     "Task",
     "TaskApproval",
     "TaskDependency",

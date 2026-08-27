@@ -57,6 +57,7 @@ from app.api.routes import (
     selection_audit_router,
     statistical_search_router,
     supervisor_router,
+    symbolic_search_router,
     surveillance_router,
     task_graphs_router,
     task_runtime_router,
@@ -131,5 +132,6 @@ app.include_router(statistical_search_router)
 app.include_router(task_runtime_router)
 app.include_router(task_graphs_router)
 app.include_router(supervisor_router)
+app.include_router(symbolic_search_router)
 app.include_router(surveillance_router)
 app.include_router(workload_identities_router)
