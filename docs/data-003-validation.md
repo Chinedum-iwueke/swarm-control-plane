@@ -19,6 +19,16 @@ restore, protected-payload rejection, event visibility and route registration.
 
 ## Production acceptance
 
-Production completion requires migration `a4f9c3d72e10` at head, a healthy rebuilt VM2
-API exposing all lake-operation routes, and a successful no-capital live pilot against
-the production DATA-002 catalog.
+Production acceptance completed on VM2 after implementation merge
+`51910ac91b7b472a553187450b22a1045023920f` and pilot correction merge
+`5c324c7c3f041032ad2222c75224ff31cd6721a0`:
+
+- Alembic migration `a4f9c3d72e10` was at head.
+- The rebuilt API was healthy and exposed admission, event, publication-disable,
+  publication-restore and snapshot routes.
+- Snapshot `0acbf36c-29d4-427d-a83b-f943b004d3ba` bound catalog digest
+  `3c5352526ef607d02502144cf8623dc53098322c4bf84f8395e0650384aa2e07`.
+- The pilot passed all nine checks and retained six append-only events.
+- The retained report is `docs/evidence/data003-report.json`, with SHA-256
+  `1ff45b5f0bd20f7a1a9d291c37c9e185a3623ee325422a89ab9bdcdf646f75b9`.
+- The pilot held neither source-write authority nor capital or order authority.
