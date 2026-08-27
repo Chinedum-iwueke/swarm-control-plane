@@ -25,4 +25,13 @@ telegram-gateway/.venv/bin/ruff check telegram-gateway/src telegram-gateway/test
 
 ## Production acceptance
 
-Production qualification requires the merged source to be installed on VM1, `hermes-telegram-gateway.service` to remain active, `hermes-telegram-gateway check` to succeed, the local audit chain to verify, and one founder-owned `/status` request to return without creating a task. Record the source commit, service activation timestamp and audit head digest here after deployment.
+Production qualification completed on VM2 on 2026-08-27 at merged source commit `4557667ce42d1d95684f931b57d557cc0bdab42b`:
+
+- `hermes-telegram-gateway.service` entered `active/running` at `2026-08-27T03:40:40Z`, emitted `telegram_gateway_ready` and retained `NRestarts=0` through the observation window.
+- Earlier Telegram/control-plane interruptions belonged to prior service runs and used bounded in-process retry. No dependency retry followed the accepted restart.
+- The local CHAN-001 audit reported `valid=true`, zero redacted security events, the all-zero genesis head and `action_authority=false`.
+- A founder-owned `/status` replay returned 50 terminal/active task records, one pending approval, one queued task, zero active/attention missions and `Channel security events: none`.
+- The status command created no work, made no decision and granted no authority.
+
+The retained production summary is `docs/evidence/chan001-report.json`, SHA-256
+`503b175e90e9d835860feb103c73a869f62f9345a918577cb92c31077be80c5b`.
