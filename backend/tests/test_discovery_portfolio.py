@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from app.api.routes.discovery_portfolio import router
@@ -202,6 +204,80 @@ def test_source_failure_propagates_without_partial_allocation(monkeypatch):
     monkeypatch.setattr(service, "_source", fail)
     with pytest.raises(HTTPException, match="stale"):
         service.register_portfolio(MagicMock(), request())
+
+
+def test_selection_audit_uncertainty_requires_complete_same_project_lineage():
+    source_id = uuid4()
+    evaluation_id = uuid4()
+    plan_id = uuid4()
+    map_id = uuid4()
+    cycle_id = uuid4()
+    program_id = uuid4()
+    question = (
+        "Does canonical opportunity evidence remain valid after selection correction?"
+    )
+    records = {
+        source_id: SimpleNamespace(
+            id=source_id,
+            audit_digest=DIGEST,
+            status="active",
+            audited_at=datetime(2026, 8, 26, tzinfo=UTC),
+            mechanism_evaluation_id=evaluation_id,
+            conclusion="selection_risk_detected",
+        ),
+        evaluation_id: SimpleNamespace(
+            id=evaluation_id, plan_id=plan_id, status="active"
+        ),
+        plan_id: SimpleNamespace(id=plan_id, discovery_map_id=map_id),
+        map_id: SimpleNamespace(
+            id=map_id,
+            status="active",
+            document={"source_daily_cycle_id": str(cycle_id), "question": question},
+        ),
+        cycle_id: SimpleNamespace(id=cycle_id, program_id=program_id),
+        program_id: SimpleNamespace(
+            id=program_id, mandate={"project": "bulletproof-bt"}
+        ),
+    }
+    db = MagicMock()
+    db.get.side_effect = lambda _model, identifier: records.get(UUID(str(identifier)))
+    payload = (
+        request()
+        .candidates[0]
+        .model_copy(
+            update={
+                "source_type": "selection_bias_audit",
+                "source_id": source_id,
+                "domain_key": "selection-bias",
+                "question": "How should the selection-bias conclusion alter confidence in: "
+                + question,
+            }
+        )
+    )
+    uncertainty, source_digest = service._source(
+        db, payload, "bulletproof-bt", datetime(2026, 8, 27, tzinfo=UTC)
+    )
+    assert uncertainty == 0.8
+    assert source_digest == DIGEST
+
+
+def test_selection_audit_rejects_absent_canonical_source():
+    payload = (
+        request()
+        .candidates[0]
+        .model_copy(
+            update={
+                "source_type": "selection_bias_audit",
+                "domain_key": "market-microstructure",
+            }
+        )
+    )
+    db = MagicMock()
+    db.get.return_value = None
+    with pytest.raises(HTTPException, match="absent"):
+        service._source(
+            db, payload, "bulletproof-bt", datetime(2026, 8, 27, tzinfo=UTC)
+        )
 
 
 def test_output_has_no_execution_or_capital_authority(monkeypatch):

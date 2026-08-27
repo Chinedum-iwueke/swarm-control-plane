@@ -34,6 +34,16 @@ def main() -> int:
         sessions = (
             client.get("/v1/research/autonomous-sessions").raise_for_status().json()
         )
+        audits = client.get("/v1/research/selection-audits").raise_for_status().json()
+        evaluations = (
+            client.get("/v1/research/falsification/evaluations")
+            .raise_for_status()
+            .json()
+        )
+        plans = client.get("/v1/research/falsification/plans").raise_for_status().json()
+        evaluations_by_id = {item["id"]: item for item in evaluations}
+        plans_by_id = {item["id"]: item for item in plans}
+        maps_by_id = {item["id"]: item for item in maps}
         completed = [item for item in sessions if item["status"] == "completed"]
         candidates = []
         for item in maps[:4]:
@@ -63,6 +73,27 @@ def main() -> int:
                     "question": item["objective"],
                     "decision_relevance": 0.7,
                     "feasibility": 0.9,
+                    "attention_cost": 1,
+                }
+            )
+        for item in [record for record in audits if record["status"] == "active"][:2]:
+            evaluation = evaluations_by_id[item["mechanism_evaluation_id"]]
+            plan = plans_by_id[evaluation["plan_id"]]
+            discovery = maps_by_id[plan["discovery_map_id"]]
+            candidates.append(
+                {
+                    "candidate_key": f"selection-{item['id'][:8]}",
+                    "domain_key": "selection-bias",
+                    "cluster_key": "selection-audit",
+                    "source_type": "selection_bias_audit",
+                    "source_id": item["id"],
+                    "source_digest": item["audit_digest"],
+                    "question": (
+                        "How should the selection-bias conclusion alter confidence in: "
+                        + discovery["document"]["question"]
+                    ),
+                    "decision_relevance": 0.9,
+                    "feasibility": 0.8,
                     "attention_cost": 1,
                 }
             )

@@ -14,7 +14,9 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolioCandidate,
     DiscoveryPortfolioEvent,
 )
+from app.models.falsification import MechanismEvaluation, MechanismPlan
 from app.models.research import ResearchDailyCycle, ResearchProgram
+from app.models.selection_audit import SelectionBiasAudit
 from app.schemas.discovery_portfolio import DiscoveryPortfolioCreate
 from app.services.graph import digest_document, graph_projection_status
 from app.services.retrieval import projection_status
@@ -118,6 +120,60 @@ def _source(
             "opportunity": 0.35,
         }[record.stage]
         return uncertainty, record.map_digest
+    if payload.source_type == "selection_bias_audit":
+        record = db.get(SelectionBiasAudit, payload.source_id)
+        if (
+            record is None
+            or record.audit_digest != payload.source_digest
+            or record.status != "active"
+            or record.audited_at > source_epoch
+        ):
+            raise HTTPException(
+                409, "Selection-bias audit is absent, stale, superseded or post-epoch."
+            )
+        evaluation = db.get(MechanismEvaluation, record.mechanism_evaluation_id)
+        plan = db.get(MechanismPlan, evaluation.plan_id) if evaluation else None
+        discovery = db.get(DiscoveryMap, plan.discovery_map_id) if plan else None
+        cycle = (
+            db.get(ResearchDailyCycle, discovery.document["source_daily_cycle_id"])
+            if discovery
+            else None
+        )
+        program = db.get(ResearchProgram, cycle.program_id) if cycle else None
+        if (
+            evaluation is None
+            or evaluation.status != "active"
+            or plan is None
+            or discovery is None
+            or discovery.status != "active"
+            or program is None
+            or program.mandate.get("project") != project
+        ):
+            raise HTTPException(
+                409,
+                "Selection-bias audit lineage is stale or outside the portfolio project.",
+            )
+        expected_question = (
+            "How should the selection-bias conclusion alter confidence in: "
+            + discovery.document["question"]
+        )
+        if " ".join(payload.question.lower().split()) != " ".join(
+            expected_question.lower().split()
+        ):
+            raise HTTPException(
+                422,
+                "Candidate question does not match its selection-bias audit lineage.",
+            )
+        if payload.domain_key != "selection-bias":
+            raise HTTPException(
+                422, "Selection-bias audit candidates require that domain."
+            )
+        uncertainty = {
+            "blocked": 1.0,
+            "selection_risk_detected": 0.8,
+            "selection_adjusted": 0.4,
+        }[record.conclusion]
+        return uncertainty, record.audit_digest
     record = db.get(AutonomousResearchSession, payload.source_id)
     if record is None or record.project != project or record.status != "completed":
         raise HTTPException(

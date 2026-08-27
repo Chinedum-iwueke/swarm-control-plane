@@ -36,7 +36,12 @@ class DiscoveryAttentionCandidate(BaseModel):
     candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     domain_key: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,149}$")
     cluster_key: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,149}$")
-    source_type: Literal["curriculum_evaluation", "discovery_map", "autonomous_session"]
+    source_type: Literal[
+        "curriculum_evaluation",
+        "discovery_map",
+        "autonomous_session",
+        "selection_bias_audit",
+    ]
     source_id: uuid.UUID
     source_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     question: str = Field(min_length=10, max_length=2000)
