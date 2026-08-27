@@ -16,6 +16,7 @@ from app.models.autonomous_research import (
     AutonomousResearchSession,
     AutonomousResearchSessionEvent,
 )
+from app.models.calibration import ModelCalibrationAssessment
 from app.models.causal_pipeline import (
     CausalDatasetMaterialization,
     CausalDatasetPipeline,
@@ -245,6 +246,7 @@ __all__ = [
     "MechanismEvaluation",
     "MechanismPlan",
     "MissionEvent",
+    "ModelCalibrationAssessment",
     "ModelFamilyEvaluation",
     "Operation",
     "OperationEvent",
