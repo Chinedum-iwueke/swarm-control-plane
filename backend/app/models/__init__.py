@@ -124,6 +124,7 @@ from app.models.retrieval import (
 )
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.selection_audit import SelectionBiasAudit
+from app.models.statistical_search import StatisticalSearchCampaign, StatisticalSearchEvent
 from app.models.surveillance import (
     SurveillanceDigest,
     SurveillanceFetchReceipt,
