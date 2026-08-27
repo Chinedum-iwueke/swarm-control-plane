@@ -40,6 +40,7 @@ class ConversationTransitionRequest(StrictModel):
 class ApprovalDecision(StrictModel):
     reason: str = Field(min_length=10, max_length=500)
     expires_in_seconds: int = Field(default=900, ge=60, le=3600)
+    expected_review_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class ProposalDecision(StrictModel):

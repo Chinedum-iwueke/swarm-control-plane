@@ -449,7 +449,22 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 }
 .approval h2 { margin: 4px 0 6px; font-size: 14px; }
 .approval-scope { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+.approval-objective { max-width: 760px; margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.approval-state { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
+.approval-ready { border-left-color: var(--green); }
+.approval-blocked { border-left-color: var(--red); }
+.approval-approved, .approval-consumed { border-left-color: var(--blue); }
+.readiness { padding: 3px 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.readiness-ready { color: #126047; background: var(--green-soft); border-color: #a7cfbf; }
+.readiness-blocked { color: #9d332e; background: var(--red-soft); border-color: #dbaaa7; }
+.approval-blockers { max-width: 760px; margin-top: 10px; padding: 8px 10px; color: #71352f; background: var(--red-soft); border-left: 3px solid var(--red); font-size: 10px; }
+.approval-blockers strong { display: block; margin-bottom: 4px; }
+.approval-blockers ul { margin: 0; }
 .approval-actions { display: flex; align-items: center; gap: 7px; }
+.approval-actions button, .approval-actions .button-link { min-height: 44px; }
+.button-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.approval-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.approval-summary { margin-bottom: 16px; }
 .danger { color: var(--red); border-color: #dbaaa7; }
 .policy-panel { padding: 15px; background: var(--surface); border: 1px solid var(--line); }
 .policy-row { min-height: 48px; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; border-top: 1px solid var(--line-soft); }
@@ -695,7 +710,17 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
 .decision-summary { padding: 12px; background: #f7f9f8; border: 1px solid var(--line); }
 .decision-summary dl { display: grid; grid-template-columns: 90px 1fr; gap: 6px; margin: 0; }
 .decision-summary dt { color: var(--muted); }
-.decision-summary dd { margin: 0; word-break: break-word; }
+.decision-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.decision-summary .mono { font-size: 10px; }
+.decision-verdict { display: flex; justify-content: space-between; gap: 12px; margin: -12px -12px 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.decision-verdict span { color: var(--muted); font-size: 10px; }
+.decision-ready { color: #126047; background: var(--green-soft); }
+.decision-blocked { color: #9d332e; background: var(--red-soft); }
+.decision-contract { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.decision-contract h3 { margin: 12px 0 5px; font-size: 11px; }
+.decision-contract p, .decision-contract li { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.decision-acknowledgement { min-height: 44px; display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 9px; padding: 10px; color: var(--ink); background: #fff8e8; border: 1px solid #e6c98c; font-size: 11px; line-height: 1.45; }
+.decision-acknowledgement input { width: 16px; height: 16px; margin: 1px 0 0; }
 
 .search-dialog {
   width: min(680px, calc(100vw - 28px));
@@ -867,6 +892,11 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
   .mission-row > :nth-child(2), .mission-row > :nth-child(3) { display: none; }
   .approval { grid-template-columns: 1fr; }
   .approval-actions { justify-content: flex-end; }
+  .approval-actions button, .approval-actions .button-link { flex: 1; }
+  .decision-summary { padding: 10px; }
+  .decision-summary dl { grid-template-columns: 1fr; gap: 2px; }
+  .decision-summary dd { margin-bottom: 8px; }
+  .decision-verdict { flex-direction: column; margin: -10px -10px 10px; }
   .agent-matrix { grid-template-columns: 1fr; }
   .research-row { grid-template-columns: 1fr auto; }
   .research-row .research-stat { display: none; }

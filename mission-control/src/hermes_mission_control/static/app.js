@@ -2,6 +2,7 @@ const allowedViews = new Set(["command", "work", "activity", "missions", "tasks"
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
+const requestedApproval = new URLSearchParams(window.location.search).get("approval");
 const state = {
   dashboard: null,
   activeView: allowedViews.has(requestedView) ? requestedView : "command",
@@ -19,6 +20,7 @@ const state = {
   activeConversationId: null,
   conversationWorkspace: null,
   conversationWorkspaceLoading: false,
+  requestedApprovalOpened: false,
 };
 
 const intentHeaders = {
@@ -128,7 +130,7 @@ document.getElementById("decision-form").addEventListener("submit", async (event
   const action = form.get("action");
   await mutate(
     `/api/approvals/${form.get("approval_id")}/${action}`,
-    { reason: form.get("reason"), expires_in_seconds: 900 },
+    { reason: form.get("reason"), expires_in_seconds: 900, expected_review_digest: form.get("review_digest") },
     `Approval ${action === "approve" ? "approved" : "rejected"}.`,
   );
   document.getElementById("decision-dialog").close();
@@ -947,20 +949,41 @@ function renderTasks() {
 
 function renderApprovals() {
   if (!state.dashboard) return;
-  const approvals = state.dashboard.approvals || [];
-  document.getElementById("approval-list").innerHTML = approvals.length ? approvals.map((approval) => `
-    <article class="approval">
+  const center = state.dashboard.approval_center || { counts: {}, items: [] };
+  const items = center.items || [];
+  const counts = center.counts || {};
+  document.getElementById("approval-summary").innerHTML = [
+    metric(counts.actionable || 0, "Ready", "Current and executable"),
+    metric(counts.blocked || 0, "Blocked", "Prerequisite or state mismatch"),
+    metric(counts.decided || 0, "Decided", "Receipts retained"),
+  ].join("");
+  document.getElementById("approval-list").innerHTML = items.length ? items.map((item) => {
+    const approval = item.approval;
+    const task = item.task || {};
+    const readiness = approval.status !== "pending" ? approval.status : item.actionable ? "ready" : "blocked";
+    const blockers = (item.blocked_by || []).map((entry) => `${humanize(entry.kind)}: ${entry.reference} (${humanize(entry.status)})`);
+    return `
+    <article class="approval approval-${escapeHtml(readiness)}">
       <div>
-        <div class="approval-scope">${escapeHtml(approval.id)}</div>
-        <h2>${escapeHtml(approval.scope?.project || "Unknown project")} · ${escapeHtml(humanize(approval.scope?.task_type || "operation"))}</h2>
-        <div class="entity-meta"><span>Risk ${approval.risk_level}</span><span>Plan ${shortHash(approval.plan_digest)}</span><span>Requested ${relativeTime(approval.created_at)}</span></div>
-        <div style="margin-top:9px">${statusBadge(approval.status)}</div>
+        <div class="approval-scope">${escapeHtml(task.task_number || approval.id)} · review ${shortHash(item.review_digest)}</div>
+        <h2>${escapeHtml(task.title || `${approval.scope?.project || "Unknown project"} approval`)}</h2>
+        <p class="approval-objective">${escapeHtml(task.objective || "No objective recorded.")}</p>
+        <div class="entity-meta"><span>Risk ${approval.risk_level}</span><span title="${escapeHtml(approval.plan_digest)}">Plan ${shortHash(approval.plan_digest)}</span><span>${item.prerequisites?.length || 0} prerequisites</span><span>Requested ${relativeTime(approval.created_at)}</span></div>
+        ${blockers.length ? `<div class="approval-blockers"><strong>Not ready</strong>${bulletList(blockers, "")}</div>` : ""}
+        <div class="approval-state">${statusBadge(approval.status)}<span class="readiness readiness-${escapeHtml(readiness)}">${escapeHtml(humanize(readiness))}</span></div>
       </div>
-      ${approval.status === "pending" ? `<div class="approval-actions"><button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}">Review & approve</button></div>` : ""}
-    </article>`).join("") : empty("No approvals recorded.");
+      <div class="approval-actions"><a class="secondary button-link" href="?view=approvals&amp;approval=${encodeURIComponent(approval.id)}">Review link</a>${approval.status === "pending" ? `<button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}" ${item.actionable ? "" : "disabled"}>Review & approve</button>` : `<button class="secondary" data-decision="review" data-id="${approval.id}">View receipt</button>`}</div>
+    </article>`;
+  }).join("") : empty("No approval gates recorded.");
   document.querySelectorAll("[data-decision]").forEach((button) => {
     button.addEventListener("click", () => openDecision(button.dataset.id, button.dataset.decision));
   });
+  if (requestedApproval && !state.requestedApprovalOpened) {
+    const requested = items.find((item) => String(item.approval.id) === requestedApproval);
+    state.requestedApprovalOpened = true;
+    if (requested) openDecision(requestedApproval, "review");
+    else toast("That approval review is unavailable or no longer retained.");
+  }
   const authority = state.dashboard.authority || {};
   const policy = authority.policy;
   const activeDelegations = (authority.delegations || []).filter((item) => item.status === "active");
@@ -973,21 +996,42 @@ function renderApprovals() {
 }
 
 function openDecision(id, action) {
-  const approval = state.dashboard.approvals.find((item) => String(item.id) === id);
-  if (!approval) return;
+  const item = (state.dashboard.approval_center?.items || []).find((entry) => String(entry.approval.id) === id);
+  if (!item) return;
+  const approval = item.approval;
+  const task = item.task || {};
   const form = document.getElementById("decision-form");
   form.reset();
   form.elements.approval_id.value = id;
   form.elements.action.value = action;
-  document.getElementById("decision-title").textContent = action === "approve" ? "Authorize operation" : "Reject operation";
+  form.elements.review_digest.value = item.review_digest;
+  const readOnly = action === "review";
+  document.getElementById("decision-title").textContent = readOnly ? "Approval receipt" : action === "approve" ? "Authorize bounded task" : "Reject task";
   document.getElementById("decision-submit").textContent = action === "approve" ? "Approve for 15 minutes" : "Reject request";
   document.getElementById("decision-submit").className = action === "approve" ? "command" : "secondary danger";
-  document.getElementById("decision-summary").innerHTML = `<dl>
-    <dt>Project</dt><dd>${escapeHtml(approval.scope?.project || "Unknown")}</dd>
-    <dt>Operation</dt><dd>${escapeHtml(humanize(approval.scope?.task_type || "operation"))}</dd>
+  document.getElementById("decision-submit").hidden = readOnly;
+  form.elements.reason.closest("label").hidden = readOnly;
+  form.elements.reason.required = !readOnly;
+  const acknowledgement = document.getElementById("decision-acknowledgement");
+  acknowledgement.hidden = action !== "approve";
+  acknowledgement.querySelector("input").required = action === "approve";
+  const prerequisites = (item.prerequisites || []).map((entry) => `${entry.task_number} · ${entry.title} · ${humanize(entry.status)}`);
+  document.getElementById("decision-summary").innerHTML = `
+    <div class="decision-verdict ${item.actionable ? "decision-ready" : "decision-blocked"}"><strong>${item.actionable ? "Current and executable" : approval.status === "pending" ? "Not actionable" : humanize(approval.status)}</strong><span>${item.actionable ? "One bounded lease may be authorized." : "No execution authority is available from this record."}</span></div>
+    <dl>
+    <dt>Task</dt><dd>${escapeHtml(task.task_number || approval.task_id)} · ${escapeHtml(task.title || "Untitled")}</dd>
+    <dt>Project</dt><dd>${escapeHtml(task.project || approval.scope?.project || "Unknown")}</dd>
+    <dt>Operation</dt><dd>${escapeHtml(humanize(task.task_type || approval.scope?.task_type || "operation"))}</dd>
     <dt>Risk</dt><dd>${approval.risk_level}</dd>
     <dt>Plan digest</dt><dd class="mono">${escapeHtml(approval.plan_digest)}</dd>
-  </dl>`;
+    <dt>Review digest</dt><dd class="mono">${escapeHtml(item.review_digest)}</dd>
+    <dt>Authority policy</dt><dd class="mono">${escapeHtml(item.authority_policy?.manifest_digest || "Unavailable")}</dd>
+    <dt>Allowed machines</dt><dd>${escapeHtml((task.allowed_machines || []).join(", ") || "None declared")}</dd>
+    <dt>Required capabilities</dt><dd>${escapeHtml((task.required_capabilities || []).join(", ") || "None declared")}</dd>
+    <dt>Expected outputs</dt><dd>${escapeHtml((task.expected_outputs || []).join(", ") || "None declared")}</dd>
+    <dt>Expiry</dt><dd>${action === "approve" ? "15 minutes after approval; consumed by one task lease" : approval.expires_at ? formatDate(approval.expires_at) : "Not issued"}</dd>
+  </dl>
+  <section class="decision-contract"><h3>Objective</h3><p>${escapeHtml(task.objective || "No objective recorded.")}</p><h3>Acceptance criteria</h3>${bulletList(task.acceptance_criteria || [], "None recorded.")}<h3>Prerequisites</h3>${bulletList(prerequisites, "No task prerequisites.")}<h3>Bounded effect</h3><p>${escapeHtml(item.claim_boundary)}</p></section>`;
   document.getElementById("decision-dialog").showModal();
 }
 
@@ -2125,6 +2169,18 @@ function demoDashboard() {
     approvals: [
       { id: "approval-demo", status: "pending", risk_level: 3, created_at: now, plan_digest: "bc50ba1014ff33e68defbba9a1c727e2513d782fa1473547834d62cba1c16879", scope: { project: "swarm-control-plane", task_type: "infrastructure_operation" } },
     ],
+    approval_center: {
+      generated_at: now,
+      counts: { pending: 1, actionable: 1, blocked: 0, decided: 0 },
+      items: [{
+        approval: { id: "approval-demo", task_id: "infra-1", status: "pending", risk_level: 3, created_at: now, updated_at: now, plan_digest: "bc50ba1014ff33e68defbba9a1c727e2513d782fa1473547834d62cba1c16879", scope: { project: "swarm-control-plane", task_type: "infrastructure_operation" }, requested_by: "founder-operator", decided_by: null, decision_reason: null, issued_at: null, expires_at: null, consumed_at: null },
+        task: { id: "infra-1", task_number: "VM2-RESTART-20260730", title: "Approved controlled VM2 API restart", objective: "Restart only the control-plane API with pre/post checks.", project: "swarm-control-plane", task_type: "infrastructure_operation", status: "pending_approval", risk_level: 3, plan_digest: "bc50ba1014ff33e68defbba9a1c727e2513d782fa1473547834d62cba1c16879", input_contract: { operation: "restart-control-plane-api" }, acceptance_criteria: ["Preflight and post-checks remain healthy."], expected_outputs: ["infrastructure evidence"], required_capabilities: ["controlled-restart"], allowed_machines: ["vm2-deployment"], max_attempts: 1 },
+        review_digest: "4f197ff22b523dd4a79cf9fe4c7f8c8bbeb580160b1a8f0d3879eb3b4a08b855",
+        current: true, executable: true, actionable: true, blocked_by: [], changed_fields: [], prerequisites: [], mission: null,
+        authority_policy: { version: "1.0.0", manifest_digest: "a".repeat(64) }, notification: { state: "pending" }, notification_duplicates: 0, events: [],
+        claim_boundary: "The approval authorizes one bounded task lease and grants no broader execution or capital authority.",
+      }],
+    },
     proposals: [
       {
         id: "proposal-demo",

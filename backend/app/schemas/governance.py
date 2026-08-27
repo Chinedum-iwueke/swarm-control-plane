@@ -43,6 +43,47 @@ class ApprovalEventResponse(BaseModel):
     created_at: datetime
 
 
+class ApprovalCenterDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    actor: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    reason: str = Field(min_length=10, max_length=2000)
+    expected_review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_in_seconds: int = Field(default=900, ge=60, le=3600)
+    authority_exception_id: uuid.UUID | None = None
+
+
+class ApprovalCenterItem(BaseModel):
+    approval: ApprovalResponse
+    task: dict
+    review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current: bool
+    executable: bool
+    actionable: bool
+    blocked_by: list[dict]
+    changed_fields: list[str]
+    prerequisites: list[dict]
+    mission: dict | None
+    authority_policy: dict | None
+    notification: dict | None
+    notification_duplicates: int
+    events: list[ApprovalEventResponse]
+    claim_boundary: str
+
+
+class ApprovalCenterResponse(BaseModel):
+    generated_at: datetime
+    counts: dict[str, int]
+    items: list[ApprovalCenterItem]
+
+
+class ApprovalCenterDecisionReceipt(BaseModel):
+    approval: ApprovalResponse
+    action: Literal["approve", "reject"]
+    review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    event_id: int
+
+
 class ArtifactCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     lease_token: str = Field(min_length=1)

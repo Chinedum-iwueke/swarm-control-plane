@@ -9,17 +9,138 @@ from app.core.security import get_current_agent, require_orchestrator
 from app.db.session import get_db
 from app.models import Agent, ApprovalEvent, Artifact, TaskApproval
 from app.schemas import (
+    ApprovalCenterDecision,
+    ApprovalCenterDecisionReceipt,
+    ApprovalCenterItem,
+    ApprovalCenterResponse,
     ApprovalDecision,
     ApprovalEventResponse,
     ApprovalResponse,
     ArtifactCreate,
     ArtifactResponse,
 )
-from app.services.authority import resolve_task_approval
-from app.services.governance import approve_task, decide_task
+from app.services.approval_center import approval_center, approval_center_item
+from app.services.authority import canonical_digest, resolve_task_approval
+from app.services.governance import append_approval_event, approve_task, decide_task
 from app.services.tasks import lock_task, verify_task_lease
 
 router = APIRouter(tags=["governance"])
+
+
+@router.get(
+    "/v1/approval-center",
+    dependencies=[Depends(require_orchestrator)],
+    response_model=ApprovalCenterResponse,
+)
+def approval_center_overview(
+    db: Annotated[Session, Depends(get_db)],
+) -> ApprovalCenterResponse:
+    return ApprovalCenterResponse.model_validate(approval_center(db))
+
+
+@router.get(
+    "/v1/approval-center/{approval_id}",
+    dependencies=[Depends(require_orchestrator)],
+    response_model=ApprovalCenterItem,
+)
+def approval_center_review(
+    approval_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> ApprovalCenterItem:
+    return ApprovalCenterItem.model_validate(
+        approval_center_item(db, _approval(db, approval_id))
+    )
+
+
+@router.post(
+    "/v1/approval-center/{approval_id}/{action}",
+    dependencies=[Depends(require_orchestrator)],
+    response_model=ApprovalCenterDecisionReceipt,
+)
+def approval_center_decision(
+    approval_id: UUID,
+    action: str,
+    payload: ApprovalCenterDecision,
+    db: Annotated[Session, Depends(get_db)],
+) -> ApprovalCenterDecisionReceipt:
+    if action not in {"approve", "reject"}:
+        raise HTTPException(status_code=404, detail="Unknown approval action.")
+    approval = db.scalar(
+        select(TaskApproval).where(TaskApproval.id == approval_id).with_for_update()
+    )
+    if approval is None:
+        raise HTTPException(status_code=404, detail="Approval not found.")
+    review = approval_center_item(db, approval)
+    if review["review_digest"] != payload.expected_review_digest:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "approval-review-superseded",
+                "current_review_digest": review["review_digest"],
+            },
+        )
+    if action == "approve" and not review["actionable"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "approval-not-actionable",
+                "blocked_by": review["blocked_by"],
+            },
+        )
+    resolve_task_approval(
+        db,
+        approval,
+        actor=payload.actor,
+        action=action,
+        exception_id=payload.authority_exception_id,
+    )
+    if action == "approve":
+        approve_task(
+            db,
+            approval,
+            actor=payload.actor,
+            reason=payload.reason,
+            expires_in_seconds=payload.expires_in_seconds,
+        )
+    else:
+        decide_task(
+            db,
+            approval,
+            actor=payload.actor,
+            reason=payload.reason,
+            action="reject",
+        )
+    receipt_document = {
+        "schema_version": "digest-safe-approval-decision-v1.0.0",
+        "approval_id": str(approval.id),
+        "task_id": str(approval.task_id),
+        "action": action,
+        "actor": payload.actor,
+        "review_digest": payload.expected_review_digest,
+        "plan_digest": approval.plan_digest,
+        "decision_reason_digest": canonical_digest(payload.reason),
+        "expires_in_seconds": payload.expires_in_seconds
+        if action == "approve"
+        else None,
+    }
+    receipt_digest = canonical_digest(receipt_document)
+    event = append_approval_event(
+        db,
+        approval,
+        "approval_center_decision_receipt",
+        payload.actor,
+        "Digest-safe approval-center decision retained.",
+        {**receipt_document, "receipt_digest": receipt_digest},
+    )
+    db.commit()
+    db.refresh(approval)
+    return ApprovalCenterDecisionReceipt(
+        approval=ApprovalResponse.model_validate(approval),
+        action=action,
+        review_digest=payload.expected_review_digest,
+        receipt_digest=receipt_digest,
+        event_id=event.id,
+    )
 
 
 @router.get(
