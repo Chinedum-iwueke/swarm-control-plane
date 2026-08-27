@@ -1,0 +1,24 @@
+{
+  "schema_version": "disc008-pilot-report-v1.0.0",
+  "session_id": "be033159-bc20-4c82-b81f-fbf016027033",
+  "task_graph_id": "4eaa1e3e-179a-49b7-91f9-11ebd2772a64",
+  "task_graph_digest": "30868075b09bfd97f88121e349088b9f7c5611ceda8d91999ba6a435dc520fe5",
+  "agenda_digest": "9ebb310edac8a9acbfe67d048c0bcb03abad3a062bce9ddd51b9722e9376c161",
+  "budget_digest": "7e32e5da9faea51d46bf6656597c7ff39d0eec9ec7a5ea81b3ea4cce6df04e13",
+  "status": "completed",
+  "retained_outcomes": ["negative", "failed", "invalid"],
+  "independence_receipt_digest": "153cf0ea907329c97aaf5728507dc3806b42548b94e4d213acde032b47683104",
+  "selection_audit_digest": "f8bf5a21bf539e0b4e46cf4b54405d0cd4e0fcaa9d0a1c47950d43ec487dd62f",
+  "event_chain": [
+    "2864825485a2caa3ff53e6e46bad046ccf5ec821fe5cadb65752902f28ec7887",
+    "b6a7b9cee4a0d2c04e27532133b02946fbcded726a38fb6b0f0e20e3c7b92484",
+    "67f4997cb8fafed9455d1bf63501284e837447832dbae88828cc7d81b3157b21",
+    "60405c9a1f448dc0957741d57a193c3d75ef1d0e6ee44091e446ab80b01edcef",
+    "a3a5903c27c1a526f8385cd9d16f38935e14142ac187a175d85a43e6c95a6345"
+  ],
+  "scope_expansion": false,
+  "self_approval": false,
+  "promotion_authority": false,
+  "capital_authority": false,
+  "report_digest": "bbb435dc574af12c351591d96fc9deab8b379908f8df6079f0060ad8bc601c1e"
+}
