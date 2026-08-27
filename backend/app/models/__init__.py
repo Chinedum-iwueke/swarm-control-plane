@@ -16,6 +16,10 @@ from app.models.autonomous_research import (
     AutonomousResearchSession,
     AutonomousResearchSessionEvent,
 )
+from app.models.causal_pipeline import (
+    CausalDatasetMaterialization,
+    CausalDatasetPipeline,
+)
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
     FounderConversation,
@@ -183,6 +187,8 @@ __all__ = [
     "CanonicalEvidenceEdge",
     "CanonicalEvidenceObject",
     "CanonicalIdentityAlias",
+    "CausalDatasetMaterialization",
+    "CausalDatasetPipeline",
     "CognitiveToolReceipt",
     "ControlEvent",
     "ControlScope",
