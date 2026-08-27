@@ -141,8 +141,16 @@ def validation_db(run=None, prior=None, base=None):
 def test_run_requires_active_data_only_toolless_policy():
     db = MagicMock()
     db.get.side_effect = [program(), policy(["shell"])]
-    with pytest.raises(SymbolicSearchConflict, match="no tools"):
+    with pytest.raises(SymbolicSearchConflict, match="unsafe tools"):
         register_symbolic_search(db, run_request())
+
+
+def test_read_only_research_retrieval_policy_is_allowed():
+    db = MagicMock()
+    db.get.side_effect = [program(), policy(["research.retrieve"])]
+    db.scalar.return_value = None
+    record = register_symbolic_search(db, run_request())
+    assert record.constraints["prompt_policy_digest"] == "b" * 64
 
 
 def test_run_rejects_unknown_required_field():
