@@ -72,6 +72,48 @@ def main() -> int:
         .raise_for_status()
         .json()
     )
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+    policy_payload = {
+        "identity_id": identity["id"],
+        "logical_name": "plat002.pilot.reference",
+        "version": f"1.0.{timestamp}",
+        "required_scope": "identity:read",
+        "reference": "file:///run/secrets/plat002-pilot",
+        "rotation_due_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
+        "expires_at": (datetime.now(UTC) + timedelta(days=60)).isoformat(),
+        "created_by": "founder-operator",
+    }
+    policy = (
+        admin.post("/v1/workload-identities/secret-policies", json=policy_payload)
+        .raise_for_status()
+        .json()
+    )
+    replacement_payload = {
+        **policy_payload,
+        "version": f"1.1.{timestamp}",
+        "reference": "file:///run/secrets/plat002-pilot-next",
+        "rotation_due_at": (datetime.now(UTC) + timedelta(days=60)).isoformat(),
+        "expires_at": (datetime.now(UTC) + timedelta(days=90)).isoformat(),
+    }
+    replacement = (
+        admin.post(
+            f"/v1/workload-identities/secret-policies/{policy['id']}/rotate",
+            json=replacement_payload,
+        )
+        .raise_for_status()
+        .json()
+    )
+    secret_revocation = (
+        admin.post(
+            f"/v1/workload-identities/secret-policies/{replacement['id']}/revoke",
+            json={
+                "actor": "founder-operator",
+                "reason": "Complete PLAT-002 secret lifecycle drill.",
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
     emergency_denied = admin.post(
         "/v1/workload-identities/emergency-grants",
         json={
@@ -83,6 +125,33 @@ def main() -> int:
             "approval_reference": "PLAT-002-DRILL",
             "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
         },
+    )
+    emergency = (
+        admin.post(
+            "/v1/workload-identities/emergency-grants",
+            json={
+                "identity_id": identity["id"],
+                "scopes": ["workload:isolate"],
+                "reason": "PLAT-002 bounded containment lifecycle drill",
+                "approved_by": "founder-operator",
+                "independent_reviewer": "security-reviewer",
+                "approval_reference": f"PLAT-002-DRILL-{timestamp}",
+                "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+            },
+        )
+        .raise_for_status()
+        .json()
+    )
+    emergency_revocation = (
+        admin.post(
+            f"/v1/workload-identities/emergency-grants/{emergency['id']}/revoke",
+            json={
+                "actor": "founder-operator",
+                "reason": "Containment drill completed without mutation.",
+            },
+        )
+        .raise_for_status()
+        .json()
     )
     rollback = (
         admin.post(
@@ -102,8 +171,12 @@ def main() -> int:
             "scoped_identity_allowed": allowed.status_code == 200,
             "confused_deputy_denied": denied.status_code in {403, 422},
             "secret_value_redacted": authorization["allowed"] is False,
+            "secret_policy_rotated_and_revoked": replacement["status"] == "active"
+            and secret_revocation["status"] == "revoked",
             "privilege_expanding_break_glass_denied": emergency_denied.status_code
             == 422,
+            "reduction_only_break_glass_revoked": emergency_revocation["status"]
+            == "revoked",
             "rotation_rollback_restored_prior": rollback["status"] == "rolled_back",
             "rolled_back_credential_revoked": revoked.status_code == 401,
         },
