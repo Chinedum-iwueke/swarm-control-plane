@@ -89,6 +89,7 @@ from app.models.memory import (
     EvidenceOutcomeRecord,
 )
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
+from app.models.model_evaluation import ModelFamilyEvaluation
 from app.models.observability import (
     AlertRoutingEvent,
     RoutedServiceAlert,
@@ -244,6 +245,7 @@ __all__ = [
     "MechanismEvaluation",
     "MechanismPlan",
     "MissionEvent",
+    "ModelFamilyEvaluation",
     "Operation",
     "OperationEvent",
     "OperationalNote",
