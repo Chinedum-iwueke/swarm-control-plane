@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.data_contract import ResearchDatasetManifest
 from app.models.factor_language import FactorExperimentProgram
 from app.models.research import ResearchHypothesis
 from app.schemas.factor_language import FactorProgramCreate
@@ -221,6 +222,14 @@ def register_factor_program(
 ) -> FactorExperimentProgram:
     if db.get(ResearchHypothesis, payload.hypothesis_id) is None:
         raise FactorLanguageConflict("A registered hypothesis is required.")
+    dataset = db.scalar(
+        select(ResearchDatasetManifest).where(
+            ResearchDatasetManifest.manifest_digest
+            == payload.source.dataset_manifest_digest
+        )
+    )
+    if dataset is None:
+        raise FactorLanguageConflict("A registered dataset manifest is required.")
     compiled, source_digest, semantic_digest, compiled_digest = compile_program(payload)
     prior = None
     if payload.supersedes_program_id:
