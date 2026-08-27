@@ -40,6 +40,7 @@ class DailyResearchBudget(StrictModel):
 
 class ResearchProgramCreate(StrictModel):
     program_key: str = Field(pattern=_KEY, max_length=150)
+    project: str = Field(pattern=_KEY, max_length=100)
     title: str = Field(min_length=1, max_length=300)
     mandate: list[DailyResearchQuestion] = Field(min_length=1, max_length=100)
     schedule: DailyResearchSchedule

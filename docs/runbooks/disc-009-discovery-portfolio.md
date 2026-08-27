@@ -9,7 +9,7 @@ The scheduler allocates attention only. It cannot create tasks, start autonomous
 ## Canonical inputs
 
 - current, non-stale domain-curriculum evaluations;
-- active discovery maps bound to a daily research program in the same project;
+- active discovery maps bound to the typed project identity of their daily research program;
 - completed bounded autonomous sessions with immutable closeout digests.
 - active selection-bias audits whose complete mechanism and discovery lineage resolves to the same project.
 

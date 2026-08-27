@@ -103,7 +103,7 @@ def _source(
         program = (
             db.get(ResearchProgram, cycle.program_id) if cycle is not None else None
         )
-        if program is None or program.mandate.get("project") != project:
+        if program is None or program.project != project:
             raise HTTPException(
                 409, "Discovery-map source is outside the portfolio project."
             )
@@ -147,7 +147,7 @@ def _source(
             or discovery is None
             or discovery.status != "active"
             or program is None
-            or program.mandate.get("project") != project
+            or program.project != project
         ):
             raise HTTPException(
                 409,
