@@ -201,6 +201,20 @@ class Channel:
         return {}
 
 
+class AckFailsOnceChannel(Channel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.ack_attempts = 0
+
+    async def acknowledge_notification(self, notification_id, delivery_reference):
+        self.ack_attempts += 1
+        if self.ack_attempts == 1:
+            raise RuntimeError("acknowledgement unavailable")
+        return await super().acknowledge_notification(
+            notification_id, delivery_reference
+        )
+
+
 def approval(*, actionable: bool, suffix: str = "02") -> dict:
     return {
         "id": f"approval-{suffix}",
@@ -401,6 +415,117 @@ def test_handoff_is_expiring_digest_bound_and_single_use(tmp_path: Path) -> None
     assert store.consume(token) is True
     assert store.resolve(token) is None
     assert store.consume(token) is False
+
+
+@pytest.mark.asyncio
+async def test_secret_shaped_input_is_rejected_before_planner_and_not_retained(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    secret = "OPENAI_API_KEY=sk-proj-this-is-a-real-looking-secret-token"
+
+    await gateway._handle_update(
+        {
+            "update_id": 41,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": secret,
+            },
+        }
+    )
+
+    assert channel.created == []
+    assert secret not in telegram.sent[-1][1]
+    assert store.security_event_counts() == {"prohibited_input_rejected": 1}
+    assert secret not in (tmp_path / "gateway.sqlite3").read_bytes().decode(
+        "utf-8", errors="ignore"
+    )
+
+
+@pytest.mark.asyncio
+async def test_founder_flood_is_bounded_without_creating_extra_work(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    configured = settings(tmp_path).model_copy(
+        update={"rate_limit_messages": 2, "rate_limit_window_seconds": 60}
+    )
+    gateway = RestrictedTelegramGateway(
+        configured, telegram=telegram, channel=channel, store=store
+    )
+
+    for message_id in range(1, 4):
+        await gateway._handle_update(
+            {
+                "update_id": message_id,
+                "message": {
+                    "message_id": message_id,
+                    "from": {"id": 123},
+                    "chat": {"id": 456},
+                    "text": f"/status {message_id}" if message_id < 3 else "third job",
+                },
+            }
+        )
+
+    assert channel.created == []
+    assert "paused intake" in telegram.sent[-1][1]
+    assert store.security_event_counts()["founder_flood_throttled"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delivered_notification_is_not_resent_when_ack_retry_is_needed(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = AckFailsOnceChannel()
+    channel.notification_values = [approval_notification()]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+
+    with pytest.raises(RuntimeError, match="acknowledgement unavailable"):
+        await gateway._notify_outbox()
+    assert len(telegram.sent) == 1
+
+    await gateway._notify_outbox()
+
+    assert len(telegram.sent) == 1
+    assert channel.ack_attempts == 2
+    assert channel.acknowledged[0][1].startswith("telegram:456:10001")
+
+
+def test_security_audit_chain_and_rate_window_survive_restart(tmp_path: Path) -> None:
+    path = tmp_path / "gateway.sqlite3"
+    first = HandoffStore(path)
+    first.initialize()
+    first.record_security_event("spoofed_sender_rejected", {"sender_match": False})
+    assert first.admit_founder_message(limit=1, window_seconds=60, now=100) is True
+
+    restarted = HandoffStore(path)
+    restarted.initialize()
+    restarted.record_security_event("founder_flood_throttled")
+
+    assert restarted.security_event_counts() == {
+        "founder_flood_throttled": 1,
+        "spoofed_sender_rejected": 1,
+    }
+    assert restarted.admit_founder_message(
+        limit=1, window_seconds=60, now=101
+    ) is False
+    assert restarted.verify_security_event_chain()[0:2] == (True, 2)
 
 
 def test_polling_offset_and_message_binding_survive_restart(tmp_path: Path) -> None:
@@ -1008,7 +1133,7 @@ async def test_outbox_notification_is_acknowledged_after_delivery(
     await gateway._notify_outbox()
 
     assert len(telegram.sent) == 1
-    assert channel.acknowledged == [("notification-02", "telegram:456")]
+    assert channel.acknowledged == [("notification-02", "telegram:456:10001")]
 
 
 @pytest.mark.asyncio
@@ -1044,7 +1169,9 @@ async def test_fleet_incident_uses_outbox_and_bounded_evidence(tmp_path: Path) -
     assert "Fleet critical" in telegram.sent[0][1]
     assert "vm2-deployment" in telegram.sent[0][1]
     assert len(telegram.sent[0][1]) < 500
-    assert channel.acknowledged == [("fleet-notification-1", "telegram:456")]
+    assert channel.acknowledged == [
+        ("fleet-notification-1", "telegram:456:10001")
+    ]
 
 
 @pytest.mark.asyncio
@@ -1082,7 +1209,9 @@ async def test_service_slo_alert_is_attributable_and_bounded(tmp_path: Path) -> 
     assert "Service SLO firing" in telegram.sent[0][1]
     assert "platform-operations" in telegram.sent[0][1]
     assert len(telegram.sent[0][1]) < 600
-    assert channel.acknowledged == [("slo-notification-1", "telegram:456")]
+    assert channel.acknowledged == [
+        ("slo-notification-1", "telegram:456:10001")
+    ]
 
 
 @pytest.mark.asyncio

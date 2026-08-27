@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any
 
+from .channel_security import prohibited_input_reason
 from .config import GatewaySettings
 from .control_plane import ChannelError, FounderChannelClient
 from .store import HandoffStore
@@ -87,6 +88,13 @@ class RestrictedTelegramGateway:
 
     async def _notify_outbox(self) -> None:
         for notification in await self._channel.notifications():
+            notification_id = str(notification["id"])
+            delivered = self._store.notification_delivery(notification_id)
+            if delivered is not None:
+                await self._channel.acknowledge_notification(
+                    notification_id, delivered
+                )
+                continue
             payload = notification["payload"]
             kind = notification["kind"]
             if kind == "approval_required":
@@ -97,7 +105,7 @@ class RestrictedTelegramGateway:
                     self._settings.handoff_ttl_seconds,
                 )
                 operation = payload.get("operation") or payload["task_type"]
-                await self._telegram.send(
+                sent = await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"Task approval required\n"
                     f"{payload['task_number']} · {payload['task_title']}\n"
@@ -114,7 +122,7 @@ class RestrictedTelegramGateway:
                     payload["manifest_digest"],
                     self._settings.handoff_ttl_seconds,
                 )
-                await self._telegram.send(
+                sent = await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"Mission plan approval required\n"
                     f"{payload['milestone_id']}\n{payload['objective']}\n"
@@ -123,7 +131,7 @@ class RestrictedTelegramGateway:
                     button_url=f"https://t.me/{self._username}?start=review_{token}",
                 )
             elif kind == "task_ready":
-                await self._telegram.send(
+                sent = await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"Task ready for execution\n"
                     f"{payload['task_number']} · {payload['task_title']}",
@@ -133,7 +141,7 @@ class RestrictedTelegramGateway:
                 detail = ", ".join(
                     f"{key}={value}" for key, value in sorted(evidence.items())
                 )[:300]
-                await self._telegram.send(
+                sent = await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"Fleet {payload['severity']}\n"
                     f"{payload['machine']} · {payload['signal']}\n"
@@ -144,7 +152,7 @@ class RestrictedTelegramGateway:
                 detail = ", ".join(
                     f"{key}={value}" for key, value in sorted(evidence.items())
                 )[:300]
-                await self._telegram.send(
+                sent = await self._telegram.send(
                     self._settings.founder_chat_id,
                     f"Service SLO {payload['state']} · {payload['severity']}\n"
                     f"{payload['service_key']} · {payload['indicator']}\n"
@@ -152,8 +160,20 @@ class RestrictedTelegramGateway:
                 )
             else:
                 continue
+            message_ids = [
+                str(item["message_id"])
+                for item in sent or []
+                if item.get("message_id") is not None
+            ]
+            delivery_reference = (
+                f"telegram:{self._settings.founder_chat_id}:"
+                f"{','.join(message_ids) or 'accepted'}"
+            )
+            self._store.mark_notification_delivered(
+                notification_id, delivery_reference
+            )
             await self._channel.acknowledge_notification(
-                notification["id"], f"telegram:{self._settings.founder_chat_id}"
+                notification_id, delivery_reference
             )
 
     async def _handle_update(self, update: dict[str, Any]) -> None:
@@ -165,9 +185,53 @@ class RestrictedTelegramGateway:
             sender.get("id") != self._settings.founder_user_id
             or chat.get("id") != self._settings.founder_chat_id
         ):
+            self._store.record_security_event(
+                "spoofed_sender_rejected",
+                {
+                    "update_id": str(update.get("update_id", "unknown")),
+                    "sender_match": sender.get("id") == self._settings.founder_user_id,
+                    "chat_match": chat.get("id") == self._settings.founder_chat_id,
+                },
+            )
             return
         text = str(message.get("text", "")).strip()
         if not text:
+            return
+        reason = prohibited_input_reason(
+            text, max_chars=self._settings.max_message_chars
+        )
+        if reason is not None:
+            self._store.record_security_event(
+                "prohibited_input_rejected",
+                {
+                    "reason": reason,
+                    "update_id": str(update.get("update_id", "unknown")),
+                    "message_chars": len(text),
+                },
+            )
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "Hermes blocked this message before intake because it appears to "
+                "contain a credential, private key, password, or exceeds the safe "
+                "message size. The content was not sent to the planner or retained. "
+                "Rotate any real credential you pasted, then restate the request "
+                "without secret values.",
+            )
+            return
+        if not self._store.admit_founder_message(
+            limit=self._settings.rate_limit_messages,
+            window_seconds=self._settings.rate_limit_window_seconds,
+        ):
+            self._store.record_security_event(
+                "founder_flood_throttled",
+                {"update_id": str(update.get("update_id", "unknown"))},
+            )
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "Hermes paused intake because the bounded founder-channel rate was "
+                "exceeded. Wait one minute, then continue; no task was created for "
+                "this message.",
+            )
             return
         if edited is not None:
             message_id = str(message.get("message_id", "unknown"))
@@ -983,11 +1047,16 @@ class RestrictedTelegramGateway:
         rendered = ", ".join(
             f"{status}: {count}" for status, count in sorted(counts.items())
         )
+        security_counts = self._store.security_event_counts()
+        security = ", ".join(
+            f"{key}: {value}" for key, value in sorted(security_counts.items())
+        ) or "none"
         await self._telegram.send(
             self._settings.founder_chat_id,
             f"Hermes status\n{rendered or 'No tasks recorded.'}\n"
             f"Supervised missions: {sum(item['supervision_status'] == 'active' for item in missions)} active, "
-            f"{sum(item['supervision_status'] == 'attention_required' for item in missions)} need attention",
+            f"{sum(item['supervision_status'] == 'attention_required' for item in missions)} need attention\n"
+            f"Channel security events: {security}",
         )
 
     async def _send_thread_message(
