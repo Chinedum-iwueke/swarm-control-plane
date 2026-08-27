@@ -1,0 +1,17 @@
+{
+  "schema_version": "disc004-pilot-report-v1.0.0",
+  "campaign_id": "64fa4499-4728-4db8-a1fd-570e503b075b",
+  "specification_digest": "d311f7fab9f702949b8f3ebbbb65c228e9a8a805f48b2b5e5e89e8f132d2fd2e",
+  "status": "complete",
+  "proposed_count": 3,
+  "observed_count": 3,
+  "observation_statuses": [
+    "completed",
+    "failed",
+    "completed"
+  ],
+  "event_chain_valid": true,
+  "event_head_digest": "010acf94e119f18bf67ae7d9683465886bf2d210ab6c73013f40af224d28cef8",
+  "action_authority": false,
+  "report_digest": "d2406f40e0f7b42ecbcecea5867c688fc9398fc0a863d8475c23d2e8a95e2922"
+}
