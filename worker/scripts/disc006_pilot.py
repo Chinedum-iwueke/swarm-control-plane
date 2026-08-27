@@ -22,7 +22,12 @@ def digest(value: object) -> str:
 
 def call(client: httpx.Client, method: str, path: str, **kwargs):
     response = client.request(method, path, **kwargs)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"{method} {path} returned HTTP {response.status_code}: {response.text}"
+        ) from exc
     return response.json()
 
 
@@ -124,7 +129,7 @@ def main() -> int:
                         "dossier_key": "disc006-live-prerequisite",
                         "version": "1.0.0",
                         "project": opposition["project"],
-                        "access_class": "internal",
+                        "access_class": opposing["access_class"],
                         "question": mapped["document"]["question"],
                         "decision_context": "Freeze mechanism alternatives before decisive outcomes.",
                         "scope": mapped["document"]["baseline_definition"],
@@ -322,7 +327,7 @@ def register_claim(client: httpx.Client, result: dict) -> dict:
                 }
             ],
             "project": result["project"],
-            "access_class": "internal",
+            "access_class": result["access_class"],
             "authority_class": "derived",
             "payload": payload,
             "created_by": "disc006-pilot",
