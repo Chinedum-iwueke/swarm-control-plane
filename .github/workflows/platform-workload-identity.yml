@@ -1,0 +1,32 @@
+name: Platform workload identity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  plat002:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bounded test surfaces
+        run: |
+          python -m pip install -r backend/requirements-dev.txt
+          python -m pip install -e mission-control
+      - name: Verify workload identity contracts
+        env:
+          PYTHONPATH: backend:mission-control/src
+          POSTGRES_PASSWORD_FILE: /etc/hostname
+          AGENT_TOKEN_SECRET_FILE: /etc/hostname
+        run: |
+          pytest -q backend/tests/test_workload_identity.py backend/tests/test_agent_governance.py
+          pytest -q mission-control/tests/test_control_plane.py
+          node --check mission-control/src/hermes_mission_control/static/app.js
+          python -m compileall -q backend worker/scripts

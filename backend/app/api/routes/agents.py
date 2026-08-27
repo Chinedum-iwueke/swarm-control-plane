@@ -157,6 +157,14 @@ def rotate_agent_credential(
             detail="Cannot rotate credentials for a disabled agent.",
         )
 
+    from app.services.workload_identity import control
+
+    if control(db).enforcement_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Workload identity enforcement is active; use the scoped credential rotation lifecycle.",
+        )
+
     now = datetime.now(UTC)
     revoke_active_credentials(db, agent.id, now)
 

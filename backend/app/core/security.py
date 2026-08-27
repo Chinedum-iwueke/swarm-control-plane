@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -127,6 +127,7 @@ def require_mission_supervisor(
 
 
 def get_current_agent(
+    request: Request,
     credentials: Annotated[
         HTTPAuthorizationCredentials | None,
         Depends(bearer_scheme),
@@ -177,6 +178,17 @@ def get_current_agent(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if (
+        credential.rotation_state == "overlap"
+        and credential.overlap_expires_at is not None
+        and credential.overlap_expires_at <= now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Agent credential rotation overlap has expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     supplied_digest = digest_agent_token(token)
 
     if not hmac.compare_digest(
@@ -197,6 +209,9 @@ def get_current_agent(
             detail="Agent is disabled.",
         )
 
+    from app.services.workload_identity import validate_identity
+
+    validate_identity(db, agent, credential, request.method, request.url.path, now)
     credential.last_used_at = now
     db.commit()
 
