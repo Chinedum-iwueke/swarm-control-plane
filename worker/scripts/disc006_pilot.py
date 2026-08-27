@@ -63,11 +63,61 @@ def main() -> int:
                 if item["stage"] in {"mechanism", "opportunity"}
             )
             hypothesis = call(client, "GET", "/v1/research/hypotheses")[0]
-            dossier = call(client, "GET", "/v1/research/memory/dossiers")[0]
             opposition = call(client, "GET", "/v1/research/memory/oppositions")[0]
-            evidence = call(client, "GET", "/v1/research/evidence/objects?limit=500")[
-                "items"
-            ][0]
+            claim = call(
+                client,
+                "GET",
+                f"/v1/research/evidence/objects/{opposition['subject_claim_id']}",
+            )
+            opposing = call(
+                client,
+                "GET",
+                f"/v1/research/evidence/objects/{opposition['opposing_object_id']}",
+            )
+            dossiers = call(client, "GET", "/v1/research/memory/dossiers")
+            dossier = (
+                dossiers[0]
+                if dossiers
+                else call(
+                    client,
+                    "POST",
+                    "/v1/research/memory/dossiers",
+                    json={
+                        "dossier_key": "disc006-live-prerequisite",
+                        "version": "1.0.0",
+                        "project": opposition["project"],
+                        "access_class": "internal",
+                        "question": mapped["document"]["question"],
+                        "decision_context": "Freeze mechanism alternatives before decisive outcomes.",
+                        "scope": mapped["document"]["baseline_definition"],
+                        "evidence_cutoff": datetime.now().astimezone().isoformat(),
+                        "claim_ids": [claim["object_id"]],
+                        "supporting_evidence_ids": [],
+                        "opposing_evidence_ids": [opposing["object_id"]],
+                        "belief_ids": [],
+                        "opposition_record_ids": [opposition["id"]],
+                        "outcome_record_ids": [],
+                        "episode_ids": [],
+                        "retrieval_manifest": {
+                            "mode": "exact-opposition-replay",
+                            "object_ids": [claim["object_id"], opposing["object_id"]],
+                        },
+                        "doctrine_and_authority": [
+                            "Research Bible falsification boundary"
+                        ],
+                        "unknowns": [
+                            "Economic mechanism remains unresolved before testing."
+                        ],
+                        "risks": ["Confounding and post-hoc interpretation."],
+                        "dissent": [opposition["rationale"]],
+                        "synthesis": "The frozen record retains both the subject claim and its explicit opposition.",
+                        "recommendation": "Preregister the decisive test before evaluating outcomes.",
+                        "compiler_version": "disc006-pilot-v1.0.0",
+                        "compiled_by": "disc006-pilot",
+                    },
+                )
+            )
+            evidence = opposing
             plan_document = {
                 "schema_version": 1,
                 "mechanism": "Reduced liquidity amplifies the price response to directional forced flow.",
@@ -98,19 +148,25 @@ def main() -> int:
                 "opposition_record_ids": [opposition["id"]],
                 "evidence_cutoff": datetime.now().astimezone().isoformat(),
             }
-            plan = call(
-                client,
-                "POST",
-                "/v1/research/falsification/plans",
-                json={
-                    "plan_key": "DISC006-LIVE-PLAN-R1",
-                    "discovery_map_id": mapped["id"],
-                    "hypothesis_id": hypothesis["id"],
-                    "plan": plan_document,
-                    "plan_digest": digest(plan_document),
-                    "registered_by": "disc006-pilot",
-                },
+            plans = call(client, "GET", "/v1/research/falsification/plans")
+            plan = next(
+                (item for item in plans if item["plan_key"] == "DISC006-LIVE-PLAN-R1"),
+                None,
             )
+            if plan is None:
+                plan = call(
+                    client,
+                    "POST",
+                    "/v1/research/falsification/plans",
+                    json={
+                        "plan_key": "DISC006-LIVE-PLAN-R1",
+                        "discovery_map_id": mapped["id"],
+                        "hypothesis_id": hypothesis["id"],
+                        "plan": plan_document,
+                        "plan_digest": digest(plan_document),
+                        "registered_by": "disc006-pilot",
+                    },
+                )
             outcome_time = (
                 datetime.fromisoformat(plan["registered_at"].replace("Z", "+00:00"))
                 + timedelta(microseconds=1)
@@ -118,18 +174,27 @@ def main() -> int:
             failed_document = evaluation(
                 plan["plan_digest"], evidence, outcome_time, "failed", "ruled_out"
             )
-            falsified = call(
-                client,
-                "POST",
-                "/v1/research/falsification/evaluations",
-                json={
-                    "evaluation_key": "DISC006-LIVE-FALSIFIED-R1",
-                    "plan_id": plan["id"],
-                    "evaluation": failed_document,
-                    "evaluation_digest": digest(failed_document),
-                    "evaluated_by": "independent-reviewer",
-                },
+            falsified = next(
+                (
+                    item
+                    for item in evaluations
+                    if item["evaluation_key"] == "DISC006-LIVE-FALSIFIED-R1"
+                ),
+                None,
             )
+            if falsified is None:
+                falsified = call(
+                    client,
+                    "POST",
+                    "/v1/research/falsification/evaluations",
+                    json={
+                        "evaluation_key": "DISC006-LIVE-FALSIFIED-R1",
+                        "plan_id": plan["id"],
+                        "evaluation": failed_document,
+                        "evaluation_digest": digest(failed_document),
+                        "evaluated_by": "independent-reviewer",
+                    },
+                )
             unresolved_document = evaluation(
                 plan["plan_digest"],
                 evidence,
