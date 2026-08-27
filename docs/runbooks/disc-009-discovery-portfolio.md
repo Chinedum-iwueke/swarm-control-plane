@@ -11,6 +11,7 @@ The scheduler allocates attention only. It cannot create tasks, start autonomous
 - current, non-stale domain-curriculum evaluations;
 - active discovery maps bound to a daily research program in the same project;
 - completed bounded autonomous sessions with immutable closeout digests.
+- active selection-bias audits whose complete mechanism and discovery lineage resolves to the same project.
 
 Source uncertainty is derived server-side from the canonical source. Callers may declare decision relevance, feasibility, and attention cost, but cannot supply or override uncertainty.
 
