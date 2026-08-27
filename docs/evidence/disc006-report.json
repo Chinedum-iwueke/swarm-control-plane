@@ -1,0 +1,11 @@
+{
+  "execution_order_or_capital_authority": false,
+  "failed_decisive_test_visible": true,
+  "falsified_evaluation_digest": "92bd2981571c9fb1281dd3da5908a225db83ca433a208d3a9e2501f3bf4cb355",
+  "falsified_evaluation_id": "64195922-e004-4ae9-a091-8236a89cdb22",
+  "report_digest": "264960712733bbec083fa443e85930a5dcc38ecaac1a330faddd48fc68f59a7b",
+  "schema_version": "disc006-pilot-report-v1.0.0",
+  "source_write_authority": false,
+  "success": true,
+  "superseding_unresolved_evaluation_id": "65e61ffe-9fcf-46dd-bb51-7bc1fb02e2ee"
+}
