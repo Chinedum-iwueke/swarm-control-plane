@@ -1,0 +1,34 @@
+{
+  "action_authority": false,
+  "audit": {
+    "event_count": 0,
+    "event_counts": {},
+    "head_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "transcript_content_retained": false,
+    "valid": true
+  },
+  "gateway": {
+    "active_entered_at": "2026-08-27T03:40:40Z",
+    "active_state": "active",
+    "ready_event_observed": true,
+    "restarts_after_activation": 0,
+    "sub_state": "running"
+  },
+  "live_status": {
+    "channel_security_events": {},
+    "missions_active": 0,
+    "missions_attention_required": 0,
+    "task_counts": {
+      "cancelled": 11,
+      "failed": 11,
+      "pending_approval": 1,
+      "queued": 1,
+      "succeeded": 26
+    },
+    "work_created": false
+  },
+  "production_resources_mutated_by_status": false,
+  "schema_version": "chan001-production-report-v1.0.0",
+  "source_commit": "4557667ce42d1d95684f931b57d557cc0bdab42b",
+  "success": true
+}
