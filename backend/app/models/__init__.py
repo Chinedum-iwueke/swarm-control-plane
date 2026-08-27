@@ -26,6 +26,13 @@ from app.models.curriculum import (
     ResearchDomainCurriculum,
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
+from app.models.evaluator_routing import (
+    EvaluationIndependenceReceipt,
+    EvaluationRoute,
+    EvaluationRouteEvent,
+    EvaluatorAssignment,
+    EvaluatorProfile,
+)
 from app.models.evidence import (
     CanonicalEvidenceAuditEvent,
     CanonicalEvidenceEdge,
@@ -77,7 +84,11 @@ from app.models.platform import (
     ServiceCatalogReconciliation,
     ServiceCatalogSnapshot,
 )
-from app.models.prompt_policy import PromptPolicyBundle, PromptPolicyEvaluation, PromptPolicyEvent
+from app.models.prompt_policy import (
+    PromptPolicyBundle,
+    PromptPolicyEvaluation,
+    PromptPolicyEvent,
+)
 from app.models.proposal import FounderProposal
 from app.models.research import (
     ResearchBrief,
@@ -158,6 +169,11 @@ __all__ = [
     "CorpusSyncItem",
     "CorpusSyncRun",
     "EngineeringMission",
+    "EvaluationIndependenceReceipt",
+    "EvaluationRoute",
+    "EvaluationRouteEvent",
+    "EvaluatorAssignment",
+    "EvaluatorProfile",
     "EvidenceConsolidationReceipt",
     "EvidenceCorpusFreshness",
     "EvidenceDeletionRequest",

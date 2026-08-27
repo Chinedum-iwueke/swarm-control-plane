@@ -12,6 +12,7 @@ from app.api.routes.corpus import router as corpus_router
 from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.data_contracts import router as data_contracts_router
+from app.api.routes.evaluator_routing import router as evaluator_routing_router
 from app.api.routes.evidence import router as evidence_router
 from app.api.routes.fleet import agent_router as agent_fleet_router
 from app.api.routes.fleet import router as fleet_router
@@ -72,6 +73,7 @@ __all__ = [
     "corpus_sync_router",
     "curriculum_router",
     "data_contracts_router",
+    "evaluator_routing_router",
     "evidence_router",
     "fleet_router",
     "founder_channel_router",

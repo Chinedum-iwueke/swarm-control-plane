@@ -19,6 +19,7 @@ from app.api.routes import (
     corpus_sync_router,
     curriculum_router,
     data_contracts_router,
+    evaluator_routing_router,
     evidence_router,
     fleet_router,
     founder_channel_router,
@@ -73,6 +74,7 @@ app.include_router(laboratory_router)
 app.include_router(ingestion_recovery_router)
 app.include_router(institutional_lifecycle_router)
 app.include_router(lifecycle_router)
+app.include_router(evaluator_routing_router)
 app.include_router(lifecycle_consequence_router)
 app.include_router(metrics_router)
 app.include_router(memory_router)
