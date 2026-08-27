@@ -47,6 +47,7 @@ from app.api.routes.supervisor import router as supervisor_router
 from app.api.routes.surveillance import router as surveillance_router
 from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
+from app.api.routes.workload_identities import router as workload_identities_router
 
 __all__ = [
     "agent_fleet_router",
@@ -96,4 +97,5 @@ __all__ = [
     "surveillance_router",
     "task_runtime_router",
     "tasks_router",
+    "workload_identities_router",
 ]

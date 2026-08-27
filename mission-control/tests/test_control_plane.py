@@ -67,6 +67,9 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "expired": {},
                 },
             )
+        if request.url.path == "/v1/workload-identities/overview":
+            return httpx.Response(200, json={"enforcement_active": True, "identities": [],
+                "active_secret_policies": 0, "active_emergency_grants": 0, "expiring_credentials": 0})
         if request.url.path == "/v1/lifecycles/projections":
             return httpx.Response(200, json={"items": [], "count": 0})
         if request.url.path == "/v1/lifecycle-consequences":
@@ -95,6 +98,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["operations"] == []
     assert result["operation_summary"]["active_total"] == 0
     assert result["authority"]["policy"]["status"] == "active"
+    assert result["workload_identities"]["enforcement_active"] is True
     assert result["institutional_lifecycles"]["count"] == 0
     assert result["lifecycle_consequences"]["count"] == 0
 

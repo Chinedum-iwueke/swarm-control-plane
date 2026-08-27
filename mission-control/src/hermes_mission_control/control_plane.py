@@ -95,6 +95,16 @@ class ControlPlaneClient:
         agent_grants = await self._optional_collection(
             "/v1/agent-governance/grants"
         )
+        workload_identities = await self._optional_object(
+            "/v1/workload-identities/overview",
+            {
+                "enforcement_active": False,
+                "identities": [],
+                "active_secret_policies": 0,
+                "active_emergency_grants": 0,
+                "expiring_credentials": 0,
+            },
+        )
         institutional_lifecycles = await self._optional_object(
             "/v1/lifecycles/projections", {"items": [], "count": 0}
         )
@@ -147,6 +157,7 @@ class ControlPlaneClient:
             "authority": authority,
             "agent_charters": agent_charters,
             "agent_capability_grants": agent_grants,
+            "workload_identities": workload_identities,
             "institutional_lifecycles": institutional_lifecycles,
             "lifecycle_consequences": lifecycle_consequences,
             "operations": operations,

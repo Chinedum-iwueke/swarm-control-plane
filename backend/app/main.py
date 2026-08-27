@@ -48,6 +48,7 @@ from app.api.routes import (
     surveillance_router,
     task_runtime_router,
     tasks_router,
+    workload_identities_router,
 )
 from app.core.config import get_settings
 
@@ -105,3 +106,4 @@ app.include_router(runbook_packages_router)
 app.include_router(task_runtime_router)
 app.include_router(supervisor_router)
 app.include_router(surveillance_router)
+app.include_router(workload_identities_router)

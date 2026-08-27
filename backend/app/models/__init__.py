@@ -113,6 +113,14 @@ from app.models.surveillance import (
 )
 from app.models.task import Task
 from app.models.task_event import TaskEvent
+from app.models.workload_identity import (
+    WorkloadAuthorizationReceipt,
+    WorkloadEmergencyGrant,
+    WorkloadIdentity,
+    WorkloadIdentityControl,
+    WorkloadIdentityEvent,
+    WorkloadSecretPolicy,
+)
 
 __all__ = [
     "Agent",
@@ -217,4 +225,10 @@ __all__ = [
     "TaskApproval",
     "TaskDependency",
     "TaskEvent",
+    "WorkloadAuthorizationReceipt",
+    "WorkloadEmergencyGrant",
+    "WorkloadIdentity",
+    "WorkloadIdentityControl",
+    "WorkloadIdentityEvent",
+    "WorkloadSecretPolicy",
 ]

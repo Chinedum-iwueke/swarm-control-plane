@@ -24,6 +24,18 @@ class AgentCredential(Base):
         index=True,
     )
 
+    workload_identity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workload_identities.id"), nullable=True, index=True
+    )
+
+    rotation_parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_credentials.id"), nullable=True
+    )
+
+    rotation_state: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+
+    overlap_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     token_prefix: Mapped[str] = mapped_column(
         String(32),
         unique=True,
