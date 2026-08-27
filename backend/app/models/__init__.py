@@ -31,6 +31,11 @@ from app.models.curriculum import (
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.discovery import DiscoveryMap, DiscoveryMapEvent
+from app.models.discovery_portfolio import (
+    DiscoveryPortfolio,
+    DiscoveryPortfolioCandidate,
+    DiscoveryPortfolioEvent,
+)
 from app.models.evaluator_routing import (
     EvaluationIndependenceReceipt,
     EvaluationRoute,
@@ -128,8 +133,10 @@ from app.models.retrieval import (
 )
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.selection_audit import SelectionBiasAudit
-from app.models.statistical_search import StatisticalSearchCampaign, StatisticalSearchEvent
-from app.models.symbolic_search import SymbolicSearchCandidate, SymbolicSearchRun
+from app.models.statistical_search import (
+    StatisticalSearchCampaign,
+    StatisticalSearchEvent,
+)
 from app.models.surveillance import (
     SurveillanceDigest,
     SurveillanceFetchReceipt,
@@ -137,6 +144,7 @@ from app.models.surveillance import (
     SurveillanceRoutingEvent,
     SurveillanceSource,
 )
+from app.models.symbolic_search import SymbolicSearchCandidate, SymbolicSearchRun
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 from app.models.task_graph import (
@@ -165,12 +173,12 @@ __all__ = [
     "AlertRoutingEvent",
     "ApprovalEvent",
     "Artifact",
-    "AutonomousResearchSession",
-    "AutonomousResearchSessionEvent",
     "AuthorityDecisionRecord",
     "AuthorityDelegation",
     "AuthorityException",
     "AuthorityPolicySnapshot",
+    "AutonomousResearchSession",
+    "AutonomousResearchSessionEvent",
     "CanonicalEvidenceAuditEvent",
     "CanonicalEvidenceEdge",
     "CanonicalEvidenceObject",
@@ -185,6 +193,9 @@ __all__ = [
     "CorpusSyncRun",
     "DiscoveryMap",
     "DiscoveryMapEvent",
+    "DiscoveryPortfolio",
+    "DiscoveryPortfolioCandidate",
+    "DiscoveryPortfolioEvent",
     "EngineeringMission",
     "EvaluationIndependenceReceipt",
     "EvaluationRoute",
@@ -205,6 +216,7 @@ __all__ = [
     "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
+    "FactorExperimentProgram",
     "FleetIncident",
     "FleetIncidentEvent",
     "FounderConversation",
@@ -269,6 +281,8 @@ __all__ = [
     "ServiceCatalogReconciliation",
     "ServiceCatalogSnapshot",
     "ServiceSLOState",
+    "StatisticalSearchCampaign",
+    "StatisticalSearchEvent",
     "SurveillanceDigest",
     "SurveillanceFetchReceipt",
     "SurveillancePublication",

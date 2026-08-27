@@ -14,6 +14,7 @@ from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.data_contracts import router as data_contracts_router
 from app.api.routes.discovery import router as discovery_router
+from app.api.routes.discovery_portfolio import router as discovery_portfolio_router
 from app.api.routes.evaluator_routing import router as evaluator_routing_router
 from app.api.routes.evidence import router as evidence_router
 from app.api.routes.factor_language import router as factor_language_router
@@ -57,8 +58,8 @@ from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.selection_audit import router as selection_audit_router
 from app.api.routes.statistical_search import router as statistical_search_router
 from app.api.routes.supervisor import router as supervisor_router
-from app.api.routes.symbolic_search import router as symbolic_search_router
 from app.api.routes.surveillance import router as surveillance_router
+from app.api.routes.symbolic_search import router as symbolic_search_router
 from app.api.routes.task_graphs import router as task_graphs_router
 from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
@@ -84,6 +85,7 @@ __all__ = [
     "corpus_sync_router",
     "curriculum_router",
     "data_contracts_router",
+    "discovery_portfolio_router",
     "discovery_router",
     "evaluator_routing_router",
     "evidence_router",
@@ -122,8 +124,8 @@ __all__ = [
     "selection_audit_router",
     "statistical_search_router",
     "supervisor_router",
-    "symbolic_search_router",
     "surveillance_router",
+    "symbolic_search_router",
     "task_graphs_router",
     "task_runtime_router",
     "tasks_router",
