@@ -77,6 +77,7 @@ from app.models.platform import (
     ServiceCatalogReconciliation,
     ServiceCatalogSnapshot,
 )
+from app.models.prompt_policy import PromptPolicyBundle, PromptPolicyEvaluation, PromptPolicyEvent
 from app.models.proposal import FounderProposal
 from app.models.research import (
     ResearchBrief,
@@ -192,6 +193,9 @@ __all__ = [
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
+    "PromptPolicyBundle",
+    "PromptPolicyEvaluation",
+    "PromptPolicyEvent",
     "ResearchBrainEvaluation",
     "ResearchBrief",
     "ResearchChunk",
