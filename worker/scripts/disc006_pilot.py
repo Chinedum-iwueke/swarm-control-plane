@@ -189,7 +189,7 @@ def main() -> int:
                 ],
                 "dossier_ids": [dossier["id"]],
                 "opposition_record_ids": [opposition["id"]],
-                "evidence_cutoff": datetime.now().astimezone().isoformat(),
+                "evidence_cutoff": utc_text(datetime.now().astimezone()),
             }
             plans = call(client, "GET", "/v1/research/falsification/plans")
             plan = next(
@@ -210,12 +210,12 @@ def main() -> int:
                         "registered_by": "disc006-pilot",
                     },
                 )
-            outcome_time = (
-                datetime.fromisoformat(plan["registered_at"].replace("Z", "+00:00"))
-                + timedelta(microseconds=1)
-            ).isoformat()
+            outcome_time = datetime.fromisoformat(
+                plan["registered_at"].replace("Z", "+00:00")
+            ) + timedelta(microseconds=1)
+            outcome_time_text = utc_text(outcome_time)
             failed_document = evaluation(
-                plan["plan_digest"], evidence, outcome_time, "failed", "ruled_out"
+                plan["plan_digest"], evidence, outcome_time_text, "failed", "ruled_out"
             )
             falsified = next(
                 (
@@ -241,7 +241,7 @@ def main() -> int:
             unresolved_document = evaluation(
                 plan["plan_digest"],
                 evidence,
-                outcome_time,
+                outcome_time_text,
                 "inconclusive",
                 "inconclusive",
             )
@@ -289,6 +289,10 @@ def evaluation(
             "The pilot proves governance behavior, not the economic mechanism."
         ],
     }
+
+
+def utc_text(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def register_claim(client: httpx.Client, result: dict) -> dict:
