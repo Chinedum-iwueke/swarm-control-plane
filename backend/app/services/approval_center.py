@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import (
@@ -206,20 +206,42 @@ def approval_center_item(db: Session, approval: TaskApproval) -> dict:
 
 
 def approval_center(db: Session) -> dict:
-    approvals = list(
-        db.scalars(select(TaskApproval).order_by(TaskApproval.created_at.desc())).all()
+    pending = list(
+        db.scalars(
+            select(TaskApproval)
+            .where(TaskApproval.status == "pending")
+            .order_by(TaskApproval.created_at.desc())
+        ).all()
     )
+    recent_decisions = list(
+        db.scalars(
+            select(TaskApproval)
+            .where(TaskApproval.status != "pending")
+            .order_by(TaskApproval.updated_at.desc())
+            .limit(25)
+        ).all()
+    )
+    approvals = [*pending, *recent_decisions]
     items = [approval_center_item(db, item) for item in approvals]
+    status_counts = dict(
+        db.execute(
+            select(TaskApproval.status, func.count(TaskApproval.id)).group_by(
+                TaskApproval.status
+            )
+        ).all()
+    )
     return {
         "generated_at": datetime.now(UTC),
         "counts": {
-            "pending": sum(item["approval"]["status"] == "pending" for item in items),
+            "pending": status_counts.get("pending", 0),
             "actionable": sum(item["actionable"] for item in items),
             "blocked": sum(
                 item["approval"]["status"] == "pending" and not item["actionable"]
                 for item in items
             ),
-            "decided": sum(item["approval"]["status"] != "pending" for item in items),
+            "decided": sum(
+                count for status, count in status_counts.items() if status != "pending"
+            ),
         },
         "items": items,
     }

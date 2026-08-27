@@ -18,6 +18,8 @@ Mission Control presents consequential task approvals as a complete, current rev
 
 The `review_digest` covers all fields that can change the meaning or readiness of the decision. A task-contract, prerequisite, mission, policy, approval-state, expiry or notification-generation change produces a different digest.
 
+The overview returns every pending gate and a bounded window of the 25 most recent decisions. Historical status counts remain complete. Exact older receipts remain available through their retained approval identifier, keeping dashboard latency independent of long-term receipt volume.
+
 ## Decision contract
 
 Mission Control posts `expected_review_digest` to `POST /v1/approval-center/{approval_id}/{approve|reject}`. The API locks the approval row, recomputes the envelope and returns HTTP 409 when the displayed review is stale. Approval additionally fails unless the gate is current, executable, unblocked and has at most one actionable notification.
