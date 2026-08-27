@@ -1,0 +1,18 @@
+{
+  "agent_id": "9d569cd3-6a39-4449-89d8-ff0175658c0d",
+  "authorization_snapshot_digest": "77de04adadb9962aeac73ca39e12189cf30b7cd982674ad145fc84c027a41223",
+  "capital_or_execution_authority": false,
+  "context_pack_digest": "863520927584692950998b9a186cac4681dd5c13b58e11cc7cf5538a6f80556c",
+  "exact_replay": true,
+  "manifest_digest": "9735616bd9951d225298304e5b463ee7e05ee09338339537e69d321ab8d4a3a6",
+  "report_digest": "e8e6992f5850fab832990c3694e8ebaef8d88daf028d9bab6d34074f3bfccc19",
+  "schema_version": "agt002-pilot-report-v1.0.0",
+  "source_object_id": "41186f04-1884-55b8-94d7-05c8b1fcffc4",
+  "success": true,
+  "task_id": "b87705ed-c6a1-4ed0-a275-37503c326e10",
+  "task_status": "cancelled",
+  "working_memory_content_stored": false,
+  "working_memory_discarded": 1,
+  "working_memory_receipt_digest": "8805d581db06bd03396ce404e22cccedde82c4a1aea07951632a211975e1633c",
+  "working_memory_status": "discarded"
+}
