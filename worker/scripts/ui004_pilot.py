@@ -64,12 +64,11 @@ def main() -> int:
                 "max_attempts": 1,
             },
         )
-        center = _request(client, "GET", "/v1/approval-center")
-        review = next(
-            item
-            for item in center["items"]
-            if item["approval"]["task_id"] == task["id"]
+        approvals = _request(
+            client, "GET", "/v1/approvals", params={"status": "pending"}
         )
+        approval = next(item for item in approvals if item["task_id"] == task["id"])
+        review = _request(client, "GET", f"/v1/approval-center/{approval['id']}")
         stale = client.post(
             f"/v1/approval-center/{review['approval']['id']}/reject",
             json={

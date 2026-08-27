@@ -6,7 +6,12 @@ from uuid import UUID
 import pytest
 from app.api.routes.governance import approval_center_decision
 from app.schemas.governance import ApprovalCenterDecision
-from app.services.approval_center import approval_center_item
+from app.services.approval_center import (
+    approval_center as build_approval_center,
+)
+from app.services.approval_center import (
+    approval_center_item,
+)
 from fastapi import HTTPException
 
 APPROVAL_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -140,3 +145,39 @@ def test_decision_retains_digest_bound_receipt() -> None:
     approve.assert_called_once()
     assert append.call_args.args[2] == "approval_center_decision_receipt"
     assert append.call_args.args[5]["review_digest"] == "d" * 64
+
+
+def test_overview_keeps_all_pending_and_bounds_decision_history() -> None:
+    pending = [SimpleNamespace(id="pending")]
+    decided = [SimpleNamespace(id="decided")]
+    db = MagicMock()
+    db.scalars.side_effect = [
+        SimpleNamespace(all=lambda: pending),
+        SimpleNamespace(all=lambda: decided),
+    ]
+    db.execute.return_value.all.return_value = [
+        ("pending", 1),
+        ("approved", 40),
+        ("rejected", 5),
+    ]
+
+    def item(record: SimpleNamespace) -> dict:
+        is_pending = record.id == "pending"
+        return {
+            "approval": {"status": "pending" if is_pending else "approved"},
+            "actionable": is_pending,
+        }
+
+    with patch(
+        "app.services.approval_center.approval_center_item",
+        side_effect=lambda _, record: item(record),
+    ):
+        result = build_approval_center(db)
+
+    assert len(result["items"]) == 2
+    assert result["counts"] == {
+        "pending": 1,
+        "actionable": 1,
+        "blocked": 0,
+        "decided": 45,
+    }
