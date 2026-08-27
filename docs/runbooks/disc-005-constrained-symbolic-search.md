@@ -1,6 +1,6 @@
 # DISC-005 Constrained Symbolic and Program Search
 
-DISC-005 accepts untrusted generator output only as data-only DISC-003 expression ASTs. It never executes generated code. A run requires an active AGT-004 policy with `output_authority=data_only` and no tools.
+DISC-005 accepts untrusted generator output only as data-only DISC-003 expression ASTs. It never executes generated code. A run requires an active AGT-004 policy with `output_authority=data_only`; only the read-only `research.retrieve` tool is permitted for evidence grounding.
 
 Each run binds a base factor-program digest, prompt-policy digest, candidate budget, node/depth/constant limits, operator allowlist, required fields and parameter policy. Candidate output binds provider, model, version, seed, candidate index and canonical output digest.
 

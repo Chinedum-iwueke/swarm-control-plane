@@ -18,6 +18,7 @@ class SymbolicSearchConflict(RuntimeError):
 
 
 _COMMUTATIVE = {"add", "multiply", "and", "or"}
+_SAFE_GENERATOR_TOOLS = {"research.retrieve"}
 
 
 def _walk(node: Any, depth: int = 1) -> tuple[int, int, int, set[str], set[str]]:
@@ -69,9 +70,11 @@ def register_symbolic_search(
     policy = db.get(PromptPolicyBundle, payload.prompt_policy_bundle_id)
     if policy is None or policy.status != "active":
         raise SymbolicSearchConflict("An active AGT-004 prompt policy is required.")
-    if policy.policy.get("output_authority") != "data_only" or policy.allowed_tools:
+    unsafe_tools = set(policy.allowed_tools) - _SAFE_GENERATOR_TOOLS
+    if policy.policy.get("output_authority") != "data_only" or unsafe_tools:
         raise SymbolicSearchConflict(
-            "Generator policy must be data-only with no tools."
+            "Generator policy must be data-only and contains unsafe tools: "
+            f"{sorted(unsafe_tools)}"
         )
     unknown = set(payload.constraints.required_fields) - set(program.source["fields"])
     if unknown:
