@@ -121,6 +121,12 @@ class WorkloadCredentialRotation(BaseModel):
     overlap_seconds: int = Field(default=300, ge=30, le=900)
 
 
+class WorkloadLifecycleAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    actor: str = Field(min_length=1, max_length=150)
+    reason: str = Field(min_length=5, max_length=500)
+
+
 class WorkloadCredentialRotationResponse(BaseModel):
     identity_id: UUID
     credential_id: UUID

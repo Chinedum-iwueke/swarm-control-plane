@@ -8,7 +8,9 @@ PLAT-002 is complete when production evidence proves:
 - a confused-deputy request outside its scope is denied before handler execution;
 - rotation rollback revokes the new credential and restores the prior scoped credential;
 - secret-like request fields do not enter durable authorization receipts;
+- a logical secret policy rotates to a new digest and the replacement can be revoked without persisting secret material;
 - privilege-expanding break-glass access is rejected;
+- reduction-only break-glass access is independently reviewed, time-bounded and explicitly revoked;
 - Mission Control reports identity presence and scope count per agent.
 
 The deterministic backend suite covers scope derivation, strict schemas, separation of emergency duties and redacted receipts. The production pilot retains its digest-bound report at `/var/lib/invariance-swarm/plat002/report.json`.

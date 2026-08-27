@@ -25,6 +25,7 @@ from app.schemas.workload_identity import (
     WorkloadEnforcementResponse,
     WorkloadIdentityCreate,
     WorkloadIdentityResponse,
+    WorkloadLifecycleAction,
     WorkloadLifecycleOverview,
     WorkloadSecretPolicyCreate,
 )
@@ -135,6 +136,89 @@ def secret_policy(
     }
 
 
+@router.post("/secret-policies/{policy_id}/rotate", status_code=201)
+def rotate_secret_policy(
+    policy_id: UUID,
+    payload: WorkloadSecretPolicyCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    prior = db.get(WorkloadSecretPolicy, policy_id)
+    if prior is None:
+        raise HTTPException(404, "Secret policy not found.")
+    if prior.status != "active":
+        raise HTTPException(409, "Only an active secret policy can rotate.")
+    if (
+        payload.identity_id != prior.identity_id
+        or payload.logical_name != prior.logical_name
+    ):
+        raise HTTPException(
+            422, "Secret rotation must preserve workload identity and logical name."
+        )
+    identity = db.get(WorkloadIdentity, prior.identity_id)
+    if payload.required_scope not in identity.scopes:
+        raise HTTPException(
+            422, "Secret policy scope must belong to the workload identity."
+        )
+    body = payload.model_dump(mode="json")
+    replacement = WorkloadSecretPolicy(
+        **payload.model_dump(mode="python"), status="active", policy_digest=digest(body)
+    )
+    prior.status = "rotated"
+    db.add(replacement)
+    db.flush()
+    append_event(
+        db,
+        identity,
+        "secret_policy_rotated",
+        payload.created_by,
+        {
+            "logical_name": prior.logical_name,
+            "prior_policy_digest": prior.policy_digest,
+            "replacement_policy_digest": replacement.policy_digest,
+        },
+    )
+    db.commit()
+    db.refresh(replacement)
+    return {
+        "id": replacement.id,
+        "prior_policy_id": prior.id,
+        "status": replacement.status,
+        "policy_digest": replacement.policy_digest,
+    }
+
+
+@router.post("/secret-policies/{policy_id}/revoke")
+def revoke_secret_policy(
+    policy_id: UUID,
+    payload: WorkloadLifecycleAction,
+    db: Annotated[Session, Depends(get_db)],
+):
+    policy = db.get(WorkloadSecretPolicy, policy_id)
+    if policy is None:
+        raise HTTPException(404, "Secret policy not found.")
+    if policy.status != "active":
+        raise HTTPException(409, "Only an active secret policy can be revoked.")
+    identity = db.get(WorkloadIdentity, policy.identity_id)
+    policy.status = "revoked"
+    append_event(
+        db,
+        identity,
+        "secret_policy_revoked",
+        payload.actor,
+        {
+            "logical_name": policy.logical_name,
+            "policy_digest": policy.policy_digest,
+            "reason": payload.reason,
+        },
+    )
+    db.commit()
+    return {
+        "id": policy.id,
+        "status": policy.status,
+        "policy_digest": policy.policy_digest,
+    }
+
+
 @router.post("/emergency-grants", status_code=201)
 def emergency_grant(
     payload: WorkloadEmergencyGrantCreate, db: Annotated[Session, Depends(get_db)]
@@ -175,6 +259,35 @@ def emergency_grant(
         "status": grant.status,
         "record_digest": grant.record_digest,
         "expires_at": grant.expires_at,
+    }
+
+
+@router.post("/emergency-grants/{grant_id}/revoke")
+def revoke_emergency_grant(
+    grant_id: UUID,
+    payload: WorkloadLifecycleAction,
+    db: Annotated[Session, Depends(get_db)],
+):
+    grant = db.get(WorkloadEmergencyGrant, grant_id)
+    if grant is None:
+        raise HTTPException(404, "Emergency grant not found.")
+    if grant.status != "active":
+        raise HTTPException(409, "Only an active emergency grant can be revoked.")
+    identity = db.get(WorkloadIdentity, grant.identity_id)
+    grant.status = "revoked"
+    grant.revoked_at = datetime.now(UTC)
+    append_event(
+        db,
+        identity,
+        "emergency_grant_revoked",
+        payload.actor,
+        {"record_digest": grant.record_digest, "reason": payload.reason},
+    )
+    db.commit()
+    return {
+        "id": grant.id,
+        "status": grant.status,
+        "record_digest": grant.record_digest,
     }
 
 
