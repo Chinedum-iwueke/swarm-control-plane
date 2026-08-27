@@ -1,0 +1,14 @@
+{
+  "schema_version": "ui004-pilot-report-v1.0.0",
+  "task_id": "d9ba278d-5266-4a26-b1fb-2bd1b8f2f824",
+  "approval_id": "c0915a68-498b-42a0-b4cc-85f677bc428f",
+  "execution_authority": false,
+  "stale_review_rejected": true,
+  "decision": "reject",
+  "decision_status": "rejected",
+  "review_digest": "c8c414f5cbf88ab1a64d9b0198cbf3c41cdd4e4a6bfb5e36b73e632d23ee38bf",
+  "receipt_digest": "af6e654a27f3cb22aa0bb6913fb857965ac70317a8081ae4b52b36429e42cdcd",
+  "receipt_event_id": 257,
+  "success": true,
+  "report_digest": "043859a3074955fe5b5b68ce21488ee6bd75606267705d08f438ad7c586f52a6"
+}
