@@ -40,6 +40,7 @@ from app.api.routes import (
     operations_router,
     packages_router,
     platform_router,
+    prompt_policies_router,
     proposals_router,
     research_bridge_router,
     research_programs_router,
@@ -81,6 +82,7 @@ app.include_router(operations_router)
 app.include_router(observability_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
+app.include_router(prompt_policies_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)
 app.include_router(agents_router)
