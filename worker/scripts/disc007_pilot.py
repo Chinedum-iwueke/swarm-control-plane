@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -146,7 +146,7 @@ def family_ledger() -> dict:
             {"split_key": "split-3", "winner_rank": 3, "candidate_count": 4},
             {"split_key": "split-4", "winner_rank": 2, "candidate_count": 4},
         ],
-        "finalized_at": datetime(2026, 8, 27, 18, tzinfo=UTC)
+        "finalized_at": datetime(2026, 8, 27, 18, tzinfo=timezone.utc)
         .isoformat()
         .replace("+00:00", "Z"),
     }
