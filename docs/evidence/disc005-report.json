@@ -1,0 +1,23 @@
+{
+  "schema_version": "disc005-pilot-report-v1.0.0",
+  "run_id": "f5270d24-15de-4f19-abe0-30f2a38fc7de",
+  "constraints_digest": "469e41074848fe9b81a0b2b5db6636574228e51f5b3b4ab7197f554d243fc70f",
+  "status": "complete",
+  "candidate_statuses": [
+    "accepted",
+    "duplicate",
+    "rejected",
+    "rejected"
+  ],
+  "violations": [
+    "disallowed_operators:python_eval",
+    "nondeterministic_generator_output",
+    "required_fields_missing:close",
+    "semantic_duplicate"
+  ],
+  "accepted_count": 1,
+  "all_lineage_retained": true,
+  "generated_code_executed": false,
+  "action_authority": false,
+  "report_digest": "f9128dece18398865bb391c7545166bc1667056392de16703e3ef1083b202526"
+}
