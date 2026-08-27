@@ -26,7 +26,7 @@ from app.models.curriculum import (
     ResearchDomainCurriculum,
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
-from app.models.market_data_catalog import MarketDataCatalogSnapshot
+from app.models.discovery import DiscoveryMap, DiscoveryMapEvent
 from app.models.evaluator_routing import (
     EvaluationIndependenceReceipt,
     EvaluationRoute,
@@ -67,6 +67,7 @@ from app.models.institutional_lifecycle import (
 from app.models.laboratory import LaboratoryPublication, LaboratoryPublicationEvent
 from app.models.lake_operations import LakeGovernanceSnapshot, LakeOperationEvent
 from app.models.lifecycle_consequence import LifecycleConsequence
+from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.memory import (
     EvidenceDossier,
     EvidenceOppositionRecord,
@@ -171,6 +172,8 @@ __all__ = [
     "CorpusSecurityFinding",
     "CorpusSyncItem",
     "CorpusSyncRun",
+    "DiscoveryMap",
+    "DiscoveryMapEvent",
     "EngineeringMission",
     "EvaluationIndependenceReceipt",
     "EvaluationRoute",
