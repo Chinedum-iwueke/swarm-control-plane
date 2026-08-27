@@ -40,6 +40,7 @@ class DiscoveryAttentionCandidate(BaseModel):
         "curriculum_evaluation",
         "discovery_map",
         "autonomous_session",
+        "mechanism_evaluation",
         "selection_bias_audit",
     ]
     source_id: uuid.UUID

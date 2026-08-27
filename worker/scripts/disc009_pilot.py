@@ -76,10 +76,34 @@ def main() -> int:
                     "attention_cost": 1,
                 }
             )
+        for item in [record for record in evaluations if record["status"] == "active"][
+            :2
+        ]:
+            plan = plans_by_id[item["plan_id"]]
+            discovery = maps_by_id[plan["discovery_map_id"]]
+            candidates.append(
+                {
+                    "candidate_key": f"mechanism-{item['id'][:8]}",
+                    "domain_key": "causal-reasoning",
+                    "cluster_key": "mechanism-evaluation",
+                    "source_type": "mechanism_evaluation",
+                    "source_id": item["id"],
+                    "source_digest": item["evaluation_digest"],
+                    "question": (
+                        "What uncertainty remains after mechanism evaluation for: "
+                        + discovery["document"]["question"]
+                    ),
+                    "decision_relevance": 0.9,
+                    "feasibility": 0.85,
+                    "attention_cost": 1,
+                }
+            )
         for item in [record for record in audits if record["status"] == "active"][:2]:
             evaluation = evaluations_by_id[item["mechanism_evaluation_id"]]
             plan = plans_by_id[evaluation["plan_id"]]
             discovery = maps_by_id[plan["discovery_map_id"]]
+            if evaluation["status"] != "active" or discovery["status"] != "active":
+                continue
             candidates.append(
                 {
                     "candidate_key": f"selection-{item['id'][:8]}",
@@ -133,11 +157,13 @@ def main() -> int:
             None,
         )
         if portfolio is None:
-            portfolio = (
-                client.post("/v1/research/discovery-portfolios", json=payload)
-                .raise_for_status()
-                .json()
-            )
+            response = client.post("/v1/research/discovery-portfolios", json=payload)
+            if response.is_error:
+                raise RuntimeError(
+                    "Discovery portfolio registration failed "
+                    f"with HTTP {response.status_code}: {response.text}"
+                )
+            portfolio = response.json()
         replay = (
             client.get(f"/v1/research/discovery-portfolios/{portfolio['id']}")
             .raise_for_status()
