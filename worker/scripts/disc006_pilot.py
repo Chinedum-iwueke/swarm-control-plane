@@ -126,7 +126,7 @@ def main() -> int:
                     "POST",
                     "/v1/research/memory/dossiers",
                     json={
-                        "dossier_key": "disc006-live-prerequisite",
+                        "dossier_key": "DISC006-LIVE-PREREQUISITE",
                         "version": "1.0.0",
                         "project": opposition["project"],
                         "access_class": opposing["access_class"],
