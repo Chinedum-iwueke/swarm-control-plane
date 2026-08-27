@@ -7,6 +7,14 @@ from pathlib import Path
 
 import httpx
 
+LIFECYCLE = ("draft", "rehearsed", "approved", "active")
+
+
+def remaining_promotions(status: str) -> tuple[str, ...]:
+    if status not in LIFECYCLE:
+        raise RuntimeError(f"Pilot bundle is not activatable from {status!r}.")
+    return LIFECYCLE[LIFECYCLE.index(status) + 1 :]
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -112,9 +120,7 @@ def main() -> int:
         current = (
             client.get(f"/v1/prompt-policies/{bundle_id}").raise_for_status().json()
         )
-        for target in ("rehearsed", "approved", "active"):
-            if current["status"] == target:
-                continue
+        for target in remaining_promotions(current["status"]):
             promoted = client.post(
                 f"/v1/prompt-policies/{bundle_id}/promote/{target}",
                 json={
