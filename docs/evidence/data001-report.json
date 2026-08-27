@@ -1,0 +1,16 @@
+{
+  "capital_or_order_authority": false,
+  "checks": {
+    "holiday_closed": true,
+    "known_action_replayed": true,
+    "new_symbol_replays_new_revision": true,
+    "old_symbol_replays_old_revision": true,
+    "snapshot_digest_bound": true,
+    "stable_identity_across_symbol_change": true,
+    "unknown_identity_failed_closed": true
+  },
+  "schema_version": "data001-pilot-report-v1.0.0",
+  "snapshot_digest": "16c689717341872f0b15d0324122ddbc749d2174197d8f3f4ea7faadf75e3871",
+  "snapshot_id": "b771d529-cd3a-43de-b87d-02fa5307147e",
+  "success": true
+}

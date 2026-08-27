@@ -32,4 +32,14 @@ backend/.venv/bin/ruff check \
 
 ## Production acceptance
 
-Production completion requires migration `e2d7a4c91b60` at head, a healthy rebuilt VM2 API exposing all four reference-data routes, and a successful no-capital pilot report. Record the merged source commit, snapshot digest and report digest here after deployment.
+Production acceptance completed on 2026-08-27 UTC:
+
+- merged source commit: `922884e74922ca000688d90074fa9ac7a0c39204`
+- VM2 migration head: `e2d7a4c91b60`
+- rebuilt API: healthy, with snapshot registration/list/get and point-in-time resolution routes exposed
+- immutable snapshot ID: `b771d529-cd3a-43de-b87d-02fa5307147e`
+- immutable snapshot digest: `16c689717341872f0b15d0324122ddbc749d2174197d8f3f4ea7faadf75e3871`
+- no-capital pilot: all seven temporal identity and fail-closed checks passed
+- retained evidence: `docs/evidence/data001-report.json`
+
+The live proof grants no capital or order authority.
