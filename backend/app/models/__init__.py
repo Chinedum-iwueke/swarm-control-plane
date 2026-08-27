@@ -96,6 +96,7 @@ from app.models.observability import (
     RoutedServiceAlert,
     ServiceSLOState,
 )
+from app.models.offline_rl import OfflineRLDatasetContract
 from app.models.operation import Operation, OperationEvent
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
 from app.models.package import PackageDeployment, RolePackage
@@ -248,6 +249,7 @@ __all__ = [
     "MissionEvent",
     "ModelCalibrationAssessment",
     "ModelFamilyEvaluation",
+    "OfflineRLDatasetContract",
     "Operation",
     "OperationEvent",
     "OperationalNote",
