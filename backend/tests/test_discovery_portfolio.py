@@ -278,6 +278,49 @@ def test_selection_audit_rejects_absent_canonical_source():
         )
 
 
+def test_active_mechanism_evaluation_derives_uncertainty_from_conclusion():
+    source_id, plan_id, map_id, cycle_id, program_id = [uuid4() for _ in range(5)]
+    question = "Does the opportunity survive rival mechanism tests?"
+    records = {
+        source_id: SimpleNamespace(
+            id=source_id,
+            evaluation_digest=DIGEST,
+            status="active",
+            evaluated_at=datetime(2026, 8, 26, tzinfo=UTC),
+            plan_id=plan_id,
+            conclusion="unresolved",
+        ),
+        plan_id: SimpleNamespace(id=plan_id, discovery_map_id=map_id),
+        map_id: SimpleNamespace(
+            id=map_id,
+            status="active",
+            document={"source_daily_cycle_id": str(cycle_id), "question": question},
+        ),
+        cycle_id: SimpleNamespace(id=cycle_id, program_id=program_id),
+        program_id: SimpleNamespace(id=program_id, project="bulletproof-bt"),
+    }
+    db = MagicMock()
+    db.get.side_effect = lambda _model, identifier: records.get(UUID(str(identifier)))
+    payload = (
+        request()
+        .candidates[0]
+        .model_copy(
+            update={
+                "source_type": "mechanism_evaluation",
+                "source_id": source_id,
+                "domain_key": "causal-reasoning",
+                "question": "What uncertainty remains after mechanism evaluation for: "
+                + question,
+            }
+        )
+    )
+    uncertainty, source_digest = service._source(
+        db, payload, "bulletproof-bt", datetime(2026, 8, 27, tzinfo=UTC)
+    )
+    assert uncertainty == 0.8
+    assert source_digest == DIGEST
+
+
 def test_output_has_no_execution_or_capital_authority(monkeypatch):
     record, _ = register(monkeypatch, request())
     event = record.allocation_digest

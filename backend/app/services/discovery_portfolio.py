@@ -120,18 +120,33 @@ def _source(
             "opportunity": 0.35,
         }[record.stage]
         return uncertainty, record.map_digest
-    if payload.source_type == "selection_bias_audit":
-        record = db.get(SelectionBiasAudit, payload.source_id)
-        if (
-            record is None
-            or record.audit_digest != payload.source_digest
-            or record.status != "active"
-            or record.audited_at > source_epoch
-        ):
-            raise HTTPException(
-                409, "Selection-bias audit is absent, stale, superseded or post-epoch."
-            )
-        evaluation = db.get(MechanismEvaluation, record.mechanism_evaluation_id)
+    if payload.source_type in {"mechanism_evaluation", "selection_bias_audit"}:
+        if payload.source_type == "mechanism_evaluation":
+            evaluation = db.get(MechanismEvaluation, payload.source_id)
+            record = None
+            if (
+                evaluation is None
+                or evaluation.evaluation_digest != payload.source_digest
+                or evaluation.status != "active"
+                or evaluation.evaluated_at > source_epoch
+            ):
+                raise HTTPException(
+                    409,
+                    "Mechanism evaluation is absent, stale, superseded or post-epoch.",
+                )
+        else:
+            record = db.get(SelectionBiasAudit, payload.source_id)
+            if (
+                record is None
+                or record.audit_digest != payload.source_digest
+                or record.status != "active"
+                or record.audited_at > source_epoch
+            ):
+                raise HTTPException(
+                    409,
+                    "Selection-bias audit is absent, stale, superseded or post-epoch.",
+                )
+            evaluation = db.get(MechanismEvaluation, record.mechanism_evaluation_id)
         plan = db.get(MechanismPlan, evaluation.plan_id) if evaluation else None
         discovery = db.get(DiscoveryMap, plan.discovery_map_id) if plan else None
         cycle = (
@@ -154,16 +169,28 @@ def _source(
                 "Selection-bias audit lineage is stale or outside the portfolio project.",
             )
         expected_question = (
-            "How should the selection-bias conclusion alter confidence in: "
-            + discovery.document["question"]
-        )
+            "What uncertainty remains after mechanism evaluation for: "
+            if payload.source_type == "mechanism_evaluation"
+            else "How should the selection-bias conclusion alter confidence in: "
+        ) + discovery.document["question"]
         if " ".join(payload.question.lower().split()) != " ".join(
             expected_question.lower().split()
         ):
             raise HTTPException(
                 422,
-                "Candidate question does not match its selection-bias audit lineage.",
+                "Candidate question does not match its canonical mechanism lineage.",
             )
+        if payload.source_type == "mechanism_evaluation":
+            if payload.domain_key != "causal-reasoning":
+                raise HTTPException(
+                    422, "Mechanism-evaluation candidates require that domain."
+                )
+            uncertainty = {
+                "supported": 0.3,
+                "unresolved": 0.8,
+                "falsified": 0.2,
+            }[evaluation.conclusion]
+            return uncertainty, evaluation.evaluation_digest
         if payload.domain_key != "selection-bias":
             raise HTTPException(
                 422, "Selection-bias audit candidates require that domain."
