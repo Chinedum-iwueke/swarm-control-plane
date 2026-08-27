@@ -114,6 +114,12 @@ from app.models.surveillance import (
 )
 from app.models.task import Task
 from app.models.task_event import TaskEvent
+from app.models.task_graph import (
+    TaskGraph,
+    TaskGraphEvent,
+    TaskGraphMessage,
+    TaskGraphNode,
+)
 from app.models.workload_identity import (
     WorkloadAuthorizationReceipt,
     WorkloadEmergencyGrant,
@@ -228,6 +234,10 @@ __all__ = [
     "TaskApproval",
     "TaskDependency",
     "TaskEvent",
+    "TaskGraph",
+    "TaskGraphEvent",
+    "TaskGraphMessage",
+    "TaskGraphNode",
     "WorkloadAuthorizationReceipt",
     "WorkloadEmergencyGrant",
     "WorkloadIdentity",

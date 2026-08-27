@@ -95,6 +95,13 @@ from app.schemas.task import (
     TaskResumeRequest,
     TaskStartRequest,
 )
+from app.schemas.task_graph import (
+    TaskGraphAction,
+    TaskGraphCreate,
+    TaskGraphMessageCreate,
+    TaskGraphReconcileResponse,
+    TaskGraphResponse,
+)
 
 __all__ = [
     "AgentCreate",
@@ -165,6 +172,11 @@ __all__ = [
     "TaskEventResponse",
     "TaskExecutionHeartbeatRequest",
     "TaskFailRequest",
+    "TaskGraphAction",
+    "TaskGraphCreate",
+    "TaskGraphMessageCreate",
+    "TaskGraphReconcileResponse",
+    "TaskGraphResponse",
     "TaskLeaseRequest",
     "TaskLeaseResponse",
     "TaskMutationResponse",

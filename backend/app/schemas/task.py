@@ -66,6 +66,7 @@ class TaskResponse(BaseModel):
     conversation_revision: int | None = None
     mission_id: uuid.UUID | None
     milestone_step_id: str | None
+    task_graph_node_id: uuid.UUID | None = None
     created_by: str
 
     input_contract: dict
@@ -92,6 +93,8 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    cancel_requested_at: datetime | None = None
+    cancel_reason: str | None = None
 
 
 class TaskEventResponse(BaseModel):

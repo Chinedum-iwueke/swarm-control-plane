@@ -92,6 +92,9 @@ class Task(Base):
         index=True,
     )
     milestone_step_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    task_graph_node_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("task_graph_nodes.id"), nullable=True, index=True
+    )
 
     created_by: Mapped[str] = mapped_column(
         String(150),
@@ -211,3 +214,5 @@ class Task(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
