@@ -55,7 +55,7 @@ def main() -> int:
                 {
                     "dataset_key": partition["dataset_key"],
                     "layer": partition["layer"],
-                    "maximum_freshness_seconds": 100000000,
+                    "maximum_freshness_seconds": 31536000,
                     "maximum_duplicate_count": 0,
                     "maximum_gap_count": 0,
                     "expected_schema_digest": partition["schema_digest"],
@@ -95,7 +95,7 @@ def main() -> int:
                     "hold_id": "data003-reproducibility-hold-r1",
                     "object_digest": partition["content_digest"],
                     "reason_code": "research-reproducibility",
-                    "active_from": "2026-08-01T00:00:00Z",
+                    "active_from": "2026-01-01T00:00:00Z",
                     "active_until": None,
                 }
             ],
@@ -150,7 +150,7 @@ def main() -> int:
                 "principal": "research-runner",
                 "action": "read",
                 "purpose": "systematic-research",
-                "evaluated_at": "2026-08-27T00:00:00Z",
+                "evaluated_at": "2026-02-01T00:00:00Z",
                 "observed_schema_digest": partition["schema_digest"],
                 "duplicate_count": 0,
                 "gap_count": 0,
