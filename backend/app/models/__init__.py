@@ -26,6 +26,7 @@ from app.models.curriculum import (
     ResearchDomainCurriculum,
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
+from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.evaluator_routing import (
     EvaluationIndependenceReceipt,
     EvaluationRoute,
@@ -204,6 +205,7 @@ __all__ = [
     "LaboratoryPublicationEvent",
     "LifecycleConsequence",
     "MachineObservation",
+    "MarketDataCatalogSnapshot",
     "MissionEvent",
     "Operation",
     "OperationEvent",
