@@ -12,6 +12,7 @@ from app.api.routes.corpus import router as corpus_router
 from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.data_contracts import router as data_contracts_router
+from app.api.routes.discovery import router as discovery_router
 from app.api.routes.evaluator_routing import router as evaluator_routing_router
 from app.api.routes.evidence import router as evidence_router
 from app.api.routes.fleet import agent_router as agent_fleet_router
@@ -27,9 +28,9 @@ from app.api.routes.institutional_lifecycle import (
     router as institutional_lifecycle_router,
 )
 from app.api.routes.laboratory import router as laboratory_router
+from app.api.routes.lake_operations import router as lake_operations_router
 from app.api.routes.lifecycle import router as lifecycle_router
 from app.api.routes.lifecycle_consequence import router as lifecycle_consequence_router
-from app.api.routes.lake_operations import router as lake_operations_router
 from app.api.routes.market_data_catalog import router as market_data_catalog_router
 from app.api.routes.memory import router as memory_router
 from app.api.routes.metrics import router as metrics_router
@@ -76,6 +77,7 @@ __all__ = [
     "corpus_sync_router",
     "curriculum_router",
     "data_contracts_router",
+    "discovery_router",
     "evaluator_routing_router",
     "evidence_router",
     "fleet_router",
