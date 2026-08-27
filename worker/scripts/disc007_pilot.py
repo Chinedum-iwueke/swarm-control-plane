@@ -116,11 +116,19 @@ def family_ledger() -> dict:
                 "trial_key": "trial-3",
                 "specification_digest": digest({"trial": 3}),
                 "status": "failed",
+                "primary_metric": None,
+                "p_value": None,
+                "sharpe": None,
+                "sharpe_standard_error": None,
             },
             {
                 "trial_key": "trial-4",
                 "specification_digest": digest({"trial": 4}),
                 "status": "cancelled",
+                "primary_metric": None,
+                "p_value": None,
+                "sharpe": None,
+                "sharpe_standard_error": None,
             },
         ]
     )
