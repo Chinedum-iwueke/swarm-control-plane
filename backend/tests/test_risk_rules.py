@@ -60,6 +60,23 @@ def snapshot():
         "listings": [
             {
                 **temporal,
+                "valid_from": "2024-01-01T00:00:00+00:00",
+                "valid_to": temporal["valid_from"],
+                "observed_at": "2023-12-31T00:00:00+00:00",
+                "available_at": "2023-12-31T00:00:00+00:00",
+                "revision_id": "listing-old",
+                "corrects_revision_id": None,
+                "listing_id": "bybit-BTCUSDT",
+                "instrument_id": "BTCUSDT-PERP",
+                "venue_id": "bybit",
+                "symbol": "BTCUSDT-OLD",
+                "status": "active",
+                "price_increment": 0.1,
+                "quantity_increment": 0.001,
+                "contract_multiplier": 1.0,
+            },
+            {
+                **temporal,
                 "revision_id": "listing-r1",
                 "corrects_revision_id": None,
                 "listing_id": "bybit-BTCUSDT",
@@ -70,7 +87,7 @@ def snapshot():
                 "price_increment": 0.1,
                 "quantity_increment": 0.001,
                 "contract_multiplier": 1.0,
-            }
+            },
         ],
         "calendars": [
             {

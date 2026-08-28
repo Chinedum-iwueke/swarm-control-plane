@@ -39,13 +39,16 @@ def build_receipt(
         raise RiskRuleConflict("A current admissible RISK-001 dossier is required.")
     snapshot = PointInTimeReferenceSnapshot.model_validate(reference.snapshot)
     listings = [
-        item for item in snapshot.listings if item.listing_id == pack.listing_id
+        item
+        for item in snapshot.listings
+        if item.listing_id == pack.listing_id
+        and item.venue_id == pack.venue_id
+        and item.instrument_id == pack.instrument_id
+        and item.valid_from <= request.evaluated_at
+        and (item.valid_to is None or request.evaluated_at < item.valid_to)
+        and item.available_at <= request.evaluated_at
     ]
-    if (
-        len(listings) != 1
-        or listings[0].instrument_id != pack.instrument_id
-        or listings[0].venue_id != pack.venue_id
-    ):
+    if len(listings) != 1 or listings[0].status != "active":
         raise RiskRuleConflict("Rule pack identity does not match DATA-001.")
     failures: list[str] = []
     if pack.available_at > request.evaluated_at:
