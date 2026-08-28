@@ -112,11 +112,13 @@ def main():
             "request_digest": digest(request),
             "evaluated_by": "risk002-pilot",
         }
-        evaluation = (
-            client.post("/research/risk-rule-evaluations", json=payload)
-            .raise_for_status()
-            .json()
-        )
+        response = client.post("/research/risk-rule-evaluations", json=payload)
+        if response.is_error:
+            raise RuntimeError(
+                f"Risk-rule registration returned HTTP {response.status_code}: "
+                f"{response.text}"
+            )
+        evaluation = response.json()
         replay = (
             client.get(f"/research/risk-rule-evaluations/{evaluation['id']}")
             .raise_for_status()
