@@ -59,6 +59,7 @@ from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
 from app.api.routes.research_programs import router as research_programs_router
 from app.api.routes.risk_stress import router as risk_stress_router
+from app.api.routes.risk_rules import router as risk_rules_router
 from app.api.routes.retrieval import router as retrieval_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.selection_audit import router as selection_audit_router
@@ -131,6 +132,7 @@ __all__ = [
     "research_programs_router",
     "research_router",
     "risk_stress_router",
+    "risk_rules_router",
     "retrieval_router",
     "runbook_packages_router",
     "selection_audit_router",

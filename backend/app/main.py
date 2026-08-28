@@ -60,6 +60,7 @@ from app.api.routes import (
     research_programs_router,
     research_router,
     risk_stress_router,
+    risk_rules_router,
     retrieval_router,
     runbook_packages_router,
     selection_audit_router,
@@ -111,6 +112,7 @@ app.include_router(observability_router)
 app.include_router(offline_rl_router)
 app.include_router(off_policy_router)
 app.include_router(risk_stress_router)
+app.include_router(risk_rules_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(prompt_policies_router)

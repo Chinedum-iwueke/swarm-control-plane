@@ -114,6 +114,7 @@ from app.models.prompt_policy import (
 from app.models.proposal import FounderProposal
 from app.models.reference_data import ReferenceDataSnapshot
 from app.models.risk_stress import RiskStressAssessment
+from app.models.risk_rules import RiskRuleEvaluation
 from app.models.research import (
     ResearchBrief,
     ResearchChunk,
@@ -286,6 +287,7 @@ __all__ = [
     "ResearchSource",
     "ResearchTrial",
     "RiskStressAssessment",
+    "RiskRuleEvaluation",
     "RolePackage",
     "RoutedServiceAlert",
     "RunbookPackage",
