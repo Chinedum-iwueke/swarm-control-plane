@@ -21,6 +21,7 @@ class RiskStressAssessment(Base):
         String(64), nullable=False, index=True
     )
     scenario_pack_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     request: Mapped[dict] = mapped_column(JSONB, nullable=False)
     dossier: Mapped[dict] = mapped_column(JSONB, nullable=False)
     dossier_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
