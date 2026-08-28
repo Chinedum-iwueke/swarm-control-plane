@@ -1,0 +1,10 @@
+{
+  "capital_or_order_authority": false,
+  "receipt_digest": "c196ca8f43a1c67c49284b111df44083ba8e076cdb75097b90844ebc5e414825",
+  "receipt_record_id": "63ef6757-137c-4712-9d13-1b4e2b15a4cf",
+  "schema_version": "port003-live-replay-v1.0.0",
+  "solver_id": "902a8423-6732-46f3-bd1e-f90b7484a8c3",
+  "solver_specification_digest": "4757287e9232b7ebf2ebc7a3fa7c99927164e848e45bff43cc7726cbed54ebcd",
+  "source_commit": "d4080a94149b3a36642562feda853d9403887a87",
+  "success": true
+}
