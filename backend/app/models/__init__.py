@@ -90,6 +90,7 @@ from app.models.memory import (
     EvidenceOppositionRecord,
     EvidenceOutcomeRecord,
 )
+from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.model_evaluation import ModelFamilyEvaluation
 from app.models.observability import (
@@ -253,6 +254,7 @@ __all__ = [
     "MarketDataCatalogSnapshot",
     "MechanismEvaluation",
     "MechanismPlan",
+    "MicrostructureModelRegistry",
     "MissionEvent",
     "ModelCalibrationAssessment",
     "ModelFamilyEvaluation",

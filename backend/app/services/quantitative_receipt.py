@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
+from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
@@ -25,6 +26,7 @@ PRODUCERS = {
     "DISC-005": "bt.institutional.discovery.symbolic_candidate_receipt",
     "DISC-007": "bt.institutional.discovery.selection_audit_receipt",
     "EXEC-001": "bt.institutional.execution.execution_journal_receipt",
+    "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -77,6 +79,16 @@ def register_receipt(
         )
         if event_schema is None:
             raise QuantitativeReceiptConflict("EXEC-001 event schema is not active in the registry.")
+    if receipt["milestone"] == "EXEC-002":
+        model_digest = receipt["result"].get("model_schema_digest")
+        model = db.scalar(
+            select(MicrostructureModelRegistry).where(
+                MicrostructureModelRegistry.specification_digest == model_digest,
+                MicrostructureModelRegistry.status == "active",
+            )
+        )
+        if model is None:
+            raise QuantitativeReceiptConflict("EXEC-002 model is not active in the registry.")
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(
         select(QuantitativeProducerReceipt).where(

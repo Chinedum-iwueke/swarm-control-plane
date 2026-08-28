@@ -43,6 +43,7 @@ from app.api.routes.lifecycle_consequence import router as lifecycle_consequence
 from app.api.routes.market_data_catalog import router as market_data_catalog_router
 from app.api.routes.memory import router as memory_router
 from app.api.routes.metrics import router as metrics_router
+from app.api.routes.microstructure_models import router as microstructure_models_router
 from app.api.routes.missions import router as missions_router
 from app.api.routes.model_evaluations import router as model_evaluations_router
 from app.api.routes.observability import router as observability_router
@@ -122,6 +123,7 @@ __all__ = [
     "market_data_catalog_router",
     "memory_router",
     "metrics_router",
+    "microstructure_models_router",
     "missions_router",
     "model_evaluations_router",
     "observability_router",
