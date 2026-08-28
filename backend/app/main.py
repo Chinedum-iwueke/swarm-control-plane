@@ -47,6 +47,7 @@ from app.api.routes import (
     missions_router,
     model_evaluations_router,
     observability_router,
+    off_policy_router,
     offline_rl_router,
     operational_notes_router,
     operations_router,
@@ -107,6 +108,7 @@ app.include_router(operational_notes_router)
 app.include_router(operations_router)
 app.include_router(observability_router)
 app.include_router(offline_rl_router)
+app.include_router(off_policy_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(prompt_policies_router)
