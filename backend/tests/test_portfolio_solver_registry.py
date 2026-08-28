@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.api.routes.portfolio_solvers import router
 from app.schemas.portfolio_solver import PortfolioSolverCreate
 from app.services.portfolio_solver import (

@@ -106,6 +106,7 @@ from app.models.platform import (
     ServiceCatalogReconciliation,
     ServiceCatalogSnapshot,
 )
+from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.prompt_policy import (
     PromptPolicyBundle,
     PromptPolicyEvaluation,
@@ -113,7 +114,6 @@ from app.models.prompt_policy import (
 )
 from app.models.proposal import FounderProposal
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
-from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.reference_data import ReferenceDataSnapshot
 from app.models.research import (
     ResearchBrief,
@@ -261,6 +261,7 @@ __all__ = [
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
+    "PortfolioSolverRegistry",
     "PromptPolicyBundle",
     "PromptPolicyEvaluation",
     "PromptPolicyEvent",

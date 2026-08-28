@@ -51,11 +51,11 @@ from app.api.routes.operations import router as operations_router
 from app.api.routes.packages import agent_router as agent_packages_router
 from app.api.routes.packages import router as packages_router
 from app.api.routes.platform import router as platform_router
+from app.api.routes.portfolio_solvers import router as portfolio_solvers_router
 from app.api.routes.prompt_policies import router as prompt_policies_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
 from app.api.routes.quantitative_receipts import router as quantitative_receipts_router
-from app.api.routes.portfolio_solvers import router as portfolio_solvers_router
 from app.api.routes.reference_data import router as reference_data_router
 from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
