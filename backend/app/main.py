@@ -55,13 +55,14 @@ from app.api.routes import (
     platform_router,
     prompt_policies_router,
     proposals_router,
+    quantitative_receipts_router,
     reference_data_router,
     research_bridge_router,
     research_programs_router,
     research_router,
-    risk_stress_router,
-    risk_rules_router,
     retrieval_router,
+    risk_rules_router,
+    risk_stress_router,
     runbook_packages_router,
     selection_audit_router,
     statistical_search_router,
@@ -139,6 +140,7 @@ app.include_router(agent_research_router)
 app.include_router(agent_notes_router)
 app.include_router(tasks_router)
 app.include_router(proposals_router)
+app.include_router(quantitative_receipts_router)
 app.include_router(reference_data_router)
 app.include_router(research_router)
 app.include_router(research_bridge_router)
