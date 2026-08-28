@@ -20,6 +20,7 @@ QuantitativeMilestone = Literal[
     "ML-002",
     "ML-003",
     "ML-004",
+    "PORT-002",
     "RL-001",
     "RL-002",
     "RISK-001",

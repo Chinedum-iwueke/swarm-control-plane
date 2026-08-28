@@ -93,3 +93,24 @@ def test_routes_are_orchestrator_protected():
         "/v1/research/quantitative-receipts",
         "/v1/research/quantitative-receipts/{receipt_id}",
     }
+
+
+def test_registers_port002_only_from_bulletproof_dependency_producer():
+    value = receipt(
+        milestone="PORT-002",
+        producer="bt.institutional.portfolio.dependency_dossier_receipt",
+    )
+    value["result"] = {
+        "schema_version": "port002-dependency-dossier-v1.0.0",
+        "qualified": True,
+        "claim": "dependency evidence only; no target weights or allocation authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.return_value = None
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "PORT-002"
+    assert record.producer == "bt.institutional.portfolio.dependency_dossier_receipt"
+    assert record.receipt["authority"]["allocation"] is False
