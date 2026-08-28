@@ -45,6 +45,7 @@ from app.api.routes import (
     market_data_catalog_router,
     memory_router,
     metrics_router,
+    microstructure_models_router,
     missions_router,
     model_evaluations_router,
     observability_router,
@@ -120,6 +121,7 @@ app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(portfolio_solvers_router)
 app.include_router(execution_event_schemas_router)
+app.include_router(microstructure_models_router)
 app.include_router(prompt_policies_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)

@@ -160,3 +160,16 @@ def test_exec001_requires_active_registered_event_schema():
     db.scalar.side_effect = [object(), None]
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-001"
+
+
+def test_exec002_requires_active_registered_model():
+    value = receipt(milestone="EXEC-002", producer="bt.institutional.microstructure.microstructure_state_receipt")
+    value["result"] = {"schema_version": "exec002-microstructure-dossier-v1.0.0", "model_schema_digest": "7" * 64}
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock(); db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="model is not active"):
+        register_receipt(db, payload(value))
+    db = MagicMock(); db.scalar.side_effect = [object(), None]
+    assert register_receipt(db, payload(value)).milestone == "EXEC-002"
