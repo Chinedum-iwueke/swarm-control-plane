@@ -25,6 +25,7 @@ PRODUCERS = {
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
+    "PORT-002": "bt.institutional.portfolio.dependency_dossier_receipt",
     "RL-001": "bt.institutional.rl.offline_dataset_receipt",
     "RL-002": "bt.institutional.rl.off_policy_evaluation_receipt",
     "RISK-001": "bt.institutional.risk.stress_dossier_receipt",
