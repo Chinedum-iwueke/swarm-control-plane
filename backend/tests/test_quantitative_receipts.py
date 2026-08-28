@@ -137,3 +137,26 @@ def test_port003_requires_active_registered_solver():
     db.scalar.side_effect = [object(), None]
     record = register_receipt(db, payload(value))
     assert record.milestone == "PORT-003"
+
+
+def test_exec001_requires_active_registered_event_schema():
+    value = receipt(
+        milestone="EXEC-001",
+        producer="bt.institutional.execution.execution_journal_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec001-canonical-journal-dossier-v1.0.0",
+        "event_schema_digest": "8" * 64,
+        "reconstructable": True,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="event schema is not active"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-001"
