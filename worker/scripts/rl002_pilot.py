@@ -60,7 +60,7 @@ def main():
                     "lower_confidence_bound": point - 0.01,
                     "upper_confidence_bound": point + 0.01,
                     "standard_error": 0.005,
-                    "effective_sample_size": 300,
+                    "effective_sample_size": 300.0,
                     "maximum_importance_weight": weight,
                     "estimate_digest": digest({"estimator": name}),
                 }
@@ -91,11 +91,11 @@ def main():
             },
             "gate": {
                 "minimum_conservative_value": 0.01,
-                "minimum_effective_sample_size": 100,
+                "minimum_effective_sample_size": 100.0,
                 "minimum_overlap": 0.1,
                 "maximum_extrapolation_fraction": 0.05,
                 "maximum_estimator_spread": 0.02,
-                "maximum_importance_weight": 20,
+                "maximum_importance_weight": 20.0,
                 "required_stress_scenarios": [
                     "adversarial_reward",
                     "support_trimming",
