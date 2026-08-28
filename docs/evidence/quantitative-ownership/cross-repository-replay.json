@@ -1,0 +1,82 @@
+{
+  "capital_or_order_authority": false,
+  "registered": [
+    {
+      "id": "c4fc3d22-30ca-4cd4-84f1-7804912f6cbe",
+      "milestone": "DATA-001",
+      "receipt_digest": "dc523146018693fb0fb6d83eb3768aa87f8def8ee0e274535e1720ed02e37aba"
+    },
+    {
+      "id": "14da10b3-c20b-4381-8fbf-0be7dd1ffc95",
+      "milestone": "DATA-002",
+      "receipt_digest": "81c0a5611373a21cd75417e886029e3119d51a65cb68c3d0114f56959c80d664"
+    },
+    {
+      "id": "40d63a63-4c2a-4f16-a594-7f659545457c",
+      "milestone": "DATA-003",
+      "receipt_digest": "8c8475ba297fbf4cc8dc0ca128a7badf6725993983cdb2d2d0c8a30cd2727d77"
+    },
+    {
+      "id": "0b71b6e7-2b7b-492b-8e4c-ca81bf884c85",
+      "milestone": "DISC-002",
+      "receipt_digest": "bdb6fbb12c461f34bde448a9efaba7245777069463ee0e160d7f57bb2407ec2a"
+    },
+    {
+      "id": "426c7cca-ad52-45cb-9932-d6a377687a1a",
+      "milestone": "DISC-003",
+      "receipt_digest": "ee7f29b9eb24ade7827777d72335337b57310ca43cd287c89b979ac1810c23be"
+    },
+    {
+      "id": "f8f18e27-2700-4929-9559-72dc359c950f",
+      "milestone": "DISC-004",
+      "receipt_digest": "899d4f547c367329a9c591971914edfc1fac48fba031dc16cef9ee43a8e77cb2"
+    },
+    {
+      "id": "bfae05e8-407f-48cc-ba6d-9d536877a05d",
+      "milestone": "DISC-005",
+      "receipt_digest": "e9653713b5bcff246e7e0c8c9c7672f95c1083bedc7e48e6242ce354c86db3b3"
+    },
+    {
+      "id": "6c588124-79fe-42a2-8404-1303d7131d99",
+      "milestone": "DISC-007",
+      "receipt_digest": "81ff00625961a7fafe5dd7fe2d07c538d2ad89d6a613ccef18612af59f8ed3f0"
+    },
+    {
+      "id": "b77dfa3f-7dc7-4358-a649-84f5d86c379d",
+      "milestone": "ML-002",
+      "receipt_digest": "1a5478a231fc916af2386bf57b1b13d4d85c39b52a62193fe15358959f31da4e"
+    },
+    {
+      "id": "504730f6-eccf-4533-8293-da22b07a2dac",
+      "milestone": "ML-003",
+      "receipt_digest": "033140f7f916df27df552c1d96b5efa9d58acd86a80eebcb3dd84ede3af8546a"
+    },
+    {
+      "id": "cf1259d6-0e23-4d59-9ce6-387ffb0c73ef",
+      "milestone": "ML-004",
+      "receipt_digest": "8eaebbeec360ba365810a31148faf8578861545629b306ed5ea86b4f034f4237"
+    },
+    {
+      "id": "ed78adcc-098a-49e3-8e45-2865b36dc853",
+      "milestone": "RL-001",
+      "receipt_digest": "052973a108a076a869af9e50d9f2856e3a05dc8e4cfcb198f6599ce034e35a2a"
+    },
+    {
+      "id": "8fec22e9-91a2-4c61-84e8-71a19d4e73ac",
+      "milestone": "RL-002",
+      "receipt_digest": "8e188b5b151b455152e0a10ac0ba272d7b0e24e32564a46eca750b84204035cd"
+    },
+    {
+      "id": "dbd19c8f-9e77-41c5-8fb7-9ff3aad50c9c",
+      "milestone": "RISK-001",
+      "receipt_digest": "b1961b71a15486b8f10e563fc0d2be1b7d60ffd29b2b9d425cb4f5d44b4d44c9"
+    },
+    {
+      "id": "dbbe878d-f0f1-4c65-812f-529bb6aafc73",
+      "milestone": "RISK-002",
+      "receipt_digest": "ff5da38f35c66bd1bca2dbc793618cad6cf181a261bcb38f08e09c0de8897f06"
+    }
+  ],
+  "schema_version": "quantitative-cross-repository-replay-v1.0.0",
+  "success": true
+}
