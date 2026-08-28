@@ -1,0 +1,13 @@
+{
+  "capital_or_order_authority": false,
+  "expected_receipts": 1,
+  "registered": [
+    {
+      "id": "5c55f791-227a-4c40-a86a-301eec866b9e",
+      "milestone": "PORT-002",
+      "receipt_digest": "70f4ff8045875341e8f324cd2a1f44ff22a309d4dc0362c011b5a51a1c5138be"
+    }
+  ],
+  "schema_version": "quantitative-cross-repository-replay-v1.0.0",
+  "success": true
+}
