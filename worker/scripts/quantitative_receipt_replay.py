@@ -17,13 +17,16 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     document = json.loads(args.report.read_text(encoding="utf-8"))
+    receipts = document["receipts"]
+    if not receipts:
+        raise RuntimeError("quantitative receipt report is empty")
     base = os.environ["SWARM_API_URL"].rstrip("/").removesuffix("/v1")
     token = os.environ["SWARM_ORCHESTRATOR_TOKEN"]
     registered = []
     with httpx.Client(
         base_url=base, headers={"Authorization": f"Bearer {token}"}, timeout=60
     ) as client:
-        for receipt in document["receipts"]:
+        for receipt in receipts:
             response = client.post(
                 "/v1/research/quantitative-receipts",
                 json={
@@ -46,7 +49,8 @@ def main() -> int:
             )
     result = {
         "schema_version": "quantitative-cross-repository-replay-v1.0.0",
-        "success": len(registered) == 15,
+        "expected_receipts": len(receipts),
+        "success": len(registered) == len(receipts),
         "capital_or_order_authority": False,
         "registered": registered,
     }
