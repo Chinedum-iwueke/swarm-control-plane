@@ -53,6 +53,7 @@ from app.api.routes import (
     operations_router,
     packages_router,
     platform_router,
+    portfolio_solvers_router,
     prompt_policies_router,
     proposals_router,
     quantitative_receipts_router,
@@ -116,6 +117,7 @@ app.include_router(risk_stress_router)
 app.include_router(risk_rules_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
+app.include_router(portfolio_solvers_router)
 app.include_router(prompt_policies_router)
 app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)

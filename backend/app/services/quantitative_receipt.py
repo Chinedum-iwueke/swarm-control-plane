@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 
@@ -26,6 +27,7 @@ PRODUCERS = {
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
     "PORT-002": "bt.institutional.portfolio.dependency_dossier_receipt",
+    "PORT-003": "bt.institutional.construction.construction_dossier_receipt",
     "RL-001": "bt.institutional.rl.offline_dataset_receipt",
     "RL-002": "bt.institutional.rl.off_policy_evaluation_receipt",
     "RISK-001": "bt.institutional.risk.stress_dossier_receipt",
@@ -53,6 +55,16 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Result digest does not match content.")
     if _digest(receipt) != receipt_digest:
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
+    if receipt["milestone"] == "PORT-003":
+        solver_digest = receipt["result"].get("solver_digest")
+        solver = db.scalar(
+            select(PortfolioSolverRegistry).where(
+                PortfolioSolverRegistry.specification_digest == solver_digest,
+                PortfolioSolverRegistry.status == "active",
+            )
+        )
+        if solver is None:
+            raise QuantitativeReceiptConflict("PORT-003 solver is not active in the registry.")
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(
         select(QuantitativeProducerReceipt).where(

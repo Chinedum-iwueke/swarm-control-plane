@@ -114,3 +114,26 @@ def test_registers_port002_only_from_bulletproof_dependency_producer():
     assert record.milestone == "PORT-002"
     assert record.producer == "bt.institutional.portfolio.dependency_dossier_receipt"
     assert record.receipt["authority"]["allocation"] is False
+
+
+def test_port003_requires_active_registered_solver():
+    value = receipt(
+        milestone="PORT-003",
+        producer="bt.institutional.construction.construction_dossier_receipt",
+    )
+    value["result"] = {
+        "schema_version": "port003-construction-dossier-v1.0.0",
+        "solver_digest": "9" * 64,
+        "valid": True,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="solver is not active"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "PORT-003"
