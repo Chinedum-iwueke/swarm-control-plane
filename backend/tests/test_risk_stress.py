@@ -164,6 +164,7 @@ def test_registration_is_idempotent():
     db = MagicMock()
     db.scalar.return_value = None
     first = register_assessment(db, payload())
+    assert first.request_digest == payload().request_digest
     db.scalar.return_value = first
     second = register_assessment(db, payload())
     assert second is first

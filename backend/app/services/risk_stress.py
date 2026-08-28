@@ -97,6 +97,7 @@ def register_assessment(
         assessment_key=payload.assessment_key,
         candidate_digest=payload.request.candidate_digest,
         scenario_pack_digest=payload.request.scenario_pack_digest,
+        request_digest=payload.request_digest,
         request=payload.request.model_dump(mode="json"),
         dossier=dossier,
         dossier_digest=dossier_digest,
