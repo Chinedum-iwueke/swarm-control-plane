@@ -112,9 +112,8 @@ from app.models.prompt_policy import (
     PromptPolicyEvent,
 )
 from app.models.proposal import FounderProposal
+from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.reference_data import ReferenceDataSnapshot
-from app.models.risk_stress import RiskStressAssessment
-from app.models.risk_rules import RiskRuleEvaluation
 from app.models.research import (
     ResearchBrief,
     ResearchChunk,
@@ -141,6 +140,8 @@ from app.models.retrieval import (
     EvidenceRetrievalProjection,
     EvidenceRetrievalState,
 )
+from app.models.risk_rules import RiskRuleEvaluation
+from app.models.risk_stress import RiskStressAssessment
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
 from app.models.selection_audit import SelectionBiasAudit
 from app.models.statistical_search import (
@@ -262,6 +263,7 @@ __all__ = [
     "PromptPolicyBundle",
     "PromptPolicyEvaluation",
     "PromptPolicyEvent",
+    "QuantitativeProducerReceipt",
     "ReferenceDataSnapshot",
     "ResearchBrainEvaluation",
     "ResearchBrief",
@@ -286,8 +288,8 @@ __all__ = [
     "ResearchReview",
     "ResearchSource",
     "ResearchTrial",
-    "RiskStressAssessment",
     "RiskRuleEvaluation",
+    "RiskStressAssessment",
     "RolePackage",
     "RoutedServiceAlert",
     "RunbookPackage",

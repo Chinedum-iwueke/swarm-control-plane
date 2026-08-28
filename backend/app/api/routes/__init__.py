@@ -54,13 +54,14 @@ from app.api.routes.platform import router as platform_router
 from app.api.routes.prompt_policies import router as prompt_policies_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
+from app.api.routes.quantitative_receipts import router as quantitative_receipts_router
 from app.api.routes.reference_data import router as reference_data_router
 from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
 from app.api.routes.research_programs import router as research_programs_router
-from app.api.routes.risk_stress import router as risk_stress_router
-from app.api.routes.risk_rules import router as risk_rules_router
 from app.api.routes.retrieval import router as retrieval_router
+from app.api.routes.risk_rules import router as risk_rules_router
+from app.api.routes.risk_stress import router as risk_stress_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.selection_audit import router as selection_audit_router
 from app.api.routes.statistical_search import router as statistical_search_router
@@ -127,13 +128,14 @@ __all__ = [
     "platform_router",
     "prompt_policies_router",
     "proposals_router",
+    "quantitative_receipts_router",
     "reference_data_router",
     "research_bridge_router",
     "research_programs_router",
     "research_router",
-    "risk_stress_router",
-    "risk_rules_router",
     "retrieval_router",
+    "risk_rules_router",
+    "risk_stress_router",
     "runbook_packages_router",
     "selection_audit_router",
     "statistical_search_router",
