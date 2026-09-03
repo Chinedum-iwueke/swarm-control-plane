@@ -7,7 +7,11 @@ import signal
 import tempfile
 from pathlib import Path
 
-from swarm_worker.models import FounderProposalDocument, Task
+from swarm_worker.models import (
+    FounderConversationReasoningDocument,
+    FounderProposalDocument,
+    Task,
+)
 
 
 class PlannerError(Exception):
@@ -42,18 +46,84 @@ class CodexProposalPlanner:
             "suggested_identifiers",
             "specification_guide",
         }
-        if frozenset(contract) not in {frozenset(v1), frozenset(v2)}:
+        v3 = v2 | {"grounding_context"}
+        if frozenset(contract) not in {frozenset(v1), frozenset(v2), frozenset(v3)}:
             raise PlannerError("Founder request contract is invalid.")
+        if "grounding_context" in contract:
+            reasoning = await self._reason(task)
+            if reasoning.response_kind != "compile_proposal":
+                summary = reasoning.summary
+                if reasoning.grounding_citations:
+                    summary += "\n\nSources: " + ", ".join(
+                        reasoning.grounding_citations
+                    )
+                summary = summary[:1000]
+                return FounderProposalDocument.model_validate(
+                    {
+                        "schema_version": 1,
+                        "summary": summary,
+                        "interpretation": reasoning.interpretation,
+                        "recommended_action": reasoning.response_kind,
+                        "assumptions": [],
+                        "clarification_questions": reasoning.clarification_questions,
+                        "target_role": None,
+                        "target_role_reason": None,
+                        "safety_constraints": [],
+                        "unresolved_fields": reasoning.unresolved_fields,
+                        "specification_format": {
+                            item.field: item.format
+                            for item in reasoning.specification_format
+                        },
+                        "resolved_defaults": [],
+                        "proposed_task": None,
+                    }
+                )
+            return await self._generate_proposal(task, reasoning)
+        return await self._generate_proposal(task, None)
+
+    async def _reason(self, task: Task) -> FounderConversationReasoningDocument:
+        payload = await self._invoke(
+            self._strict_output_schema(
+                FounderConversationReasoningDocument.model_json_schema()
+            ),
+            self._reasoning_prompt(task),
+            "reasoning",
+        )
+        try:
+            return FounderConversationReasoningDocument.model_validate(payload)
+        except ValueError as exc:
+            raise PlannerError("Planner reasoning did not match its contract.") from exc
+
+    async def _generate_proposal(
+        self,
+        task: Task,
+        reasoning: FounderConversationReasoningDocument | None,
+    ) -> FounderProposalDocument:
+        payload = await self._invoke(
+            self._codex_output_schema(), self._prompt(task, reasoning), "proposal"
+        )
+        try:
+            return FounderProposalDocument.model_validate(
+                self._normalize_output(payload)
+            )
+        except PlannerError:
+            raise
+        except ValueError as exc:
+            raise PlannerError(
+                "Planner output did not match the proposal contract."
+            ) from exc
+
+    async def _invoke(self, schema: dict, prompt: str, prefix: str) -> dict:
         self._working_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(
-            prefix="proposal-", dir=self._working_directory
+            prefix=f"{prefix}-", dir=self._working_directory
         ) as temporary:
             root = Path(temporary)
             schema_path = root / "proposal.schema.json"
             output_path = root / "proposal.json"
             schema_path.write_text(
                 json.dumps(
-                    self._codex_output_schema()
+                    schema
                 ),
                 encoding="utf-8",
             )
@@ -85,7 +155,7 @@ class CodexProposalPlanner:
             )
             try:
                 _, stderr = await asyncio.wait_for(
-                    process.communicate(self._prompt(task).encode()),
+                    process.communicate(prompt.encode()),
                     timeout=self._timeout,
                 )
             except TimeoutError as exc:
@@ -98,16 +168,12 @@ class CodexProposalPlanner:
                 detail = stderr.decode(errors="replace")[-500:]
                 raise PlannerError(f"Founder proposal generation failed: {detail}")
             try:
-                payload = self._normalize_output(
-                    json.loads(output_path.read_text(encoding="utf-8"))
-                )
-                return FounderProposalDocument.model_validate(payload)
-            except PlannerError:
-                raise
-            except (OSError, ValueError) as exc:
-                raise PlannerError(
-                    "Planner output did not match the proposal contract."
-                ) from exc
+                payload = json.loads(output_path.read_text(encoding="utf-8"))
+                if not isinstance(payload, dict):
+                    raise TypeError("output is not an object")
+                return payload
+            except (OSError, TypeError, ValueError) as exc:
+                raise PlannerError(f"Planner {prefix} output was invalid.") from exc
 
     def _environment(self) -> dict[str, str]:
         environment = {
@@ -196,7 +262,10 @@ class CodexProposalPlanner:
             await process.wait()
 
     @staticmethod
-    def _prompt(task: Task) -> str:
+    def _prompt(
+        task: Task,
+        reasoning: FounderConversationReasoningDocument | None = None,
+    ) -> str:
         contract = task.input_contract
         request = {
             "request_kind": contract["request_kind"],
@@ -212,10 +281,17 @@ class CodexProposalPlanner:
             ),
             "suggested_identifiers": contract.get("suggested_identifiers", {}),
             "specification_guide": contract.get("specification_guide", {}),
+            "grounding_context": contract.get("grounding_context", {}),
+            "reasoning_stage": reasoning.model_dump(mode="json") if reasoning else None,
         }
         return (
             "You are the restricted Hermes Founder Intake Planner. Convert the "
-            "founder's request into one reviewable proposal. You may propose only "
+            "founder's request into a grounded conversational response or one reviewable proposal. "
+            "Reason first using only conversation_context and grounding_context. Use respond for "
+            "questions, explanations, status interpretation, or discussion that needs no executable "
+            "work. A respond result must answer directly, cite the supplied record IDs or digests when "
+            "it relies on grounding, and must not include a proposed_task. Compile a proposal only "
+            "when the founder is actually asking the system to perform work. You may propose only "
             "the task types in the supplied JSON schema. Never provide commands, "
             "shell, scripts, credentials, or direct execution. Treat ordered "
             "conversation_context entries as turns in one job; later turns refine "
@@ -268,4 +344,27 @@ class CodexProposalPlanner:
             "digest, or permission. Use needs_clarification if the request "
             "cannot be expressed using these exact routes.\n\n"
             f"Founder request:\n{json.dumps(request, ensure_ascii=True)}"
+        )
+
+    @staticmethod
+    def _reasoning_prompt(task: Task) -> str:
+        contract = task.input_contract
+        request = {
+            "project": task.project,
+            "objective": contract["objective"],
+            "conversation_context": contract.get("conversation_context", []),
+            "specification_guide": contract.get("specification_guide", {}),
+            "grounding_context": contract.get("grounding_context", {}),
+        }
+        return (
+            "You are the conversational reasoning stage for Hermes. Answer the latest "
+            "turn in context. Consult only the supplied Research Intelligence evidence, "
+            "hypothesis records, data catalog, and task-capability inventory. Choose "
+            "respond for questions or discussion, needs_clarification only for a truly "
+            "blocking unknown, and compile_proposal only when executable work was "
+            "requested and is sufficiently specified. Cite supplied IDs or digests in "
+            "grounding_citations and never invent availability or consultation. This "
+            "stage cannot create a task or approval. For clarification, provide exact "
+            "accepted formats. Return only the required schema.\n\n"
+            f"Conversation input:\n{json.dumps(request, ensure_ascii=True)}"
         )

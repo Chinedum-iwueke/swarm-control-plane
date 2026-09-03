@@ -20,6 +20,7 @@ from app.services.tasks import append_task_event, build_task, persist_new_task
 
 OPEN_STATUSES = {
     "collecting",
+    "planning",
     "needs_clarification",
     "ready_for_review",
     "attention_required",
@@ -173,14 +174,15 @@ def append_turn(
             "A newer founder turn superseded this planning revision.",
             payload={"superseded_by_revision": conversation.revision},
         )
-    messages = _founder_messages(db, conversation.id) + [payload.message]
+    # The pending message is visible after the query autoflush; do not append it twice.
+    messages = _founder_messages(db, conversation.id)
     conversation.project = _classify_project(messages)
     conversation.working_summary = _bounded_summary(messages)
     prior = conversation.status
     conversation.status = "collecting"
     conversation.current_specification = {}
     conversation.specification_digest = None
-    task = _planning_task(conversation, messages, payload.founder_key)
+    task = _planning_task(db, conversation, messages, payload.founder_key)
     persist_new_task(db, task)
     _event(
         db,
@@ -239,6 +241,7 @@ def record_planner_response(
         "create_task": "ready_for_review",
         "needs_clarification": "needs_clarification",
         "decline": "attention_required",
+        "respond": "collecting",
     }[action]
     prior = conversation.status
     conversation.status = target
@@ -316,7 +319,7 @@ def active_conversation(db: Session, founder_key: str) -> FounderConversation | 
 
 
 def _planning_task(
-    conversation: FounderConversation, messages: list[str], actor: str
+    db: Session, conversation: FounderConversation, messages: list[str], actor: str
 ) -> Task:
     now = datetime.now(UTC)
     suggested = {
@@ -332,6 +335,7 @@ def _planning_task(
         "conversation_context": messages[-20:],
         "suggested_identifiers": suggested,
         "specification_guide": _specification_guide(conversation.project),
+        "grounding_context": _grounding_context(db, conversation.project, messages[-1]),
     }
     task = build_task(
         TaskCreate(
@@ -359,6 +363,113 @@ def _planning_task(
     task.conversation_id = conversation.id
     task.conversation_revision = conversation.revision
     return task
+
+
+def record_planning_started(db: Session, task: Task) -> None:
+    if task.conversation_id is None:
+        return
+    conversation = db.get(FounderConversation, task.conversation_id)
+    if conversation is None or conversation.revision != task.conversation_revision:
+        return
+    prior = conversation.status
+    conversation.status = "planning"
+    _event(db, conversation, "conversation_planning_started", "founder-planner", prior, {"task_id": str(task.id)})
+    from app.models import FounderNotification
+
+    db.add(
+        FounderNotification(
+            kind="conversation_planning",
+            entity_id=conversation.id,
+            deduplication_key=(
+                f"conversation-planning:{conversation.id}:{conversation.revision}"
+            ),
+            state="pending",
+            payload={
+                "conversation_id": str(conversation.id),
+                "short_id": conversation.short_id,
+                "title": conversation.title,
+                "revision": conversation.revision,
+                "task_id": str(task.id),
+            },
+        )
+    )
+
+
+def _grounding_context(db: Session, project: str | None, query: str) -> dict:
+    from app.models import Agent, ResearchDatasetManifest, ResearchHypothesis
+    from app.schemas.retrieval import HybridRetrievalRequest
+    from app.services.evidence import ORCHESTRATOR_ACCESS
+    from app.services.retrieval import hybrid_search
+
+    datasets = db.scalars(
+        select(ResearchDatasetManifest).order_by(ResearchDatasetManifest.registered_at.desc()).limit(12)
+    ).all()
+    hypotheses = db.scalars(
+        select(ResearchHypothesis).order_by(ResearchHypothesis.registered_at.desc()).limit(12)
+    ).all()
+    agents = db.scalars(select(Agent).where(Agent.is_enabled.is_(True)).order_by(Agent.slug).limit(50)).all()
+    try:
+        retrieval = hybrid_search(
+            db,
+            HybridRetrievalRequest(query=query[:1000], limit=5, project=None),
+            ORCHESTRATOR_ACCESS,
+        )
+        knowledge = {
+            "available": True,
+            "corpus_digest": retrieval["corpus_digest"],
+            "confidence": retrieval["confidence"],
+            "abstained": retrieval["abstained"],
+            "hits": [
+                {
+                    "object_id": str(hit["object_id"]),
+                    "content_digest": hit["citation"]["content_digest"],
+                    "coordinates": hit["citation"]["coordinates"],
+                    "text": hit["text"][:1200],
+                    "confidence": hit["confidence"],
+                }
+                for hit in retrieval["hits"]
+            ],
+        }
+    except HTTPException as exc:
+        knowledge = {"available": False, "reason": str(exc.detail)}
+    return {
+        "project": project,
+        "knowledge": knowledge,
+        "datasets": [
+            {
+                "id": str(item.id),
+                "key": item.manifest_key,
+                "digest": item.manifest_digest,
+                "summary": {
+                    key: item.manifest[key]
+                    for key in (
+                        "schema_version", "dataset_id", "venue", "instrument",
+                        "timeframe", "start", "end", "availability",
+                    )
+                    if key in item.manifest
+                },
+            }
+            for item in datasets
+        ],
+        "hypotheses": [
+            {
+                "id": str(item.id),
+                "key": item.hypothesis_key,
+                "digest": item.record_digest,
+                "summary": {
+                    key: item.specification[key]
+                    for key in ("research_question", "hypothesis", "dataset", "status")
+                    if key in item.specification
+                },
+            }
+            for item in hypotheses
+        ],
+        "task_capabilities": [
+            {"slug": item.slug, "machine": item.machine, "capabilities": item.capabilities, "risk_ceiling": item.risk_ceiling}
+            for item in agents
+        ],
+        "claim_boundary": "Context is advisory evidence only and grants no execution authority.",
+    }
 
 
 def _specification_guide(project: str | None) -> dict:

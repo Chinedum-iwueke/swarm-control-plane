@@ -1,5 +1,20 @@
 # OPS-006 Conversational Founder Intake
 
+## Conversational intelligence hardening
+
+Founder-intake planning is repository-neutral: a project named in conversation is
+context, not repository execution authority. The planner first performs a bounded,
+read-only reasoning pass over the ordered conversation plus supplied Research
+Intelligence hits, dataset manifests, hypothesis records and active task
+capabilities. Questions may be answered directly. Only an explicit executable
+intent advances into the separately schema-constrained proposal compiler.
+
+Queued work denied by effective authority records `task_authority_denied` with its
+reasons. A leased task moves its conversation to `planning`; a current revision
+that does not advance within two minutes becomes `attention_required` and emits a
+deduplicated founder alert. Telegram renders both planning and stalled notices,
+while Mission Control polls active Chat & Work state every ten seconds.
+
 ## Contract
 
 Founder requests from Telegram and Mission Control are persisted as canonical

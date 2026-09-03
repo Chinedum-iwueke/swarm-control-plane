@@ -183,6 +183,10 @@ def start_task(
     )
 
     task.status = "running"
+    if task.task_type == "founder_request":
+        from app.services.conversations import record_planning_started
+
+        record_planning_started(db, task)
     task.started_at = task.started_at or now
     task.last_execution_heartbeat_at = now
 

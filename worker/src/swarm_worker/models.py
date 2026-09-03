@@ -396,11 +396,40 @@ class ProposalDefaultDecision(StrictModel):
     alternatives: list[str] = Field(default_factory=list, max_length=10)
 
 
+class FounderConversationFormat(StrictModel):
+    field: str = Field(min_length=1, max_length=100)
+    format: str = Field(min_length=1, max_length=1000)
+
+
+class FounderConversationReasoningDocument(StrictModel):
+    schema_version: Literal[1]
+    response_kind: Literal["respond", "needs_clarification", "compile_proposal"]
+    summary: str = Field(min_length=10, max_length=1000)
+    interpretation: str = Field(min_length=10, max_length=4000)
+    grounding_citations: list[str] = Field(default_factory=list, max_length=20)
+    clarification_questions: list[str] = Field(default_factory=list, max_length=20)
+    unresolved_fields: list[str] = Field(default_factory=list, max_length=30)
+    specification_format: list[FounderConversationFormat] = Field(
+        default_factory=list, max_length=30
+    )
+
+    @model_validator(mode="after")
+    def clarification_is_complete(self) -> "FounderConversationReasoningDocument":
+        if self.response_kind == "needs_clarification":
+            if not self.clarification_questions or not self.unresolved_fields:
+                raise ValueError("clarification requires questions and unresolved fields")
+        elif self.clarification_questions or self.unresolved_fields:
+            raise ValueError("only clarification may include unresolved fields")
+        return self
+
+
 class FounderProposalDocument(StrictModel):
     schema_version: Literal[1]
     summary: str = Field(min_length=10, max_length=1000)
     interpretation: str = Field(min_length=10, max_length=4000)
-    recommended_action: Literal["create_task", "needs_clarification", "decline"]
+    recommended_action: Literal[
+        "create_task", "needs_clarification", "decline", "respond"
+    ]
     assumptions: list[str] = Field(default_factory=list, max_length=20)
     clarification_questions: list[str] = Field(default_factory=list, max_length=20)
     target_role: str | None = Field(default=None, max_length=150)

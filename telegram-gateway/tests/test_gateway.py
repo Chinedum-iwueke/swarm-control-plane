@@ -132,6 +132,7 @@ class Channel:
                 if value["status"]
                 in {
                     "collecting",
+                    "planning",
                     "needs_clarification",
                     "ready_for_review",
                     "attention_required",

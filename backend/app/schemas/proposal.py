@@ -11,6 +11,7 @@ ProposalAction = Literal[
     "create_task",
     "needs_clarification",
     "decline",
+    "respond",
 ]
 SupportedTaskType = Literal[
     "code_validation",

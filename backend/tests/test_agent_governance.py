@@ -81,3 +81,68 @@ def test_task_authority_resolves_every_declared_capability():
         snapshots = resolve_task_authority(MagicMock(), task, agent, datetime.now(UTC))
     assert snapshots == [{"allowed": True}, {"allowed": True}]
     assert [call.args[2].capability for call in resolver.call_args_list] == ["testing", "git"]
+
+
+def test_founder_intake_planning_does_not_require_repository_execution_grant():
+    agent_id = uuid4()
+    agent = SimpleNamespace(
+        id=agent_id,
+        is_enabled=True,
+        machine="vm1-developer",
+        capabilities=["founder-intake"],
+        risk_ceiling=1,
+    )
+    charter = SimpleNamespace(
+        id=uuid4(),
+        manifest={
+            "capabilities": ["founder-intake"],
+            "allowed_machines": ["vm1-developer"],
+            "allowed_task_types": ["founder_request"],
+            "allowed_repositories": [],
+            "risk_ceiling": 1,
+            "conflicts": [],
+            "forbidden_actions": [],
+        },
+        manifest_digest="a" * 64,
+    )
+    package = SimpleNamespace(
+        id=uuid4(),
+        manifest={
+            "required_capabilities": ["founder-intake"],
+            "allowed_machines": ["vm1-developer"],
+            "task_types": ["founder_request"],
+            "risk_ceiling": 1,
+            "repository_profile": {"repositories": []},
+        },
+        manifest_digest="b" * 64,
+    )
+    grant = SimpleNamespace(
+        capability="founder-intake",
+        status="active",
+        package_id=package.id,
+        machine="vm1-developer",
+        task_types=["founder_request"],
+        repositories=[],
+        risk_ceiling=1,
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        accountable_owner="company-operations",
+        record_digest="c" * 64,
+    )
+    db = MagicMock()
+    db.get.return_value = agent
+    db.scalar.side_effect = [charter, package, grant]
+
+    result = resolve(
+        db,
+        agent_id,
+        EffectiveAuthorityRequest(
+            capability="founder-intake",
+            machine="vm1-developer",
+            task_type="founder_request",
+            repository="bulletproof_bt",
+            risk_level=1,
+        ),
+    )
+
+    assert result["allowed"] is True
+    assert not any("repository" in reason for reason in result["reasons"])

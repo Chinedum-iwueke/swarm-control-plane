@@ -321,7 +321,7 @@ function renderConversations() {
     ${unresolved.length ? `<section><strong>Still needed</strong>${bulletList(unresolved, "")}</section>` : ""}
     ${defaults.length ? `<section><strong>Resolved defaults</strong>${bulletList(defaults.map((value) => `${value.field}: ${value.value} — ${value.basis}`), "")}</section>` : ""}`;
   renderConversationWork();
-  const canWrite = ["collecting", "needs_clarification", "ready_for_review", "attention_required"].includes(item.status);
+  const canWrite = ["collecting", "planning", "needs_clarification", "ready_for_review", "attention_required"].includes(item.status);
   document.getElementById("conversation-message").disabled = !canWrite;
   document.querySelector("#conversation-form button").disabled = !canWrite;
   document.querySelectorAll("[data-conversation-action]").forEach((button) => {
@@ -2284,4 +2284,7 @@ window.setInterval(() => {
   const activeOperation = Number(state.dashboard?.operation_summary?.active_total || 0) > 0;
   if (!state.demo && (activeMemoryTask || activeOperation || state.activeView === "activity")) loadDashboard();
 }, 15000);
+window.setInterval(() => {
+  if (!state.demo && state.activeView === "work") loadConversations();
+}, 10000);
 loadDashboard();
