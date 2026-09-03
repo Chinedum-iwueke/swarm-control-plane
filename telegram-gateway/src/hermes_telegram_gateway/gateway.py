@@ -158,6 +158,24 @@ class RestrictedTelegramGateway:
                     f"{payload['service_key']} · {payload['indicator']}\n"
                     f"Owner: {payload['owner']}\n{payload['summary']}\n{detail}",
                 )
+            elif kind == "conversation_planning":
+                payload = notification["payload"]
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    (
+                        f"Planning started · {payload['short_id']} · "
+                        f"revision {payload['revision']}\n{payload['title']}"
+                    ),
+                )
+            elif kind == "conversation_stalled":
+                reasons = ", ".join(payload.get("authority_reasons") or [])
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Hermes conversation needs attention\n"
+                    f"{payload['short_id']} · {payload['title']}\n"
+                    f"{payload['reason']}"
+                    f"{f' ({reasons})' if reasons else ''}",
+                )
             else:
                 continue
             message_ids = [
@@ -621,6 +639,12 @@ class RestrictedTelegramGateway:
                 continue
             proposal = item["proposal"]
             if item["status"] == "proposed":
+                if proposal["recommended_action"] == "respond":
+                    await self._send_thread_message(
+                        item.get("conversation_id"), proposal["summary"]
+                    )
+                    self._store.mark_seen(state_key, state)
+                    continue
                 if proposal["recommended_action"] == "needs_clarification":
                     await self._send_thread_message(
                         item.get("conversation_id"),

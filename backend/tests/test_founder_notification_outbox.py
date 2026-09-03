@@ -59,7 +59,7 @@ def test_five_pending_approvals_activate_only_the_actionable_gate() -> None:
         (index == 0, [] if index == 0 else ["prior:queued"], tasks[index], None)
         for index in range(5)
     ]
-    db = DB([approvals, [], [], [], []], SimpleNamespace(id=41))
+    db = DB([[], approvals, [], [], [], []], SimpleNamespace(id=41))
     with (
         patch(
             "app.services.founder_notifications.approval_readiness",
@@ -94,7 +94,7 @@ def test_stale_pending_gate_is_superseded() -> None:
         superseded_at=None,
         updated_at=now,
     )
-    db = DB([[], [], [stale], [], []], None)
+    db = DB([[], [], [], [stale], [], []], None)
 
     assert reconcile_founder_notifications(db) == []  # type: ignore[arg-type]
     assert stale.state == "superseded"
@@ -110,7 +110,7 @@ def test_task_ready_message_is_superseded_after_lease() -> None:
         updated_at=None,
     )
     db = DB(
-        [[], [], [], [ready], []],
+        [[], [], [], [], [ready], []],
         None,
         task=SimpleNamespace(status="leased"),
     )

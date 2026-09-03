@@ -146,6 +146,26 @@ def test_planner_rejects_duplicate_strict_format_rows() -> None:
         CodexProposalPlanner._normalize_output(payload)
 
 
+def test_planner_accepts_direct_conversational_response_without_task() -> None:
+    payload = valid_proposal()
+    payload.update(
+        {
+            "summary": "The current catalog supports a bounded synthetic test.",
+            "interpretation": "This answers the founder without scheduling work.",
+            "recommended_action": "respond",
+            "target_role": None,
+            "target_role_reason": None,
+            "safety_constraints": [],
+            "proposed_task": None,
+        }
+    )
+
+    document = FounderProposalDocument.model_validate(payload)
+
+    assert document.recommended_action == "respond"
+    assert document.proposed_task is None
+
+
 def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
     context = [
         "Backtest whether an equity risk-off regime predicts BTC residual returns.",
@@ -187,6 +207,37 @@ def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
     assert "single clarification_questions entry" in prompt
     assert "Do not claim that a domain specialist was consulted" in prompt
     assert "Never ask again for a value the founder already supplied" in prompt
+
+
+def test_conversation_prompt_receives_bounded_grounding_context() -> None:
+    task = Task.model_construct(
+        task_type="founder_request",
+        project="bulletproof_bt",
+        title="Explain available research data",
+        risk_level=0,
+        acceptance_criteria=[],
+        input_contract={
+            "schema_version": 2,
+            "request_kind": "task",
+            "objective": "What data can the research agents use?",
+            "conversation_id": "conversation-id",
+            "conversation_revision": 1,
+            "conversation_context": ["What data can the research agents use?"],
+            "suggested_identifiers": {},
+            "specification_guide": {},
+            "grounding_context": {
+                "datasets": [{"key": "binance-btcusdt-1h", "digest": "d" * 64}],
+                "task_capabilities": [{"slug": "research-runner"}],
+                "claim_boundary": "advisory evidence only",
+            },
+        },
+    )
+
+    prompt = CodexProposalPlanner._prompt(task)
+
+    assert "binance-btcusdt-1h" in prompt
+    assert "research-runner" in prompt
+    assert "advisory evidence only" in prompt
 
 
 @pytest.mark.asyncio
@@ -240,6 +291,79 @@ async def test_planner_allows_its_ephemeral_non_git_workspace(
 
     assert proposal.recommended_action == "create_task"
     assert "--skip-git-repo-check" in command
+
+
+@pytest.mark.asyncio
+async def test_grounded_question_stops_after_reasoning_without_compilation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    invocations = 0
+    credential_home = tmp_path / "credentials"
+    credential_home.mkdir()
+
+    class Process:
+        returncode = 0
+
+        async def communicate(self, _: bytes):
+            return b"", b""
+
+    async def create_subprocess_exec(*args: str, **_: object):
+        nonlocal invocations
+        invocations += 1
+        output_path = Path(args[args.index("--output-last-message") + 1])
+        output_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "response_kind": "respond",
+                    "summary": "The catalog contains one immutable BTC dataset.",
+                    "interpretation": "The founder asked a question, not for execution.",
+                    "grounding_citations": ["dataset-digest:" + "d" * 64],
+                    "clarification_questions": [],
+                    "unresolved_fields": [],
+                    "specification_format": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return Process()
+
+    monkeypatch.setattr(
+        "swarm_worker.planner.engine.asyncio.create_subprocess_exec",
+        create_subprocess_exec,
+    )
+    planner = CodexProposalPlanner(
+        codex_binary=tmp_path / "codex",
+        codex_home=credential_home,
+        model="test-model",
+        timeout_seconds=1,
+        working_directory=tmp_path,
+    )
+    task = Task.model_construct(
+        task_type="founder_request",
+        project="bulletproof_bt",
+        title="Describe available data",
+        risk_level=0,
+        acceptance_criteria=[],
+        input_contract={
+            "schema_version": 2,
+            "request_kind": "task",
+            "objective": "What BTC data is available?",
+            "conversation_id": "conversation-id",
+            "conversation_revision": 1,
+            "conversation_context": ["What BTC data is available?"],
+            "suggested_identifiers": {},
+            "specification_guide": {},
+            "grounding_context": {"datasets": [{"digest": "d" * 64}]},
+        },
+    )
+
+    response = await planner.plan(task)
+
+    assert invocations == 1
+    assert response.recommended_action == "respond"
+    assert response.proposed_task is None
+    assert "dataset-digest" in response.summary
 
 
 @pytest.mark.asyncio

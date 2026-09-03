@@ -115,6 +115,10 @@ def revoke_grant(db: Session, grant: AgentCapabilityGrant, actor: str, reason: s
 
 def resolve(db: Session, agent_id: UUID, request: EffectiveAuthorityRequest, now: datetime | None = None) -> dict:
     now = now or datetime.now(UTC); reasons: list[str] = []
+    repository_access_required = not (
+        request.capability == "founder-intake"
+        and request.task_type == "founder_request"
+    )
     agent = db.get(Agent, agent_id)
     charter = db.scalar(select(AgentCharter).where(AgentCharter.agent_id == agent_id, AgentCharter.status == "active"))
     package = _active_package(db, agent_id)
@@ -133,16 +137,16 @@ def resolve(db: Session, agent_id: UUID, request: EffectiveAuthorityRequest, now
     if agent and (agent.machine != request.machine or request.capability not in agent.capabilities or request.risk_level > agent.risk_ceiling): reasons.append("agent-registration-mismatch")
     if charter:
         m = charter.manifest
-        if request.capability not in m["capabilities"] or request.machine not in m["allowed_machines"] or request.task_type not in m["allowed_task_types"] or request.risk_level > m["risk_ceiling"] or (request.repository and request.repository not in m["allowed_repositories"]): reasons.append("charter-boundary-violation")
+        if request.capability not in m["capabilities"] or request.machine not in m["allowed_machines"] or request.task_type not in m["allowed_task_types"] or request.risk_level > m["risk_ceiling"] or (repository_access_required and request.repository and request.repository not in m["allowed_repositories"]): reasons.append("charter-boundary-violation")
         if request.capability in m.get("conflicts", []) or request.capability in m.get("forbidden_actions", []): reasons.append("charter-conflict-or-prohibition")
     if package:
         m = package.manifest
-        if request.capability not in m["required_capabilities"] or request.machine not in m["allowed_machines"] or request.task_type not in m["task_types"] or request.risk_level > m["risk_ceiling"] or (request.repository and request.repository not in m["repository_profile"]["repositories"]): reasons.append("package-boundary-violation")
+        if request.capability not in m["required_capabilities"] or request.machine not in m["allowed_machines"] or request.task_type not in m["task_types"] or request.risk_level > m["risk_ceiling"] or (repository_access_required and request.repository and request.repository not in m["repository_profile"]["repositories"]): reasons.append("package-boundary-violation")
     if grant:
         if not package or grant.package_id != package.id:
             reasons.append("grant-package-mismatch")
         if grant.expires_at <= now: reasons.append("grant-expired")
-        if request.machine != grant.machine or request.task_type not in grant.task_types or request.risk_level > grant.risk_ceiling or (request.repository and request.repository not in grant.repositories): reasons.append("grant-boundary-violation")
+        if request.machine != grant.machine or request.task_type not in grant.task_types or request.risk_level > grant.risk_ceiling or (repository_access_required and request.repository and request.repository not in grant.repositories): reasons.append("grant-boundary-violation")
     result = {"agent_id": agent_id, "allowed": not reasons, "reasons": sorted(set(reasons)),
               "accountable_owner": grant.accountable_owner if grant else None,
               "charter_digest": charter.manifest_digest if charter else None,

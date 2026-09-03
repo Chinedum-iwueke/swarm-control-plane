@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -51,6 +51,7 @@ def approval_readiness(
 
 def reconcile_founder_notifications(db: Session) -> list[FounderNotification]:
     now = datetime.now(UTC)
+    _reconcile_stalled_conversations(db, now)
     approvals = db.scalars(
         select(TaskApproval).where(TaskApproval.status == "pending")
     ).all()
@@ -156,6 +157,53 @@ def reconcile_founder_notifications(db: Session) -> list[FounderNotification]:
             .order_by(FounderNotification.created_at, FounderNotification.id)
         ).all()
     )
+
+
+def _reconcile_stalled_conversations(db: Session, now: datetime) -> None:
+    from app.models import FounderConversation, TaskEvent
+
+    tasks = db.scalars(
+        select(Task).where(
+            Task.task_type == "founder_request",
+            Task.status.in_(["queued", "leased", "running"]),
+            Task.updated_at <= now - timedelta(minutes=2),
+        )
+    ).all()
+    for task in tasks:
+        if task.conversation_id is None:
+            continue
+        conversation = db.get(FounderConversation, task.conversation_id)
+        if conversation is None or conversation.revision != task.conversation_revision:
+            continue
+        denied = db.scalar(
+            select(TaskEvent)
+            .where(
+                TaskEvent.task_id == task.id,
+                TaskEvent.event_type == "task_authority_denied",
+            )
+            .order_by(TaskEvent.id.desc())
+            .limit(1)
+        )
+        reason = "effective authority denied the planner lease" if denied else "planning has not advanced within two minutes"
+        conversation.status = "attention_required"
+        _insert_once(
+            db,
+            FounderNotification(
+                kind="conversation_stalled",
+                entity_id=conversation.id,
+                deduplication_key=f"conversation-stalled:{conversation.id}:{conversation.revision}:{reason}",
+                state="pending",
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "short_id": conversation.short_id,
+                    "title": conversation.title,
+                    "task_id": str(task.id),
+                    "task_status": task.status,
+                    "reason": reason,
+                    "authority_reasons": denied.payload.get("reasons", []) if denied else [],
+                },
+            ),
+        )
 
 
 def enqueue_approval_gate(

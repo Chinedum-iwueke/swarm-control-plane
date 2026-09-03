@@ -347,6 +347,31 @@ def lease_next_task(
 
     authority_snapshots = resolve_task_authority(db, task, agent, now)
     if not authority_snapshots or not all(item["allowed"] for item in authority_snapshots):
+        reasons = sorted(
+            {
+                reason
+                for item in authority_snapshots
+                for reason in item.get("reasons", [])
+            }
+        ) or ["authority-resolution-unavailable"]
+        prior = db.scalar(
+            select(TaskEvent)
+            .where(
+                TaskEvent.task_id == task.id,
+                TaskEvent.event_type == "task_authority_denied",
+            )
+            .order_by(TaskEvent.id.desc())
+            .limit(1)
+        )
+        if prior is None or prior.payload.get("reasons") != reasons:
+            append_task_event(
+                db,
+                task,
+                "task_authority_denied",
+                "Task matched the worker but effective authority denied its lease.",
+                agent_id=agent.id,
+                payload={"reasons": reasons},
+            )
         return None, None, None
 
     consume_task_approval(db, task, now)
