@@ -291,7 +291,23 @@ class RestrictedTelegramGateway:
             await self._switch_thread(text.removeprefix("/switch ").strip())
             return
         if text == "/continue":
-            await self._route_draft("continue")
+            if self._store.get_value("pending-routing-draft") is not None:
+                await self._route_draft("continue")
+                return
+            active = await self._selected_conversation()
+            if active is None:
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "No open current thread. Use /threads and /switch <short-id>, "
+                    "or /new [thread name].",
+                )
+                return
+            self._store.activate_conversation(active["id"])
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Continuing {active['short_id']} · {active['title']}\n"
+                "Send the next message; it will be added to this thread.",
+            )
             return
         if text == "/cancel":
             if self._store.pop_routing_draft() is None:

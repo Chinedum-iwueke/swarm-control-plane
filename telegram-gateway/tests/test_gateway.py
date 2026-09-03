@@ -834,6 +834,52 @@ async def test_ambiguous_plain_message_is_held_until_continue(
 
 
 @pytest.mark.asyncio
+async def test_continue_before_message_keeps_selected_thread_active(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.conversation_values = [
+        {
+            "id": "conversation-old",
+            "short_id": "oldthread0001",
+            "status": "attention_required",
+            "title": "Existing work",
+            "project": "swarm-control-plane",
+            "revision": 1,
+            "current_specification": {},
+            "messages": [],
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    store.set_value("selected-conversation-id", "conversation-old")
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    base = {"from": {"id": 123}, "chat": {"id": 456}}
+
+    await gateway._handle_update(
+        {"message": {**base, "message_id": 90, "text": "/continue"}}
+    )
+    await gateway._handle_update(
+        {
+            "message": {
+                **base,
+                "message_id": 91,
+                "text": "Continue it then and carry out the task.",
+            }
+        }
+    )
+
+    assert "Continuing oldthread0001" in telegram.sent[-2][1]
+    assert channel.turns[-1][1]["message"] == (
+        "Continue it then and carry out the task."
+    )
+    assert store.pop_routing_draft() is None
+
+
+@pytest.mark.asyncio
 async def test_new_routes_held_message_without_retyping_it(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()
