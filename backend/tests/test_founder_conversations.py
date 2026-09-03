@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -14,6 +14,7 @@ from app.services.conversations import (
     _bounded_summary,
     _classify_project,
     _specification_guide,
+    append_turn,
 )
 from app.services.proposals import create_proposal
 from fastapi import HTTPException
@@ -75,6 +76,37 @@ def test_august_23_transcript_retains_research_identity_and_order() -> None:
     summary = _bounded_summary(AUGUST_23_TRANSCRIPT)
     assert summary.index("equity risk-off") < summary.index("January to February 2022")
     assert summary.endswith("Answer all remaining questions yourself and do the test.")
+
+
+def test_new_turn_is_flushed_before_planning_context_is_queried() -> None:
+    conversation = SimpleNamespace(
+        id=UUID("22222222-2222-4222-8222-222222222222"),
+        founder_key="founder:primary",
+        status="collecting",
+        revision=0,
+    )
+    payload = ConversationTurnCreate(
+        founder_key="founder:primary",
+        channel="telegram",
+        message="Start a new grounded research conversation.",
+        channel_message_id="new-thread-1",
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    db.scalars.return_value.all.return_value = []
+
+    def assert_flushed(*_args: object) -> list[str]:
+        db.flush.assert_called_once_with()
+        raise RuntimeError("planning context reached")
+
+    with (
+        patch(
+            "app.services.conversations._founder_messages",
+            side_effect=assert_flushed,
+        ),
+        pytest.raises(RuntimeError, match="planning context reached"),
+    ):
+        append_turn(db, conversation, payload)
 
 
 def test_research_specification_generates_ids_and_explains_required_formats() -> None:

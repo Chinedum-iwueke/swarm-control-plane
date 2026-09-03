@@ -140,23 +140,22 @@ def append_turn(
                 == payload.reply_to_channel_message_id,
             )
         )
-    db.add(
-        FounderConversationMessage(
-            conversation_id=conversation.id,
-            sequence=sequence,
-            role="founder",
-            channel=payload.channel,
-            channel_message_id=payload.channel_message_id,
-            reply_to_message_id=reply_to.id if reply_to else None,
-            content=payload.message,
-            content_digest=digest,
-            detail={
-                "reply_to_channel_message_id": payload.reply_to_channel_message_id
-            }
-            if payload.reply_to_channel_message_id
-            else {},
-        )
+    message = FounderConversationMessage(
+        conversation_id=conversation.id,
+        sequence=sequence,
+        role="founder",
+        channel=payload.channel,
+        channel_message_id=payload.channel_message_id,
+        reply_to_message_id=reply_to.id if reply_to else None,
+        content=payload.message,
+        content_digest=digest,
+        detail={"reply_to_channel_message_id": payload.reply_to_channel_message_id}
+        if payload.reply_to_channel_message_id
+        else {},
     )
+    db.add(message)
+    # Production sessions disable autoflush; persist the turn before deriving context.
+    db.flush()
     conversation.revision += 1
     stale_tasks = db.scalars(
         select(Task).where(
@@ -174,7 +173,6 @@ def append_turn(
             "A newer founder turn superseded this planning revision.",
             payload={"superseded_by_revision": conversation.revision},
         )
-    # The pending message is visible after the query autoflush; do not append it twice.
     messages = _founder_messages(db, conversation.id)
     conversation.project = _classify_project(messages)
     conversation.working_summary = _bounded_summary(messages)
