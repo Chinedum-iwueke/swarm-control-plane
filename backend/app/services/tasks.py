@@ -309,7 +309,7 @@ def lease_next_task(
         ),
     )
 
-    task = db.scalar(
+    candidates = db.scalars(
         select(Task)
         .where(
             Task.status == "queued",
@@ -339,14 +339,17 @@ def lease_next_task(
             Task.created_at.asc(),
         )
         .with_for_update(skip_locked=True)
-        .limit(1)
-    )
+        .limit(100)
+    ).all()
 
-    if task is None:
-        return None, None, None
-
-    authority_snapshots = resolve_task_authority(db, task, agent, now)
-    if not authority_snapshots or not all(item["allowed"] for item in authority_snapshots):
+    task = None
+    for candidate in candidates:
+        authority_snapshots = resolve_task_authority(db, candidate, agent, now)
+        if authority_snapshots and all(
+            item["allowed"] for item in authority_snapshots
+        ):
+            task = candidate
+            break
         reasons = sorted(
             {
                 reason
@@ -357,7 +360,7 @@ def lease_next_task(
         prior = db.scalar(
             select(TaskEvent)
             .where(
-                TaskEvent.task_id == task.id,
+                TaskEvent.task_id == candidate.id,
                 TaskEvent.event_type == "task_authority_denied",
             )
             .order_by(TaskEvent.id.desc())
@@ -366,12 +369,14 @@ def lease_next_task(
         if prior is None or prior.payload.get("reasons") != reasons:
             append_task_event(
                 db,
-                task,
+                candidate,
                 "task_authority_denied",
                 "Task matched the worker but effective authority denied its lease.",
                 agent_id=agent.id,
                 payload={"reasons": reasons},
             )
+
+    if task is None:
         return None, None, None
 
     consume_task_approval(db, task, now)
