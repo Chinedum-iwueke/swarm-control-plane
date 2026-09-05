@@ -33,8 +33,19 @@ def normalize(content: str) -> str:
     return " ".join(unicodedata.normalize("NFC", content).split())
 
 
+def normalize_layout(content: str) -> str:
+    """Remove presentation artifacts without changing mathematical glyphs."""
+    value = unicodedata.normalize("NFC", content)
+    value = value.replace("ﬁ", "fi").replace("ﬂ", "fl")
+    value = re.sub(r"(?<=\w)-\s*[\u0000-\u001f]*\s*(?=\w)", "", value)
+    value = re.sub(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f]", "", value)
+    return " ".join(value.split())
+
+
 def semantic_tokens(content: str) -> list[dict]:
-    pattern = r"[A-Za-z\u0370-\u03ff]+[₀-₉⁰-⁹]*|\d+(?:\.\d+)?|[=+\-*/^(),;\[\]{}∫∑√≤≥]"
+    pattern = (
+        r"[A-Za-z\u0370-\u03ff]+[₀-₉⁰-⁹]*|\d+(?:\.\d+)?|[…=+\-*/^(),:;\[\]{}∫∑√≤≥]"
+    )
     return [
         {"index": index, "value": token}
         for index, token in enumerate(re.findall(pattern, content))
@@ -49,8 +60,11 @@ def expression_tree(tokens: list[dict]) -> tuple[dict, bool]:
             return {"kind": "empty"}, False
         if len(items) == 1:
             value = items[0]
-            kind = "number" if re.fullmatch(r"\d+(?:\.\d+)?", value) else "symbol"
-            return {"kind": kind, "value": value}, True
+            if re.fullmatch(r"\d+(?:\.\d+)?", value):
+                return {"kind": "number", "value": value}, True
+            if re.fullmatch(r"[A-Za-z\u0370-\u03ff]+[₀-₉⁰-⁹]*", value):
+                return {"kind": "symbol", "value": value}, True
+            return {"kind": "token", "value": value}, False
         pairs = {"(": ")", "[": "]", "{": "}"}
         if items[0] in pairs and items[-1] == pairs[items[0]]:
             depth = 0
@@ -62,6 +76,22 @@ def expression_tree(tokens: list[dict]) -> tuple[dict, bool]:
                     enclosed = False
                     break
             if enclosed:
+                inner = items[1:-1]
+                parts, start, nested = [], 0, 0
+                for index, value in enumerate(inner):
+                    nested += value in pairs
+                    nested -= value in pairs.values()
+                    if nested == 0 and value in {",", ";"}:
+                        parts.append(inner[start:index])
+                        start = index + 1
+                parts.append(inner[start:])
+                if len(parts) > 1:
+                    children = [parse(part) for part in parts]
+                    kind = {"{": "set", "[": "vector", "(": "tuple"}[items[0]]
+                    return {
+                        "kind": kind,
+                        "items": [node for node, _ in children],
+                    }, all(ok for _, ok in children)
                 child, complete = parse(items[1:-1])
                 return {
                     "kind": "group",
@@ -93,6 +123,12 @@ def expression_tree(tokens: list[dict]) -> tuple[dict, bool]:
                 "operator": items[0],
                 "operand": child,
             }, complete
+        atoms = [parse([item]) for item in items]
+        if all(ok for _, ok in atoms):
+            return {
+                "kind": "implicit_product",
+                "factors": [node for node, _ in atoms],
+            }, True
         return {"kind": "lossless_tokens", "values": items}, False
 
     return parse(values)
@@ -136,7 +172,7 @@ def register_representation(
             for value in normalized
         ]
         if payload.scientific_type == "equation"
-        else normalized
+        else [normalize_layout(value) for value in normalized]
     )
     if len(set(comparable)) != 1:
         uncertainties.append(
@@ -200,6 +236,7 @@ def register_representation(
         "figure_caption": payload.figure_caption,
         "cross_references": [str(item) for item in payload.cross_references],
         "normalization": "Unicode-NFC/whitespace-v1",
+        "layout_normalized_content": normalize_layout(canonical),
     }
     material = {
         "source_object_id": str(payload.source_object_id),

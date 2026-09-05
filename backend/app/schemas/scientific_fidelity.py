@@ -31,8 +31,10 @@ class UnitDefinition(StrictModel):
 class ScientificRepresentationCreate(StrictModel):
     source_object_id: UUID
     representation_version: Literal[
-        "scientific-fidelity-v1.0.0", "scientific-fidelity-v1.1.0"
-    ] = "scientific-fidelity-v1.1.0"
+        "scientific-fidelity-v1.0.0",
+        "scientific-fidelity-v1.1.0",
+        "scientific-fidelity-v2.0.0",
+    ] = "scientific-fidelity-v2.0.0"
     scientific_type: Literal["equation", "table", "figure"]
     source_region_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     parser_outputs: list[ParserOutput] = Field(min_length=1)
@@ -72,8 +74,10 @@ class ScientificRepresentationResponse(StrictModel):
 class FidelityManifestCreate(StrictModel):
     corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     representation_version: Literal[
-        "scientific-fidelity-v1.0.0", "scientific-fidelity-v1.1.0"
-    ] = "scientific-fidelity-v1.1.0"
+        "scientific-fidelity-v1.0.0",
+        "scientific-fidelity-v1.1.0",
+        "scientific-fidelity-v2.0.0",
+    ] = "scientific-fidelity-v2.0.0"
     thresholds: dict[str, float]
     metrics: dict[str, float]
     created_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)

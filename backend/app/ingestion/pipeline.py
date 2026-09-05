@@ -135,7 +135,10 @@ class ScientificIngestionPipeline:
         else:
             pages, scanned, parser = self._text_pages(content)
         combined = "\n".join(pages)
-        if len(combined.encode("utf-8")) > max(1, len(content)) * self.max_expansion_ratio:
+        if (
+            len(combined.encode("utf-8"))
+            > max(1, len(content)) * self.max_expansion_ratio
+        ):
             raise IngestionRejected(
                 "extracted content exceeds the expansion limit", stage="extract"
             )
@@ -161,7 +164,9 @@ class ScientificIngestionPipeline:
             warnings=["ocr-derived content requires review"] if scanned else [],
         )
 
-    def _inspect_container(self, filename: str, media_type: str, content: bytes) -> None:
+    def _inspect_container(
+        self, filename: str, media_type: str, content: bytes
+    ) -> None:
         if not content or len(content) > self.max_bytes:
             raise IngestionRejected(
                 "artifact size is outside the ingestion limit", stage="quarantine"
@@ -195,7 +200,10 @@ class ScientificIngestionPipeline:
                 raise IngestionRejected(
                     "PDF page count is outside the ingestion limit", stage="extract"
                 )
-            pages = [_database_safe(page.extract_text() or "").strip() for page in reader.pages]
+            pages = [
+                _database_safe(page.extract_text() or "").strip()
+                for page in reader.pages
+            ]
         except IngestionRejected:
             raise
         except Exception as exc:
@@ -240,6 +248,18 @@ class ScientificIngestionPipeline:
         base_confidence = 0.78 if scanned else 0.98
         for page_number, text in enumerate(pages, 1):
             lines = text.splitlines()
+            table_blocks = _table_blocks(lines)
+            table_lines = {
+                line
+                for start, (end, _) in table_blocks.items()
+                for line in range(start, end + 1)
+            }
+            equation_blocks = _equation_blocks(lines, excluded=table_lines)
+            structured_continuations = {
+                line
+                for start, (end, _) in {**table_blocks, **equation_blocks}.items()
+                for line in range(start + 1, end + 1)
+            }
             paragraph_start: int | None = None
             paragraph_lines: list[str] = []
 
@@ -266,12 +286,20 @@ class ScientificIngestionPipeline:
                 paragraph_start, paragraph_lines = None, []
 
             for line_number, raw in enumerate(lines, 1):
+                if line_number in structured_continuations:
+                    continue
                 line = raw.strip()
                 if not line:
                     flush_paragraph(line_number - 1, current_section, page_number)
                     continue
                 heading = _HEADING.match(line)
-                object_type = self._line_object_type(line)
+                object_type = (
+                    "table"
+                    if line_number in table_blocks
+                    else "equation"
+                    if line_number in equation_blocks
+                    else self._line_object_type(line)
+                )
                 if heading:
                     flush_paragraph(line_number - 1, current_section, page_number)
                     output.append(
@@ -292,8 +320,18 @@ class ScientificIngestionPipeline:
                             scientific_type=object_type,
                             page=page_number,
                             line_start=line_number,
-                            line_end=line_number,
-                            text=line,
+                            line_end=(
+                                {**table_blocks, **equation_blocks}[line_number][0]
+                                if line_number in table_blocks
+                                or line_number in equation_blocks
+                                else line_number
+                            ),
+                            text=(
+                                {**table_blocks, **equation_blocks}[line_number][1]
+                                if line_number in table_blocks
+                                or line_number in equation_blocks
+                                else line
+                            ),
                             confidence=base_confidence - (0.08 if scanned else 0),
                             parent_index=current_section,
                         )
@@ -307,8 +345,6 @@ class ScientificIngestionPipeline:
 
     @staticmethod
     def _line_object_type(line: str) -> str | None:
-        if line.count("|") >= 2 or re.search(r"\S+\s{2,}\S+\s{2,}\S+", line):
-            return "table"
         if _FIGURE.match(line):
             return "figure"
         if _CITATION.search(line):
@@ -318,6 +354,86 @@ class ScientificIngestionPipeline:
         if line.lower().startswith(("note:", "footnote:")):
             return "note"
         return None
+
+
+def _table_blocks(lines: list[str]) -> dict[int, tuple[int, str]]:
+    """Return multi-row, column-consistent table regions keyed by 1-based start line."""
+    blocks: dict[int, tuple[int, str]] = {}
+    index = 0
+    while index < len(lines):
+        row = lines[index].strip()
+        delimiter = "pipe" if row.count("|") >= 2 else "space"
+        columns = (
+            len(row.strip("|").split("|"))
+            if delimiter == "pipe"
+            else len(re.split(r"\s{2,}", row))
+        )
+        if columns < 3:
+            index += 1
+            continue
+        run = [row]
+        cursor = index + 1
+        while cursor < len(lines):
+            candidate = lines[cursor].strip()
+            candidate_columns = (
+                len(candidate.strip("|").split("|"))
+                if delimiter == "pipe"
+                else len(re.split(r"\s{2,}", candidate))
+            )
+            has_structure = (
+                candidate.count("|") >= 2
+                if delimiter == "pipe"
+                else bool(re.search(r"\S+\s{2,}\S+\s{2,}\S+", candidate))
+            )
+            if (
+                not candidate
+                or not has_structure
+                or abs(candidate_columns - columns) > 1
+            ):
+                break
+            run.append(candidate)
+            cursor += 1
+        if len(run) >= 2:
+            blocks[index + 1] = (cursor, "\n".join(run))
+            index = cursor
+        else:
+            index += 1
+    return blocks
+
+
+def _equation_blocks(
+    lines: list[str], *, excluded: set[int]
+) -> dict[int, tuple[int, str]]:
+    blocks: dict[int, tuple[int, str]] = {}
+    for index, raw in enumerate(lines):
+        line_number = index + 1
+        line = raw.strip()
+        if line_number in excluded or not _EQUATION.search(line):
+            continue
+        run = [line]
+        balance = sum(
+            line.count(left) - line.count(right)
+            for left, right in (("(", ")"), ("[", "]"), ("{", "}"))
+        )
+        cursor = index + 1
+        while (
+            cursor < len(lines)
+            and len(run) < 8
+            and (
+                balance > 0 or run[-1].rstrip().endswith(("+", "-", "*", "/", "=", ","))
+            )
+        ):
+            continuation = lines[cursor].strip()
+            if not continuation:
+                break
+            run.append(continuation)
+            balance += sum(
+                continuation.count(left) - continuation.count(right)
+                for left, right in (("(", ")"), ("[", "]"), ("{", "}"))
+            )
+            cursor += 1
+        blocks[line_number] = (index + len(run), "\n".join(run))
+    return blocks
 
 
 def _database_safe(value: str) -> str:

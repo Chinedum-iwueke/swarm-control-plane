@@ -24,6 +24,14 @@ negative evidence. Do not manually relabel its 17 disagreements; inspect source
 regions, distinguish layout-only differences from material symbol changes, and
 publish corrections only under a new representation version.
 
+## Version 2 reconstruction
+
+`scientific-fidelity-v2.0.0` uses structure-aware multi-row table detection,
+bounded multi-line equation spans, symbol-preserving layout normalization and
+expanded deterministic AST nodes. Rebuild affected artifacts through normal
+ingestion/recovery; never rewrite v1.0/v1.1 objects. A missing scientific class
+is a failed coverage gate, not a perfect or non-applicable score.
+
 Re-evaluation uses `scientific-fidelity-v1.1.0`; it never overwrites v1.0. The
 live pilot requires equation, table and figure strata and performs bounded
 line-region alignment before comparing semantic tokens, cell grids and captions.

@@ -28,7 +28,7 @@ from app.services.scientific_fidelity import (
     semantic_tokens,
 )
 
-VERSION = "scientific-fidelity-v1.1.0"
+VERSION = "scientific-fidelity-v2.0.0"
 STRATA = {"equation": 10, "table": 5, "figure": 5}
 
 
@@ -139,7 +139,12 @@ def main() -> int:
             structural_grid = (
                 _table_grid(structural_match) if scientific_type == "table" else None
             )
-            if scientific_type == "table" and (not native_grid or not structural_grid):
+            if scientific_type == "table" and (
+                not native_grid
+                or not structural_grid
+                or len(native_grid) < 2
+                or len(structural_grid) < 2
+            ):
                 skipped["empty_region"] += 1
                 continue
             parser_content = (

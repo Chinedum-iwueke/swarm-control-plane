@@ -13,6 +13,7 @@ from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
     expression_tree,
     normalize,
+    normalize_layout,
     publish_manifest,
     register_representation,
     semantic_tokens,
@@ -77,6 +78,29 @@ def test_region_alignment_ignores_layout_but_not_symbol_changes():
 def test_table_grid_normalizes_pipe_and_spacing_cells():
     assert _table_grid("a | b | c") == [["a", "b", "c"]]
     assert _table_grid("a  b  c") == [["a", "b", "c"]]
+
+
+def test_layout_normalization_repairs_ligatures_and_line_wrap_only():
+    assert (
+        normalize_layout("we ﬁt a two- \u0002dimensional model")
+        == "we fit a twodimensional model"
+    )
+    assert normalize_layout("Δpₜ = σₜ") == "Δpₜ = σₜ"
+
+
+@pytest.mark.parametrize(
+    ("expression", "kind"),
+    [
+        ("{x,y,z}", "set"),
+        ("[x,y,z]", "vector"),
+        ("(x,y)", "tuple"),
+        ("2x", "implicit_product"),
+    ],
+)
+def test_structured_mathematical_forms(expression, kind):
+    tree, complete = expression_tree(semantic_tokens(expression))
+    assert complete is True
+    assert tree["kind"] == kind
 
 
 def test_two_independent_parsers_accept_equation():
