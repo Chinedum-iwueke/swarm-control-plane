@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pypdfium2 as pdfium
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -32,7 +33,7 @@ def _page_texts(content: bytes, page: int) -> tuple[str, str]:
     try:
         text_page = document[page - 1].get_textpage()
         try:
-            structural = text_page.get_text_range()
+            structural = text_page.get_text_bounded()
         finally:
             text_page.close()
     finally:
@@ -53,12 +54,14 @@ def main() -> int:
             .order_by(CanonicalEvidenceObject.content_digest)
             .limit(100)
         ).all()
-        heldout = candidates[:20]
-        if not heldout:
+        if not candidates:
             raise RuntimeError("Live corpus has no held-out equation objects.")
         results = []
+        skipped = {"non_pdf": 0, "parser_error": 0, "empty_region": 0}
         page_cache: dict[tuple[UUID, int], tuple[str, str]] = {}
-        for item in heldout:
+        for item in candidates:
+            if len(results) == 20:
+                break
             artifact = db.get(
                 CanonicalEvidenceObject, UUID(item.payload["artifact_object_id"])
             )
@@ -66,6 +69,7 @@ def main() -> int:
                 artifact is None
                 or artifact.payload.get("media_type") != "application/pdf"
             ):
+                skipped["non_pdf"] += 1
                 continue
             reference = ObjectReference(
                 uri=artifact.payload["storage_uri"],
@@ -75,7 +79,11 @@ def main() -> int:
             page = int(item.payload["coordinates"]["page"])
             cache_key = (artifact.id, page)
             if cache_key not in page_cache:
-                page_cache[cache_key] = _page_texts(store.get(reference), page)
+                try:
+                    page_cache[cache_key] = _page_texts(store.get(reference), page)
+                except (PdfReadError, ValueError, IndexError, RuntimeError, OSError):
+                    skipped["parser_error"] += 1
+                    continue
             native_page, structural_page = page_cache[cache_key]
             target = " ".join(item.payload["content_text"].split())
             native_match = (
@@ -86,6 +94,9 @@ def main() -> int:
                 if target in " ".join(structural_page.split())
                 else structural_page
             )
+            if not native_match.strip() or not structural_match.strip():
+                skipped["empty_region"] += 1
+                continue
             record = register_representation(
                 db,
                 ScientificRepresentationCreate(
@@ -146,6 +157,8 @@ def main() -> int:
                     "status": manifest.status,
                     "counts": manifest.counts,
                     "metrics": manifest.metrics,
+                    "evaluated": len(results),
+                    "skipped": skipped,
                     "record_digest": manifest.record_digest,
                 },
                 indent=2,
