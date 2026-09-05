@@ -100,9 +100,7 @@ class ControlPlaneClient:
         agent_charters = await self._optional_collection(
             "/v1/agent-governance/charters"
         )
-        agent_grants = await self._optional_collection(
-            "/v1/agent-governance/grants"
-        )
+        agent_grants = await self._optional_collection("/v1/agent-governance/grants")
         workload_identities = await self._optional_object(
             "/v1/workload-identities/overview",
             {
@@ -137,6 +135,12 @@ class ControlPlaneClient:
         )
         surveillance_digests = await self._optional_collection(
             "/v1/research/surveillance/digests"
+        )
+        scientific_review_queue = await self._optional_collection(
+            "/v1/research/scientific-fidelity/review-queue"
+        )
+        scientific_benchmarks = await self._optional_collection(
+            "/v1/research/scientific-fidelity/benchmarks"
         )
         return {
             "health": health,
@@ -174,7 +178,27 @@ class ControlPlaneClient:
             "surveillance_sources": surveillance_sources,
             "surveillance_candidates": surveillance_candidates,
             "surveillance_digests": surveillance_digests,
+            "scientific_review_queue": scientific_review_queue,
+            "scientific_benchmarks": scientific_benchmarks,
         }
+
+    async def adjudicate_scientific_representation(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        allowed = {
+            "representation_id",
+            "reviewer_id",
+            "reviewer_role",
+            "decision",
+            "rationale",
+            "gold_payload",
+            "corpus_digest",
+        }
+        if set(payload) - allowed:
+            raise ValueError("Unsupported scientific adjudication fields.")
+        return await self._request(
+            "POST", "/v1/research/scientific-fidelity/adjudications", json=payload
+        )
 
     async def decide_research_cycle(
         self,

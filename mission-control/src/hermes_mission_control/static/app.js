@@ -1175,9 +1175,34 @@ function renderResearch() {
   const surveillanceSources = state.dashboard.surveillance_sources || [];
   const surveillanceCandidates = state.dashboard.surveillance_candidates || [];
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
+  const scientificReviewQueue = state.dashboard.scientific_review_queue || [];
+  const scientificBenchmarks = state.dashboard.scientific_benchmarks || [];
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
   const consequenceItems = state.dashboard.lifecycle_consequences?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
+  document.getElementById("scientific-review-count").textContent = `${scientificReviewQueue.length} pending`;
+  document.getElementById("scientific-review-queue").innerHTML = scientificReviewQueue.length ? scientificReviewQueue.map((item) => `
+    <article class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(humanize(item.scientific_type))}</strong><div class="entity-meta"><span>${escapeHtml(item.representation_version)}</span><span class="mono">${shortHash(item.source_region_digest)}</span><span>${item.uncertainties.length} uncertainties</span></div><p>${escapeHtml(item.normalized_content.slice(0, 240))}</p></div>
+      <div class="entity-side">${statusBadge(item.status)}<button class="secondary compact" data-scientific-review="${item.id}" ${item.corpus_digest ? "" : "disabled"}>${item.corpus_digest ? "Review" : "Benchmark required"}</button></div>
+    </article>`).join("") : empty("No scientific representations await independent adjudication.");
+  document.getElementById("scientific-benchmarks").innerHTML = scientificBenchmarks.length ? scientificBenchmarks.slice(0, 8).map((item) => `
+    <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.benchmark_version)}</strong><div class="entity-meta"><span>${item.counts.adjudicated || 0}/${item.counts.sampled || 0} adjudicated</span><span>${item.counts.conflicted || 0} conflicts</span><span class="mono">${shortHash(item.sample_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : "";
+  document.querySelectorAll("[data-scientific-review]").forEach((button) => {
+    button.onclick = async () => {
+      const item = scientificReviewQueue.find((candidate) => candidate.id === button.dataset.scientificReview);
+      if (!item) return;
+      const decision = window.prompt("Decision: equivalent, material_mismatch, wrong_object_class, incomplete_region, unsupported_notation, or unreadable_source");
+      if (!decision) return;
+      const rationale = window.prompt("Independent rationale (at least 10 characters):");
+      if (!rationale || rationale.trim().length < 10) return toast("A substantive rationale is required.");
+      await mutate("/api/research/scientific-fidelity/adjudications", {
+        representation_id: item.id, reviewer_id: "founder-mission-control", reviewer_role: "founder_operator",
+        decision: decision.trim(), rationale: rationale.trim(), gold_payload: {}, corpus_digest: item.corpus_digest,
+      }, "Immutable scientific adjudication recorded.");
+      await loadDashboard();
+    };
+  });
   const lifecycleSubjects = new Map();
   lifecycleItems.forEach((item) => {
     const key = `${item.subject_type}:${item.subject_id}`;

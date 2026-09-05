@@ -6,14 +6,21 @@ from unittest.mock import MagicMock
 import pytest
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
+    ScientificAdjudicationCreate,
+    ScientificBenchmarkCreate,
+    ScientificCorrectionCreate,
     ScientificRepresentationCreate,
 )
 from app.scientific_fidelity_pilot import _region, _table_grid
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
+    adjudicate_representation,
+    create_benchmark,
+    evaluate_benchmark,
     expression_tree,
     normalize,
     normalize_layout,
+    propose_correction,
     publish_manifest,
     register_representation,
     semantic_tokens,
@@ -221,3 +228,137 @@ def test_openapi_exposes_fidelity_review_and_manifest_contracts():
     paths = app.openapi()["paths"]
     assert "/v1/research/scientific-fidelity/representations" in paths
     assert "/v1/research/scientific-fidelity/manifests" in paths
+    assert "/v1/research/scientific-fidelity/adjudications" in paths
+    assert "/v1/research/scientific-fidelity/review-queue" in paths
+    assert (
+        "/v1/research/scientific-fidelity/review-context/{representation_id}" in paths
+    )
+    assert "/v1/research/scientific-fidelity/benchmarks" in paths
+    assert "/v1/research/scientific-fidelity/corrections" in paths
+
+
+def test_producer_cannot_self_adjudicate():
+    representation = SimpleNamespace(
+        created_by="parser-agent", source_region_digest="a" * 64
+    )
+    db = MagicMock()
+    db.get.return_value = representation
+    request = ScientificAdjudicationCreate(
+        representation_id=uuid.uuid4(),
+        reviewer_id="parser-agent",
+        reviewer_role="independent_evaluator",
+        decision="equivalent",
+        rationale="Exact source comparison was completed.",
+        corpus_digest="b" * 64,
+    )
+    with pytest.raises(ScientificFidelityConflict, match="cannot adjudicate"):
+        adjudicate_representation(db, request)
+
+
+def test_adjudication_creates_hash_chained_event():
+    representation = SimpleNamespace(
+        created_by="parser-agent", source_region_digest="a" * 64
+    )
+    db = MagicMock()
+    db.get.return_value = representation
+    db.scalar.return_value = None
+    request = ScientificAdjudicationCreate(
+        representation_id=uuid.uuid4(),
+        reviewer_id="reviewer-one",
+        reviewer_role="independent_evaluator",
+        decision="material_mismatch",
+        rationale="The denominator symbol differs from the source.",
+        corpus_digest="b" * 64,
+    )
+    record = adjudicate_representation(db, request)
+    assert record.independent_of_producer is True
+    event = db.add.call_args_list[1].args[0]
+    assert event.previous_digest == "0" * 64
+    assert len(event.event_digest) == 64
+
+
+def test_benchmark_sampling_is_deterministic_and_stratified():
+    records = [
+        SimpleNamespace(id=uuid.uuid4(), scientific_type=kind)
+        for kind in ("equation", "equation", "table", "figure")
+    ]
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = records
+    db.scalar.return_value = None
+    request = ScientificBenchmarkCreate(
+        benchmark_version="held-out-v1",
+        representation_version="scientific-fidelity-v2.0.0",
+        corpus_digest="c" * 64,
+        sample_seed="fixed-seed",
+        per_type={"equation": 1, "table": 1, "figure": 1},
+        created_by="benchmark-operator",
+    )
+    first = create_benchmark(db, request)
+    second = create_benchmark(db, request)
+    assert first.sampled_representation_ids == second.sampled_representation_ids
+    assert len(first.sampled_representation_ids) == 3
+
+
+def test_benchmark_uses_adjudications_as_ground_truth():
+    benchmark_id = uuid.uuid4()
+    rep_a = SimpleNamespace(
+        id=uuid.uuid4(), status="accepted", scientific_type="equation"
+    )
+    rep_b = SimpleNamespace(
+        id=uuid.uuid4(), status="review_required", scientific_type="table"
+    )
+    benchmark = SimpleNamespace(
+        sampled_representation_ids=[str(rep_a.id), str(rep_b.id)],
+        evaluation_digest=None,
+        record_digest="c" * 64,
+        sample_spec={
+            "thresholds": {
+                "class_precision": 0.9,
+                "class_recall": 0.9,
+                "coverage": 1.0,
+                "escape_rate": 0.0,
+            }
+        },
+    )
+    labels = [
+        SimpleNamespace(
+            representation_id=rep_a.id, decision="equivalent", record_digest="a" * 64
+        ),
+        SimpleNamespace(
+            representation_id=rep_b.id,
+            decision="material_mismatch",
+            record_digest="b" * 64,
+        ),
+    ]
+    db = MagicMock()
+    db.get.return_value = benchmark
+    db.scalars.side_effect = [
+        MagicMock(all=lambda: [rep_a, rep_b]),
+        MagicMock(all=lambda: labels),
+    ]
+    result = evaluate_benchmark(db, benchmark_id)
+    assert result.status == "qualified"
+    assert result.metrics["class_precision"] == 1.0
+    assert result.metrics["abstention_accuracy"] == 1.0
+
+
+def test_correction_requires_new_version_and_separate_actor():
+    adjudication = SimpleNamespace(
+        id=uuid.uuid4(),
+        representation_id=uuid.uuid4(),
+        reviewer_id="reviewer",
+        decision="material_mismatch",
+    )
+    representation = SimpleNamespace(
+        representation_version="scientific-fidelity-v2.0.0"
+    )
+    db = MagicMock()
+    db.get.side_effect = [adjudication, representation]
+    request = ScientificCorrectionCreate(
+        adjudication_id=adjudication.id,
+        proposed_version="scientific-fidelity-v2.0.0",
+        proposed_payload={"content": "x"},
+        proposer_id="repair-agent",
+    )
+    with pytest.raises(ScientificFidelityConflict, match="new representation version"):
+        propose_correction(db, request)

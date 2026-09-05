@@ -96,3 +96,107 @@ class FidelityManifestResponse(StrictModel):
     record_digest: str
     created_by: str
     created_at: datetime
+
+
+AdjudicationDecision = Literal[
+    "equivalent",
+    "material_mismatch",
+    "wrong_object_class",
+    "incomplete_region",
+    "unsupported_notation",
+    "unreadable_source",
+]
+
+
+class ScientificAdjudicationCreate(StrictModel):
+    representation_id: UUID
+    reviewer_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+    reviewer_role: Literal[
+        "independent_evaluator", "founder_operator", "domain_specialist"
+    ]
+    decision: AdjudicationDecision
+    rationale: str = Field(min_length=10)
+    gold_payload: dict = Field(default_factory=dict)
+    corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ScientificAdjudicationResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    representation_id: UUID
+    reviewer_id: str
+    reviewer_role: str
+    decision: str
+    rationale: str
+    gold_payload: dict
+    corpus_digest: str
+    source_region_digest: str
+    independent_of_producer: bool
+    record_digest: str
+    created_at: datetime
+
+
+class ScientificBenchmarkCreate(StrictModel):
+    benchmark_version: str = Field(min_length=1, max_length=80)
+    representation_version: str = Field(min_length=1, max_length=80)
+    corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sample_seed: str = Field(min_length=1, max_length=100)
+    per_type: dict[Literal["equation", "table", "figure"], int]
+    thresholds: dict[str, float] = Field(
+        default_factory=lambda: {
+            "class_precision": 0.98,
+            "class_recall": 0.98,
+            "coverage": 1.0,
+            "escape_rate": 0.0,
+        }
+    )
+    created_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+
+    @model_validator(mode="after")
+    def require_positive_strata(self):
+        if not self.per_type or any(value < 1 for value in self.per_type.values()):
+            raise ValueError(
+                "Each declared scientific benchmark stratum must be positive"
+            )
+        return self
+
+
+class ScientificBenchmarkResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    benchmark_version: str
+    representation_version: str
+    corpus_digest: str
+    sample_seed: str
+    sample_spec: dict
+    sampled_representation_ids: list
+    sample_digest: str
+    status: str
+    metrics: dict
+    confidence_intervals: dict
+    counts: dict
+    adjudication_digests: list
+    record_digest: str
+    evaluation_digest: str | None
+    created_by: str
+    created_at: datetime
+
+
+class ScientificCorrectionCreate(StrictModel):
+    adjudication_id: UUID
+    proposed_version: str = Field(min_length=1, max_length=80)
+    proposed_payload: dict
+    proposer_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+
+
+class ScientificCorrectionResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    representation_id: UUID
+    adjudication_id: UUID
+    proposed_version: str
+    proposed_payload: dict
+    status: str
+    proposer_id: str
+    record_digest: str
+    created_at: datetime

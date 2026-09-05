@@ -15,6 +15,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi.responses import FileResponse
@@ -138,6 +139,10 @@ def create_app(
         result = await client.dashboard()
         result["knowledge"] = store.stats()
         return result
+
+    @app.post("/api/research/scientific-fidelity/adjudications")
+    async def scientific_adjudication(request: Request) -> dict:
+        return await client.adjudicate_scientific_representation(await request.json())
 
     @app.get("/api/research/dossiers/{dossier_id}")
     async def evidence_dossier(dossier_id: str) -> dict:

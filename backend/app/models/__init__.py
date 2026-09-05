@@ -91,7 +91,14 @@ from app.models.memory import (
     EvidenceOutcomeRecord,
 )
 from app.models.microstructure_model import MicrostructureModelRegistry
-from app.models.scientific_fidelity import ScientificFidelityManifest, ScientificRepresentation
+from app.models.scientific_fidelity import (
+    ScientificAdjudication,
+    ScientificAdjudicationEvent,
+    ScientificBenchmark,
+    ScientificCorrectionProposal,
+    ScientificFidelityManifest,
+    ScientificRepresentation,
+)
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.model_evaluation import ModelFamilyEvaluation
 from app.models.observability import (
