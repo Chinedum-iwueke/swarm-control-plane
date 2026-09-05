@@ -18,3 +18,8 @@ Deploy migration `fae4c6b93d20`, rebuild the API, then run the RI-014 pilot. Rol
 ## Operator review
 
 List review work with `GET /v1/research/scientific-fidelity/representations?status=review_required`. Compare `parser_outputs`, `uncertainties`, `source_region_digest`, and source evidence before publishing a later representation version.
+
+The first VM2 live manifest is `not_qualified` (`3/20` accepted). Preserve it as
+negative evidence. Do not manually relabel its 17 disagreements; inspect source
+regions, distinguish layout-only differences from material symbol changes, and
+publish corrections only under a new representation version.
