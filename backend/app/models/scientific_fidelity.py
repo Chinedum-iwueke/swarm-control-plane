@@ -183,3 +183,72 @@ class ScientificCorrectionProposal(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ScientificCalculationReceipt(Base):
+    __tablename__ = "scientific_calculation_receipts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    representation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_representations.id"),
+        nullable=False,
+        index=True,
+    )
+    context_pack_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    expression_tree: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    substitutions: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    units: Mapped[list] = mapped_column(JSONB, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    representation_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    record_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    executed_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MathematicsContextPack(Base):
+    __tablename__ = "mathematics_context_packs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    representation_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    context_pack_digest: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MathematicsCapabilityProfile(Base):
+    __tablename__ = "mathematics_capability_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "agent_role", "profile_version", name="uq_mathematics_capability_profile"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    agent_role: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    profile_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    corpus_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    representation_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    demonstrated_tasks: Mapped[list] = mapped_column(JSONB, nullable=False)
+    limitations: Mapped[list] = mapped_column(JSONB, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    record_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    evaluated_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -2,24 +2,33 @@ import hashlib
 import json
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation, localcontext
 from math import sqrt
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.evidence import CanonicalEvidenceObject
 from app.models.scientific_fidelity import (
+    MathematicsCapabilityProfile,
+    MathematicsContextPack,
     ScientificAdjudication,
     ScientificAdjudicationEvent,
     ScientificBenchmark,
+    ScientificCalculationReceipt,
     ScientificCorrectionProposal,
     ScientificFidelityManifest,
     ScientificRepresentation,
 )
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
+    MathematicsCapabilityCreate,
+    MathematicsContextPackRequest,
+    MathematicsSearchRequest,
     ScientificAdjudicationCreate,
     ScientificBenchmarkCreate,
+    ScientificCalculationCreate,
     ScientificCorrectionCreate,
     ScientificRepresentationCreate,
 )
@@ -638,3 +647,328 @@ def propose_correction(
     db.add(record)
     db.flush()
     return record
+
+
+def _accepted_representation_ids(db: Session) -> set[UUID]:
+    accepted = set(
+        db.scalars(
+            select(ScientificRepresentation.id).where(
+                ScientificRepresentation.status == "accepted"
+            )
+        ).all()
+    )
+    labels = list(db.scalars(select(ScientificAdjudication)).all())
+    decisions: dict[UUID, set[str]] = {}
+    for label in labels:
+        decisions.setdefault(label.representation_id, set()).add(label.decision)
+    for representation_id, values in decisions.items():
+        if values == {"equivalent"}:
+            accepted.add(representation_id)
+        else:
+            accepted.discard(representation_id)
+    return accepted
+
+
+def search_mathematics(db: Session, payload: MathematicsSearchRequest) -> dict:
+    allowed = _accepted_representation_ids(db)
+    records = (
+        list(
+            db.scalars(
+                select(ScientificRepresentation).where(
+                    ScientificRepresentation.id.in_(allowed),
+                    ScientificRepresentation.representation_version
+                    == "scientific-fidelity-v2.0.0",
+                )
+            ).all()
+        )
+        if allowed
+        else []
+    )
+    query_tokens = {item["value"].casefold() for item in semantic_tokens(payload.query)}
+    query_words = set(normalize_layout(payload.query).casefold().split())
+    results = []
+    for record in records:
+        if (
+            payload.scientific_types
+            and record.scientific_type not in payload.scientific_types
+        ):
+            continue
+        semantic = record.semantic_payload
+        dimensions = {
+            item.get("dimension", "").casefold() for item in semantic.get("units", [])
+        }
+        if payload.dimensions and not set(
+            map(str.casefold, payload.dimensions)
+        ).issubset(dimensions):
+            continue
+        tokens = {
+            item.get("value", "").casefold() for item in semantic.get("tokens", [])
+        }
+        words = set(normalize_layout(record.normalized_content).casefold().split())
+        symbol_names = {
+            item.get("symbol", "").casefold() for item in semantic.get("symbols", [])
+        }
+        symbol_text = set(
+            " ".join(item.get("definition", "") for item in semantic.get("symbols", []))
+            .casefold()
+            .split()
+        )
+        score = (
+            4 * len(query_tokens & tokens)
+            + 3 * len(query_tokens & symbol_names)
+            + len(query_words & (words | symbol_text))
+        )
+        if score:
+            results.append((score, record))
+    results.sort(key=lambda item: (-item[0], item[1].record_digest))
+    items = [
+        {
+            "representation_id": str(record.id),
+            "scientific_type": record.scientific_type,
+            "score": score,
+            "content": record.normalized_content,
+            "expression_tree": record.semantic_payload.get("expression_tree"),
+            "symbols": record.semantic_payload.get("symbols", []),
+            "units": record.semantic_payload.get("units", []),
+            "table_grid": record.semantic_payload.get("table_grid"),
+            "figure_caption": record.semantic_payload.get("figure_caption"),
+            "cross_references": record.semantic_payload.get("cross_references", []),
+            "source_region_digest": record.source_region_digest,
+            "representation_digest": record.record_digest,
+            "fidelity_status": "accepted_or_adjudicated_equivalent",
+        }
+        for score, record in results[: payload.limit]
+    ]
+    document = {
+        "schema_version": "mathematics-search-v1.0.0",
+        "query": payload.query,
+        "result_count": len(items),
+        "items": items,
+        "claim_boundary": "Only v2 accepted or independently equivalent representations are returned.",
+    }
+    return {**document, "search_digest": digest(document)}
+
+
+def assemble_mathematics_context_pack(
+    db: Session, payload: MathematicsContextPackRequest
+) -> dict:
+    allowed = _accepted_representation_ids(db)
+    requested = set(payload.representation_ids)
+    if not requested.issubset(allowed):
+        raise ScientificFidelityConflict(
+            "Context contains unresolved or non-adjudicated scientific representations."
+        )
+    records = list(
+        db.scalars(
+            select(ScientificRepresentation).where(
+                ScientificRepresentation.id.in_(requested)
+            )
+        ).all()
+    )
+    if len(records) != len(requested):
+        raise ScientificFidelityConflict(
+            "A requested scientific representation is missing."
+        )
+    items = []
+    for record in sorted(records, key=lambda item: item.record_digest):
+        semantic = record.semantic_payload
+        items.append(
+            {
+                "representation_id": str(record.id),
+                "source_object_id": str(record.source_object_id),
+                "scientific_type": record.scientific_type,
+                "content": record.normalized_content,
+                "expression_tree": semantic.get("expression_tree"),
+                "symbols": semantic.get("symbols", []),
+                "units": semantic.get("units", []),
+                "table_grid": semantic.get("table_grid"),
+                "figure_caption": semantic.get("figure_caption"),
+                "cross_references": semantic.get("cross_references", []),
+                "source_region_digest": record.source_region_digest,
+                "representation_digest": record.record_digest,
+                "uncertainties": record.uncertainties,
+            }
+        )
+    document = {
+        "schema_version": "mathematics-context-pack-v1.0.0",
+        "query": payload.query,
+        "items": items,
+        "authority": "read_only_no_action_authority",
+        "abstention_rule": "Reject calculations or transformations with unresolved material dependencies.",
+    }
+    context_pack_digest = digest(document)
+    existing = db.scalar(
+        select(MathematicsContextPack).where(
+            MathematicsContextPack.context_pack_digest == context_pack_digest
+        )
+    )
+    if not existing:
+        db.add(
+            MathematicsContextPack(
+                query=payload.query,
+                items=items,
+                representation_ids=[str(item.id) for item in records],
+                context_pack_digest=context_pack_digest,
+                created_by=payload.created_by,
+            )
+        )
+        db.flush()
+    return {**document, "context_pack_digest": context_pack_digest}
+
+
+def _evaluate_tree(node: dict, substitutions: dict[str, Decimal]) -> Decimal:
+    kind = node.get("kind")
+    if kind == "number":
+        return Decimal(node["value"])
+    if kind == "symbol":
+        if node["value"] not in substitutions:
+            raise ScientificFidelityConflict(
+                f"Missing substitution for symbol {node['value']}."
+            )
+        return substitutions[node["value"]]
+    if kind == "group":
+        return _evaluate_tree(node["child"], substitutions)
+    if kind == "implicit_product":
+        value = Decimal(1)
+        for factor in node["factors"]:
+            value *= _evaluate_tree(factor, substitutions)
+        return value
+    if kind == "binary":
+        operator = node["operator"]
+        if operator == "=":
+            return _evaluate_tree(node["right"], substitutions)
+        left = _evaluate_tree(node["left"], substitutions)
+        right = _evaluate_tree(node["right"], substitutions)
+        if operator == "+":
+            return left + right
+        if operator == "-":
+            return left - right
+        if operator == "*":
+            return left * right
+        if operator == "/":
+            if right == 0:
+                raise ScientificFidelityConflict("Division by zero is not permitted.")
+            return left / right
+        if operator == "^":
+            if right != right.to_integral_value():
+                raise ScientificFidelityConflict(
+                    "Only integral Decimal exponents are supported."
+                )
+            return left ** int(right)
+    raise ScientificFidelityConflict(
+        f"Unsupported expression node: {kind or 'unknown'}."
+    )
+
+
+def calculate_scientific_expression(
+    db: Session, payload: ScientificCalculationCreate
+) -> ScientificCalculationReceipt:
+    if payload.representation_id not in _accepted_representation_ids(db):
+        raise ScientificFidelityConflict(
+            "Calculation requires accepted or equivalent evidence."
+        )
+    context_pack = db.scalar(
+        select(MathematicsContextPack).where(
+            MathematicsContextPack.context_pack_digest == payload.context_pack_digest
+        )
+    )
+    if context_pack is None or str(payload.representation_id) not in set(
+        context_pack.representation_ids
+    ):
+        raise ScientificFidelityConflict(
+            "Calculation representation is not bound to the supplied context pack."
+        )
+    record = db.get(ScientificRepresentation, payload.representation_id)
+    if record is None or record.scientific_type != "equation":
+        raise ScientificFidelityConflict(
+            "Calculation requires an equation representation."
+        )
+    tree = record.semantic_payload.get("expression_tree")
+    if not tree or any(item.get("material") for item in record.uncertainties):
+        raise ScientificFidelityConflict("Calculation dependencies are unresolved.")
+    try:
+        substitutions = {
+            key: Decimal(str(value)) for key, value in payload.substitutions.items()
+        }
+        with localcontext() as context:
+            context.prec = 34
+            value = _evaluate_tree(tree, substitutions)
+    except (InvalidOperation, OverflowError) as exc:
+        raise ScientificFidelityConflict(
+            "Calculation is outside the bounded Decimal domain."
+        ) from exc
+    material = {
+        "representation_id": str(record.id),
+        "context_pack_digest": payload.context_pack_digest,
+        "expression_tree": tree,
+        "substitutions": {k: str(v) for k, v in substitutions.items()},
+        "units": record.semantic_payload.get("units", []),
+        "result": {"decimal": str(value), "precision": 34},
+        "representation_digest": record.record_digest,
+    }
+    record_digest = digest(material)
+    existing = db.scalar(
+        select(ScientificCalculationReceipt).where(
+            ScientificCalculationReceipt.record_digest == record_digest
+        )
+    )
+    if existing:
+        return existing
+    receipt = ScientificCalculationReceipt(
+        **material, record_digest=record_digest, executed_by=payload.executed_by
+    )
+    db.add(receipt)
+    db.flush()
+    return receipt
+
+
+def register_mathematics_capability(
+    db: Session, payload: MathematicsCapabilityCreate
+) -> MathematicsCapabilityProfile:
+    required = {
+        "answer_correctness",
+        "citation_entailment",
+        "formula_table_fidelity",
+        "abstention_accuracy",
+        "unsupported_claim_rate",
+    }
+    if required - payload.metrics.keys() or required - payload.thresholds.keys():
+        raise ScientificFidelityConflict(
+            "Capability profile lacks required utility metrics or thresholds."
+        )
+    qualified = all(
+        payload.metrics[key] <= threshold
+        if key == "unsupported_claim_rate"
+        else payload.metrics[key] >= threshold
+        for key, threshold in payload.thresholds.items()
+        if key in required
+    )
+    material = {
+        "agent_role": payload.agent_role,
+        "profile_version": payload.profile_version,
+        "corpus_digest": payload.corpus_digest,
+        "representation_version": payload.representation_version,
+        "demonstrated_tasks": payload.demonstrated_tasks,
+        "limitations": payload.limitations,
+        "metrics": payload.metrics,
+        "status": "qualified" if qualified else "not_demonstrated",
+    }
+    record_digest = digest(material)
+    existing = db.scalar(
+        select(MathematicsCapabilityProfile).where(
+            MathematicsCapabilityProfile.agent_role == payload.agent_role,
+            MathematicsCapabilityProfile.profile_version == payload.profile_version,
+        )
+    )
+    if existing:
+        if existing.record_digest != record_digest:
+            raise ScientificFidelityConflict(
+                "Mathematics capability profile is immutable."
+            )
+        return existing
+    profile = MathematicsCapabilityProfile(
+        **material, record_digest=record_digest, evaluated_by=payload.evaluated_by
+    )
+    db.add(profile)
+    db.flush()
+    return profile

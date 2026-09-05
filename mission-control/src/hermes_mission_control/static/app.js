@@ -1177,6 +1177,7 @@ function renderResearch() {
   const surveillanceDigests = state.dashboard.surveillance_digests || [];
   const scientificReviewQueue = state.dashboard.scientific_review_queue || [];
   const scientificBenchmarks = state.dashboard.scientific_benchmarks || [];
+  const mathematicsCapabilities = state.dashboard.mathematics_capabilities || [];
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
   const consequenceItems = state.dashboard.lifecycle_consequences?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
@@ -1188,6 +1189,8 @@ function renderResearch() {
     </article>`).join("") : empty("No scientific representations await independent adjudication.");
   document.getElementById("scientific-benchmarks").innerHTML = scientificBenchmarks.length ? scientificBenchmarks.slice(0, 8).map((item) => `
     <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.benchmark_version)}</strong><div class="entity-meta"><span>${item.counts.adjudicated || 0}/${item.counts.sampled || 0} adjudicated</span><span>${item.counts.conflicted || 0} conflicts</span><span class="mono">${shortHash(item.sample_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : "";
+  document.getElementById("mathematics-capabilities").innerHTML = mathematicsCapabilities.length ? mathematicsCapabilities.map((item) => `
+    <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(item.agent_role))}</strong><div class="entity-meta"><span>${item.demonstrated_tasks.length} demonstrated tasks</span><span>${item.limitations.length} limitations</span><span class="mono">${shortHash(item.record_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : empty("No agent mathematics capability has been independently demonstrated yet.");
   document.querySelectorAll("[data-scientific-review]").forEach((button) => {
     button.onclick = async () => {
       const item = scientificReviewQueue.find((candidate) => candidate.id === button.dataset.scientificReview);

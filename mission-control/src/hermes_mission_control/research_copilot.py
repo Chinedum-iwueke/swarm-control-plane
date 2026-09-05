@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -76,7 +77,9 @@ class CodexAnswerGenerator:
     def generate(self, question: str, context_pack: dict[str, Any]) -> CopilotDraft:
         binary = shutil.which(self._binary) if "/" not in self._binary else self._binary
         if not binary or not Path(binary).is_file():
-            raise CopilotError("The configured research reasoning model is unavailable.")
+            raise CopilotError(
+                "The configured research reasoning model is unavailable."
+            )
         if not self._codex_home.is_dir():
             raise CopilotError("The protected Codex identity is unavailable.")
         with tempfile.TemporaryDirectory(prefix="hermes-research-copilot-") as raw:
@@ -135,7 +138,9 @@ class CodexAnswerGenerator:
                     output_path.read_text(encoding="utf-8")
                 )
             except (OSError, ValueError) as exc:
-                raise CopilotError("Research reasoning returned an invalid answer.") from exc
+                raise CopilotError(
+                    "Research reasoning returned an invalid answer."
+                ) from exc
 
 
 class ResearchCopilot:
@@ -168,6 +173,30 @@ class ResearchCopilot:
                 "max_items": min(len(object_ids), 20),
             }
         )
+        mathematics = await self._control_plane.mathematics_search(
+            {
+                "query": request.question,
+                "scientific_types": [],
+                "dimensions": [],
+                "limit": 8,
+            }
+        )
+        mathematics_digest = None
+        if mathematics.get("items"):
+            mathematics_pack = await self._control_plane.mathematics_context_pack(
+                {
+                    "query": request.question,
+                    "representation_ids": [
+                        item["representation_id"] for item in mathematics["items"]
+                    ],
+                    "created_by": "mission-control-copilot",
+                }
+            )
+            context_pack = {**context_pack, "mathematical_evidence": mathematics_pack}
+            mathematics_digest = mathematics_pack["context_pack_digest"]
+            context_pack["combined_context_digest"] = hashlib.sha256(
+                json.dumps(context_pack, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
         draft = await asyncio.to_thread(
             self._generator.generate, request.question, context_pack
         )
@@ -187,6 +216,7 @@ class ResearchCopilot:
             "sources": sources,
             "corpus_digest": retrieval["corpus_digest"],
             "context_pack_digest": context_pack["context_pack_digest"],
+            "mathematics_context_digest": mathematics_digest,
             "graph_query_digest": context_pack["graph_query_digest"],
             "timings_ms": retrieval.get("timings_ms", {}),
         }
@@ -196,6 +226,11 @@ def _validate_and_sources(
     draft: CopilotDraft, context_pack: dict[str, Any]
 ) -> list[dict[str, Any]]:
     items = {str(item["object_id"]): item for item in context_pack.get("items", [])}
+    for item in context_pack.get("mathematical_evidence", {}).get("items", []):
+        items.setdefault(
+            str(item["source_object_id"]),
+            {**item, "object_id": item["source_object_id"]},
+        )
     cited = {
         str(object_id)
         for claim in draft.claims
@@ -203,7 +238,9 @@ def _validate_and_sources(
     }
     unknown = cited - set(items)
     if unknown:
-        raise CopilotError("Research reasoning cited evidence outside its context pack.")
+        raise CopilotError(
+            "Research reasoning cited evidence outside its context pack."
+        )
     return [items[object_id] for object_id in sorted(cited)]
 
 

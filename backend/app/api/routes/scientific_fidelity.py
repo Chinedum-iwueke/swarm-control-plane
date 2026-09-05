@@ -9,8 +9,10 @@ from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.evidence import CanonicalEvidenceObject
 from app.models.scientific_fidelity import (
+    MathematicsCapabilityProfile,
     ScientificAdjudication,
     ScientificBenchmark,
+    ScientificCalculationReceipt,
     ScientificCorrectionProposal,
     ScientificFidelityManifest,
     ScientificRepresentation,
@@ -18,10 +20,16 @@ from app.models.scientific_fidelity import (
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
     FidelityManifestResponse,
+    MathematicsCapabilityCreate,
+    MathematicsCapabilityResponse,
+    MathematicsContextPackRequest,
+    MathematicsSearchRequest,
     ScientificAdjudicationCreate,
     ScientificAdjudicationResponse,
     ScientificBenchmarkCreate,
     ScientificBenchmarkResponse,
+    ScientificCalculationCreate,
+    ScientificCalculationResponse,
     ScientificCorrectionCreate,
     ScientificCorrectionResponse,
     ScientificRepresentationCreate,
@@ -30,11 +38,15 @@ from app.schemas.scientific_fidelity import (
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
     adjudicate_representation,
+    assemble_mathematics_context_pack,
+    calculate_scientific_expression,
     create_benchmark,
     evaluate_benchmark,
     propose_correction,
     publish_manifest,
+    register_mathematics_capability,
     register_representation,
+    search_mathematics,
 )
 
 router = APIRouter(
@@ -268,6 +280,89 @@ def list_corrections(db: Annotated[Session, Depends(get_db)]):
         db.scalars(
             select(ScientificCorrectionProposal).order_by(
                 ScientificCorrectionProposal.created_at.desc()
+            )
+        ).all()
+    )
+
+
+@router.post("/mathematics/search")
+def mathematics_search(
+    payload: MathematicsSearchRequest, db: Annotated[Session, Depends(get_db)]
+):
+    return search_mathematics(db, payload)
+
+
+@router.post("/mathematics/context-packs")
+def mathematics_context_pack(
+    payload: MathematicsContextPackRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    try:
+        result = assemble_mathematics_context_pack(db, payload)
+        db.commit()
+        return result
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/mathematics/calculations",
+    response_model=ScientificCalculationResponse,
+    status_code=201,
+)
+def mathematics_calculation(
+    payload: ScientificCalculationCreate, db: Annotated[Session, Depends(get_db)]
+):
+    try:
+        record = calculate_scientific_expression(db, payload)
+        db.commit()
+        db.refresh(record)
+        return record
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/mathematics/calculations", response_model=list[ScientificCalculationResponse]
+)
+def list_mathematics_calculations(db: Annotated[Session, Depends(get_db)]):
+    return list(
+        db.scalars(
+            select(ScientificCalculationReceipt).order_by(
+                ScientificCalculationReceipt.created_at.desc()
+            )
+        ).all()
+    )
+
+
+@router.post(
+    "/mathematics/capabilities",
+    response_model=MathematicsCapabilityResponse,
+    status_code=201,
+)
+def create_mathematics_capability(
+    payload: MathematicsCapabilityCreate, db: Annotated[Session, Depends(get_db)]
+):
+    try:
+        record = register_mathematics_capability(db, payload)
+        db.commit()
+        db.refresh(record)
+        return record
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/mathematics/capabilities", response_model=list[MathematicsCapabilityResponse]
+)
+def list_mathematics_capabilities(db: Annotated[Session, Depends(get_db)]):
+    return list(
+        db.scalars(
+            select(MathematicsCapabilityProfile).order_by(
+                MathematicsCapabilityProfile.created_at.desc()
             )
         ).all()
     )

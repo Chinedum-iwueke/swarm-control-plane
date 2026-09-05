@@ -6,15 +6,21 @@ from unittest.mock import MagicMock
 import pytest
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
+    MathematicsCapabilityCreate,
+    MathematicsContextPackRequest,
     ScientificAdjudicationCreate,
     ScientificBenchmarkCreate,
+    ScientificCalculationCreate,
     ScientificCorrectionCreate,
     ScientificRepresentationCreate,
 )
 from app.scientific_fidelity_pilot import _region, _table_grid
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
+    _evaluate_tree,
     adjudicate_representation,
+    assemble_mathematics_context_pack,
+    calculate_scientific_expression,
     create_benchmark,
     evaluate_benchmark,
     expression_tree,
@@ -22,6 +28,7 @@ from app.services.scientific_fidelity import (
     normalize_layout,
     propose_correction,
     publish_manifest,
+    register_mathematics_capability,
     register_representation,
     semantic_tokens,
 )
@@ -235,6 +242,10 @@ def test_openapi_exposes_fidelity_review_and_manifest_contracts():
     )
     assert "/v1/research/scientific-fidelity/benchmarks" in paths
     assert "/v1/research/scientific-fidelity/corrections" in paths
+    assert "/v1/research/scientific-fidelity/mathematics/search" in paths
+    assert "/v1/research/scientific-fidelity/mathematics/context-packs" in paths
+    assert "/v1/research/scientific-fidelity/mathematics/calculations" in paths
+    assert "/v1/research/scientific-fidelity/mathematics/capabilities" in paths
 
 
 def test_producer_cannot_self_adjudicate():
@@ -362,3 +373,90 @@ def test_correction_requires_new_version_and_separate_actor():
     )
     with pytest.raises(ScientificFidelityConflict, match="new representation version"):
         propose_correction(db, request)
+
+
+def test_decimal_calculator_evaluates_only_supported_ast():
+    from decimal import Decimal
+
+    tree = {
+        "kind": "binary",
+        "operator": "/",
+        "left": {"kind": "symbol", "value": "r"},
+        "right": {"kind": "symbol", "value": "σ"},
+    }
+    assert _evaluate_tree(
+        tree, {"r": Decimal("0.04"), "σ": Decimal("0.02")}
+    ) == Decimal(2)
+    with pytest.raises(ScientificFidelityConflict, match="Missing substitution"):
+        _evaluate_tree(tree, {"r": Decimal("0.04")})
+
+
+def test_math_context_pack_rejects_unresolved_representation():
+    representation_id = uuid.uuid4()
+    db = MagicMock()
+    db.scalars.side_effect = [MagicMock(all=list), MagicMock(all=list)]
+    request = MathematicsContextPackRequest(
+        query="evaluate sigma", representation_ids=[representation_id]
+    )
+    with pytest.raises(ScientificFidelityConflict, match="unresolved"):
+        assemble_mathematics_context_pack(db, request)
+
+
+def test_calculation_rejects_material_uncertainty():
+    representation_id = uuid.uuid4()
+    representation = SimpleNamespace(
+        id=representation_id,
+        scientific_type="equation",
+        semantic_payload={
+            "expression_tree": {"kind": "number", "value": "1"},
+            "units": [],
+        },
+        uncertainties=[{"material": True}],
+        record_digest="a" * 64,
+    )
+    db = MagicMock()
+    db.scalars.side_effect = [
+        MagicMock(all=lambda: [representation_id]),
+        MagicMock(all=list),
+    ]
+    db.scalar.return_value = SimpleNamespace(
+        representation_ids=[str(representation_id)]
+    )
+    db.get.return_value = representation
+    request = ScientificCalculationCreate(
+        representation_id=representation_id,
+        context_pack_digest="b" * 64,
+        substitutions={},
+        executed_by="math-tool",
+    )
+    with pytest.raises(ScientificFidelityConflict, match="unresolved"):
+        calculate_scientific_expression(db, request)
+
+
+def test_capability_profile_fails_closed_on_unsupported_claims():
+    db = MagicMock()
+    db.scalar.return_value = None
+    request = MathematicsCapabilityCreate(
+        agent_role="senior-quantitative-researcher",
+        profile_version="v1",
+        corpus_digest="c" * 64,
+        representation_version="scientific-fidelity-v2.0.0",
+        demonstrated_tasks=["formula explanation"],
+        limitations=["matrix evaluation not tested"],
+        metrics={
+            "answer_correctness": 0.99,
+            "citation_entailment": 1.0,
+            "formula_table_fidelity": 0.99,
+            "abstention_accuracy": 1.0,
+            "unsupported_claim_rate": 0.02,
+        },
+        thresholds={
+            "answer_correctness": 0.98,
+            "citation_entailment": 0.98,
+            "formula_table_fidelity": 0.98,
+            "abstention_accuracy": 0.98,
+            "unsupported_claim_rate": 0.0,
+        },
+        evaluated_by="independent-evaluator",
+    )
+    assert register_mathematics_capability(db, request).status == "not_demonstrated"

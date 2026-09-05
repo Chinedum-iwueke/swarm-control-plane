@@ -55,6 +55,12 @@ class FakeControlPlane:
             ],
         }
 
+    async def mathematics_search(self, payload):
+        return {"items": [], "search_digest": "e" * 64}
+
+    async def mathematics_context_pack(self, payload):
+        raise AssertionError("No mathematics context should be requested without hits")
+
 
 class FakeGenerator:
     def __init__(self, citation_id: uuid.UUID = OBJECT_ID) -> None:

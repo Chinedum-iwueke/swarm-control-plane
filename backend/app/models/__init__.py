@@ -97,6 +97,9 @@ from app.models.scientific_fidelity import (
     ScientificBenchmark,
     ScientificCorrectionProposal,
     ScientificFidelityManifest,
+    ScientificCalculationReceipt,
+    MathematicsCapabilityProfile,
+    MathematicsContextPack,
     ScientificRepresentation,
 )
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency

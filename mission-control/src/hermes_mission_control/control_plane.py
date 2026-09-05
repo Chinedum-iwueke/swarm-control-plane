@@ -142,6 +142,9 @@ class ControlPlaneClient:
         scientific_benchmarks = await self._optional_collection(
             "/v1/research/scientific-fidelity/benchmarks"
         )
+        mathematics_capabilities = await self._optional_collection(
+            "/v1/research/scientific-fidelity/mathematics/capabilities"
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -180,6 +183,7 @@ class ControlPlaneClient:
             "surveillance_digests": surveillance_digests,
             "scientific_review_queue": scientific_review_queue,
             "scientific_benchmarks": scientific_benchmarks,
+            "mathematics_capabilities": mathematics_capabilities,
         }
 
     async def adjudicate_scientific_representation(
@@ -265,6 +269,18 @@ class ControlPlaneClient:
     async def research_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST", "/v1/research/graph/context-packs", json=payload
+        )
+
+    async def mathematics_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/scientific-fidelity/mathematics/search", json=payload
+        )
+
+    async def mathematics_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/research/scientific-fidelity/mathematics/context-packs",
+            json=payload,
         )
 
     async def replay_research_citation(self, object_id: str) -> dict[str, Any]:

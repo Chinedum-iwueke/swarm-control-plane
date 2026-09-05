@@ -200,3 +200,70 @@ class ScientificCorrectionResponse(StrictModel):
     proposer_id: str
     record_digest: str
     created_at: datetime
+
+
+class MathematicsSearchRequest(StrictModel):
+    query: str = Field(min_length=1, max_length=500)
+    scientific_types: list[Literal["equation", "table", "figure"]] = Field(
+        default_factory=list
+    )
+    dimensions: list[str] = Field(default_factory=list, max_length=20)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class MathematicsContextPackRequest(StrictModel):
+    query: str = Field(min_length=1, max_length=500)
+    representation_ids: list[UUID] = Field(min_length=1, max_length=50)
+    created_by: str = Field(
+        default="research-intelligence", pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    )
+
+
+class ScientificCalculationCreate(StrictModel):
+    representation_id: UUID
+    context_pack_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    substitutions: dict[str, float]
+    executed_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+
+
+class ScientificCalculationResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    representation_id: UUID
+    context_pack_digest: str
+    expression_tree: dict
+    substitutions: dict
+    units: list
+    result: dict
+    representation_digest: str
+    record_digest: str
+    executed_by: str
+    created_at: datetime
+
+
+class MathematicsCapabilityCreate(StrictModel):
+    agent_role: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]+$", max_length=100)
+    profile_version: str = Field(min_length=1, max_length=80)
+    corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    representation_version: str = Field(min_length=1, max_length=80)
+    demonstrated_tasks: list[str] = Field(min_length=1)
+    limitations: list[str] = Field(default_factory=list)
+    metrics: dict[str, float]
+    thresholds: dict[str, float]
+    evaluated_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+
+
+class MathematicsCapabilityResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    agent_role: str
+    profile_version: str
+    corpus_digest: str
+    representation_version: str
+    demonstrated_tasks: list
+    limitations: list
+    metrics: dict
+    status: str
+    record_digest: str
+    evaluated_by: str
+    created_at: datetime
