@@ -86,7 +86,23 @@ plutil -lint "$plist"
 
 if "$start"; then
   launchctl bootout "gui/${UID}/${label}" 2>/dev/null || true
-  launchctl bootstrap "gui/${UID}" "$plist"
+  launchctl bootout "gui/${UID}" "$plist" 2>/dev/null || true
+  bootstrap_ok=false
+  for attempt in 1 2; do
+    if launchctl bootstrap "gui/${UID}" "$plist"; then
+      bootstrap_ok=true
+      break
+    fi
+    launchctl bootout "gui/${UID}/${label}" 2>/dev/null || true
+    launchctl bootout "gui/${UID}" "$plist" 2>/dev/null || true
+    sleep 2
+  done
+  if [[ "$bootstrap_ok" != true ]]; then
+    echo "Unable to bootstrap ${label} in gui/${UID}." >&2
+    launchctl print "gui/${UID}/${label}" >&2 2>/dev/null || true
+    echo "Inspect: ${app_root}/mission-control.error.log" >&2
+    exit 1
+  fi
   launchctl kickstart -k "gui/${UID}/${label}"
   echo "Installed and started ${label}."
 else
