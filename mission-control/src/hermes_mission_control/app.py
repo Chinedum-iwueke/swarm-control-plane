@@ -144,6 +144,10 @@ def create_app(
     async def scientific_adjudication(request: Request) -> dict:
         return await client.adjudicate_scientific_representation(await request.json())
 
+    @app.get("/api/research/scientific-fidelity/review-context/{representation_id}")
+    async def scientific_review_context(representation_id: str) -> dict:
+        return await client.scientific_review_context(representation_id)
+
     @app.get("/api/research/dossiers/{dossier_id}")
     async def evidence_dossier(dossier_id: str) -> dict:
         return await client.get_evidence_dossier(dossier_id)

@@ -1195,6 +1195,11 @@ function renderResearch() {
     button.onclick = async () => {
       const item = scientificReviewQueue.find((candidate) => candidate.id === button.dataset.scientificReview);
       if (!item) return;
+      const context = await request(`/api/research/scientific-fidelity/review-context/${item.id}`);
+      const sourceText = context.source?.payload?.content_text || "Source region text is unavailable.";
+      const parserOutputs = item.parser_outputs.map((output) => `${output.parser}: ${output.content}`).join("\n\n");
+      const proceed = window.confirm(`SOURCE REGION\n${sourceText}\n\nNORMALIZED REPRESENTATION\n${item.normalized_content}\n\nPARSER OUTPUTS\n${parserOutputs}\n\nContinue to immutable adjudication?`);
+      if (!proceed) return;
       const decision = window.prompt("Decision: equivalent, material_mismatch, wrong_object_class, incomplete_region, unsupported_notation, or unreadable_source");
       if (!decision) return;
       const rationale = window.prompt("Independent rationale (at least 10 characters):");

@@ -204,6 +204,14 @@ class ControlPlaneClient:
             "POST", "/v1/research/scientific-fidelity/adjudications", json=payload
         )
 
+    async def scientific_review_context(
+        self, representation_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/v1/research/scientific-fidelity/review-context/{representation_id}",
+        )
+
     async def decide_research_cycle(
         self,
         cycle_id: str,
