@@ -34,11 +34,68 @@ def normalize(content: str) -> str:
 
 
 def semantic_tokens(content: str) -> list[dict]:
-    pattern = r"[A-Za-z\u0370-\u03ff]+|\d+(?:\.\d+)?|[₀-₉⁰-⁹]+|[=+\-*/^(),\[\]{}∫∑√≤≥]"
+    pattern = r"[A-Za-z\u0370-\u03ff]+[₀-₉⁰-⁹]*|\d+(?:\.\d+)?|[=+\-*/^(),;\[\]{}∫∑√≤≥]"
     return [
         {"index": index, "value": token}
         for index, token in enumerate(re.findall(pattern, content))
     ]
+
+
+def expression_tree(tokens: list[dict]) -> tuple[dict, bool]:
+    values = [item["value"] for item in tokens]
+
+    def parse(items: list[str]) -> tuple[dict, bool]:
+        if not items:
+            return {"kind": "empty"}, False
+        if len(items) == 1:
+            value = items[0]
+            kind = "number" if re.fullmatch(r"\d+(?:\.\d+)?", value) else "symbol"
+            return {"kind": kind, "value": value}, True
+        pairs = {"(": ")", "[": "]", "{": "}"}
+        if items[0] in pairs and items[-1] == pairs[items[0]]:
+            depth = 0
+            enclosed = True
+            for index, value in enumerate(items):
+                depth += value in pairs
+                depth -= value in pairs.values()
+                if depth == 0 and index != len(items) - 1:
+                    enclosed = False
+                    break
+            if enclosed:
+                child, complete = parse(items[1:-1])
+                return {
+                    "kind": "group",
+                    "delimiter": items[0] + items[-1],
+                    "child": child,
+                }, complete
+        for operators in (("=", "≤", "≥"), ("+", "-"), ("*", "/"), ("^",)):
+            depth = 0
+            candidates = []
+            for index, value in enumerate(items):
+                depth += value in pairs
+                depth -= value in pairs.values()
+                if depth == 0 and value in operators and index > 0:
+                    candidates.append(index)
+            if candidates:
+                index = candidates[-1] if "^" not in operators else candidates[0]
+                left, left_ok = parse(items[:index])
+                right, right_ok = parse(items[index + 1 :])
+                return {
+                    "kind": "binary",
+                    "operator": items[index],
+                    "left": left,
+                    "right": right,
+                }, left_ok and right_ok
+        if items[0] in {"∫", "∑", "√"}:
+            child, complete = parse(items[1:])
+            return {
+                "kind": "operator",
+                "operator": items[0],
+                "operand": child,
+            }, complete
+        return {"kind": "lossless_tokens", "values": items}, False
+
+    return parse(values)
 
 
 def register_representation(
@@ -111,8 +168,24 @@ def register_representation(
     if uncertainties:
         status = "review_required"
     canonical = normalized[0]
+    tokens = semantic_tokens(canonical)
+    tree, tree_complete = (
+        expression_tree(tokens)
+        if payload.scientific_type == "equation"
+        else (None, True)
+    )
+    if not tree_complete:
+        uncertainties.append(
+            {
+                "kind": "semantic_parse_incomplete",
+                "material": True,
+                "detail": "Expression is lossless, but its semantic tree is incomplete.",
+            }
+        )
+        status = "review_required"
     semantic = {
-        "tokens": semantic_tokens(canonical),
+        "tokens": tokens,
+        "expression_tree": tree,
         "symbols": [item.model_dump() for item in payload.symbols],
         "units": [item.model_dump() for item in payload.units],
         "table_grid": payload.table_grid,

@@ -11,6 +11,7 @@ from app.schemas.scientific_fidelity import (
 )
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
+    expression_tree,
     normalize,
     publish_manifest,
     register_representation,
@@ -58,6 +59,13 @@ def test_unicode_and_semantic_tokens_preserve_mathematical_symbols():
     assert normalize("  Δpₜ   =  rₜ / σₜ ") == "Δpₜ = rₜ / σₜ"
     values = [item["value"] for item in semantic_tokens("∫ π(x) dx ≥ δ")]
     assert "∫" in values and "π" in values and "δ" in values and "≥" in values
+
+
+def test_equation_tree_preserves_fraction_precedence():
+    tree, complete = expression_tree(semantic_tokens("Δpₜ = rₜ / σₜ"))
+    assert complete is True
+    assert tree["operator"] == "="
+    assert tree["right"]["operator"] == "/"
 
 
 def test_two_independent_parsers_accept_equation():
