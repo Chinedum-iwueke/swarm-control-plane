@@ -44,19 +44,20 @@ def main() -> int:
     settings = get_settings()
     store = FilesystemEvidenceObjectStore(settings.evidence_object_root)
     with SessionLocal() as db:
-        objects = db.scalars(
+        candidates = db.scalars(
             select(CanonicalEvidenceObject)
-            .where(CanonicalEvidenceObject.object_type == "scientific_object")
+            .where(
+                CanonicalEvidenceObject.object_type == "scientific_object",
+                CanonicalEvidenceObject.payload["scientific_type"].astext == "equation",
+            )
             .order_by(CanonicalEvidenceObject.content_digest)
+            .limit(100)
         ).all()
-        heldout = [
-            item
-            for item in objects
-            if item.payload.get("scientific_type") == "equation"
-        ][:20]
+        heldout = candidates[:20]
         if not heldout:
             raise RuntimeError("Live corpus has no held-out equation objects.")
         results = []
+        page_cache: dict[tuple[UUID, int], tuple[str, str]] = {}
         for item in heldout:
             artifact = db.get(
                 CanonicalEvidenceObject, UUID(item.payload["artifact_object_id"])
@@ -71,9 +72,11 @@ def main() -> int:
                 content_digest=artifact.content_digest,
                 byte_size=artifact.payload["byte_size"],
             )
-            content = store.get(reference)
             page = int(item.payload["coordinates"]["page"])
-            native_page, structural_page = _page_texts(content, page)
+            cache_key = (artifact.id, page)
+            if cache_key not in page_cache:
+                page_cache[cache_key] = _page_texts(store.get(reference), page)
+            native_page, structural_page = page_cache[cache_key]
             target = " ".join(item.payload["content_text"].split())
             native_match = (
                 target if target in " ".join(native_page.split()) else native_page
