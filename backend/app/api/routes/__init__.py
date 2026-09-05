@@ -69,6 +69,7 @@ from app.api.routes.risk_rules import router as risk_rules_router
 from app.api.routes.risk_stress import router as risk_stress_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.selection_audit import router as selection_audit_router
+from app.api.routes.scientific_fidelity import router as scientific_fidelity_router
 from app.api.routes.statistical_search import router as statistical_search_router
 from app.api.routes.supervisor import router as supervisor_router
 from app.api.routes.surveillance import router as surveillance_router
@@ -146,6 +147,7 @@ __all__ = [
     "risk_stress_router",
     "runbook_packages_router",
     "selection_audit_router",
+    "scientific_fidelity_router",
     "statistical_search_router",
     "supervisor_router",
     "surveillance_router",
