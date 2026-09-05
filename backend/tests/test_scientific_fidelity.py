@@ -14,7 +14,7 @@ from app.schemas.scientific_fidelity import (
     ScientificCorrectionCreate,
     ScientificRepresentationCreate,
 )
-from app.scientific_fidelity_pilot import _region, _table_grid
+from app.scientific_fidelity_pilot import _region, _table_grid, _table_region
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
     _evaluate_tree,
@@ -92,6 +92,29 @@ def test_region_alignment_ignores_layout_but_not_symbol_changes():
 def test_table_grid_normalizes_pipe_and_spacing_cells():
     assert _table_grid("a | b | c") == [["a", "b", "c"]]
     assert _table_grid("a  b  c") == [["a", "b", "c"]]
+
+
+def test_table_region_preserves_coordinate_selected_rows():
+    page = "Heading\nAsset  Return  Risk\nBTC    0.10    0.40\nFooter"
+    assert _table_region(
+        page,
+        "Asset Return Risk\nBTC 0.10 0.40",
+        line_start=2,
+        line_end=3,
+    ) == "Asset  Return  Risk\nBTC    0.10    0.40"
+
+
+def test_table_region_falls_back_to_best_structural_block():
+    page = (
+        "Noise  One  Two\nrow    1    2\n\n"
+        "Asset  Return  Risk\nBTC    0.10    0.40"
+    )
+    assert _table_region(
+        page,
+        "Asset Return Risk BTC 0.10 0.40",
+        line_start=20,
+        line_end=21,
+    ) == "Asset  Return  Risk\nBTC    0.10    0.40"
 
 
 def test_layout_normalization_repairs_ligatures_and_line_wrap_only():

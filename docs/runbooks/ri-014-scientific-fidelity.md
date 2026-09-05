@@ -26,12 +26,16 @@ publish corrections only under a new representation version.
 
 ## Version 2 reconstruction
 
-`scientific-fidelity-v2.0.0` uses structure-aware multi-row table detection,
+`scientific-fidelity-v2.0.0` introduced structure-aware multi-row table detection,
 bounded multi-line equation spans, symbol-preserving layout normalization and
 expanded deterministic AST nodes. Rebuild affected artifacts through normal
 ingestion/recovery; never rewrite v1.0/v1.1 objects. A missing scientific class
 is a failed coverage gate, not a perfect or non-applicable score.
 
-Re-evaluation uses `scientific-fidelity-v1.1.0`; it never overwrites v1.0. The
-live pilot requires equation, table and figure strata and performs bounded
-line-region alignment before comparing semantic tokens, cell grids and captions.
+The production live pilot now writes `scientific-fidelity-v2.1.0`; it never
+overwrites v1.0, v1.1, or v2.0 evidence. Version 2.1 preserves multi-line table
+regions during held-out replay, uses source coordinates plus independent
+structural block matching, and includes CFF Type1 font decoding support. The
+live pilot requires equation, table and figure strata before comparing semantic
+tokens, cell grids and captions. Qualification still requires the independent
+adjudication benchmark; pilot acceptance rates are diagnostic only.

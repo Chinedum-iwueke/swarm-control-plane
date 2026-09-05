@@ -22,3 +22,18 @@ tokenization and structured AST fixtures.
 Production activation requires an API rebuild followed by affected-artifact
 reconstruction under v2. A v2 manifest must not qualify if the live corpus lacks
 genuine multi-row tables or any required stratum.
+
+## Live replay correction
+
+The first production v2.0 replay evaluated equations and figures but reported
+zero tables because its held-out matcher normalized each candidate to one line
+before applying the multi-row gate. That `not_qualified` manifest remains valid
+negative evidence about the harness used for that run; it is not evidence that
+the corpus contains no tables.
+
+`scientific-fidelity-v2.1.0` corrects the harness by selecting table regions from
+immutable source coordinates and independently matching structural multi-row
+blocks. It also installs `fontTools` so CFF Type1 encodings are fully available
+to PDF extraction. The thresholds are unchanged. A v2.1 result remains
+unqualified until every stratum is present and independent adjudications meet
+the configured gates.

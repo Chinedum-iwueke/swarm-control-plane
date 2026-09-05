@@ -18,7 +18,7 @@ from app.services.scientific_fidelity import (
     evaluate_benchmark,
 )
 
-REPRESENTATION_VERSION = "scientific-fidelity-v2.0.0"
+REPRESENTATION_VERSION = "scientific-fidelity-v2.1.0"
 TARGETS = {"equation": 10, "table": 5, "figure": 5}
 
 
@@ -44,7 +44,7 @@ def prepare(db) -> ScientificBenchmark:
     return create_benchmark(
         db,
         ScientificBenchmarkCreate(
-            benchmark_version="ri014-live-corpus-v1.0.0",
+            benchmark_version="ri014-live-corpus-v1.1.0",
             representation_version=REPRESENTATION_VERSION,
             corpus_digest=corpus_digest,
             sample_seed="ri014-independent-heldout-v1",

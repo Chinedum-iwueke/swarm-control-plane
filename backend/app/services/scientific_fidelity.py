@@ -676,8 +676,12 @@ def search_mathematics(db: Session, payload: MathematicsSearchRequest) -> dict:
             db.scalars(
                 select(ScientificRepresentation).where(
                     ScientificRepresentation.id.in_(allowed),
-                    ScientificRepresentation.representation_version
-                    == "scientific-fidelity-v2.0.0",
+                    ScientificRepresentation.representation_version.in_(
+                        (
+                            "scientific-fidelity-v2.0.0",
+                            "scientific-fidelity-v2.1.0",
+                        )
+                    ),
                 )
             ).all()
         )

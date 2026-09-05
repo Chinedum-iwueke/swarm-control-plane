@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
+from app.ingestion.pipeline import _table_blocks
 from app.models.evidence import CanonicalEvidenceObject
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
@@ -28,7 +29,7 @@ from app.services.scientific_fidelity import (
     semantic_tokens,
 )
 
-VERSION = "scientific-fidelity-v2.0.0"
+VERSION = "scientific-fidelity-v2.1.0"
 STRATA = {"equation": 10, "table": 5, "figure": 5}
 
 
@@ -74,6 +75,27 @@ def _table_grid(value: str) -> list[list[str]]:
         cells = row.strip("|").split("|") if "|" in row else re.split(r"\s{2,}", row)
         grid.append([normalize(cell) for cell in cells if cell.strip()])
     return [row for row in grid if row]
+
+
+def _table_region(
+    page_text: str, target: str, *, line_start: int, line_end: int
+) -> str:
+    """Recover a complete table without flattening its row boundaries."""
+    lines = page_text.splitlines()
+    coordinate_region = "\n".join(lines[line_start - 1 : line_end]).strip()
+    if len(_table_grid(coordinate_region)) >= 2:
+        return coordinate_region
+
+    blocks = [value for _, value in _table_blocks(lines).values()]
+    if not blocks:
+        return ""
+    target_tokens = _values(target)
+    return max(
+        blocks,
+        key=lambda block: SequenceMatcher(
+            None, target_tokens, _values(block)
+        ).ratio(),
+    )
 
 
 def main() -> int:
@@ -127,9 +149,20 @@ def main() -> int:
                     skipped["parser_error"] += 1
                     continue
             native_page, structural_page = page_cache[cache_key]
-            target = normalize(item.payload["content_text"])
-            native_match = _region(native_page, target)
-            structural_match = _region(structural_page, target)
+            target = item.payload["content_text"]
+            coordinates = item.payload["coordinates"]
+            if scientific_type == "table":
+                region_args = {
+                    "line_start": int(coordinates["line_start"]),
+                    "line_end": int(coordinates["line_end"]),
+                }
+                native_match = _table_region(native_page, target, **region_args)
+                structural_match = _table_region(
+                    structural_page, target, **region_args
+                )
+            else:
+                native_match = _region(native_page, target)
+                structural_match = _region(structural_page, target)
             if not native_match.strip() or not structural_match.strip():
                 skipped["empty_region"] += 1
                 continue
