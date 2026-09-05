@@ -4,11 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
     ScientificRepresentationCreate,
 )
+from app.scientific_fidelity_pilot import _region, _table_grid
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
     expression_tree,
@@ -66,6 +66,17 @@ def test_equation_tree_preserves_fraction_precedence():
     assert complete is True
     assert tree["operator"] == "="
     assert tree["right"]["operator"] == "/"
+
+
+def test_region_alignment_ignores_layout_but_not_symbol_changes():
+    target = "Δpₜ = rₜ / σₜ"
+    assert _region(f"heading\n{target}\nfooter", target) == target
+    assert _region("heading\nΔpₜ = rₜ / vₜ\nfooter", target) == "Δpₜ = rₜ / vₜ"
+
+
+def test_table_grid_normalizes_pipe_and_spacing_cells():
+    assert _table_grid("a | b | c") == [["a", "b", "c"]]
+    assert _table_grid("a  b  c") == [["a", "b", "c"]]
 
 
 def test_two_independent_parsers_accept_equation():
@@ -166,12 +177,14 @@ def test_manifest_does_not_qualify_with_review_work():
             "token_recall": 0.99,
             "cell_accuracy": 0.99,
             "expression_replay": 1.0,
+            "figure_reference_replay": 0.99,
         },
         metrics={
             "token_precision": 1.0,
             "token_recall": 1.0,
             "cell_accuracy": 1.0,
             "expression_replay": 1.0,
+            "figure_reference_replay": 1.0,
         },
         created_by="ri014-pilot",
     )

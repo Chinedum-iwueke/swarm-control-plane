@@ -130,7 +130,15 @@ def register_representation(
                 "detail": "Fewer than two independent parsers.",
             }
         )
-    if len(set(normalized)) != 1:
+    comparable = (
+        [
+            tuple(item["value"] for item in semantic_tokens(value))
+            for value in normalized
+        ]
+        if payload.scientific_type == "equation"
+        else normalized
+    )
+    if len(set(comparable)) != 1:
         uncertainties.append(
             {
                 "kind": "material_disagreement",
@@ -235,7 +243,13 @@ def publish_manifest(
         "accepted": sum(r.status == "accepted" for r in records),
         "review_required": sum(r.status == "review_required" for r in records),
     }
-    required = {"token_precision", "token_recall", "cell_accuracy", "expression_replay"}
+    required = {
+        "token_precision",
+        "token_recall",
+        "cell_accuracy",
+        "expression_replay",
+        "figure_reference_replay",
+    }
     missing = required - payload.metrics.keys()
     if missing:
         raise ScientificFidelityConflict(

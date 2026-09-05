@@ -29,3 +29,10 @@ The reported table-cell score was not measured by this equation-only pilot and
 must not be cited as evidence of table fidelity; a subsequent version must use
 separate equation, table and figure strata with non-applicable metrics represented
 explicitly.
+
+Version `scientific-fidelity-v1.1.0` corrects that harness defect. It aligns a
+bounded source line independently in PyPDF and PDFium, compares equation token
+sequences without erasing symbol differences, compares normalized table grids,
+and replays figure captions. Qualification now requires 10 equations, five tables
+and five figures; absent or failed strata score zero. Version 1.0 records and its
+negative manifest remain immutable.

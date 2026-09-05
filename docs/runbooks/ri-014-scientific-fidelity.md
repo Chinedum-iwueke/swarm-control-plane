@@ -23,3 +23,7 @@ The first VM2 live manifest is `not_qualified` (`3/20` accepted). Preserve it as
 negative evidence. Do not manually relabel its 17 disagreements; inspect source
 regions, distinguish layout-only differences from material symbol changes, and
 publish corrections only under a new representation version.
+
+Re-evaluation uses `scientific-fidelity-v1.1.0`; it never overwrites v1.0. The
+live pilot requires equation, table and figure strata and performs bounded
+line-region alignment before comparing semantic tokens, cell grids and captions.
