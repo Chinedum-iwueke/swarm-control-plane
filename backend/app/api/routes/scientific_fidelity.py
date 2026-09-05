@@ -157,12 +157,26 @@ def list_adjudications(
 @router.get("/review-queue")
 def review_queue(db: Annotated[Session, Depends(get_db)], limit: int = 100):
     adjudicated = select(ScientificAdjudication.representation_id)
+    active_benchmarks = list(
+        db.scalars(
+            select(ScientificBenchmark).where(
+                ScientificBenchmark.status == "awaiting_adjudication"
+            )
+        ).all()
+    )
+    sampled_ids = {
+        UUID(item)
+        for benchmark in active_benchmarks
+        for item in benchmark.sampled_representation_ids
+    }
+    eligibility = (
+        ScientificRepresentation.id.in_(sampled_ids)
+        if sampled_ids
+        else ScientificRepresentation.status == "review_required"
+    )
     query = (
         select(ScientificRepresentation)
-        .where(
-            ScientificRepresentation.status == "review_required",
-            ScientificRepresentation.id.not_in(adjudicated),
-        )
+        .where(eligibility, ScientificRepresentation.id.not_in(adjudicated))
         .order_by(ScientificRepresentation.created_at)
         .limit(min(limit, 500))
     )
