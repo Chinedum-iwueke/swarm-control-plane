@@ -212,6 +212,84 @@ def diagnose(client: httpx.Client, catalog: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def preflight(
+    client: httpx.Client,
+    catalog: dict[str, Any],
+    anchors: dict[str, Any],
+) -> dict[str, Any]:
+    catalog_domains = indexed_domains(catalog)
+    anchor_domains = indexed_domains(anchors)
+    if set(catalog_domains) != set(anchor_domains):
+        raise ValueError("catalog and anchor domains do not match")
+    domains = []
+    for domain_key in sorted(catalog_domains):
+        domain = catalog_domains[domain_key]
+        anchor = anchor_domains[domain_key]
+        checks = []
+        for check, query_key, target_key in (
+            ("held_out", "held_out_query", "expected_object_id"),
+            ("opposing", "opposing_query", "opposing_object_id"),
+        ):
+            query = domain[query_key]
+            target_id = anchor[target_key]
+            result = call(
+                client,
+                "POST",
+                "/v1/research/retrieval/query",
+                {"query": query, "project": catalog["project"], "limit": 50},
+            )
+            returned_ids = [str(item["object_id"]) for item in result["hits"]]
+            target = call(
+                client,
+                "GET",
+                f"/v1/research/evidence/objects/{target_id}",
+            )
+            content = str(target.get("payload", {}).get("content_text") or "")
+            checks.append(
+                {
+                    "check": check,
+                    "query": query,
+                    "target_object_id": target_id,
+                    "target_content_digest": target["content_digest"],
+                    "target_excerpt": " ".join(content.split())[:1_000],
+                    "returned_rank": (
+                        returned_ids.index(target_id) + 1
+                        if target_id in returned_ids
+                        else None
+                    ),
+                    "candidate_counts": result.get("candidate_counts", {}),
+                    "top_hits": [
+                        {
+                            "rank": rank,
+                            "object_id": str(hit["object_id"]),
+                            "confidence": hit["confidence"],
+                            "excerpt": " ".join(hit["text"].split())[:240],
+                        }
+                        for rank, hit in enumerate(result["hits"][:5], start=1)
+                    ],
+                }
+            )
+        domains.append(
+            {
+                "domain_key": domain_key,
+                "passed": all(item["returned_rank"] is not None for item in checks),
+                "checks": checks,
+            }
+        )
+    success = all(item["passed"] for item in domains)
+    return {
+        "schema_version": "ri009b-curriculum-preflight-v1.0.0",
+        "curriculum_version": catalog["version"],
+        "domain_count": len(domains),
+        "domains": domains,
+        "success": success,
+        "claim_boundary": (
+            "Read-only target retrieval preflight; no curriculum qualification "
+            "or immutable registry write is inferred."
+        ),
+    }
+
+
 def indexed_domains(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     domains = document["domains"]
     indexed = {item["key"]: item for item in domains}
@@ -446,7 +524,7 @@ def load_document(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("discover", "diagnose", "all"))
+    parser.add_argument("command", choices=("discover", "diagnose", "preflight", "all"))
     parser.add_argument(
         "--catalog",
         type=Path,
@@ -477,6 +555,8 @@ def main() -> int:
             result = discover(client, catalog)
         elif args.command == "diagnose":
             result = diagnose(client, catalog)
+        elif args.command == "preflight":
+            result = preflight(client, catalog, load_document(args.anchors))
         else:
             anchors = load_document(args.anchors)
             curricula = prepare(client, catalog, anchors)
@@ -503,6 +583,8 @@ def main() -> int:
                 ],
             }
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.command == "preflight" and not result["success"]:
+        return 1
     if args.command == "all" and not result["portfolio"]["ready"]:
         return 1
     return 0
