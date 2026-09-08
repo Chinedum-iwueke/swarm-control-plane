@@ -96,6 +96,15 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "items": [],
                 },
             )
+        if request.url.path == "/v1/research/intelligence-evaluation/readiness":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "not_demonstrated",
+                    "domains": {},
+                    "limitations": ["no_evaluation_suite"],
+                },
+            )
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -123,6 +132,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["workload_identities"]["enforcement_active"] is True
     assert result["institutional_lifecycles"]["count"] == 0
     assert result["lifecycle_consequences"]["count"] == 0
+    assert result["intelligence_evaluation"]["status"] == "not_demonstrated"
 
 
 @pytest.mark.asyncio

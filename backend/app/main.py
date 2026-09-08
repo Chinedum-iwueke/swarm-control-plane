@@ -38,6 +38,7 @@ from app.api.routes import (
     ingestion_recovery_router,
     ingestion_router,
     institutional_lifecycle_router,
+    intelligence_evaluation_router,
     laboratory_router,
     lake_operations_router,
     lifecycle_consequence_router,
@@ -67,8 +68,8 @@ from app.api.routes import (
     risk_rules_router,
     risk_stress_router,
     runbook_packages_router,
-    selection_audit_router,
     scientific_fidelity_router,
+    selection_audit_router,
     statistical_search_router,
     supervisor_router,
     surveillance_router,
@@ -97,6 +98,7 @@ app.include_router(corpus_sync_router)
 app.include_router(curriculum_router)
 app.include_router(falsification_router)
 app.include_router(ingestion_router)
+app.include_router(intelligence_evaluation_router)
 app.include_router(discovery_router)
 app.include_router(discovery_portfolio_router)
 app.include_router(laboratory_router)

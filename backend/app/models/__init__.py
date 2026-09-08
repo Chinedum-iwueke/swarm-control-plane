@@ -81,6 +81,11 @@ from app.models.institutional_lifecycle import (
     InstitutionalLifecycleEvent,
     InstitutionalLifecycleProjection,
 )
+from app.models.intelligence_evaluation import (
+    IntelligenceEvaluationItemResult,
+    IntelligenceEvaluationRun,
+    IntelligenceEvaluationSuite,
+)
 from app.models.laboratory import LaboratoryPublication, LaboratoryPublicationEvent
 from app.models.lake_operations import LakeGovernanceSnapshot, LakeOperationEvent
 from app.models.lifecycle_consequence import LifecycleConsequence
@@ -91,17 +96,6 @@ from app.models.memory import (
     EvidenceOutcomeRecord,
 )
 from app.models.microstructure_model import MicrostructureModelRegistry
-from app.models.scientific_fidelity import (
-    ScientificAdjudication,
-    ScientificAdjudicationEvent,
-    ScientificBenchmark,
-    ScientificCorrectionProposal,
-    ScientificFidelityManifest,
-    ScientificCalculationReceipt,
-    MathematicsCapabilityProfile,
-    MathematicsContextPack,
-    ScientificRepresentation,
-)
 from app.models.mission import EngineeringMission, MissionEvent, TaskDependency
 from app.models.model_evaluation import ModelFamilyEvaluation
 from app.models.observability import (
@@ -157,6 +151,17 @@ from app.models.retrieval import (
 from app.models.risk_rules import RiskRuleEvaluation
 from app.models.risk_stress import RiskStressAssessment
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
+from app.models.scientific_fidelity import (
+    MathematicsCapabilityProfile,
+    MathematicsContextPack,
+    ScientificAdjudication,
+    ScientificAdjudicationEvent,
+    ScientificBenchmark,
+    ScientificCalculationReceipt,
+    ScientificCorrectionProposal,
+    ScientificFidelityManifest,
+    ScientificRepresentation,
+)
 from app.models.selection_audit import SelectionBiasAudit
 from app.models.statistical_search import (
     StatisticalSearchCampaign,
@@ -256,6 +261,9 @@ __all__ = [
     "GovernedResearchBridge",
     "InstitutionalLifecycleEvent",
     "InstitutionalLifecycleProjection",
+    "IntelligenceEvaluationItemResult",
+    "IntelligenceEvaluationRun",
+    "IntelligenceEvaluationSuite",
     "LaboratoryPublication",
     "LaboratoryPublicationEvent",
     "LakeGovernanceSnapshot",
@@ -263,6 +271,8 @@ __all__ = [
     "LifecycleConsequence",
     "MachineObservation",
     "MarketDataCatalogSnapshot",
+    "MathematicsCapabilityProfile",
+    "MathematicsContextPack",
     "MechanismEvaluation",
     "MechanismPlan",
     "MicrostructureModelRegistry",
@@ -311,9 +321,14 @@ __all__ = [
     "RoutedServiceAlert",
     "RunbookPackage",
     "RunbookPromotion",
+    "ScientificAdjudication",
+    "ScientificAdjudicationEvent",
+    "ScientificBenchmark",
+    "ScientificCalculationReceipt",
+    "ScientificCorrectionProposal",
+    "ScientificFidelityManifest",
     "ScientificIngestionJob",
     "ScientificIngestionRecovery",
-    "ScientificFidelityManifest",
     "ScientificRepresentation",
     "SelectionBiasAudit",
     "ServiceCatalogActivation",

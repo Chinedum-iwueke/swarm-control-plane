@@ -1178,6 +1178,7 @@ function renderResearch() {
   const scientificReviewQueue = state.dashboard.scientific_review_queue || [];
   const scientificBenchmarks = state.dashboard.scientific_benchmarks || [];
   const mathematicsCapabilities = state.dashboard.mathematics_capabilities || [];
+  const intelligenceEvaluation = state.dashboard.intelligence_evaluation || { status: "not_demonstrated", domains: {}, limitations: [] };
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
   const consequenceItems = state.dashboard.lifecycle_consequences?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
@@ -1191,6 +1192,11 @@ function renderResearch() {
     <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.benchmark_version)}</strong><div class="entity-meta"><span>${item.counts.adjudicated || 0}/${item.counts.sampled || 0} adjudicated</span><span>${item.counts.conflicted || 0} conflicts</span><span class="mono">${shortHash(item.sample_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : "";
   document.getElementById("mathematics-capabilities").innerHTML = mathematicsCapabilities.length ? mathematicsCapabilities.map((item) => `
     <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(item.agent_role))}</strong><div class="entity-meta"><span>${item.demonstrated_tasks.length} demonstrated tasks</span><span>${item.limitations.length} limitations</span><span class="mono">${shortHash(item.record_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : empty("No agent mathematics capability has been independently demonstrated yet.");
+  const intelligenceDomains = Object.entries(intelligenceEvaluation.domains || {});
+  document.getElementById("intelligence-evaluation-status").innerHTML = statusBadge(intelligenceEvaluation.status);
+  document.getElementById("intelligence-evaluation").innerHTML = `
+    <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(intelligenceEvaluation.status))}</strong><div class="entity-meta"><span>${intelligenceDomains.filter(([, value]) => value.status === "qualified").length}/${intelligenceDomains.length} domains qualified</span><span>${(intelligenceEvaluation.representative_failures || []).length} representative failures</span>${intelligenceEvaluation.evaluation_digest ? `<span class="mono">${shortHash(intelligenceEvaluation.evaluation_digest)}</span>` : ""}</div><p>${escapeHtml(intelligenceEvaluation.claim_boundary || "No held-out live-corpus reasoning qualification has been recorded.")}</p>${(intelligenceEvaluation.limitations || []).length ? `<p>${intelligenceEvaluation.limitations.map(humanize).join(" · ")}</p>` : ""}</div></article>
+    ${intelligenceDomains.map(([domain, value]) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(domain)}</strong><div class="entity-meta"><span>${value.passed || 0}/${value.items || 0} passed</span></div></div>${statusBadge(value.status || "not_demonstrated")}</article>`).join("")}`;
   document.querySelectorAll("[data-scientific-review]").forEach((button) => {
     button.onclick = async () => {
       const item = scientificReviewQueue.find((candidate) => candidate.id === button.dataset.scientificReview);

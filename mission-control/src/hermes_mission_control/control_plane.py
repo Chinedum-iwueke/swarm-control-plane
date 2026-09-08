@@ -145,6 +145,14 @@ class ControlPlaneClient:
         mathematics_capabilities = await self._optional_collection(
             "/v1/research/scientific-fidelity/mathematics/capabilities"
         )
+        intelligence_evaluation = await self._optional_object(
+            "/v1/research/intelligence-evaluation/readiness",
+            {
+                "status": "not_demonstrated",
+                "domains": {},
+                "limitations": ["evaluation_service_unavailable"],
+            },
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -184,6 +192,7 @@ class ControlPlaneClient:
             "scientific_review_queue": scientific_review_queue,
             "scientific_benchmarks": scientific_benchmarks,
             "mathematics_capabilities": mathematics_capabilities,
+            "intelligence_evaluation": intelligence_evaluation,
         }
 
     async def adjudicate_scientific_representation(

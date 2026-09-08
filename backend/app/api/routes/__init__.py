@@ -36,6 +36,9 @@ from app.api.routes.ingestion_recovery import router as ingestion_recovery_route
 from app.api.routes.institutional_lifecycle import (
     router as institutional_lifecycle_router,
 )
+from app.api.routes.intelligence_evaluation import (
+    router as intelligence_evaluation_router,
+)
 from app.api.routes.laboratory import router as laboratory_router
 from app.api.routes.lake_operations import router as lake_operations_router
 from app.api.routes.lifecycle import router as lifecycle_router
@@ -68,8 +71,8 @@ from app.api.routes.retrieval import router as retrieval_router
 from app.api.routes.risk_rules import router as risk_rules_router
 from app.api.routes.risk_stress import router as risk_stress_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
-from app.api.routes.selection_audit import router as selection_audit_router
 from app.api.routes.scientific_fidelity import router as scientific_fidelity_router
+from app.api.routes.selection_audit import router as selection_audit_router
 from app.api.routes.statistical_search import router as statistical_search_router
 from app.api.routes.supervisor import router as supervisor_router
 from app.api.routes.surveillance import router as surveillance_router
@@ -117,6 +120,7 @@ __all__ = [
     "ingestion_recovery_router",
     "ingestion_router",
     "institutional_lifecycle_router",
+    "intelligence_evaluation_router",
     "laboratory_router",
     "lake_operations_router",
     "lifecycle_consequence_router",
@@ -146,8 +150,8 @@ __all__ = [
     "risk_rules_router",
     "risk_stress_router",
     "runbook_packages_router",
-    "selection_audit_router",
     "scientific_fidelity_router",
+    "selection_audit_router",
     "statistical_search_router",
     "supervisor_router",
     "surveillance_router",
