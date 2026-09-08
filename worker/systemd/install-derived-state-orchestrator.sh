@@ -26,6 +26,14 @@ unit=invariance-swarm-derived-state-orchestrator.service
 test -f "$runtime/compose.yaml"
 test -f "$root/worker/systemd/$unit"
 test -S /var/run/docker.sock
+if ! (
+  cd "$runtime"
+  docker compose run --rm --no-deps api \
+    python -c 'from app.services.derived_state import derived_state_status'
+); then
+  echo "The deployed API image does not contain RI-016. Rebuild it before installing the orchestrator." >&2
+  exit 1
+fi
 install -o root -g root -m 0644 \
   "$root/worker/systemd/$unit" "/etc/systemd/system/$unit"
 systemd-analyze verify "/etc/systemd/system/$unit"
