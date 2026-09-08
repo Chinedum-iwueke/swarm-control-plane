@@ -116,6 +116,10 @@ def prepare(
     if set(catalog_domains) != set(anchor_domains):
         raise ValueError("catalog and anchor domains do not match")
 
+    existing = {
+        (item["domain_key"], item["version"]): item
+        for item in call(client, "GET", "/v1/research/curricula")
+    }
     curricula = []
     for domain_key in sorted(catalog_domains):
         domain = catalog_domains[domain_key]
@@ -125,50 +129,53 @@ def prepare(
         )
         if len(source_ids) != 2:
             raise ValueError(f"{domain_key} requires two distinct sources")
-        curricula.append(
-            call(
-                client,
-                "POST",
-                "/v1/research/curricula",
+        payload = {
+            "domain_key": domain_key,
+            "version": catalog["version"],
+            "title": domain["title"],
+            "description": (
+                "Research Bible domain curriculum grounded in two "
+                "canonical, replayable evidence sources and evaluated "
+                "with held-out support, opposition, and abstention cases."
+            ),
+            "project": catalog["project"],
+            "topics": [
                 {
-                    "domain_key": domain_key,
-                    "version": catalog["version"],
+                    "key": domain["topic"],
                     "title": domain["title"],
-                    "description": (
-                        "Research Bible domain curriculum grounded in two "
-                        "canonical, replayable evidence sources and evaluated "
-                        "with held-out support, opposition, and abstention cases."
-                    ),
-                    "project": catalog["project"],
-                    "topics": [
-                        {
-                            "key": domain["topic"],
-                            "title": domain["title"],
-                            "evidence_object_ids": [anchor["expected_object_id"]],
-                            "source_object_ids": source_ids,
-                            "opposing_evidence_object_ids": [
-                                anchor["opposing_object_id"]
-                            ],
-                            "minimum_sources": 2,
-                        }
-                    ],
-                    "source_quality": {
-                        "allowed_authority_classes": [
-                            "primary",
-                            "derived",
-                            "institutional",
-                            "operational",
-                        ],
-                        "minimum_distinct_sources_per_topic": 2,
-                        "maximum_quarantined_fraction": 0.05,
-                        "require_opposing_evidence": True,
-                    },
-                    "qualified_roles": catalog["qualified_roles"],
-                    "review_cadence_days": 90,
-                    "created_by": "ri009b-curriculum-evaluator",
-                },
+                    "prerequisite_keys": [],
+                    "evidence_object_ids": [anchor["expected_object_id"]],
+                    "source_object_ids": source_ids,
+                    "opposing_evidence_object_ids": [anchor["opposing_object_id"]],
+                    "minimum_sources": 2,
+                }
+            ],
+            "source_quality": {
+                "allowed_authority_classes": [
+                    "primary",
+                    "derived",
+                    "institutional",
+                    "operational",
+                ],
+                "minimum_distinct_sources_per_topic": 2,
+                "maximum_quarantined_fraction": 0.05,
+                "require_opposing_evidence": True,
+            },
+            "qualified_roles": catalog["qualified_roles"],
+            "review_cadence_days": 90,
+            "created_by": "ri009b-curriculum-evaluator",
+        }
+        current = existing.get((domain_key, catalog["version"]))
+        if current is not None:
+            _require_matching(
+                current,
+                payload,
+                keys=tuple(payload),
+                identity=f"curriculum {domain_key} {catalog['version']}",
             )
-        )
+            curricula.append(current)
+        else:
+            curricula.append(call(client, "POST", "/v1/research/curricula", payload))
     return curricula
 
 
@@ -188,9 +195,7 @@ def evaluate(
         curriculum = curriculum_domains[domain_key]
         payload = {
             "curriculum_id": curriculum["id"],
-            "evaluation_version": catalog.get(
-                "evaluation_version", catalog["version"]
-            ),
+            "evaluation_version": catalog.get("evaluation_version", catalog["version"]),
             "cases": [
                 {
                     "case_key": f"{domain_key}-held-out",
@@ -198,6 +203,8 @@ def evaluate(
                     "opposition_query": domain["opposing_query"],
                     "expected_object_ids": [anchor["expected_object_id"]],
                     "opposing_object_ids": [anchor["opposing_object_id"]],
+                    "forbidden_object_ids": [],
+                    "should_abstain": False,
                 },
                 {
                     "case_key": f"{domain_key}-unknown",
@@ -205,6 +212,10 @@ def evaluate(
                         "What was the result of private study "
                         f"HERMES-RI009B-{domain_key.upper()}-ZQX-2049?"
                     ),
+                    "opposition_query": None,
+                    "expected_object_ids": [],
+                    "opposing_object_ids": [],
+                    "forbidden_object_ids": [],
                     "should_abstain": True,
                 },
             ],
@@ -218,14 +229,48 @@ def evaluate(
             },
             "evaluated_by": "ri009b-independent-evaluator",
         }
-        evaluations.append(
-            call(
-                client,
-                "POST",
-                f"/v1/research/curricula/{curriculum['id']}/evaluations",
-                payload,
-            )
+        prior = call(
+            client,
+            "GET",
+            f"/v1/research/curricula/{curriculum['id']}/evaluations",
         )
+        existing = next(
+            (
+                item
+                for item in prior
+                if item["evaluation_version"] == payload["evaluation_version"]
+            ),
+            None,
+        )
+        if existing is not None:
+            expected = {
+                **payload,
+                "case_specifications": payload["cases"],
+            }
+            _require_matching(
+                existing,
+                expected,
+                keys=(
+                    "curriculum_id",
+                    "evaluation_version",
+                    "case_specifications",
+                    "thresholds",
+                    "evaluated_by",
+                ),
+                identity=(
+                    f"evaluation {curriculum['id']} {payload['evaluation_version']}"
+                ),
+            )
+            evaluations.append(existing)
+        else:
+            evaluations.append(
+                call(
+                    client,
+                    "POST",
+                    f"/v1/research/curricula/{curriculum['id']}/evaluations",
+                    payload,
+                )
+            )
     return evaluations
 
 
@@ -236,18 +281,45 @@ def finalize(
 ) -> dict[str, Any]:
     curricula_by_domain = {item["domain_key"]: item for item in curricula}
     domain_keys = sorted(curricula_by_domain)
-    return call(
-        client,
-        "POST",
-        "/v1/research/curricula/portfolios",
-        {
-            "portfolio_key": catalog["portfolio_key"],
-            "version": catalog.get("portfolio_version", catalog["version"]),
-            "required_domain_keys": domain_keys,
-            "curriculum_ids": [curricula_by_domain[key]["id"] for key in domain_keys],
-            "created_by": "ri009b-independent-evaluator",
-        },
+    payload = {
+        "portfolio_key": catalog["portfolio_key"],
+        "version": catalog.get("portfolio_version", catalog["version"]),
+        "required_domain_keys": domain_keys,
+        "curriculum_ids": [curricula_by_domain[key]["id"] for key in domain_keys],
+        "created_by": "ri009b-independent-evaluator",
+    }
+    existing = next(
+        (
+            item
+            for item in call(client, "GET", "/v1/research/curricula/portfolios")
+            if item["portfolio_key"] == payload["portfolio_key"]
+            and item["version"] == payload["version"]
+        ),
+        None,
     )
+    if existing is not None:
+        _require_matching(
+            existing,
+            payload,
+            keys=("portfolio_key", "version", "required_domain_keys", "curriculum_ids"),
+            identity=f"portfolio {payload['portfolio_key']} {payload['version']}",
+        )
+        return existing
+    return call(client, "POST", "/v1/research/curricula/portfolios", payload)
+
+
+def _require_matching(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    keys: tuple[str, ...],
+    identity: str,
+) -> None:
+    mismatched = [key for key in keys if actual.get(key) != expected.get(key)]
+    if mismatched:
+        raise RuntimeError(
+            f"Existing immutable {identity} differs in: {', '.join(mismatched)}"
+        )
 
 
 def load_document(path: Path) -> dict[str, Any]:
@@ -284,9 +356,7 @@ def main() -> int:
         catalog["portfolio_version"] = args.portfolio_version
     with httpx.Client(
         base_url=os.environ["SWARM_API_URL"].rstrip("/"),
-        headers={
-            "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
-        },
+        headers={"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
         timeout=300,
     ) as client:
         if args.command == "discover":
