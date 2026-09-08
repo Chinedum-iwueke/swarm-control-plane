@@ -77,8 +77,8 @@ domains:
   title: Systematic Quantitative Research
   topic: momentum-after-costs
   supporting_query: commodity momentum trend following evidence after transaction costs
-  opposing_query: Regulation FD momentum effects weakened lead lag liquid core markets less liquid periphery markets trading costs
-  held_out_query: momentum small cross-correlations returns R2 exploitable profits transaction costs thin trading short sale costs microstructure
+  opposing_query: Regulation FD October 2000 momentum weakened lead lag liquid core markets less liquid periphery trading costs
+  held_out_query: momentum exploitable transactions costs thin trading short sale microstructure
 - key: time-series-methods
   title: Time-Series Methods
   topic: dependence-and-forecasting
