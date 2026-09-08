@@ -45,6 +45,13 @@ strategy and error state. The fleet operation ledger records the same run under
 5. After an incremental run, execute `python -m app.ri016_pilot parity`. The
    retrieval and graph content digests must match the clean full rebuild.
 
+If the replayable baseline reports `gaps_detected`, run
+`ri009b_curriculum_pilot.py diagnose`. It emits the pinned opposing objects,
+their current rank and provenance-bearing excerpts, actual top hits and any
+registered domain missing from the portfolio catalog. Author a new immutable
+curriculum version from that evidence; never relax a threshold or overwrite the
+failed evaluation.
+
 Rollback disables the orchestrator and uses the existing full retrieval and
 graph rebuild operations. It never removes or rewrites canonical evidence or
 the retained reconciliation receipts.

@@ -105,6 +105,113 @@ def discover(client: httpx.Client, catalog: dict[str, Any]) -> dict[str, Any]:
     return {"portfolio_key": catalog["portfolio_key"], "domains": domains}
 
 
+def diagnose(client: httpx.Client, catalog: dict[str, Any]) -> dict[str, Any]:
+    records = call(client, "GET", "/v1/research/curricula")
+    latest_by_domain: dict[str, dict[str, Any]] = {}
+    for record in records:
+        latest_by_domain.setdefault(record["domain_key"], record)
+    configured = {item["key"] for item in catalog["domains"]}
+    failures = []
+    for domain_key in sorted(configured):
+        curriculum = latest_by_domain.get(domain_key)
+        if curriculum is None:
+            failures.append({"domain_key": domain_key, "reason": "missing_curriculum"})
+            continue
+        evaluations = call(
+            client,
+            "GET",
+            f"/v1/research/curricula/{curriculum['id']}/evaluations",
+        )
+        evaluation = evaluations[0] if evaluations else None
+        if evaluation is None:
+            failures.append({"domain_key": domain_key, "reason": "missing_evaluation"})
+            continue
+        if evaluation["passed"]:
+            continue
+        cases = []
+        for case in evaluation.get("case_specifications", []):
+            opposing_ids = case.get("opposing_object_ids", [])
+            query = case.get("opposition_query")
+            if not query or not opposing_ids:
+                continue
+            result = call(
+                client,
+                "POST",
+                "/v1/research/retrieval/query",
+                {"query": query, "project": catalog["project"], "limit": 50},
+            )
+            returned_ids = [str(hit["object_id"]) for hit in result["hits"]]
+            targets = []
+            for target_id in opposing_ids:
+                target = call(
+                    client,
+                    "GET",
+                    f"/v1/research/evidence/objects/{target_id}",
+                )
+                content = str(target.get("payload", {}).get("content_text") or "")
+                targets.append(
+                    {
+                        "object_id": target_id,
+                        "content_digest": target["content_digest"],
+                        "coordinates": target.get("payload", {}).get("coordinates"),
+                        "content_excerpt": " ".join(content.split())[:1_000],
+                        "returned_rank": (
+                            returned_ids.index(target_id) + 1
+                            if target_id in returned_ids
+                            else None
+                        ),
+                    }
+                )
+            cases.append(
+                {
+                    "case_key": case["case_key"],
+                    "query": query,
+                    "targets": targets,
+                    "candidate_counts": result.get("candidate_counts", {}),
+                    "top_hits": [
+                        {
+                            "rank": rank,
+                            "object_id": str(hit["object_id"]),
+                            "confidence": hit["confidence"],
+                            "excerpt": " ".join(hit["text"].split())[:300],
+                        }
+                        for rank, hit in enumerate(result["hits"][:10], start=1)
+                    ],
+                }
+            )
+        failures.append(
+            {
+                "domain_key": domain_key,
+                "reason": "evaluation_not_passing",
+                "curriculum_id": curriculum["id"],
+                "evaluation_id": evaluation["id"],
+                "metrics": evaluation["metrics"],
+                "cases": cases,
+            }
+        )
+    unconfigured = []
+    for domain_key in sorted(set(latest_by_domain) - configured):
+        curriculum = latest_by_domain[domain_key]
+        evaluations = call(
+            client,
+            "GET",
+            f"/v1/research/curricula/{curriculum['id']}/evaluations",
+        )
+        unconfigured.append(
+            {
+                "domain_key": domain_key,
+                "curriculum": curriculum,
+                "latest_evaluation": evaluations[0] if evaluations else None,
+            }
+        )
+    return {
+        "schema_version": "ri009b-curriculum-diagnostic-v1.0.0",
+        "corpus_project": catalog["project"],
+        "failed_domains": failures,
+        "registered_domains_absent_from_catalog": unconfigured,
+    }
+
+
 def indexed_domains(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     domains = document["domains"]
     indexed = {item["key"]: item for item in domains}
@@ -339,7 +446,7 @@ def load_document(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("discover", "all"))
+    parser.add_argument("command", choices=("discover", "diagnose", "all"))
     parser.add_argument(
         "--catalog",
         type=Path,
@@ -368,6 +475,8 @@ def main() -> int:
     ) as client:
         if args.command == "discover":
             result = discover(client, catalog)
+        elif args.command == "diagnose":
+            result = diagnose(client, catalog)
         else:
             anchors = load_document(args.anchors)
             curricula = prepare(client, catalog, anchors)
