@@ -35,6 +35,11 @@ from app.models.curriculum import (
     ResearchDomainCurriculum,
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
+from app.models.derived_state import (
+    DerivedStateChange,
+    DerivedStatePhaseReceipt,
+    DerivedStateReconciliation,
+)
 from app.models.discovery import DiscoveryMap, DiscoveryMapEvent
 from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
@@ -223,6 +228,9 @@ __all__ = [
     "CorpusSecurityFinding",
     "CorpusSyncItem",
     "CorpusSyncRun",
+    "DerivedStateChange",
+    "DerivedStatePhaseReceipt",
+    "DerivedStateReconciliation",
     "DiscoveryMap",
     "DiscoveryMapEvent",
     "DiscoveryPortfolio",

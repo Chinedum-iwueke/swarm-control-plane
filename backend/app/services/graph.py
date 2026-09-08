@@ -367,6 +367,122 @@ def build_graph_projection(
     return state
 
 
+def update_graph_projection_incrementally(
+    db: Session,
+    changed_object_ids: set[UUID],
+    *,
+    expected_epoch: int,
+) -> EvidenceGraphProjectionState:
+    state = db.get(EvidenceGraphProjectionState, PROJECTION_NAME)
+    source_epoch = corpus_epoch(db)
+    if state is None or source_epoch != expected_epoch:
+        raise HTTPException(status_code=409, detail="Incremental graph snapshot moved.")
+    impacted = set(changed_object_ids)
+    if impacted:
+        db.execute(
+            delete(EvidenceGraphProjectionEdge).where(
+                or_(
+                    EvidenceGraphProjectionEdge.subject_id.in_(impacted),
+                    EvidenceGraphProjectionEdge.object_id.in_(impacted),
+                    EvidenceGraphProjectionEdge.provenance_object_id.in_(impacted),
+                )
+            )
+        )
+        db.execute(
+            delete(EvidenceGraphProjectionNode).where(
+                EvidenceGraphProjectionNode.object_id.in_(impacted)
+            )
+        )
+        objects = list(
+            db.scalars(
+                select(CanonicalEvidenceObject).where(
+                    CanonicalEvidenceObject.id.in_(impacted),
+                    is_active_expression(),
+                )
+            ).all()
+        )
+        if objects:
+            db.execute(
+                insert(EvidenceGraphProjectionNode),
+                [
+                    {
+                        "object_id": item.id,
+                        "object_type": item.object_type,
+                        "project": item.project,
+                        "access_class": item.access_class,
+                        "content_digest": item.content_digest,
+                        "label": _object_label(item),
+                        "projection_version": PROJECTION_VERSION,
+                    }
+                    for item in objects
+                ],
+            )
+        active_ids = select(CanonicalEvidenceObject.id).where(is_active_expression())
+        edges = list(
+            db.scalars(
+                select(CanonicalEvidenceEdge).where(
+                    or_(
+                        CanonicalEvidenceEdge.subject_id.in_(impacted),
+                        CanonicalEvidenceEdge.object_id.in_(impacted),
+                        CanonicalEvidenceEdge.provenance_object_id.in_(impacted),
+                    ),
+                    CanonicalEvidenceEdge.subject_id.in_(active_ids),
+                    CanonicalEvidenceEdge.object_id.in_(active_ids),
+                )
+            ).all()
+        )
+        if edges:
+            db.execute(
+                insert(EvidenceGraphProjectionEdge),
+                [
+                    {
+                        "edge_id": edge.id,
+                        "subject_id": edge.subject_id,
+                        "predicate": edge.predicate,
+                        "object_id": edge.object_id,
+                        "valid_from": edge.valid_from,
+                        "valid_until": edge.valid_until,
+                        "provenance_object_id": edge.provenance_object_id
+                        or edge.subject_id,
+                        "access_class": edge.access_class or "internal",
+                        "record_digest": _edge_digest(edge),
+                        "projection_version": PROJECTION_VERSION,
+                    }
+                    for edge in edges
+                ],
+            )
+    if corpus_epoch(db) != source_epoch:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Canonical evidence changed during incremental graph update.",
+        )
+    corpus = graph_corpus_digest(db)
+    node_count = int(
+        db.scalar(select(func.count()).select_from(EvidenceGraphProjectionNode)) or 0
+    )
+    edge_count = int(
+        db.scalar(select(func.count()).select_from(EvidenceGraphProjectionEdge)) or 0
+    )
+    manifest = {
+        "schema_version": "knowledge-graph-manifest-v1.1.0",
+        "projection_version": PROJECTION_VERSION,
+        "corpus_digest": corpus,
+        "node_count": node_count,
+        "edge_count": edge_count,
+    }
+    state.corpus_digest = corpus
+    state.source_epoch = source_epoch
+    state.node_count = node_count
+    state.edge_count = edge_count
+    state.manifest = manifest
+    state.manifest_digest = digest_document(manifest)
+    state.built_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(state)
+    return state
+
+
 def graph_projection_status(
     db: Session,
 ) -> tuple[EvidenceGraphProjectionState, bool]:
@@ -383,6 +499,63 @@ def graph_projection_status(
             db.commit()
         return state, stale
     return state, state.source_epoch != current_epoch
+
+
+def graph_projection_content_digest(db: Session) -> str:
+    nodes = db.execute(
+        select(
+            EvidenceGraphProjectionNode.object_id,
+            EvidenceGraphProjectionNode.object_type,
+            EvidenceGraphProjectionNode.project,
+            EvidenceGraphProjectionNode.access_class,
+            EvidenceGraphProjectionNode.content_digest,
+            EvidenceGraphProjectionNode.label,
+        ).order_by(EvidenceGraphProjectionNode.object_id)
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    edges = db.execute(
+        select(
+            EvidenceGraphProjectionEdge.edge_id,
+            EvidenceGraphProjectionEdge.subject_id,
+            EvidenceGraphProjectionEdge.predicate,
+            EvidenceGraphProjectionEdge.object_id,
+            EvidenceGraphProjectionEdge.valid_from,
+            EvidenceGraphProjectionEdge.valid_until,
+            EvidenceGraphProjectionEdge.provenance_object_id,
+            EvidenceGraphProjectionEdge.access_class,
+            EvidenceGraphProjectionEdge.record_digest,
+        ).order_by(EvidenceGraphProjectionEdge.edge_id)
+    ).yield_per(_PROJECTION_BATCH_SIZE)
+    return _stream_digest(
+        chain(
+            (
+                (
+                    "node",
+                    str(row.object_id),
+                    row.object_type,
+                    row.project,
+                    row.access_class,
+                    row.content_digest,
+                    row.label,
+                )
+                for row in nodes
+            ),
+            (
+                (
+                    "edge",
+                    str(row.edge_id),
+                    str(row.subject_id),
+                    row.predicate,
+                    str(row.object_id),
+                    row.valid_from.isoformat() if row.valid_from else None,
+                    row.valid_until.isoformat() if row.valid_until else None,
+                    str(row.provenance_object_id),
+                    row.access_class,
+                    row.record_digest,
+                )
+                for row in edges
+            ),
+        )
+    )
 
 
 def query_graph(

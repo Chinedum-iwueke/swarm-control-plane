@@ -1179,10 +1179,15 @@ function renderResearch() {
   const scientificBenchmarks = state.dashboard.scientific_benchmarks || [];
   const mathematicsCapabilities = state.dashboard.mathematics_capabilities || [];
   const intelligenceEvaluation = state.dashboard.intelligence_evaluation || { status: "not_demonstrated", domains: {}, limitations: [] };
+  const derivedState = state.dashboard.derived_state || { current: false, pending_changes: 0, retrieval: { stale: true }, graph: { stale: true }, latest_run: null };
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
   const consequenceItems = state.dashboard.lifecycle_consequences?.items || [];
   const memoryTasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_memory_sync");
   document.getElementById("scientific-review-count").textContent = `${scientificReviewQueue.length} pending`;
+  const derivedRun = derivedState.latest_run;
+  document.getElementById("derived-state-status").innerHTML = statusBadge(derivedState.current ? "current" : (derivedRun?.state || "stale"));
+  document.getElementById("derived-state").innerHTML = `
+    <article class="entity-row"><div class="entity-primary"><strong>${derivedState.current ? "Derived views are current" : "Derived work is pending"}</strong><div class="entity-meta"><span>Corpus epoch ${derivedState.corpus_epoch ?? "unknown"}</span><span>${derivedState.pending_changes || 0} unclaimed changes</span><span>Retrieval ${derivedState.retrieval?.stale ? "stale" : "current"}</span><span>Graph ${derivedState.graph?.stale ? "stale" : "current"}</span>${derivedRun ? `<span>${escapeHtml(humanize(derivedRun.phase))}</span><span>${escapeHtml(derivedRun.strategy)}</span>` : ""}</div><p>${escapeHtml(derivedState.claim_boundary || "Canonical evidence remains available while derived views converge.")}</p>${derivedRun?.error_summary ? `<p>${escapeHtml(derivedRun.error_summary)}</p>` : ""}</div></article>`;
   document.getElementById("scientific-review-queue").innerHTML = scientificReviewQueue.length ? scientificReviewQueue.map((item) => `
     <article class="entity-row">
       <div class="entity-primary"><strong>${escapeHtml(humanize(item.scientific_type))}</strong><div class="entity-meta"><span>${escapeHtml(item.representation_version)}</span><span class="mono">${shortHash(item.source_region_digest)}</span><span>${item.uncertainties.length} uncertainties</span></div><p>${escapeHtml(item.normalized_content.slice(0, 240))}</p></div>

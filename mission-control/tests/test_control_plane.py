@@ -105,6 +105,19 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "limitations": ["no_evaluation_suite"],
                 },
             )
+        if request.url.path == "/v1/research/derived-state/status":
+            return httpx.Response(
+                200,
+                json={
+                    "corpus_epoch": 42,
+                    "pending_changes": 0,
+                    "retrieval": {"source_epoch": 42, "stale": False},
+                    "graph": {"source_epoch": 42, "stale": False},
+                    "current": True,
+                    "latest_run": None,
+                    "claim_boundary": "Derived state is current.",
+                },
+            )
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -133,6 +146,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["institutional_lifecycles"]["count"] == 0
     assert result["lifecycle_consequences"]["count"] == 0
     assert result["intelligence_evaluation"]["status"] == "not_demonstrated"
+    assert result["derived_state"]["current"] is True
 
 
 @pytest.mark.asyncio
@@ -549,7 +563,7 @@ async def test_projection_rebuild_uses_maintenance_timeout(
     finally:
         await client.close()
 
-    assert captured["path"] == "/v1/research/corpus/projections/recover"
+    assert captured["path"] == "/v1/research/derived-state/reconciliations"
     assert captured["timeout"]["read"] == 600.0
 
 

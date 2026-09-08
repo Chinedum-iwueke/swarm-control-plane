@@ -160,6 +160,7 @@ class BrainEvaluationResponse(StrictModel):
     thresholds: dict
     metrics: dict
     cases: list[dict]
+    case_specifications: list[dict]
     passed: bool
     status: Literal["qualified", "gaps_detected"]
     review_due_days: int

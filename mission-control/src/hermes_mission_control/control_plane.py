@@ -153,6 +153,18 @@ class ControlPlaneClient:
                 "limitations": ["evaluation_service_unavailable"],
             },
         )
+        derived_state = await self._optional_object(
+            "/v1/research/derived-state/status",
+            {
+                "corpus_epoch": None,
+                "pending_changes": 0,
+                "retrieval": {"stale": True},
+                "graph": {"stale": True},
+                "current": False,
+                "latest_run": None,
+                "claim_boundary": "Derived-state service is unavailable.",
+            },
+        )
         return {
             "health": health,
             "tasks": tasks,
@@ -193,6 +205,7 @@ class ControlPlaneClient:
             "scientific_benchmarks": scientific_benchmarks,
             "mathematics_capabilities": mathematics_capabilities,
             "intelligence_evaluation": intelligence_evaluation,
+            "derived_state": derived_state,
         }
 
     async def adjudicate_scientific_representation(
@@ -599,12 +612,22 @@ class ControlPlaneClient:
         )
 
     async def rebuild_corpus_projections(self, project: str) -> dict[str, Any]:
-        return await self._request(
+        run = await self._request(
             "POST",
-            "/v1/research/corpus/projections/recover",
-            json={"project": project, "requested_by": "founder-mission-control"},
+            "/v1/research/derived-state/reconciliations",
+            json={"requested_by": "founder-mission-control", "force_full": False},
             timeout=self._settings.projection_rebuild_timeout_seconds,
         )
+        return {
+            "evidence": {
+                "project": project,
+                "scheduled": run is not None,
+                "reconciliation_id": run.get("id") if run else None,
+                "state": run.get("state") if run else "current",
+                "source_epoch": run.get("source_epoch_target") if run else None,
+                "strategy": run.get("strategy") if run else "no_change",
+            }
+        }
 
     async def register_research_bundle(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(

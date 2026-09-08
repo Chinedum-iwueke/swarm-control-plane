@@ -195,6 +195,9 @@ def test_evaluation_scores_retrieval_opposition_abstention_and_leakage(
     )
 
     assert result.passed is True
+    assert result.case_specifications == [
+        case.model_dump(mode="json") for case in evaluation_payload(curriculum.id).cases
+    ]
     assert result.metrics == {
         "retrieval_recall": 1.0,
         "citation_fidelity": 1.0,

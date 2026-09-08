@@ -22,6 +22,7 @@ from app.api.routes import (
     corpus_sync_router,
     curriculum_router,
     data_contracts_router,
+    derived_state_router,
     discovery_portfolio_router,
     discovery_router,
     evaluator_routing_router,
@@ -96,6 +97,7 @@ app.include_router(autonomous_research_router)
 app.include_router(corpus_router)
 app.include_router(corpus_sync_router)
 app.include_router(curriculum_router)
+app.include_router(derived_state_router)
 app.include_router(falsification_router)
 app.include_router(ingestion_router)
 app.include_router(intelligence_evaluation_router)

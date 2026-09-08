@@ -332,6 +332,131 @@ def build_projections(
     return state
 
 
+def update_projections_incrementally(
+    db: Session,
+    changed_object_ids: set[UUID],
+    *,
+    expected_epoch: int,
+) -> EvidenceRetrievalState:
+    """Refresh only scientific rows affected by a canonical object/edge change."""
+    state = db.get(EvidenceRetrievalState, PROJECTION_NAME)
+    digest, source_epoch = freshness_snapshot(db)
+    if state is None or source_epoch != expected_epoch:
+        raise HTTPException(
+            status_code=409, detail="Incremental retrieval snapshot moved."
+        )
+    impacted = set(changed_object_ids)
+    if impacted:
+        for subject_id, object_id in db.execute(
+            select(
+                CanonicalEvidenceEdge.subject_id,
+                CanonicalEvidenceEdge.object_id,
+            ).where(
+                or_(
+                    CanonicalEvidenceEdge.subject_id.in_(impacted),
+                    CanonicalEvidenceEdge.object_id.in_(impacted),
+                )
+            )
+        ):
+            impacted.update((subject_id, object_id))
+        db.execute(
+            delete(EvidenceRetrievalProjection).where(
+                EvidenceRetrievalProjection.object_id.in_(impacted)
+            )
+        )
+        objects = db.execute(
+            select(
+                CanonicalEvidenceObject.id,
+                CanonicalEvidenceObject.project,
+                CanonicalEvidenceObject.access_class,
+                CanonicalEvidenceObject.object_schema_version,
+                CanonicalEvidenceObject.content_digest,
+                CanonicalEvidenceObject.payload,
+            )
+            .where(
+                CanonicalEvidenceObject.id.in_(impacted),
+                CanonicalEvidenceObject.object_type == "scientific_object",
+                is_active_expression(),
+            )
+            .order_by(CanonicalEvidenceObject.id)
+        ).all()
+        mappings = _projection_mappings_for_rows(db, objects, datetime.now(UTC))
+        if mappings:
+            db.execute(insert(EvidenceRetrievalProjection), mappings)
+    final_digest, final_epoch = freshness_snapshot(db)
+    if (final_digest, final_epoch) != (digest, source_epoch):
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Canonical evidence changed during incremental retrieval update.",
+        )
+    state.corpus_digest = digest
+    state.source_epoch = source_epoch
+    state.object_count = int(
+        db.scalar(select(func.count()).select_from(EvidenceRetrievalProjection)) or 0
+    )
+    state.built_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(state)
+    return state
+
+
+def _projection_mappings_for_rows(db: Session, objects, now: datetime) -> list[dict]:
+    ids = {row.id for row in objects}
+    if not ids:
+        return []
+    neighbors: dict[UUID, set[UUID]] = {item: set() for item in ids}
+    for subject_id, object_id in db.execute(
+        select(
+            CanonicalEvidenceEdge.subject_id,
+            CanonicalEvidenceEdge.object_id,
+        ).where(
+            or_(
+                CanonicalEvidenceEdge.subject_id.in_(ids),
+                CanonicalEvidenceEdge.object_id.in_(ids),
+            )
+        )
+    ):
+        if subject_id in neighbors:
+            neighbors[subject_id].add(object_id)
+        if object_id in neighbors:
+            neighbors[object_id].add(subject_id)
+    aliases_by_id: dict[UUID, list[str]] = {item: [] for item in ids}
+    for object_id, namespace, object_type, value in db.execute(
+        select(
+            CanonicalIdentityAlias.canonical_object_id,
+            CanonicalIdentityAlias.namespace,
+            CanonicalIdentityAlias.native_object_type,
+            CanonicalIdentityAlias.alias_value,
+        ).where(CanonicalIdentityAlias.canonical_object_id.in_(ids))
+    ):
+        aliases_by_id[object_id].extend((value, f"{namespace}:{object_type}:{value}"))
+    mappings = []
+    for record in objects:
+        text_value = str(record.payload.get("content_text") or "").strip()
+        if not text_value:
+            continue
+        terms = term_frequencies(text_value)
+        mappings.append(
+            {
+                "object_id": record.id,
+                "project": record.project,
+                "access_class": record.access_class,
+                "object_schema_version": record.object_schema_version,
+                "scientific_type": record.payload["scientific_type"],
+                "content_digest": record.content_digest,
+                "content_text": text_value,
+                "aliases": sorted(set(aliases_by_id[record.id])),
+                "lexical_terms": terms,
+                "vector": hashed_vector(terms),
+                "graph_neighbors": sorted(neighbors[record.id], key=str),
+                "projection_version": PROJECTION_VERSION,
+                "indexed_at": now,
+            }
+        )
+    return mappings
+
+
 def projection_status(db: Session) -> tuple[EvidenceRetrievalState, str, bool]:
     state = db.get(EvidenceRetrievalState, PROJECTION_NAME)
     if state is None:
@@ -344,6 +469,41 @@ def projection_status(db: Session) -> tuple[EvidenceRetrievalState, str, bool]:
         or getattr(state, "source_epoch", 0) != current_epoch
     )
     return state, current, stale
+
+
+def retrieval_projection_digest(db: Session) -> str:
+    rows = db.execute(
+        select(
+            EvidenceRetrievalProjection.object_id,
+            EvidenceRetrievalProjection.project,
+            EvidenceRetrievalProjection.access_class,
+            EvidenceRetrievalProjection.object_schema_version,
+            EvidenceRetrievalProjection.scientific_type,
+            EvidenceRetrievalProjection.content_digest,
+            EvidenceRetrievalProjection.content_text,
+            EvidenceRetrievalProjection.aliases,
+            EvidenceRetrievalProjection.lexical_terms,
+            EvidenceRetrievalProjection.vector,
+            EvidenceRetrievalProjection.graph_neighbors,
+        ).order_by(EvidenceRetrievalProjection.object_id)
+    )
+    values = (
+        (
+            str(row.object_id),
+            row.project,
+            row.access_class,
+            row.object_schema_version,
+            row.scientific_type,
+            row.content_digest,
+            row.content_text,
+            json.dumps(row.aliases, sort_keys=True),
+            json.dumps(row.lexical_terms, sort_keys=True),
+            json.dumps(row.vector),
+            json.dumps(sorted(map(str, row.graph_neighbors))),
+        )
+        for row in rows
+    )
+    return _digest_rows(values)
 
 
 def hybrid_search(

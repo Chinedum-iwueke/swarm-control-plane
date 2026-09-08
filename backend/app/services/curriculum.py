@@ -288,6 +288,7 @@ def evaluate_curriculum(
         thresholds=thresholds,
         metrics=metrics,
         cases=case_results,
+        case_specifications=[case.model_dump(mode="json") for case in payload.cases],
         passed=passed,
         status=document["status"],
         review_due_days=document["review_due_days"],

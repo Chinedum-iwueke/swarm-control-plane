@@ -271,8 +271,17 @@ def main() -> int:
         type=Path,
         default=Path("worker/curricula/ri009b-live-anchors.yaml"),
     )
+    parser.add_argument("--version")
+    parser.add_argument("--evaluation-version")
+    parser.add_argument("--portfolio-version")
     args = parser.parse_args()
     catalog = load_document(args.catalog)
+    if args.version:
+        catalog["version"] = args.version
+    if args.evaluation_version:
+        catalog["evaluation_version"] = args.evaluation_version
+    if args.portfolio_version:
+        catalog["portfolio_version"] = args.portfolio_version
     with httpx.Client(
         base_url=os.environ["SWARM_API_URL"].rstrip("/"),
         headers={

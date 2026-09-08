@@ -60,6 +60,9 @@ class ResearchBrainEvaluation(Base):
     thresholds: Mapped[dict] = mapped_column(JSONB, nullable=False)
     metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     cases: Mapped[list] = mapped_column(JSONB, nullable=False)
+    case_specifications: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     review_due_days: Mapped[int] = mapped_column(Integer, nullable=False)
