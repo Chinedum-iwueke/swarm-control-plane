@@ -18,7 +18,7 @@ Source acceptance requires:
 Automated source validation covers strategy boundaries, deterministic versioning,
 route/migration contracts, retained curriculum cases, existing retrieval/graph
 behavior, Mission Control API behavior and JavaScript syntax. Production closure
-additionally requires migration `d2e8f5b13a70`, a replayable RI-009B curriculum
-baseline, the enabled VM2 orchestrator, one live delta reconciliation, one
+additionally requires migration `d2e8f5b13a70`, an enabled VM2 orchestrator
+projection pass, a replayable RI-009B curriculum baseline, one live delta reconciliation, one
 no-change cycle and one successful `ri016_pilot parity` receipt. Until those live
 receipts exist, source is complete but production freshness is not yet claimed.

@@ -16,7 +16,14 @@ def call(
     payload: dict[str, Any] | None = None,
 ) -> Any:
     response = client.request(method, path, json=payload)
-    response.raise_for_status()
+    if response.is_error:
+        try:
+            detail = response.json().get("detail", response.text)
+        except (ValueError, AttributeError):
+            detail = response.text
+        raise RuntimeError(
+            f"{method} {path} returned HTTP {response.status_code}: {detail}"
+        )
     return response.json()
 
 

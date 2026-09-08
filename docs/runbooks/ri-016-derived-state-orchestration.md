@@ -32,12 +32,15 @@ strategy and error state. The fleet operation ledger records the same run under
 ## Activation
 
 1. Deploy migration `d2e8f5b13a70` and recreate the VM2 API.
-2. Create one replayable curriculum baseline with
+2. Install `worker/systemd/install-derived-state-orchestrator.sh --enable
+   --start` on VM2 and wait until retrieval and graph report `stale=false`. The
+   first pass may honestly finish `needs_attention` because legacy curricula
+   do not contain replayable cases.
+3. Create one replayable curriculum baseline with
    `ri009b_curriculum_pilot.py all --version 1.1.0
    --evaluation-version 1.1.0 --portfolio-version 1.1.0`.
-3. Install `worker/systemd/install-derived-state-orchestrator.sh --enable
-   --start` on VM2.
-4. Run `python -m app.ri016_pilot reconcile`; a current corpus must return
+4. Let the orchestrator consume the curriculum-state change, then run
+   `python -m app.ri016_pilot reconcile`; a current corpus must return
    `no_change`, while a changed corpus must reach `succeeded`.
 5. After an incremental run, execute `python -m app.ri016_pilot parity`. The
    retrieval and graph content digests must match the clean full rebuild.
