@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
+from datetime import UTC, datetime, timedelta
 
 from app.db.session import SessionLocal
 from app.services.derived_state import (
@@ -18,6 +20,7 @@ def main() -> int:
     parser.add_argument(
         "command", choices=("reconcile", "parity"), default="reconcile", nargs="?"
     )
+    parser.add_argument("--wait-seconds", type=int, default=7_200)
     args = parser.parse_args()
     with SessionLocal() as db:
         before = derived_state_status(db)
@@ -38,6 +41,16 @@ def main() -> int:
         )
         if run is not None and run.state not in {"succeeded", "needs_attention"}:
             run = execute_reconciliation(db, run.id)
+            deadline = datetime.now(UTC) + timedelta(seconds=args.wait_seconds)
+            while run.state in {"queued", "running"} and datetime.now(UTC) < deadline:
+                time.sleep(2)
+                db.expire_all()
+                run = db.get(type(run), run.id)
+            if run.state in {"queued", "running"}:
+                raise TimeoutError(
+                    f"Derived-state run {run.id} did not finish within "
+                    f"{args.wait_seconds} seconds."
+                )
         after = derived_state_status(db)
         rebuilt_digests = (
             {
