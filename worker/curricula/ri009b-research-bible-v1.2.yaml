@@ -23,7 +23,7 @@ domains:
   title: Data Quality
   topic: point-in-time-data-quality
   supporting_query: financial data quality survivorship timestamps revisions
-  opposing_query: data errors structural changes analyst judgment subjective biases forecast quality
+  opposing_query: traditional approach analyst judgment selective perception hindsight bias stereotyping overconfidence forecast quality
   held_out_query: data quality historical equity returns
 - key: execution-science
   title: Execution Science
@@ -77,8 +77,8 @@ domains:
   title: Systematic Quantitative Research
   topic: momentum-after-costs
   supporting_query: commodity momentum trend following evidence after transaction costs
-  opposing_query: commodity momentum trading costs turnover implementation limitations
-  held_out_query: evidence for commodity momentum and trend following after costs
+  opposing_query: Regulation FD momentum effects weakened lead lag liquid core markets less liquid periphery markets trading costs
+  held_out_query: momentum small cross-correlations returns R2 exploitable profits transaction costs thin trading short sale costs microstructure
 - key: time-series-methods
   title: Time-Series Methods
   topic: dependence-and-forecasting
