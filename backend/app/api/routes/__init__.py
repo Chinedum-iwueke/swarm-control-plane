@@ -4,6 +4,7 @@ from app.api.routes.agent_governance import router as agent_governance_router
 from app.api.routes.agent_research import router as agent_research_router
 from app.api.routes.agent_runtime import router as agent_runtime_router
 from app.api.routes.agents import router as agents_router
+from app.api.routes.alpha_campaign import router as alpha_campaign_router
 from app.api.routes.authority import router as authority_router
 from app.api.routes.autonomous_research import router as autonomous_research_router
 from app.api.routes.calibrations import router as calibrations_router
@@ -94,6 +95,7 @@ __all__ = [
     "agent_research_router",
     "agent_runtime_router",
     "agents_router",
+    "alpha_campaign_router",
     "authority_router",
     "autonomous_research_router",
     "calibrations_router",

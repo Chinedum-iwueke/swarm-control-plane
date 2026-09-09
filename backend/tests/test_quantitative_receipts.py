@@ -60,6 +60,28 @@ def test_registers_exact_authoritative_receipt():
     db.add.assert_called_once_with(record)
 
 
+def test_registers_alpha001_only_from_bulletproof_admission_producer():
+    value = receipt(
+        milestone="ALPHA-001",
+        producer="bt.institutional.alpha.real_data_admission_receipt",
+    )
+    value["result"] = {
+        "schema_version": "alpha001-real-data-admission-v1.0.0",
+        "admitted": True,
+        "evidence_class": "live_exchange_history",
+        "venue": "bybit",
+        "instrument": "BTCUSDT",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.return_value = None
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "ALPHA-001"
+    assert record.receipt["authority"]["orders"] is False
+
+
 def test_registration_is_idempotent():
     db = MagicMock()
     existing = object()
@@ -163,13 +185,21 @@ def test_exec001_requires_active_registered_event_schema():
 
 
 def test_exec002_requires_active_registered_model():
-    value = receipt(milestone="EXEC-002", producer="bt.institutional.microstructure.microstructure_state_receipt")
-    value["result"] = {"schema_version": "exec002-microstructure-dossier-v1.0.0", "model_schema_digest": "7" * 64}
+    value = receipt(
+        milestone="EXEC-002",
+        producer="bt.institutional.microstructure.microstructure_state_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec002-microstructure-dossier-v1.0.0",
+        "model_schema_digest": "7" * 64,
+    }
     value["result_digest"] = digest(value["result"])
     core = {key: item for key, item in value.items() if key != "receipt_digest"}
     value["receipt_digest"] = digest(core)
-    db = MagicMock(); db.scalar.side_effect = [None]
+    db = MagicMock()
+    db.scalar.side_effect = [None]
     with pytest.raises(QuantitativeReceiptConflict, match="model is not active"):
         register_receipt(db, payload(value))
-    db = MagicMock(); db.scalar.side_effect = [object(), None]
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
     assert register_receipt(db, payload(value)).milestone == "EXEC-002"

@@ -17,6 +17,7 @@ class QuantitativeReceiptConflict(RuntimeError):
 
 
 PRODUCERS = {
+    "ALPHA-001": "bt.institutional.alpha.real_data_admission_receipt",
     "DATA-001": "bt.institutional.data.reference_snapshot_receipt",
     "DATA-002": "bt.institutional.data.market_catalog_receipt",
     "DATA-003": "bt.institutional.data.lake_quality_receipt",

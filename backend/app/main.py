@@ -11,6 +11,7 @@ from app.api.routes import (
     agent_research_router,
     agent_runtime_router,
     agents_router,
+    alpha_campaign_router,
     authority_router,
     autonomous_research_router,
     calibrations_router,
@@ -90,6 +91,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(alpha_campaign_router)
 app.include_router(authority_router)
 app.include_router(causal_pipelines_router)
 app.include_router(calibrations_router)
