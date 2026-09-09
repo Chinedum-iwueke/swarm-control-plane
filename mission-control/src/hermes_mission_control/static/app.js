@@ -1279,10 +1279,12 @@ function renderResearch() {
   document.getElementById("alpha-campaigns").innerHTML = alphaCampaigns.length ? alphaCampaigns.map((item) => {
     const datasets = item.specification?.dataset_bindings || [];
     const boundary = item.claim_boundary || "No-capital research coordination only.";
+    const execution = item.execution;
     return `<article class="entity-row">
       <div class="entity-primary"><strong>${escapeHtml(item.campaign_key)} · v${escapeHtml(item.version)}</strong>
         <div class="entity-meta"><span>${escapeHtml(humanize(item.phase))}</span><span>Next: ${escapeHtml(humanize(item.next_action))}</span><span>${item.hypothesis_count}/${item.budget?.max_hypotheses || 0} hypotheses</span><span>${item.trial_count}/${item.budget?.max_total_trials || 0} trials</span><span>${datasets.length} real-data bindings</span><span>Heartbeat ${relativeTime(item.heartbeat_at)}</span><span class="mono">${shortHash(item.campaign_digest)}</span></div>
         <p>${escapeHtml(item.objective)}</p><p>${escapeHtml(boundary)}</p>
+        ${execution ? `<div class="entity-meta"><span>Executor ${escapeHtml(humanize(execution.status))}</span><span>${execution.attempt_count}/${execution.max_attempts} attempts</span><span>${escapeHtml(humanize(execution.disposition || "awaiting receipt"))}</span><span>Worker ${relativeTime(execution.heartbeat_at)}</span><span class="mono">${escapeHtml(execution.task_number)}</span></div>` : ""}
         ${item.terminal_reason?.category ? `<p class="operation-error">${escapeHtml(humanize(item.terminal_reason.category))}</p>` : ""}
       </div><div class="entity-side">${statusBadge(item.status)}</div>
     </article>`;

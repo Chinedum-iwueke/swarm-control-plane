@@ -19,7 +19,7 @@ def call(client: httpx.Client, method: str, path: str, payload: dict | None = No
 
 
 def select_bindings(
-    client: httpx.Client, receipt: dict
+    client: httpx.Client, receipt: dict, *, portfolio_id: str | None = None
 ) -> tuple[dict, dict, dict, dict, dict]:
     result = receipt["result"]
     dataset_digest = receipt["dataset_digest"]
@@ -79,6 +79,7 @@ def select_bindings(
             if item["project"] == "bulletproof-bt"
             and item["status"] == "allocated"
             and item["selected_count"] > 0
+            and (portfolio_id is None or item["id"] == portfolio_id)
         ),
         None,
     )
@@ -107,6 +108,15 @@ def main() -> int:
     parser.add_argument("--max-duration-seconds", type=int, default=604800)
     parser.add_argument("--max-consecutive-failures", type=int, default=3)
     parser.add_argument("--activate", action="store_true")
+    parser.add_argument(
+        "--portfolio-id",
+        help="Bind one exact allocated DISC-009 portfolio instead of first-match discovery.",
+    )
+    parser.add_argument(
+        "--execution-protocol",
+        choices=["alpha002-native-v1"],
+        help="Opt a new immutable campaign into the continuous native executor.",
+    )
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     if (
@@ -123,7 +133,9 @@ def main() -> int:
             "/v1/research/quantitative-receipts",
             {"receipt": receipt, "registered_by": "alpha-research-runner"},
         )
-        build, catalog, partition, lake, portfolio = select_bindings(client, receipt)
+        build, catalog, partition, lake, portfolio = select_bindings(
+            client, receipt, portfolio_id=args.portfolio_id
+        )
         payload = {
             "campaign_key": args.campaign_key,
             "version": args.version,
@@ -154,6 +166,8 @@ def main() -> int:
             },
             "created_by": "founder-operator",
         }
+        if args.execution_protocol:
+            payload["execution_protocol"] = args.execution_protocol
         campaign = call(client, "POST", "/v1/research/alpha-campaigns", payload)
         if args.activate and campaign["status"] == "awaiting_activation":
             campaign = call(

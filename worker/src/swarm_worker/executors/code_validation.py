@@ -93,7 +93,9 @@ class AsyncProcessRunner:
             raise ValueError("subprocess commands must be argument arrays")
         command = tuple(str(argument) for argument in args)
         environment = dict(self._environment)
-        virtualenv_bin = Path(sys.executable).resolve().parent
+        # Keep the invoked virtualenv path. Resolving its Python symlink points at
+        # /usr/bin and silently selects host tools instead of the pinned environment.
+        virtualenv_bin = Path(sys.executable).parent
         existing_path = environment.get("PATH", "")
         environment["PATH"] = os.pathsep.join(
             part for part in (str(virtualenv_bin), existing_path) if part

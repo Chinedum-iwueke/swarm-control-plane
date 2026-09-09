@@ -229,6 +229,97 @@ def campaign(**updates):
     return SimpleNamespace(**value)
 
 
+def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
+    from app.services import retrieval
+
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha002-native-v1"
+    record.specification["allowed_instruments"] = ["BTCUSDT"]
+    record.specification["dataset_bindings"][0].update(
+        {"dataset_key": "bybit-btcusdt-perp-1m"}
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    persisted = []
+    monkeypatch.setattr(service, "_dataset_path", lambda *_: "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet")
+    monkeypatch.setattr(
+        retrieval,
+        "hybrid_search",
+        lambda *_: {
+            "hits": [],
+            "corpus_digest": "9" * 64,
+            "abstained": True,
+        },
+    )
+    monkeypatch.setattr(service, "persist_new_task", lambda _db, task: persisted.append(task))
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    task = service._ensure_execution_task(db, record)
+
+    assert task is persisted[0]
+    assert task.task_type == "alpha_research_execution"
+    assert task.allowed_machines == ["vm1-developer"]
+    assert task.risk_level == 0
+    assert task.approval_required is False
+    assert task.input_contract["campaign_digest"] == record.campaign_digest
+    assert task.input_contract["authority"] == "no_capital"
+    assert task.input_contract["dataset_digest"] == DIGEST
+
+
+def test_alpha002_failed_execution_is_visible_as_needs_attention(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha002-native-v1"
+    failed = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A2-{str(record.id)[:8]}-001",
+        status="failed",
+        failure={"reason": "native_bulletproof_failed"},
+    )
+    db = MagicMock()
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    monkeypatch.setattr(service, "_ensure_execution_task", lambda *_: failed)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "needs_attention"
+    assert record.terminal_reason["task_id"] == str(failed.id)
+
+
+def test_alpha002_cancellation_propagates_to_queued_execution(monkeypatch):
+    record = campaign()
+    task = SimpleNamespace(
+        id=uuid4(),
+        status="queued",
+        completed_at=None,
+        cancel_requested_at=None,
+        cancel_reason=None,
+    )
+    db = MagicMock()
+    db.scalar.return_value = task
+    append = MagicMock()
+    monkeypatch.setattr("app.services.tasks.append_task_event", append)
+    monkeypatch.setattr("app.services.tasks.clear_lease", MagicMock())
+    monkeypatch.setattr(
+        "app.services.agent_context.discard_working_memory", MagicMock()
+    )
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.cancel_campaign(
+        db,
+        record,
+        service.AlphaCampaignAction(
+            expected_campaign_digest=DIGEST,
+            actor="founder-operator",
+            reason="Stop this bounded campaign immediately.",
+        ),
+    )
+
+    assert task.status == "cancelled"
+    assert task.cancel_requested_at is not None
+    append.assert_called_once()
+
+
 def attempt(record, **updates):
     question = "Does lagged BTC displacement retain net predictive value after costs?"
     value = {
@@ -294,6 +385,13 @@ def test_registration_admits_real_exchange_lineage():
     assert record.status == "awaiting_activation"
     assert record.specification["dataset_bindings"][0]["venue"] == "bybit"
     assert record.specification["authority_boundary"]["capital"] is False
+    assert "execution_protocol" not in record.specification
+
+
+def test_alpha002_opt_in_is_immutable_and_explicit():
+    payload = request(execution_protocol="alpha002-native-v1")
+    record = service.register_campaign(database(payload), payload)
+    assert record.specification["execution_protocol"] == "alpha002-native-v1"
 
 
 def test_registration_rejects_synthetic_label():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -16,17 +17,21 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
     DiscoveryPortfolioCandidate,
 )
+from app.models.governance import FounderNotification
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.research_bridge import GovernedResearchBridge
+from app.models.task import Task
 from app.schemas.alpha_campaign import (
     AlphaCampaignAction,
     AlphaCampaignActivation,
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
 )
+from app.schemas.task import TaskCreate
 from app.services.graph import digest_document
+from app.services.tasks import build_task, persist_new_task
 
 TERMINAL = {
     "shadow_candidate",
@@ -273,7 +278,9 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             422, "Campaign hypothesis budget cannot cover its selected research queue."
         )
     specification = payload.model_dump(
-        mode="json", exclude={"budget", "created_by", "dataset_bindings"}
+        mode="json",
+        exclude={"budget", "created_by", "dataset_bindings"},
+        exclude_none=True,
     )
     specification["dataset_bindings"] = admitted
     specification["discovery_allocation_digest"] = portfolio.allocation_digest
@@ -366,6 +373,241 @@ def activate_campaign(
             "authority": "no_capital",
         },
     )
+    _ensure_execution_task(db, campaign)
+
+
+def _execution_task_number(campaign: AlphaCampaign, source: dict) -> str:
+    return f"A2-{str(campaign.id)[:8]}-{int(source['rank']):03d}"
+
+
+def _dataset_path(db: Session, campaign: AlphaCampaign, binding: dict) -> str:
+    build = db.get(ResearchDatasetBuild, binding["dataset_build_id"])
+    manifest = db.get(ResearchDatasetManifest, build.manifest_id) if build else None
+    if manifest is None:
+        raise HTTPException(409, "Admitted campaign dataset manifest is unavailable.")
+    uris = [
+        str(item.get("uri", ""))
+        for item in manifest.manifest.get("source_objects", [])
+        if str(item.get("uri", "")).startswith("file://")
+    ]
+    if len(uris) != 1:
+        raise HTTPException(
+            409, "Alpha execution requires exactly one immutable local panel URI."
+        )
+    path = Path(uris[0].removeprefix("file://")).resolve(strict=False)
+    allowed_root = Path(
+        "/home/omenka/Projects/bulletproof_bt/research_data"
+    ).resolve(strict=False)
+    if not path.is_relative_to(allowed_root) or path.suffix != ".parquet":
+        raise HTTPException(409, "Admitted panel path is outside the read-only lake.")
+    return str(path)
+
+
+def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
+    if campaign.status != "running":
+        return None
+    if campaign.specification.get("execution_protocol") != "alpha002-native-v1":
+        return None
+    queue = campaign.specification["research_queue"]
+    if campaign.hypothesis_count >= len(queue):
+        return None
+    source = queue[campaign.hypothesis_count]
+    task_number = _execution_task_number(campaign, source)
+    existing = db.scalar(select(Task).where(Task.task_number == task_number))
+    if existing is not None:
+        return existing
+    binding = campaign.specification["dataset_bindings"][0]
+    question = " ".join(source["question"].split())
+    from app.schemas.retrieval import HybridRetrievalRequest
+    from app.services.evidence import ORCHESTRATOR_ACCESS
+    from app.services.retrieval import hybrid_search
+
+    try:
+        retrieval = hybrid_search(
+            db,
+            HybridRetrievalRequest(query=question, limit=5),
+            ORCHESTRATOR_ACCESS,
+        )
+        citations = [
+            {
+                "object_id": str(hit["object_id"]),
+                "content_digest": hit["citation"]["content_digest"],
+                "coordinates": hit["citation"]["coordinates"],
+                "text": hit["text"][:1200],
+                "confidence": hit["confidence"],
+            }
+            for hit in retrieval["hits"]
+        ]
+        corpus_digest = retrieval["corpus_digest"]
+        retrieval_abstained = retrieval["abstained"]
+    except HTTPException as exc:
+        citations = []
+        corpus_digest = None
+        retrieval_abstained = True
+        retrieval_error = str(exc.detail)
+    task = build_task(
+        TaskCreate(
+            task_number=task_number,
+            project="bulletproof_bt",
+            task_type="alpha_research_execution",
+            title=f"ALPHA-002 question {source['rank']}: {question[:180]}",
+            objective=(
+                "Produce a reproducible, no-capital answer using the exact admitted "
+                "dataset and Bulletproof classic engine, or retain a bounded "
+                "strategy-engineering requirement without substituting a proxy."
+            ),
+            priority=85,
+            risk_level=0,
+            created_by="alpha-campaign-director",
+            input_contract={
+                "repository": "bulletproof_bt",
+                "workflow": "alpha-research-execution",
+                "base_ref": campaign.specification["bulletproof_source_commit"],
+                "campaign_id": str(campaign.id),
+                "campaign_digest": campaign.campaign_digest,
+                "source_candidate_id": source["source_candidate_id"],
+                "source_candidate_digest": source["source_candidate_digest"],
+                "question": question,
+                "question_digest": digest_document({"question": question}),
+                "domain_key": source["domain_key"],
+                "dataset_build_id": binding["dataset_build_id"],
+                "dataset_digest": binding["dataset_digest"],
+                "dataset_path": _dataset_path(db, campaign, binding),
+                "memory_database": (
+                    "/home/omenka/.local/state/invariance-swarm/"
+                    "alpha002-memory.sqlite"
+                ),
+                "bundle_root": (
+                    "/home/omenka/.local/share/invariance-swarm/alpha002-bundles"
+                ),
+                "dataset_key": binding["dataset_key"],
+                "instrument": campaign.specification["allowed_instruments"][0],
+                "timeframe": "1m",
+                "tier": "Tier2B",
+                "max_variants": campaign.budget["max_variants_per_hypothesis"],
+                "research_context": {
+                    "corpus_digest": corpus_digest,
+                    "abstained": retrieval_abstained,
+                    "citations": citations,
+                    **(
+                        {"error": retrieval_error}
+                        if "retrieval_error" in locals()
+                        else {}
+                    ),
+                },
+                "authority": "no_capital",
+            },
+            expected_outputs=[
+                "cited hypothesis card or bounded engineering requirement",
+                "classic-engine truth receipt when executable",
+                "digest-finalized evidence bundle",
+            ],
+            acceptance_criteria=[
+                "exact question and immutable dataset bindings are preserved",
+                "unsupported questions are not mapped to similar strategies",
+                "no capital, order, promotion or self-approval authority exists",
+            ],
+            approval_policy={
+                "kind": "registry_gate",
+                "risk": 0,
+                "campaign_activation_digest": campaign.campaign_digest,
+            },
+            approval_required=False,
+            required_capabilities=[
+                "alpha-research-execution",
+                "backtesting",
+                "research-audit",
+            ],
+            allowed_machines=["vm1-developer"],
+            max_attempts=3,
+        )
+    )
+    persist_new_task(db, task)
+    db.add(
+        FounderNotification(
+            kind="alpha_campaign_update",
+            entity_id=task.id,
+            deduplication_key=f"alpha-task-ready:{task.id}:{task.plan_digest}",
+            state="pending",
+            payload={
+                "campaign_id": str(campaign.id),
+                "task_id": str(task.id),
+                "state": "queued",
+                "phase": "await_vm1_executor",
+                "summary": question[:500],
+            },
+        )
+    )
+    _append_event(
+        db,
+        campaign,
+        "execution_task_created",
+        "alpha-campaign-director",
+        {
+            "task_id": str(task.id),
+            "task_number": task.task_number,
+            "source_candidate_id": source["source_candidate_id"],
+            "question_digest": task.input_contract["question_digest"],
+        },
+    )
+    return task
+
+
+def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
+    queue = campaign.specification["research_queue"]
+    if campaign.hypothesis_count >= len(queue):
+        return False
+    source = queue[campaign.hypothesis_count]
+    task = db.scalar(
+        select(Task).where(Task.task_number == _execution_task_number(campaign, source))
+    )
+    if task is None or task.status != "succeeded":
+        return False
+    summary = task.result.get("summary", {})
+    raw_attempt = summary.get("alpha_campaign_attempt")
+    if not isinstance(raw_attempt, dict):
+        raise HTTPException(409, "Completed alpha task lacks a campaign attempt receipt.")
+    publication_envelope = summary.get("publication_envelope")
+    if isinstance(publication_envelope, dict):
+        from app.services.alpha_publication import publish_execution
+
+        publication = publish_execution(db, publication_envelope)
+        raw_attempt = {
+            **raw_attempt,
+            "governed_bridge_id": publication["bridge_id"],
+            "outcome": publication["outcome"],
+            "failure_stage": None,
+            "gate_report": publication["gate_report"],
+            "evidence_digests": publication["evidence_digests"],
+        }
+    payload = AlphaCampaignAttemptCreate.model_validate(raw_attempt)
+    record_attempt(db, campaign, payload)
+    _append_event(
+        db,
+        campaign,
+        "execution_task_consumed",
+        "alpha-campaign-director",
+        {"task_id": str(task.id), "attempt_key": payload.attempt_key},
+    )
+    db.add(
+        FounderNotification(
+            kind="alpha_campaign_update",
+            entity_id=campaign.id,
+            deduplication_key=(
+                f"alpha-attempt:{campaign.id}:{payload.attempt_key}:"
+                f"{payload.evidence_digests[0]}"
+            ),
+            state="pending",
+            payload={
+                "campaign_id": str(campaign.id),
+                "task_id": str(task.id),
+                "state": payload.outcome,
+                "phase": payload.failure_stage or "terminal_evidence",
+                "summary": payload.question[:500],
+            },
+        )
+    )
+    return True
 
 
 def _bound_dataset(campaign: AlphaCampaign, build_id, digest: str) -> bool:
@@ -538,6 +780,8 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
     if campaign.status != "running":
         return
+    if _consume_execution_task(db, campaign):
+        return
     deadline = campaign.activated_at + timedelta(
         seconds=campaign.budget["max_duration_seconds"]
     )
@@ -577,6 +821,36 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             "alpha-campaign-director",
             reason,
         )
+        return
+    task = _ensure_execution_task(db, campaign)
+    if task is not None:
+        if task.status in {"failed", "cancelled"}:
+            campaign.status = "needs_attention"
+            campaign.phase = "complete"
+            campaign.next_action = "operator_review"
+            campaign.completed_at = campaign.heartbeat_at
+            campaign.terminal_reason = {
+                "category": f"execution_task_{task.status}",
+                "task_id": str(task.id),
+                "task_number": task.task_number,
+                "failure": task.failure,
+            }
+            _append_event(
+                db,
+                campaign,
+                "campaign_needs_attention",
+                "alpha-campaign-director",
+                campaign.terminal_reason,
+            )
+            return
+        campaign.phase = "execution"
+        campaign.next_action = {
+            "queued": "await_vm1_executor",
+            "leased": "executor_lease_acquired",
+            "running": "native_bulletproof_execution",
+            "failed": "operator_review_failed_execution",
+            "cancelled": "operator_review_cancelled_execution",
+        }.get(task.status, "await_executor_terminal_receipt")
 
 
 def cancel_campaign(
@@ -594,6 +868,38 @@ def cancel_campaign(
         "category": "operator_cancelled",
         "reason": payload.reason,
     }
+    task = db.scalar(
+        select(Task)
+        .where(Task.task_number.like(f"A2-{str(campaign.id)[:8]}-%"))
+        .order_by(Task.created_at.desc())
+        .limit(1)
+    )
+    if task is not None and task.status not in {"succeeded", "failed", "cancelled"}:
+        stamp = now()
+        task.cancel_requested_at = stamp
+        task.cancel_reason = payload.reason
+        if task.status not in {"leased", "running"}:
+            from app.services.agent_context import discard_working_memory
+            from app.services.tasks import append_task_event, clear_lease
+
+            task.status = "cancelled"
+            task.completed_at = stamp
+            clear_lease(task)
+            discard_working_memory(db, task.id)
+            cooperative = False
+            event_type = "task_cancelled"
+        else:
+            from app.services.tasks import append_task_event
+
+            cooperative = True
+            event_type = "task_cancellation_requested"
+        append_task_event(
+            db,
+            task,
+            event_type,
+            "ALPHA-002 campaign cancellation propagated to its executor.",
+            payload={"cooperative": cooperative, "campaign_id": str(campaign.id)},
+        )
     _append_event(
         db, campaign, "campaign_cancelled", payload.actor, campaign.terminal_reason
     )
@@ -610,6 +916,12 @@ def serialize_campaign(db: Session, campaign: AlphaCampaign) -> dict:
         .where(AlphaCampaignEvent.campaign_id == campaign.id)
         .order_by(AlphaCampaignEvent.sequence)
     ).all()
+    execution_task = db.scalar(
+        select(Task)
+        .where(Task.task_number.like(f"A2-{str(campaign.id)[:8]}-%"))
+        .order_by(Task.created_at.desc())
+        .limit(1)
+    )
     return {
         "id": campaign.id,
         "campaign_key": campaign.campaign_key,
@@ -671,5 +983,21 @@ def serialize_campaign(db: Session, campaign: AlphaCampaign) -> dict:
             }
             for item in events
         ],
+        "execution": (
+            {
+                "task_id": str(execution_task.id),
+                "task_number": execution_task.task_number,
+                "status": execution_task.status,
+                "attempt_count": execution_task.attempt_count,
+                "max_attempts": execution_task.max_attempts,
+                "heartbeat_at": execution_task.last_execution_heartbeat_at,
+                "failure": execution_task.failure,
+                "disposition": execution_task.result.get("summary", {}).get(
+                    "disposition"
+                ),
+            }
+            if execution_task is not None
+            else None
+        ),
         "claim_boundary": CLAIM_BOUNDARY,
     }

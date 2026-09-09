@@ -10,6 +10,7 @@ ROOT = Path(__file__).parents[1]
 MANIFEST = ROOT / "role-packages/vm1-engineering-worker/manifest.yaml"
 WORKFLOWS = ROOT / "workflows"
 RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
+ALPHA_MANIFEST = ROOT / "role-packages/vm1-alpha-research-executor/manifest.yaml"
 MEMORY_MANIFEST = ROOT / "role-packages/vm1-research-memory-steward/manifest.yaml"
 DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.yaml"
 OPERATIONAL_MEMORY_MANIFEST = (
@@ -31,6 +32,20 @@ def test_research_package_is_narrow_and_digest_verified() -> None:
     assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.permission_profile.privileged_operations is False
     assert package.manifest.permission_profile.network_access == "control-plane"
+
+
+def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
+    package = load_role_package(ALPHA_MANIFEST, WORKFLOWS)
+    assert package.manifest.task_types == ["alpha_research_execution"]
+    assert package.manifest.required_capabilities == [
+        "alpha-research-execution",
+        "backtesting",
+        "research-audit",
+    ]
+    assert package.manifest.risk_ceiling == 0
+    assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
+    assert package.manifest.repository_profile.primary_checkout_write is False
+    assert package.manifest.repository_profile.remote_write is False
 
 
 def test_memory_steward_is_read_only_and_single_purpose() -> None:

@@ -61,6 +61,7 @@ class AlphaCampaignCreate(StrictModel):
     may_self_approve: Literal[False] = False
     may_place_orders: Literal[False] = False
     may_promote_live: Literal[False] = False
+    execution_protocol: Literal["alpha002-native-v1"] | None = None
 
     @model_validator(mode="after")
     def unique_scope(self):
@@ -192,4 +193,5 @@ class AlphaCampaignResponse(StrictModel):
     completed_at: datetime | None
     attempts: list[dict]
     events: list[dict]
+    execution: dict | None = None
     claim_boundary: str

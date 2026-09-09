@@ -18,6 +18,7 @@ WORKFLOW_FILES = {
     "engineering-mission": "engineering-mission.yaml",
     "research-experiment": "research-experiment.yaml",
     "research-memory-sync": "research-memory-sync.yaml",
+    "alpha-research-execution": "alpha-research-execution.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -156,8 +157,9 @@ class WorkflowDefinition(BaseModel):
         "engineering_mission",
         "research_experiment",
         "research_memory_sync",
+        "alpha_research_execution",
     ]
-    timeout_seconds: int = Field(ge=1, le=3600)
+    timeout_seconds: int = Field(ge=1, le=21_600)
     allowed_repositories: Annotated[
         list[
             Annotated[
@@ -180,9 +182,9 @@ class WorkflowDefinition(BaseModel):
     @classmethod
     def steps_match_workflow(cls, steps: list[WorkflowStep], info) -> list[WorkflowStep]:
         task_type = info.data.get("task_type")
-        if task_type == "research_memory_sync" and steps:
-            raise ValueError("research-memory sync is implemented by a fixed executor")
-        if task_type != "research_memory_sync" and not steps:
+        if task_type in {"research_memory_sync", "alpha_research_execution"} and steps:
+            raise ValueError("this workflow is implemented by a fixed executor")
+        if task_type not in {"research_memory_sync", "alpha_research_execution"} and not steps:
             raise ValueError("executable workflows require at least one step")
         return steps
 

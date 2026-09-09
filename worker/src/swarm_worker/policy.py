@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import (
@@ -162,12 +163,59 @@ class ResearchMemorySyncContract(BaseModel):
         return validate_base_ref(value)
 
 
+class AlphaResearchExecutionContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["alpha-research-execution"]
+    base_ref: str = Field(min_length=40, max_length=64, pattern=r"^[0-9a-f]+$")
+    campaign_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    campaign_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_candidate_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    source_candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    question: str = Field(min_length=10, max_length=4000)
+    question_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    domain_key: str = Field(pattern=r"^[a-z][a-z0-9-]*$", max_length=100)
+    dataset_build_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    dataset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dataset_path: str = Field(min_length=1, max_length=1024)
+    memory_database: Literal[
+        "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite"
+    ]
+    bundle_root: Literal[
+        "/home/omenka/.local/share/invariance-swarm/alpha002-bundles"
+    ]
+    dataset_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+    instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    timeframe: Literal["1m"]
+    tier: Literal["Tier2A", "Tier2B", "Tier3"]
+    max_variants: int = Field(ge=1, le=256)
+    research_context: dict[str, Any]
+    authority: Literal["no_capital"]
+
+    @field_validator("dataset_path")
+    @classmethod
+    def admitted_panel_path(cls, value: str) -> str:
+        path = Path(value).resolve(strict=False)
+        root = Path(
+            "/home/omenka/Projects/bulletproof_bt/research_data"
+        ).resolve(strict=False)
+        if not path.is_absolute() or path.suffix != ".parquet":
+            raise ValueError("dataset_path must identify an absolute Parquet panel")
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("dataset_path is outside the read-only Bulletproof lake") from exc
+        return str(path)
+
+
 class ValidatedTaskPolicy(BaseModel):
     contract: (
         CodeValidationContract
         | EngineeringMissionContract
         | ResearchExperimentContract
         | ResearchMemorySyncContract
+        | AlphaResearchExecutionContract
     )
     workflow: WorkflowDefinition
 
@@ -199,6 +247,7 @@ def validate_task_policy(
         "engineering_mission",
         "research_experiment",
         "research_memory_sync",
+        "alpha_research_execution",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -237,6 +286,7 @@ def _parse_contract(
     | EngineeringMissionContract
     | ResearchExperimentContract
     | ResearchMemorySyncContract
+    | AlphaResearchExecutionContract
 ):
     try:
         models = {
@@ -244,6 +294,7 @@ def _parse_contract(
             "engineering_mission": EngineeringMissionContract,
             "research_experiment": ResearchExperimentContract,
             "research_memory_sync": ResearchMemorySyncContract,
+            "alpha_research_execution": AlphaResearchExecutionContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)
