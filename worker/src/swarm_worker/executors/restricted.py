@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from swarm_worker.config import WorkerSettings
+from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.code_validation import (
     CodeValidationExecutor,
     HeartbeatCallback,
@@ -40,6 +41,9 @@ class RestrictedExecutor:
         self._memory_sync = (
             ResearchMemorySyncExecutor(settings) if settings is not None else None
         )
+        self._alpha_research = AlphaResearchExecutor(
+            heartbeat_interval_seconds=heartbeat_interval_seconds
+        )
 
     async def execute(
         self,
@@ -54,6 +58,7 @@ class RestrictedExecutor:
             "engineering_mission": self._engineering,
             "research_experiment": self._research,
             "research_memory_sync": self._memory_sync,
+            "alpha_research_execution": self._alpha_research,
         }
         executor = executors[task.task_type]
         if executor is None:

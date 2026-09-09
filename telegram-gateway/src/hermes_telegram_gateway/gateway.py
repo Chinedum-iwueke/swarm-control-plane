@@ -158,6 +158,12 @@ class RestrictedTelegramGateway:
                     f"{payload['service_key']} · {payload['indicator']}\n"
                     f"Owner: {payload['owner']}\n{payload['summary']}\n{detail}",
                 )
+            elif kind == "alpha_campaign_update":
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    f"Alpha campaign · {payload['state']}\n"
+                    f"{payload['phase']}\n{payload['summary']}",
+                )
             elif kind == "conversation_planning":
                 payload = notification["payload"]
                 sent = await self._telegram.send(
