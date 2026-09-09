@@ -21,7 +21,7 @@ The source acceptance suite proves:
 - every authority field remains false for allocation, capital, orders and promotion.
 
 The repository-wide validation passed 702 Hermes backend tests and 72 Mission Control
-tests. Bulletproof passed 1,336 tests with 27 declared skips; the two warnings are
+tests. Bulletproof passed 1,337 tests with 27 declared skips; the two warnings are
 pre-existing pandas deprecation/future warnings outside ALPHA-001. The Bible
 requirement-ledger suite passed 7 tests and 11 subtests. Ruff, JavaScript syntax,
 Python compilation, Alembic-head, OpenAPI-route, shell-syntax, systemd-unit and
