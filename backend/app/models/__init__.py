@@ -6,6 +6,11 @@ from app.models.agent_governance import (
     AgentCharter,
     AgentGrantEvent,
 )
+from app.models.alpha_campaign import (
+    AlphaCampaign,
+    AlphaCampaignAttempt,
+    AlphaCampaignEvent,
+)
 from app.models.authority import (
     AuthorityDecisionRecord,
     AuthorityDelegation,
@@ -206,6 +211,9 @@ __all__ = [
     "AgentGrantEvent",
     "AgentWorkingMemoryReceipt",
     "AlertRoutingEvent",
+    "AlphaCampaign",
+    "AlphaCampaignAttempt",
+    "AlphaCampaignEvent",
     "ApprovalEvent",
     "Artifact",
     "AuthorityDecisionRecord",

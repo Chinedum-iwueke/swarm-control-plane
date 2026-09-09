@@ -70,6 +70,9 @@ class ControlPlaneClient:
         dataset_builds = await self._optional_collection(
             "/v1/research/data-contracts/builds"
         )
+        alpha_campaigns = await self._optional_collection(
+            "/v1/research/alpha-campaigns"
+        )
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
@@ -185,6 +188,7 @@ class ControlPlaneClient:
             "operational_notes": operational_notes,
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
+            "alpha_campaigns": alpha_campaigns,
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,

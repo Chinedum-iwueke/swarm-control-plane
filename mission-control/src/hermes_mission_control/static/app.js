@@ -1169,6 +1169,7 @@ function renderResearch() {
   const memoryExports = state.dashboard.research_memory_exports || [];
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
+  const alphaCampaigns = state.dashboard.alpha_campaigns || [];
   const dossiers = state.dashboard.evidence_dossiers || [];
   const lifecycleStates = state.dashboard.evidence_lifecycle_states || [];
   const blockedRegister = state.dashboard.blocked_artifact_register || { total: 0, counts_by_classification: {}, items: [] };
@@ -1273,6 +1274,19 @@ function renderResearch() {
   document.querySelectorAll("[data-research-cycle-decision]").forEach((button) => {
     button.addEventListener("click", () => decideResearchCycle(button));
   });
+  const activeCampaigns = alphaCampaigns.filter((item) => item.status === "running");
+  document.getElementById("alpha-campaign-count").textContent = `${activeCampaigns.length} active · ${alphaCampaigns.length} total`;
+  document.getElementById("alpha-campaigns").innerHTML = alphaCampaigns.length ? alphaCampaigns.map((item) => {
+    const datasets = item.specification?.dataset_bindings || [];
+    const boundary = item.claim_boundary || "No-capital research coordination only.";
+    return `<article class="entity-row">
+      <div class="entity-primary"><strong>${escapeHtml(item.campaign_key)} · v${escapeHtml(item.version)}</strong>
+        <div class="entity-meta"><span>${escapeHtml(humanize(item.phase))}</span><span>Next: ${escapeHtml(humanize(item.next_action))}</span><span>${item.hypothesis_count}/${item.budget?.max_hypotheses || 0} hypotheses</span><span>${item.trial_count}/${item.budget?.max_total_trials || 0} trials</span><span>${datasets.length} real-data bindings</span><span>Heartbeat ${relativeTime(item.heartbeat_at)}</span><span class="mono">${shortHash(item.campaign_digest)}</span></div>
+        <p>${escapeHtml(item.objective)}</p><p>${escapeHtml(boundary)}</p>
+        ${item.terminal_reason?.category ? `<p class="operation-error">${escapeHtml(humanize(item.terminal_reason.category))}</p>` : ""}
+      </div><div class="entity-side">${statusBadge(item.status)}</div>
+    </article>`;
+  }).join("") : empty("No admitted real-data alpha campaign has been registered.");
   document.getElementById("research-datasets").innerHTML = datasetManifests.length ? datasetManifests.map((item) => {
     const builds = datasetBuilds.filter((build) => build.manifest_id === item.id);
     const latest = builds[0];

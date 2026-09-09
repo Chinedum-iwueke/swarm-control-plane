@@ -147,6 +147,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["lifecycle_consequences"]["count"] == 0
     assert result["intelligence_evaluation"]["status"] == "not_demonstrated"
     assert result["derived_state"]["current"] is True
+    assert result["alpha_campaigns"] == []
 
 
 @pytest.mark.asyncio
