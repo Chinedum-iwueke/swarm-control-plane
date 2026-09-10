@@ -114,9 +114,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--execution-protocol",
-        choices=["alpha002-native-v1"],
+        choices=["alpha002-native-v1", "alpha003-governed-v1"],
         help="Opt a new immutable campaign into the continuous native executor.",
     )
+    parser.add_argument("--window-start")
+    parser.add_argument("--window-end")
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     if (
@@ -168,6 +170,13 @@ def main() -> int:
         }
         if args.execution_protocol:
             payload["execution_protocol"] = args.execution_protocol
+        if args.execution_protocol == "alpha003-governed-v1":
+            if not args.window_start or not args.window_end:
+                raise RuntimeError(
+                    "ALPHA-003 requires --window-start and --window-end."
+                )
+            payload["execution_window_start"] = args.window_start
+            payload["execution_window_end"] = args.window_end
         campaign = call(client, "POST", "/v1/research/alpha-campaigns", payload)
         if args.activate and campaign["status"] == "awaiting_activation":
             campaign = call(

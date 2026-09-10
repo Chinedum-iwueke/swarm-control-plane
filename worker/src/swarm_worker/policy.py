@@ -182,9 +182,7 @@ class AlphaResearchExecutionContract(BaseModel):
     memory_database: Literal[
         "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite"
     ]
-    bundle_root: Literal[
-        "/home/omenka/.local/share/invariance-swarm/alpha002-bundles"
-    ]
+    bundle_root: Literal["/home/omenka/.local/share/invariance-swarm/alpha002-bundles"]
     dataset_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     timeframe: Literal["1m"]
@@ -192,20 +190,51 @@ class AlphaResearchExecutionContract(BaseModel):
     max_variants: int = Field(ge=1, le=256)
     research_context: dict[str, Any]
     authority: Literal["no_capital"]
+    stage: Literal["draft", "qualify", "execute"] = "execute"
+    venue: Literal["bybit", "binance"] | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+    hypothesis_card: dict[str, Any] | None = None
+    card_approval: dict[str, Any] | None = None
+    qualification: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def stage_contract(self):
+        if (
+            self.stage in {"draft", "qualify"} or self.qualification is not None
+        ) and (
+            self.window_start is None or self.window_end is None or self.venue is None
+        ):
+            raise ValueError(
+                "governed stages require venue and an immutable execution window"
+            )
+        if self.stage == "qualify" and (
+            self.hypothesis_card is None or self.card_approval is None
+        ):
+            raise ValueError("qualification requires a draft card and founder approval")
+        if (
+            self.stage == "execute"
+            and self.qualification is not None
+            and self.qualification.get("qualified") is not True
+        ):
+            raise ValueError("execution requires a qualified strategy contract")
+        return self
 
     @field_validator("dataset_path")
     @classmethod
     def admitted_panel_path(cls, value: str) -> str:
         path = Path(value).resolve(strict=False)
-        root = Path(
-            "/home/omenka/Projects/bulletproof_bt/research_data"
-        ).resolve(strict=False)
+        root = Path("/home/omenka/Projects/bulletproof_bt/research_data").resolve(
+            strict=False
+        )
         if not path.is_absolute() or path.suffix != ".parquet":
             raise ValueError("dataset_path must identify an absolute Parquet panel")
         try:
             path.relative_to(root)
         except ValueError as exc:
-            raise ValueError("dataset_path is outside the read-only Bulletproof lake") from exc
+            raise ValueError(
+                "dataset_path is outside the read-only Bulletproof lake"
+            ) from exc
         return str(path)
 
 

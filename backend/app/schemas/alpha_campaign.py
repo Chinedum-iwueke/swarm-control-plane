@@ -61,7 +61,11 @@ class AlphaCampaignCreate(StrictModel):
     may_self_approve: Literal[False] = False
     may_place_orders: Literal[False] = False
     may_promote_live: Literal[False] = False
-    execution_protocol: Literal["alpha002-native-v1"] | None = None
+    execution_protocol: Literal["alpha002-native-v1", "alpha003-governed-v1"] | None = (
+        None
+    )
+    execution_window_start: datetime | None = None
+    execution_window_end: datetime | None = None
 
     @model_validator(mode="after")
     def unique_scope(self):
@@ -74,6 +78,11 @@ class AlphaCampaignCreate(StrictModel):
             not item.replace("-", "").replace("_", "").isalnum() for item in normalized
         ):
             raise ValueError("allowed instruments must be exchange-safe identifiers")
+        if self.execution_protocol == "alpha003-governed-v1":
+            if self.execution_window_start is None or self.execution_window_end is None:
+                raise ValueError("ALPHA-003 requires an immutable execution window")
+            if self.execution_window_start >= self.execution_window_end:
+                raise ValueError("execution window must be increasing")
         return self
 
 

@@ -1,0 +1,31 @@
+schema_version: 1
+name: vm1-alpha-research-executor-v2
+version: 1.1.0
+role: Restricted VM1 governed hypothesis and Bulletproof scientific executor
+task_types:
+- alpha_research_execution
+workflows:
+- name: alpha-research-execution
+  file: alpha-research-execution.yaml
+  sha256: 0d8fe9021f554046f0566577825aa7ceb67f7bc0f6395acd485ef47a9bea3eed
+required_capabilities:
+- alpha-research-execution
+- backtesting
+- research-audit
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: alpha003-no-capital
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false

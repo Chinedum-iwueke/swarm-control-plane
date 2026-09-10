@@ -17,7 +17,7 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
     DiscoveryPortfolioCandidate,
 )
-from app.models.governance import FounderNotification
+from app.models.governance import FounderNotification, TaskApproval
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
@@ -30,8 +30,9 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignCreate,
 )
 from app.schemas.task import TaskCreate
+from app.services.governance import consume_task_approval
 from app.services.graph import digest_document
-from app.services.tasks import build_task, persist_new_task
+from app.services.tasks import append_task_event, build_task, persist_new_task
 
 TERMINAL = {
     "shadow_candidate",
@@ -380,6 +381,407 @@ def _execution_task_number(campaign: AlphaCampaign, source: dict) -> str:
     return f"A2-{str(campaign.id)[:8]}-{int(source['rank']):03d}"
 
 
+def _stage_task_number(campaign: AlphaCampaign, source: dict, stage: str) -> str:
+    return f"A3-{str(campaign.id)[:8]}-{int(source['rank']):03d}-{stage}"
+
+
+def _stage_contract(
+    db: Session,
+    campaign: AlphaCampaign,
+    source: dict,
+    *,
+    stage: str,
+    hypothesis_card: dict | None = None,
+    card_approval: dict | None = None,
+    qualification: dict | None = None,
+) -> dict:
+    binding = campaign.specification["dataset_bindings"][0]
+    question = " ".join(source["question"].split())
+    return {
+        "repository": "bulletproof_bt",
+        "workflow": "alpha-research-execution",
+        "base_ref": campaign.specification["bulletproof_source_commit"],
+        "campaign_id": str(campaign.id),
+        "campaign_digest": campaign.campaign_digest,
+        "source_candidate_id": source["source_candidate_id"],
+        "source_candidate_digest": source["source_candidate_digest"],
+        "question": question,
+        "question_digest": digest_document({"question": question}),
+        "domain_key": source["domain_key"],
+        "dataset_build_id": binding["dataset_build_id"],
+        "dataset_digest": binding["dataset_digest"],
+        "dataset_path": _dataset_path(db, campaign, binding),
+        "memory_database": "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite",
+        "bundle_root": "/home/omenka/.local/share/invariance-swarm/alpha002-bundles",
+        "dataset_key": binding["dataset_key"],
+        "instrument": campaign.specification["allowed_instruments"][0],
+        "timeframe": "1m",
+        "tier": "Tier2B",
+        "max_variants": campaign.budget["max_variants_per_hypothesis"],
+        "research_context": _research_context(db, question),
+        "authority": "no_capital",
+        "stage": stage,
+        "venue": binding["venue"],
+        "window_start": campaign.specification["execution_window_start"],
+        "window_end": campaign.specification["execution_window_end"],
+        **({"hypothesis_card": hypothesis_card} if hypothesis_card else {}),
+        **({"card_approval": card_approval} if card_approval else {}),
+        **({"qualification": qualification} if qualification else {}),
+    }
+
+
+def _research_context(db: Session, question: str) -> dict:
+    from app.schemas.retrieval import HybridRetrievalRequest
+    from app.services.evidence import ORCHESTRATOR_ACCESS
+    from app.services.retrieval import hybrid_search
+
+    try:
+        result = hybrid_search(
+            db, HybridRetrievalRequest(query=question, limit=5), ORCHESTRATOR_ACCESS
+        )
+        return {
+            "corpus_digest": result["corpus_digest"],
+            "abstained": result["abstained"],
+            "citations": [
+                {
+                    "object_id": str(hit["object_id"]),
+                    "content_digest": hit["citation"]["content_digest"],
+                    "coordinates": hit["citation"]["coordinates"],
+                    "text": hit["text"][:1200],
+                    "confidence": hit["confidence"],
+                }
+                for hit in result["hits"]
+            ],
+        }
+    except HTTPException as exc:
+        return {
+            "corpus_digest": None,
+            "abstained": True,
+            "citations": [],
+            "error": str(exc.detail),
+        }
+
+
+def _create_stage_task(
+    db: Session,
+    campaign: AlphaCampaign,
+    source: dict,
+    *,
+    suffix: str,
+    title: str,
+    contract: dict,
+    approval_required: bool,
+) -> Task:
+    task = build_task(
+        TaskCreate(
+            task_number=_stage_task_number(campaign, source, suffix),
+            project="bulletproof_bt",
+            task_type="alpha_research_execution",
+            title=title,
+            objective="Advance one selected real-data hypothesis through the governed Bulletproof research bridge without capital or order authority.",
+            priority=90,
+            risk_level=0,
+            created_by="alpha-campaign-director",
+            input_contract=contract,
+            expected_outputs=["digest-bound hypothesis or execution evidence"],
+            acceptance_criteria=[
+                "exact question, dataset, window, tier and grid remain immutable",
+                "classic Bulletproof and truth gates remain authoritative",
+                "no capital, order, promotion or self-approval authority exists",
+            ],
+            approval_policy={
+                "kind": "explicit" if approval_required else "registry_gate",
+                "risk": 0,
+                "campaign_digest": campaign.campaign_digest,
+            },
+            approval_required=approval_required,
+            required_capabilities=(
+                ["founder-confirmation"]
+                if suffix == "C"
+                else ["alpha-research-execution", "backtesting", "research-audit"]
+            ),
+            allowed_machines=["vm1-developer"],
+            max_attempts=3,
+        )
+    )
+    persist_new_task(db, task)
+    return task
+
+
+def _create_strategy_engineering_task(
+    db: Session,
+    campaign: AlphaCampaign,
+    source: dict,
+    requirement: dict,
+) -> Task:
+    question = " ".join(source["question"].split())
+    contract = {
+        "repository": "bulletproof_bt",
+        "workflow": "engineering-mission",
+        "base_ref": campaign.specification["bulletproof_source_commit"],
+        "milestone_id": "ALPHA-003",
+        "work_item_id": f"strategy-{source['source_candidate_id'][:12]}",
+        "objective": (
+            "Implement a causal native Bulletproof hypothesis card, YAML contract, and "
+            f"strategy for this admitted Research Intelligence question: {question}"
+        ),
+        "allowed_paths": ["research/hypotheses", "src/bt/strategy", "tests"],
+        "context_paths": [
+            "docs/HYPOTHESIS_STRATEGY_GENERATION_PROMPT.md",
+            "src/bt/governance/alpha_strategy_pipeline.py",
+            "scripts/run_alpha_research_assignment.py",
+        ],
+        "acceptance_criteria": [
+            "The exact Research Intelligence question is represented without proxy substitution.",
+            "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
+            "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
+            "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
+            "No capital, order, promotion or self-approval authority is introduced.",
+        ],
+        "stop_conditions": [
+            "Required market data is not admitted by DATA-002/003.",
+            "The question cannot be represented without look-ahead or proxy substitution.",
+            "The requested change exceeds the bounded file or diff budget.",
+        ],
+        "max_files_changed": 12,
+        "max_diff_lines": 1800,
+        "max_duration_seconds": 7200,
+        "engineering_requirement": requirement,
+        "research_context": _research_context(db, question),
+    }
+    # The engineering worker contract forbids undeclared fields. Preserve the
+    # diagnostic in the task evidence while keeping its executable input typed.
+    executable_contract = {
+        key: value
+        for key, value in contract.items()
+        if key not in {"engineering_requirement", "research_context"}
+    }
+    task = build_task(
+        TaskCreate(
+            task_number=_stage_task_number(campaign, source, "G"),
+            project="bulletproof_bt",
+            task_type="engineering_mission",
+            title=f"Engineer native strategy: {question[:120]}",
+            objective=executable_contract["objective"],
+            priority=88,
+            risk_level=1,
+            created_by="alpha-campaign-director",
+            input_contract=executable_contract,
+            expected_outputs=["patch", "validation", "review", "pr_bundle"],
+            acceptance_criteria=executable_contract["acceptance_criteria"],
+            approval_policy={
+                "kind": "explicit",
+                "campaign_digest": campaign.campaign_digest,
+                "engineering_requirement": requirement,
+                "research_context": contract["research_context"],
+            },
+            approval_required=True,
+            required_capabilities=["git", "python", "testing"],
+            allowed_machines=["vm1-developer"],
+            max_attempts=2,
+        )
+    )
+    persist_new_task(db, task)
+    return task
+
+
+def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
+    queue = campaign.specification["research_queue"]
+    if campaign.hypothesis_count >= len(queue):
+        return None
+    source = queue[campaign.hypothesis_count]
+    draft = db.scalar(
+        select(Task).where(
+            Task.task_number == _stage_task_number(campaign, source, "D")
+        )
+    )
+    if draft is None:
+        campaign.phase = "hypothesis_draft"
+        campaign.next_action = "draft_evidence_grounded_hypothesis"
+        return _create_stage_task(
+            db,
+            campaign,
+            source,
+            suffix="D",
+            title="Draft an evidence-grounded hypothesis card",
+            contract=_stage_contract(db, campaign, source, stage="draft"),
+            approval_required=False,
+        )
+    if draft.status != "succeeded":
+        campaign.phase = "hypothesis_draft"
+        campaign.next_action = "await_vm1_hypothesis_drafter"
+        return draft
+    summary = draft.result.get("summary", {})
+    card = summary.get("hypothesis_card")
+    if not isinstance(card, dict):
+        requirement = summary.get(
+            "engineering_requirement", {"category": "hypothesis_draft_missing"}
+        )
+        engineering = db.scalar(
+            select(Task).where(
+                Task.task_number == _stage_task_number(campaign, source, "G")
+            )
+        )
+        if engineering is None:
+            engineering = _create_strategy_engineering_task(
+                db, campaign, source, requirement
+            )
+        campaign.phase = "strategy_engineering"
+        if engineering.status == "pending_approval":
+            campaign.next_action = "founder_strategy_engineering_approval"
+        elif engineering.status in {"queued", "in_progress"}:
+            campaign.next_action = "await_bounded_strategy_engineering"
+        elif engineering.status == "succeeded":
+            campaign.status = "needs_attention"
+            campaign.next_action = "founder_merge_strategy_and_rebind_source_commit"
+            campaign.terminal_reason = {
+                "category": "strategy_engineering_completed",
+                "task_id": str(engineering.id),
+                "result": engineering.result,
+            }
+        else:
+            campaign.status = "needs_attention"
+            campaign.next_action = "strategy_engineering_failed"
+            campaign.terminal_reason = {
+                "category": "strategy_engineering_failed",
+                "task_id": str(engineering.id),
+                "status": engineering.status,
+                "result": engineering.result,
+            }
+        return engineering
+    confirmation = db.scalar(
+        select(Task).where(
+            Task.task_number == _stage_task_number(campaign, source, "C")
+        )
+    )
+    if confirmation is None:
+        campaign.phase = "hypothesis_approval"
+        campaign.next_action = "founder_hypothesis_card_approval"
+        return _create_stage_task(
+            db,
+            campaign,
+            source,
+            suffix="C",
+            title=f"Approve hypothesis card: {card['title']}",
+            contract=_stage_contract(
+                db, campaign, source, stage="draft", hypothesis_card=card
+            ),
+            approval_required=True,
+        )
+    if confirmation.status == "succeeded":
+        approved = confirmation.result["summary"]
+        approval_receipt = {
+            "actor": approved["approved_by"],
+            "approved_at": approved["approved_at"],
+            "plan_digest": approved["plan_digest"],
+        }
+    else:
+        approval = db.scalar(
+            select(TaskApproval).where(TaskApproval.task_id == confirmation.id)
+        )
+        if approval is None or approval.status != "approved":
+            campaign.phase = "hypothesis_approval"
+            campaign.next_action = "founder_hypothesis_card_approval"
+            return confirmation
+        consume_task_approval(db, confirmation, now())
+        confirmation.status = "succeeded"
+        confirmation.completed_at = now()
+        confirmation.result = {
+            "summary": {
+                "card_digest": digest_document(card),
+                "approved_by": approval.decided_by,
+                "approved_at": approval.issued_at.isoformat(),
+                "plan_digest": approval.plan_digest,
+            }
+        }
+        append_task_event(
+            db,
+            confirmation,
+            "task_succeeded",
+            "Founder approved the immutable hypothesis card.",
+            payload=confirmation.result["summary"],
+        )
+        approval_receipt = {
+            "actor": approval.decided_by,
+            "approved_at": approval.issued_at.isoformat(),
+            "plan_digest": approval.plan_digest,
+        }
+    qualification_task = db.scalar(
+        select(Task).where(
+            Task.task_number == _stage_task_number(campaign, source, "Q")
+        )
+    )
+    if qualification_task is None:
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "compile_and_independently_review_strategy"
+        return _create_stage_task(
+            db,
+            campaign,
+            source,
+            suffix="Q",
+            title="Compile and qualify the approved Bulletproof strategy",
+            contract=_stage_contract(
+                db,
+                campaign,
+                source,
+                stage="qualify",
+                hypothesis_card=card,
+                card_approval=approval_receipt,
+            ),
+            approval_required=False,
+        )
+    if qualification_task.status != "succeeded":
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "await_vm1_strategy_qualification"
+        return qualification_task
+    qualification = qualification_task.result.get("summary", {}).get("qualification")
+    if (
+        not isinstance(qualification, dict)
+        or qualification.get("qualified") is not True
+    ):
+        campaign.status = "needs_attention"
+        campaign.phase = "strategy_engineering"
+        campaign.next_action = "bounded_strategy_engineering"
+        campaign.terminal_reason = {
+            "category": "strategy_not_qualified",
+            "qualification": qualification,
+        }
+        return qualification_task
+    execution = db.scalar(
+        select(Task).where(
+            Task.task_number == _stage_task_number(campaign, source, "E")
+        )
+    )
+    if execution is None:
+        campaign.phase = "execution_approval"
+        campaign.next_action = "founder_execution_approval"
+        return _create_stage_task(
+            db,
+            campaign,
+            source,
+            suffix="E",
+            title=f"Approve bounded Tier2B execution: {card['title']}",
+            contract=_stage_contract(
+                db,
+                campaign,
+                source,
+                stage="execute",
+                hypothesis_card=qualification["card"],
+                qualification=qualification,
+            ),
+            approval_required=True,
+        )
+    campaign.phase = (
+        "execution" if execution.status != "pending_approval" else "execution_approval"
+    )
+    campaign.next_action = (
+        "founder_execution_approval"
+        if execution.status == "pending_approval"
+        else "await_native_bulletproof_execution"
+    )
+    return execution
+
+
 def _dataset_path(db: Session, campaign: AlphaCampaign, binding: dict) -> str:
     build = db.get(ResearchDatasetBuild, binding["dataset_build_id"])
     manifest = db.get(ResearchDatasetManifest, build.manifest_id) if build else None
@@ -395,9 +797,9 @@ def _dataset_path(db: Session, campaign: AlphaCampaign, binding: dict) -> str:
             409, "Alpha execution requires exactly one immutable local panel URI."
         )
     path = Path(uris[0].removeprefix("file://")).resolve(strict=False)
-    allowed_root = Path(
-        "/home/omenka/Projects/bulletproof_bt/research_data"
-    ).resolve(strict=False)
+    allowed_root = Path("/home/omenka/Projects/bulletproof_bt/research_data").resolve(
+        strict=False
+    )
     if not path.is_relative_to(allowed_root) or path.suffix != ".parquet":
         raise HTTPException(409, "Admitted panel path is outside the read-only lake.")
     return str(path)
@@ -406,6 +808,8 @@ def _dataset_path(db: Session, campaign: AlphaCampaign, binding: dict) -> str:
 def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
     if campaign.status != "running":
         return None
+    if campaign.specification.get("execution_protocol") == "alpha003-governed-v1":
+        return _advance_governed_pipeline(db, campaign)
     if campaign.specification.get("execution_protocol") != "alpha002-native-v1":
         return None
     queue = campaign.specification["research_queue"]
@@ -474,8 +878,7 @@ def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
                 "dataset_digest": binding["dataset_digest"],
                 "dataset_path": _dataset_path(db, campaign, binding),
                 "memory_database": (
-                    "/home/omenka/.local/state/invariance-swarm/"
-                    "alpha002-memory.sqlite"
+                    "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite"
                 ),
                 "bundle_root": (
                     "/home/omenka/.local/share/invariance-swarm/alpha002-bundles"
@@ -558,15 +961,20 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
     if campaign.hypothesis_count >= len(queue):
         return False
     source = queue[campaign.hypothesis_count]
-    task = db.scalar(
-        select(Task).where(Task.task_number == _execution_task_number(campaign, source))
+    number = (
+        _stage_task_number(campaign, source, "E")
+        if campaign.specification.get("execution_protocol") == "alpha003-governed-v1"
+        else _execution_task_number(campaign, source)
     )
+    task = db.scalar(select(Task).where(Task.task_number == number))
     if task is None or task.status != "succeeded":
         return False
     summary = task.result.get("summary", {})
     raw_attempt = summary.get("alpha_campaign_attempt")
     if not isinstance(raw_attempt, dict):
-        raise HTTPException(409, "Completed alpha task lacks a campaign attempt receipt.")
+        raise HTTPException(
+            409, "Completed alpha task lacks a campaign attempt receipt."
+        )
     publication_envelope = summary.get("publication_envelope")
     if isinstance(publication_envelope, dict):
         from app.services.alpha_publication import publish_execution
@@ -822,6 +1230,27 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             reason,
         )
         return
+    if campaign.specification.get("execution_protocol") == "alpha003-governed-v1":
+        task = _advance_governed_pipeline(db, campaign)
+        if task is not None and task.status in {"failed", "cancelled"}:
+            campaign.status = "needs_attention"
+            campaign.phase = "complete"
+            campaign.next_action = "operator_review"
+            campaign.completed_at = campaign.heartbeat_at
+            campaign.terminal_reason = {
+                "category": f"governed_pipeline_task_{task.status}",
+                "task_id": str(task.id),
+                "task_number": task.task_number,
+                "failure": task.failure,
+            }
+            _append_event(
+                db,
+                campaign,
+                "campaign_needs_attention",
+                "alpha-campaign-director",
+                campaign.terminal_reason,
+            )
+        return
     task = _ensure_execution_task(db, campaign)
     if task is not None:
         if task.status in {"failed", "cancelled"}:
@@ -870,7 +1299,7 @@ def cancel_campaign(
     }
     task = db.scalar(
         select(Task)
-        .where(Task.task_number.like(f"A2-{str(campaign.id)[:8]}-%"))
+        .where(Task.task_number.like(f"A%-{str(campaign.id)[:8]}-%"))
         .order_by(Task.created_at.desc())
         .limit(1)
     )
@@ -918,7 +1347,7 @@ def serialize_campaign(db: Session, campaign: AlphaCampaign) -> dict:
     ).all()
     execution_task = db.scalar(
         select(Task)
-        .where(Task.task_number.like(f"A2-{str(campaign.id)[:8]}-%"))
+        .where(Task.task_number.like(f"A%-{str(campaign.id)[:8]}-%"))
         .order_by(Task.created_at.desc())
         .limit(1)
     )

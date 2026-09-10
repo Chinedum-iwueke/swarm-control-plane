@@ -9,8 +9,7 @@ from swarm_worker.workflows import WorkflowLoader
 
 def test_native_execution_failure_is_bounded_retryable_source_contract() -> None:
     source = (
-        Path(__file__).parents[1]
-        / "src/swarm_worker/executors/alpha_research.py"
+        Path(__file__).parents[1] / "src/swarm_worker/executors/alpha_research.py"
     ).read_text(encoding="utf-8")
     assert 'else "native_bulletproof_failed"' in source
     assert '"workflow_timeout"' in source
@@ -35,9 +34,7 @@ def contract(**changes):
         "memory_database": (
             "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite"
         ),
-        "bundle_root": (
-            "/home/omenka/.local/share/invariance-swarm/alpha002-bundles"
-        ),
+        "bundle_root": ("/home/omenka/.local/share/invariance-swarm/alpha002-bundles"),
         "dataset_key": "bybit-btcusdt-perp-1m",
         "instrument": "BTCUSDT",
         "timeframe": "1m",
@@ -57,6 +54,25 @@ def test_alpha_contract_and_fixed_workflow_are_narrow() -> None:
     )
     assert workflow.steps == []
     assert workflow.allowed_repositories == ["bulletproof_bt"]
+
+
+def test_alpha003_qualification_requires_card_and_founder_receipt() -> None:
+    shared = {
+        "stage": "qualify",
+        "venue": "bybit",
+        "window_start": "2026-04-01T00:00:00Z",
+        "window_end": "2026-05-01T00:00:00Z",
+    }
+    with pytest.raises(ValidationError, match="founder approval"):
+        AlphaResearchExecutionContract.model_validate(contract(**shared))
+    value = AlphaResearchExecutionContract.model_validate(
+        contract(
+            **shared,
+            hypothesis_card={"schema_version": "hypothesis_card_v1"},
+            card_approval={"actor": "founder-operator", "plan_digest": "f" * 64},
+        )
+    )
+    assert value.stage == "qualify"
 
 
 @pytest.mark.parametrize(

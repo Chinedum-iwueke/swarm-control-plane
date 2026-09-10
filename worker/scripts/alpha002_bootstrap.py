@@ -15,7 +15,7 @@ import httpx
 from swarm_worker.role_package import canonical_manifest, load_role_package
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = "vm1-alpha-research-executor"
+DEFAULT_PACKAGE = "vm1-alpha-research-executor"
 WORKLOAD_SCOPES = [
     "control:read",
     "heartbeat:write",
@@ -104,7 +104,9 @@ def main() -> int:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--environment", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--package", default=DEFAULT_PACKAGE)
     args = parser.parse_args()
+    package_name = args.package
     if args.state.exists() != args.environment.exists():
         raise RuntimeError(
             "Executor state is partial; refusing implicit credential recovery."
@@ -113,14 +115,14 @@ def main() -> int:
         raise RuntimeError("A full control-plane source commit is required.")
     signing_secret = os.environ["SWARM_PACKAGE_SIGNING_SECRET"]
     manifest = load_role_package(
-        ROOT / "role-packages" / PACKAGE / "manifest.yaml", ROOT / "workflows"
+        ROOT / "role-packages" / package_name / "manifest.yaml", ROOT / "workflows"
     ).manifest
     canonical = canonical_manifest(manifest)
     manifest_digest = hashlib.sha256(canonical).hexdigest()
     if args.state.exists():
         state = json.loads(args.state.read_text(encoding="utf-8"))
         if (
-            state.get("slug") != PACKAGE
+            state.get("slug") != package_name
             or state.get("manifest_digest") != manifest_digest
             or state.get("source_commit") != args.source_commit
         ):
@@ -148,9 +150,7 @@ def main() -> int:
         return 0
     with httpx.Client(
         base_url=os.environ["SWARM_API_URL"].rstrip("/"),
-        headers={
-            "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
-        },
+        headers={"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
         timeout=60,
     ) as api:
         packages = call(api, "GET", "/v1/packages")
@@ -158,7 +158,7 @@ def main() -> int:
             (
                 item
                 for item in packages
-                if item["name"] == PACKAGE and item["version"] == manifest.version
+                if item["name"] == package_name and item["version"] == manifest.version
             ),
             None,
         )
@@ -181,18 +181,18 @@ def main() -> int:
         if package["manifest_digest"] != manifest_digest:
             raise RuntimeError("Existing package content differs from local source.")
         agents = call(api, "GET", "/v1/agents")
-        if any(item["slug"] == PACKAGE for item in agents):
+        if any(item["slug"] == package_name for item in agents):
             raise RuntimeError("Executor identity exists; refusing implicit rotation.")
         registration = call(
             api,
             "POST",
             "/v1/agents",
             {
-                "slug": PACKAGE,
+                "slug": package_name,
                 "display_name": "VM1 Alpha Research Executor",
                 "role": manifest.role,
                 "machine": "vm1-developer",
-                "hermes_profile": PACKAGE,
+                "hermes_profile": package_name,
                 "capabilities": manifest.required_capabilities,
                 "risk_ceiling": 0,
             },
@@ -270,7 +270,7 @@ def main() -> int:
             grant_ids.append(grant["id"])
         state = {
             "agent_id": registration["agent"]["id"],
-            "slug": PACKAGE,
+            "slug": package_name,
             "package_id": package["id"],
             "deployment_id": deployment["id"],
             "charter_id": charter["id"],
@@ -290,7 +290,7 @@ def main() -> int:
         [
             f"SWARM_API_URL={os.environ['SWARM_API_URL']}",
             f"SWARM_AGENT_TOKEN={registration['credential']['token']}",
-            f"SWARM_AGENT_SLUG={PACKAGE}",
+            f"SWARM_AGENT_SLUG={package_name}",
             "SWARM_MACHINE=vm1-developer",
             "SWARM_POLL_INTERVAL_SECONDS=10",
             "SWARM_TASK_HEARTBEAT_SECONDS=30",
@@ -298,7 +298,7 @@ def main() -> int:
             "SWARM_REPOSITORY_ROOT=/home/omenka/Projects",
             "SWARM_WORKSPACE_ROOT=/home/omenka/Projects/swarm-agent-workspaces",
             "SWARM_WORKFLOW_DIRECTORY=/home/omenka/Projects/swarm-control-plane/worker/workflows",
-            "SWARM_ROLE_PACKAGE_MANIFEST=/home/omenka/Projects/swarm-control-plane/worker/role-packages/vm1-alpha-research-executor/manifest.yaml",
+            f"SWARM_ROLE_PACKAGE_MANIFEST=/home/omenka/Projects/swarm-control-plane/worker/role-packages/{package_name}/manifest.yaml",
             "",
         ]
     )
