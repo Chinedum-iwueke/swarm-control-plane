@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -1280,6 +1281,55 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             "failed": "operator_review_failed_execution",
             "cancelled": "operator_review_cancelled_execution",
         }.get(task.status, "await_executor_terminal_receipt")
+
+
+def resume_campaign(
+    db: Session, campaign: AlphaCampaign, payload: AlphaCampaignAction
+) -> None:
+    if campaign.status != "needs_attention":
+        raise HTTPException(409, "Only a campaign needing attention can be resumed.")
+    if campaign.campaign_digest != payload.expected_campaign_digest:
+        raise HTTPException(409, "Campaign digest changed before recovery.")
+    terminal = campaign.terminal_reason or {}
+    if not str(terminal.get("category", "")).startswith(
+        "governed_pipeline_task_"
+    ):
+        raise HTTPException(
+            409, "Campaign recovery is limited to governed pipeline task failures."
+        )
+    failed_task_id = terminal.get("task_id")
+    try:
+        task_id = UUID(str(failed_task_id))
+    except (TypeError, ValueError):
+        task_id = None
+    task = db.get(Task, task_id) if task_id else None
+    if task is None:
+        raise HTTPException(409, "Recorded pipeline task is unavailable.")
+    if task.status in {"failed", "cancelled"}:
+        raise HTTPException(
+            409, "Resume the recorded pipeline task before resuming its campaign."
+        )
+
+    prior_reason = campaign.terminal_reason
+    campaign.status = "running"
+    campaign.phase = "recovery"
+    campaign.next_action = "reconcile_recovered_pipeline_task"
+    campaign.completed_at = None
+    campaign.terminal_reason = {}
+    campaign.heartbeat_at = now()
+    _append_event(
+        db,
+        campaign,
+        "campaign_resumed",
+        payload.actor,
+        {
+            "reason": payload.reason,
+            "recovered_task_id": str(task.id),
+            "recovered_task_status": task.status,
+            "prior_terminal_reason": prior_reason,
+        },
+    )
+    reconcile_campaign(db, campaign)
 
 
 def cancel_campaign(
