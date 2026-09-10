@@ -80,6 +80,28 @@ def _record_graph_task_message(db: Session, task, *, succeeded: bool) -> None:
     )
 
 
+def _append_terminal_event(
+    db: Session,
+    task,
+    event_type: str,
+    message: str,
+    *,
+    agent_id: uuid.UUID,
+    payload: dict,
+):
+    from app.services.agent_context import discard_working_memory
+
+    discarded = discard_working_memory(db, task.id)
+    return append_task_event(
+        db,
+        task,
+        event_type,
+        message,
+        agent_id=agent_id,
+        payload={**payload, "working_memory_discarded": discarded},
+    )
+
+
 @router.post(
     "/{task_id}/broker-ticket",
     response_model=BrokerTicketResponse,
@@ -282,7 +304,7 @@ def complete_task(
     task.failure = {}
     task.completed_at = now
 
-    event = append_task_event(
+    event = _append_terminal_event(
         db,
         task,
         "task_completed",
@@ -292,11 +314,6 @@ def complete_task(
             "result": payload.result,
         },
     )
-
-    from app.services.agent_context import discard_working_memory
-
-    discarded = discard_working_memory(db, task.id)
-    event.payload = {**event.payload, "working_memory_discarded": discarded}
     _record_graph_task_message(db, task, succeeded=True)
     clear_lease(task)
     if task.mission_id is not None:
@@ -340,7 +357,7 @@ def fail_task(
 
     task.failure = failure_payload
 
-    event = append_task_event(
+    event = _append_terminal_event(
         db,
         task,
         "task_failed",
@@ -370,10 +387,6 @@ def fail_task(
         task.status = "failed"
         task.completed_at = now
 
-    from app.services.agent_context import discard_working_memory
-
-    discarded = discard_working_memory(db, task.id)
-    event.payload = {**event.payload, "working_memory_discarded": discarded}
     _record_graph_task_message(db, task, succeeded=False)
     clear_lease(task)
     if task.mission_id is not None:
@@ -425,7 +438,7 @@ def release_task(
         }
         task.completed_at = now
 
-    event = append_task_event(
+    event = _append_terminal_event(
         db,
         task,
         "task_released",
@@ -447,10 +460,6 @@ def release_task(
             payload={},
         )
 
-    from app.services.agent_context import discard_working_memory
-
-    discarded = discard_working_memory(db, task.id)
-    event.payload = {**event.payload, "working_memory_discarded": discarded}
     clear_lease(task)
     _reconcile_task_graph(db, task)
 
