@@ -16,6 +16,14 @@ from swarm_worker.role_package import canonical_manifest, load_role_package
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "vm1-alpha-research-executor"
+WORKLOAD_SCOPES = [
+    "control:read",
+    "heartbeat:write",
+    "identity:read",
+    "package:read",
+    "task:execute",
+    "task:lease",
+]
 
 
 def digest(value: object) -> str:
@@ -39,6 +47,56 @@ def atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
         temporary = Path(stream.name)
     temporary.chmod(mode)
     temporary.replace(path)
+
+
+def ensure_workload_identity(
+    api: httpx.Client,
+    state: dict,
+    *,
+    expires_at: str,
+) -> dict:
+    identities = call(api, "GET", "/v1/workload-identities")
+    matches = [
+        item
+        for item in identities
+        if item["agent_id"] == state["agent_id"]
+        and item["charter_id"] == state["charter_id"]
+        and item["package_id"] == state["package_id"]
+        and item["status"] == "active"
+    ]
+    if len(matches) > 1:
+        raise RuntimeError("Multiple active workload identities match the executor.")
+    expected_id = state.get("workload_identity_id")
+    if expected_id and (not matches or matches[0]["id"] != expected_id):
+        raise RuntimeError("Persisted executor workload identity is no longer active.")
+    if matches:
+        identity = matches[0]
+    else:
+        identity = call(
+            api,
+            "POST",
+            "/v1/workload-identities",
+            {
+                "agent_id": state["agent_id"],
+                "charter_id": state["charter_id"],
+                "package_id": state["package_id"],
+                "version": "1.0.0",
+                "audience": "invariance-control-plane",
+                "scopes": WORKLOAD_SCOPES,
+                "accountable_owner": "senior-quantitative-research",
+                "expires_at": expires_at,
+                "created_by": "founder-operator",
+            },
+        )
+    if sorted(identity["scopes"]) != WORKLOAD_SCOPES:
+        raise RuntimeError("Executor workload identity has unexpected scopes.")
+    call(
+        api,
+        "POST",
+        f"/v1/workload-identities/{identity['id']}/bind-credentials",
+        {"actor": "founder-operator"},
+    )
+    return identity
 
 
 def main() -> int:
@@ -71,6 +129,21 @@ def main() -> int:
             )
         if args.state.stat().st_mode & 0o077 or args.environment.stat().st_mode & 0o077:
             raise RuntimeError("Existing executor state files are not mode 0600.")
+        with httpx.Client(
+            base_url=os.environ["SWARM_API_URL"].rstrip("/"),
+            headers={
+                "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
+            },
+            timeout=60,
+        ) as api:
+            identity = ensure_workload_identity(
+                api,
+                state,
+                expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
+            )
+        state["workload_identity_id"] = identity["id"]
+        state["workload_scopes"] = WORKLOAD_SCOPES
+        atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
         print(json.dumps(state, indent=2, sort_keys=True))
         return 0
     with httpx.Client(
@@ -195,16 +268,23 @@ def main() -> int:
                 },
             )
             grant_ids.append(grant["id"])
-    state = {
-        "agent_id": registration["agent"]["id"],
-        "slug": PACKAGE,
-        "package_id": package["id"],
-        "deployment_id": deployment["id"],
-        "charter_id": charter["id"],
-        "grant_ids": grant_ids,
-        "manifest_digest": manifest_digest,
-        "source_commit": args.source_commit,
-    }
+        state = {
+            "agent_id": registration["agent"]["id"],
+            "slug": PACKAGE,
+            "package_id": package["id"],
+            "deployment_id": deployment["id"],
+            "charter_id": charter["id"],
+            "grant_ids": grant_ids,
+            "manifest_digest": manifest_digest,
+            "source_commit": args.source_commit,
+        }
+        identity = ensure_workload_identity(
+            api,
+            state,
+            expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
+        )
+        state["workload_identity_id"] = identity["id"]
+        state["workload_scopes"] = WORKLOAD_SCOPES
     atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
     environment = "\n".join(
         [
