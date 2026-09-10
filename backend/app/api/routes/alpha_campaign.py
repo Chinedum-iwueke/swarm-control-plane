@@ -21,6 +21,7 @@ from app.services.alpha_campaign import (
     reconcile_campaign,
     record_attempt,
     register_campaign,
+    resume_campaign,
     serialize_campaign,
 )
 
@@ -103,6 +104,19 @@ def retain_attempt(
 def reconcile(campaign_id: UUID, db: Annotated[Session, Depends(get_db)]):
     campaign = _locked(db, campaign_id)
     reconcile_campaign(db, campaign)
+    db.commit()
+    db.refresh(campaign)
+    return serialize_campaign(db, campaign)
+
+
+@router.post("/{campaign_id}/resume", response_model=AlphaCampaignResponse)
+def resume(
+    campaign_id: UUID,
+    payload: AlphaCampaignAction,
+    db: Annotated[Session, Depends(get_db)],
+):
+    campaign = _locked(db, campaign_id)
+    resume_campaign(db, campaign, payload)
     db.commit()
     db.refresh(campaign)
     return serialize_campaign(db, campaign)

@@ -12,7 +12,11 @@ from app.models.discovery_portfolio import (
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
-from app.schemas.alpha_campaign import AlphaCampaignAttemptCreate, AlphaCampaignCreate
+from app.schemas.alpha_campaign import (
+    AlphaCampaignAction,
+    AlphaCampaignAttemptCreate,
+    AlphaCampaignCreate,
+)
 from app.services import alpha_campaign as service
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -227,6 +231,78 @@ def campaign(**updates):
     }
     value.update(updates)
     return SimpleNamespace(**value)
+
+
+def test_campaign_resume_requires_recovered_governed_task(monkeypatch):
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="complete",
+        next_action="operator_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={
+            "category": "governed_pipeline_task_failed",
+            "task_id": str(task_id),
+        },
+    )
+    task = SimpleNamespace(id=task_id, status="succeeded")
+    db = MagicMock()
+    db.get.return_value = task
+    events = []
+    reconciled = []
+    monkeypatch.setattr(
+        service,
+        "_append_event",
+        lambda _db, _campaign, kind, actor, payload: events.append(
+            (kind, actor, payload)
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "reconcile_campaign",
+        lambda _db, value: reconciled.append(value),
+    )
+
+    service.resume_campaign(
+        db,
+        record,
+        AlphaCampaignAction(
+            expected_campaign_digest=DIGEST,
+            actor="founder-operator",
+            reason="Qualification retry completed successfully.",
+        ),
+    )
+
+    assert record.status == "running"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+    assert events[0][0] == "campaign_resumed"
+    assert events[0][2]["recovered_task_status"] == "succeeded"
+    assert reconciled == [record]
+
+
+def test_campaign_resume_rejects_task_that_is_still_failed() -> None:
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        terminal_reason={
+            "category": "governed_pipeline_task_failed",
+            "task_id": str(task_id),
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(id=task_id, status="failed")
+
+    with pytest.raises(HTTPException, match="Resume the recorded pipeline task"):
+        service.resume_campaign(
+            db,
+            record,
+            AlphaCampaignAction(
+                expected_campaign_digest=DIGEST,
+                actor="founder-operator",
+                reason="Try to resume before task recovery.",
+            ),
+        )
 
 
 def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
