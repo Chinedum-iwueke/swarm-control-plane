@@ -241,7 +241,11 @@ def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
     db = MagicMock()
     db.scalar.return_value = None
     persisted = []
-    monkeypatch.setattr(service, "_dataset_path", lambda *_: "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet")
+    monkeypatch.setattr(
+        service,
+        "_dataset_path",
+        lambda *_: "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet",
+    )
     monkeypatch.setattr(
         retrieval,
         "hybrid_search",
@@ -251,7 +255,9 @@ def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
             "abstained": True,
         },
     )
-    monkeypatch.setattr(service, "persist_new_task", lambda _db, task: persisted.append(task))
+    monkeypatch.setattr(
+        service, "persist_new_task", lambda _db, task: persisted.append(task)
+    )
     monkeypatch.setattr(service, "_append_event", MagicMock())
 
     task = service._ensure_execution_task(db, record)
@@ -392,6 +398,85 @@ def test_alpha002_opt_in_is_immutable_and_explicit():
     payload = request(execution_protocol="alpha002-native-v1")
     record = service.register_campaign(database(payload), payload)
     assert record.specification["execution_protocol"] == "alpha002-native-v1"
+
+
+def test_alpha003_requires_an_immutable_execution_window():
+    with pytest.raises(ValidationError, match="immutable execution window"):
+        request(execution_protocol="alpha003-governed-v1")
+    payload = request(
+        execution_protocol="alpha003-governed-v1",
+        execution_window_start="2026-04-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+    )
+    assert payload.execution_window_start < payload.execution_window_end
+
+
+def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypatch):
+    record = campaign()
+    record.specification.update(
+        {
+            "execution_protocol": "alpha003-governed-v1",
+            "allowed_instruments": ["BTCUSDT"],
+            "execution_window_start": "2026-04-01T00:00:00Z",
+            "execution_window_end": "2026-05-01T00:00:00Z",
+        }
+    )
+    record.specification["dataset_bindings"][0].update(
+        {"dataset_key": "bybit-btcusdt-perp-1m", "venue": "bybit"}
+    )
+    monkeypatch.setattr(
+        service,
+        "_dataset_path",
+        lambda *_: "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet",
+    )
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "abstained": False, "citations": []},
+    )
+    contract = service._stage_contract(
+        MagicMock(), record, record.specification["research_queue"][0], stage="draft"
+    )
+    assert contract["stage"] == "draft"
+    assert contract["venue"] == "bybit"
+    assert contract["window_start"] == "2026-04-01T00:00:00Z"
+    assert contract["dataset_digest"] == DIGEST
+
+
+def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
+    monkeypatch,
+):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    source = record.specification["research_queue"][0]
+    persisted = []
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "citations": []},
+    )
+    monkeypatch.setattr(
+        service, "persist_new_task", lambda _db, task: persisted.append(task)
+    )
+
+    task = service._create_strategy_engineering_task(
+        MagicMock(),
+        record,
+        source,
+        {"category": "exact_strategy_unavailable"},
+    )
+
+    assert task is persisted[0]
+    assert task.project == "bulletproof_bt"
+    assert task.task_type == "engineering_mission"
+    assert task.approval_required is True
+    assert task.required_capabilities == ["git", "python", "testing"]
+    assert task.input_contract["allowed_paths"] == [
+        "research/hypotheses",
+        "src/bt/strategy",
+        "tests",
+    ]
+    assert task.input_contract["base_ref"] == COMMIT
 
 
 def test_registration_rejects_synthetic_label():

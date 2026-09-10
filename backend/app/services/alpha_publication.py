@@ -20,6 +20,8 @@ from app.models import (
     ResearchReview,
     ResearchSource,
     ResearchTrial,
+    Task,
+    TaskApproval,
 )
 from app.schemas.evidence import EvidenceObjectCreate
 from app.schemas.laboratory import (
@@ -222,7 +224,10 @@ def _experiment(
         features=experiment["features"] or ["registered strategy inputs"],
         target=experiment["target"],
         model_or_rule=proposal["resolution"]["strategy"],
-        parameters={"variant_count": 1, "tier": "Tier2B"},
+        parameters={
+            "variant_count": proposal["search"]["variant_count"],
+            "tier": "Tier2B",
+        },
         fees_bps=experiment["fees_bps"],
         slippage_bps=experiment["slippage_bps"],
         delay_bars=experiment["delay_bars"],
@@ -276,10 +281,14 @@ def _run_object(db: Session, envelope: dict[str, Any]) -> CanonicalEvidenceObjec
     found = db.get(CanonicalEvidenceObject, object_id)
     if found:
         return found
-    dataset_id = uuid.uuid5(NAMESPACE, f"dataset:{proposal['dataset']['dataset_digest']}")
+    dataset_id = uuid.uuid5(
+        NAMESPACE, f"dataset:{proposal['dataset']['dataset_digest']}"
+    )
     dataset = db.get(CanonicalEvidenceObject, dataset_id)
     if dataset is None:
-        source_id = uuid.uuid5(NAMESPACE, f"source:{proposal['dataset']['dataset_digest']}")
+        source_id = uuid.uuid5(
+            NAMESPACE, f"source:{proposal['dataset']['dataset_digest']}"
+        )
         source_payload = {
             "kind": "source",
             "title": "ALPHA-002 admitted live-exchange panel",
@@ -312,7 +321,9 @@ def _run_object(db: Session, envelope: dict[str, Any]) -> CanonicalEvidenceObjec
         "dataset_object_ids": [str(dataset_id)],
         "specification_digest": proposal["proposal_digest"],
         "code_digest": trial["code_digest"],
-        "environment_digest": digest_document({"source_commit": envelope["source_commit"]}),
+        "environment_digest": digest_document(
+            {"source_commit": envelope["source_commit"]}
+        ),
         "market_model_bundle_digest": trial["market_model_bundle_digest"],
         "representation_contract_digest": trial["representation_contract_digest"],
         "search_plan_digest": trial["search_plan_digest"],
@@ -376,8 +387,36 @@ def _require_current_projections(graph, retrieval, corpus) -> None:
 
 
 def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
-    if envelope.get("schema_version") != "alpha002-publication-envelope-v1.0.0":
-        raise HTTPException(422, "Unsupported ALPHA-002 publication envelope.")
+    version = envelope.get("schema_version")
+    if version not in {
+        "alpha002-publication-envelope-v1.0.0",
+        "alpha003-publication-envelope-v1.0.0",
+    }:
+        raise HTTPException(422, "Unsupported alpha publication envelope.")
+    execution_approval = None
+    campaign_label = (
+        "ALPHA-003"
+        if version == "alpha003-publication-envelope-v1.0.0"
+        else "ALPHA-002"
+    )
+    if version == "alpha003-publication-envelope-v1.0.0":
+        task = db.get(Task, uuid.UUID(envelope["task_id"]))
+        execution_approval = (
+            db.scalar(select(TaskApproval).where(TaskApproval.task_id == task.id))
+            if task is not None
+            else None
+        )
+        if (
+            task is None
+            or execution_approval is None
+            or execution_approval.status != "consumed"
+            or execution_approval.plan_digest != task.plan_digest
+            or execution_approval.decided_by != "founder-operator"
+        ):
+            raise HTTPException(
+                409,
+                "ALPHA-003 publication requires the consumed digest-bound founder execution approval.",
+            )
     proposal = GovernedResearchProposal.model_validate(envelope["bridge_proposal"])
     bridge = create_bridge(db, proposal)
     if bridge.state == "awaiting_approval":
@@ -390,6 +429,14 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
                 receipt={
                     "approved_by": "founder-operator",
                     "campaign_digest": envelope["campaign_digest"],
+                    **(
+                        {
+                            "execution_approval_id": str(execution_approval.id),
+                            "execution_plan_digest": execution_approval.plan_digest,
+                        }
+                        if execution_approval is not None
+                        else {}
+                    ),
                 },
             ),
         )
@@ -398,7 +445,9 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
     hypothesis = _hypothesis(db, envelope)
     experiment = _experiment(db, envelope, hypothesis, source, snapshot)
     trial_data = envelope["trial"]
-    trial = _existing(db, ResearchTrial, run_id=f"ALPHA002-{trial_data['trial_id'][:32]}")
+    trial = _existing(
+        db, ResearchTrial, run_id=f"ALPHA002-{trial_data['trial_id'][:32]}"
+    )
     if trial is None:
         plan = TrialPlan(
             run_id=f"ALPHA002-{trial_data['trial_id'][:32]}",
@@ -444,7 +493,10 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
             GovernedResearchAdvance(
                 expected_state="registry_bound",
                 next_state="executed",
-                receipt={"trial_id": str(trial.id), "bundle_digest": trial_data["bundle_digest"]},
+                receipt={
+                    "trial_id": str(trial.id),
+                    "bundle_digest": trial_data["bundle_digest"],
+                },
             ),
         )
     if bridge.state == "executed":
@@ -476,7 +528,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
         passed = not producer_gates["failed_gates"]
         result_doc = ResultDocument(
             summary=(
-                "ALPHA-002 retained the exact registered real-data run; candidate status "
+                f"{campaign_label} retained the exact governed real-data run; candidate status "
                 "depends on every declared gate, not the sign of one metric."
             ),
             metrics=trial_data["metrics"],
@@ -520,7 +572,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
             "alpha002-statistical-evaluator",
             (
                 "Verified temporal holdout, doubled-cost counterfactual and prospective "
-                "single-variant selection audit."
+                "validation-only finite-grid selection audit."
                 if passed
                 else "Verified the failed frozen held-out gates; retain the negative result."
             ),

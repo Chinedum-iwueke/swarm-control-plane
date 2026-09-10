@@ -58,7 +58,9 @@ class AlphaResearchExecutor:
             or dataset.is_symlink()
             or not resolved_dataset.is_relative_to(resolved_root)
         ):
-            raise AlphaResearchExecutionError("Admitted dataset is missing or symlinked.")
+            raise AlphaResearchExecutionError(
+                "Admitted dataset is missing or symlinked."
+            )
 
         started_at = datetime.now(UTC)
         started = time.monotonic()
@@ -163,12 +165,13 @@ class AlphaResearchExecutor:
             )
         document = json.loads(receipt.read_text(encoding="utf-8"))
         if (
-            document.get("campaign_digest") != contract.campaign_digest
+            document.get("stage") != contract.stage
+            or document.get("campaign_digest") != contract.campaign_digest
             or document.get("question_digest") != contract.question_digest
             or document.get("dataset_digest") != contract.dataset_digest
-            or document.get("source_commit")
-            != workspace.plan.resolved_base_commit
-            or document.get("authority") != {
+            or document.get("source_commit") != workspace.plan.resolved_base_commit
+            or document.get("authority")
+            != {
                 "capital": False,
                 "orders": False,
                 "promotion": False,
@@ -203,7 +206,26 @@ class AlphaResearchExecutor:
             summary={
                 "disposition": document["disposition"],
                 "receipt_digest": document["receipt_digest"],
-                "alpha_campaign_attempt": document["alpha_campaign_attempt"],
+                **(
+                    {"alpha_campaign_attempt": document["alpha_campaign_attempt"]}
+                    if "alpha_campaign_attempt" in document
+                    else {}
+                ),
+                **(
+                    {"hypothesis_card": document["hypothesis_card"]}
+                    if "hypothesis_card" in document
+                    else {}
+                ),
+                **(
+                    {"qualification": document["qualification"]}
+                    if "qualification" in document
+                    else {}
+                ),
+                **(
+                    {"engineering_requirement": document["engineering_requirement"]}
+                    if "engineering_requirement" in document
+                    else {}
+                ),
                 "publication_envelope": publication_envelope,
                 "production_eligible": False,
                 "capital_authority": False,
