@@ -19,6 +19,39 @@ class AlphaResearchExecutionError(RuntimeError):
     """The native Bulletproof execution boundary failed closed."""
 
 
+def _qualification_handoff(qualification: dict) -> dict:
+    """Keep the task summary bounded while preserving execution inputs."""
+    artifact_bundle = qualification.get("artifact_bundle")
+    if not isinstance(artifact_bundle, dict):
+        return qualification
+    required_artifacts = ("engine_hypothesis_yaml", "strategy_spec")
+    if any(name not in artifact_bundle for name in required_artifacts):
+        raise AlphaResearchExecutionError(
+            "Qualified strategy is missing a required execution artifact."
+        )
+    retained = {
+        key: qualification[key]
+        for key in (
+            "schema_version",
+            "qualified",
+            "card",
+            "card_digest",
+            "dataset",
+            "parameter_grid",
+            "review",
+            "tier",
+            "variant_count",
+            "window",
+            "authority",
+        )
+        if key in qualification
+    }
+    retained["artifact_bundle"] = {
+        name: artifact_bundle[name] for name in required_artifacts
+    }
+    return retained
+
+
 class AlphaResearchExecutor:
     def __init__(
         self,
@@ -217,7 +250,11 @@ class AlphaResearchExecutor:
                     else {}
                 ),
                 **(
-                    {"qualification": document["qualification"]}
+                    {
+                        "qualification": _qualification_handoff(
+                            document["qualification"]
+                        )
+                    }
                     if "qualification" in document
                     else {}
                 ),

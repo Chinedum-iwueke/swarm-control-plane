@@ -3,6 +3,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from swarm_worker.executors.alpha_research import (
+    AlphaResearchExecutionError,
+    _qualification_handoff,
+)
+from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.policy import AlphaResearchExecutionContract
 from swarm_worker.workflows import WorkflowLoader
 
@@ -73,6 +78,51 @@ def test_alpha003_qualification_requires_card_and_founder_receipt() -> None:
         )
     )
     assert value.stage == "qualify"
+
+
+def test_qualification_handoff_retains_execution_inputs_inside_summary_limit() -> None:
+    qualification = {
+        "schema_version": "alpha-strategy-qualification-v1.0.0",
+        "qualified": True,
+        "card": {"title": "Weekend momentum", "claim": "x" * 2_000},
+        "card_digest": "a" * 64,
+        "review": {"gates": {"independent_review_complete": True}},
+        "variant_count": 8,
+        "artifact_bundle": {
+            "card": {"duplicated": "x" * 20_000},
+            "hypothesis_spec": {"duplicated": "x" * 20_000},
+            "normalized_ir": {"duplicated": "x" * 20_000},
+            "engine_hypothesis_yaml": {"metadata": {"hypothesis_id": "h1"}},
+            "strategy_spec": {"strategy": {"name": "alpha_weekend_momentum"}},
+        },
+    }
+
+    handoff = _qualification_handoff(qualification)
+
+    assert set(handoff["artifact_bundle"]) == {
+        "engine_hypothesis_yaml",
+        "strategy_spec",
+    }
+    WorkflowExecutionResult(
+        workflow="alpha-research-execution",
+        repository="bulletproof_bt",
+        base_commit="a" * 40,
+        task_attempt=1,
+        total_duration_seconds=1,
+        steps=[],
+        success=True,
+        summary={"qualification": handoff},
+    )
+
+
+def test_qualification_handoff_fails_closed_without_execution_artifact() -> None:
+    with pytest.raises(AlphaResearchExecutionError, match="execution artifact"):
+        _qualification_handoff(
+            {
+                "qualified": True,
+                "artifact_bundle": {"engine_hypothesis_yaml": {}},
+            }
+        )
 
 
 @pytest.mark.parametrize(
