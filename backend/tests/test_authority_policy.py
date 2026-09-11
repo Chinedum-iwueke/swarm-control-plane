@@ -17,7 +17,10 @@ def manifest() -> AuthorityPolicyManifest:
                 {"role": "governance", "actors": ["founder-operator"]},
                 {"role": "risk", "actors": ["risk-reviewer"]},
             ],
-            "identity_aliases": {"founder-telegram": "founder-operator"},
+            "identity_aliases": {
+                "founder-mission-control": "founder-operator",
+                "founder-telegram": "founder-operator",
+            },
             "decisions": [
                 {
                     "decision_type": "task-approval",
@@ -77,6 +80,16 @@ def request(**updates) -> AuthorityResolutionRequest:
 
 def test_authorized_actor_resolves_against_explicit_right() -> None:
     allowed, reason, roles, failures = pure_resolution(manifest(), request())
+    assert allowed is True
+    assert reason == "authorized"
+    assert roles == ["governance"]
+    assert failures == []
+
+
+def test_mission_control_channel_resolves_to_founder_authority() -> None:
+    allowed, reason, roles, failures = pure_resolution(
+        manifest(), request(actor="founder-mission-control")
+    )
     assert allowed is True
     assert reason == "authorized"
     assert roles == ["governance"]

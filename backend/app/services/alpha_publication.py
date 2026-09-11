@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AuthorityDecisionRecord,
     CanonicalEvidenceObject,
     EvidenceCorpusFreshness,
     EvidenceGraphProjectionState,
@@ -386,6 +387,26 @@ def _require_current_projections(graph, retrieval, corpus) -> None:
         raise HTTPException(409, "Canonical projections are unavailable or stale.")
 
 
+def _has_founder_execution_authority(
+    db: Session, approval: TaskApproval | None
+) -> bool:
+    if approval is None or approval.decided_by is None:
+        return False
+    decision = db.scalar(
+        select(AuthorityDecisionRecord)
+        .where(
+            AuthorityDecisionRecord.decision_type == "task-approval",
+            AuthorityDecisionRecord.action == "approve",
+            AuthorityDecisionRecord.object_type == "task-approval",
+            AuthorityDecisionRecord.object_id == str(approval.id),
+            AuthorityDecisionRecord.actor == approval.decided_by,
+            AuthorityDecisionRecord.outcome == "authorized",
+        )
+        .order_by(AuthorityDecisionRecord.created_at.desc())
+    )
+    return decision is not None and "founder" in decision.effective_roles
+
+
 def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
     version = envelope.get("schema_version")
     if version not in {
@@ -411,7 +432,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
             or execution_approval is None
             or execution_approval.status != "consumed"
             or execution_approval.plan_digest != task.plan_digest
-            or execution_approval.decided_by != "founder-operator"
+            or not _has_founder_execution_authority(db, execution_approval)
         ):
             raise HTTPException(
                 409,
