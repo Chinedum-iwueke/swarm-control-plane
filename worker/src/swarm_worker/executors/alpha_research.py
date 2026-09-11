@@ -236,6 +236,7 @@ class AlphaResearchExecutor:
                 receipt.relative_to(workspace.plan.attempt_directory).as_posix(),
             ],
             retryable=False,
+            downstream_handoff={"publication_envelope": publication_envelope},
             summary={
                 "disposition": document["disposition"],
                 "receipt_digest": document["receipt_digest"],
@@ -250,11 +251,7 @@ class AlphaResearchExecutor:
                     else {}
                 ),
                 **(
-                    {
-                        "qualification": _qualification_handoff(
-                            document["qualification"]
-                        )
-                    }
+                    {"qualification": _qualification_handoff(document["qualification"])}
                     if "qualification" in document
                     else {}
                 ),
@@ -263,7 +260,6 @@ class AlphaResearchExecutor:
                     if "engineering_requirement" in document
                     else {}
                 ),
-                "publication_envelope": publication_envelope,
                 "production_eligible": False,
                 "capital_authority": False,
             },

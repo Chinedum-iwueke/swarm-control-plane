@@ -957,6 +957,17 @@ def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
     return task
 
 
+def _publication_envelope_from_result(result: dict) -> dict | None:
+    summary = result.get("summary", {})
+    handoff = result.get("downstream_handoff", {})
+    publication_envelope = (
+        handoff.get("publication_envelope") if isinstance(handoff, dict) else None
+    )
+    if publication_envelope is None and isinstance(summary, dict):
+        publication_envelope = summary.get("publication_envelope")
+    return publication_envelope if isinstance(publication_envelope, dict) else None
+
+
 def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
     queue = campaign.specification["research_queue"]
     if campaign.hypothesis_count >= len(queue):
@@ -976,8 +987,8 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
         raise HTTPException(
             409, "Completed alpha task lacks a campaign attempt receipt."
         )
-    publication_envelope = summary.get("publication_envelope")
-    if isinstance(publication_envelope, dict):
+    publication_envelope = _publication_envelope_from_result(task.result)
+    if publication_envelope is not None:
         from app.services.alpha_publication import publish_execution
 
         publication = publish_execution(db, publication_envelope)
@@ -1291,9 +1302,7 @@ def resume_campaign(
     if campaign.campaign_digest != payload.expected_campaign_digest:
         raise HTTPException(409, "Campaign digest changed before recovery.")
     terminal = campaign.terminal_reason or {}
-    if not str(terminal.get("category", "")).startswith(
-        "governed_pipeline_task_"
-    ):
+    if not str(terminal.get("category", "")).startswith("governed_pipeline_task_"):
         raise HTTPException(
             409, "Campaign recovery is limited to governed pipeline task failures."
         )
