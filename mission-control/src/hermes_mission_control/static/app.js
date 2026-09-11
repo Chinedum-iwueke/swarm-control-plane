@@ -128,13 +128,36 @@ document.getElementById("decision-form").addEventListener("submit", async (event
   if (state.demo) return toast("Decisions are disabled in demonstration mode.");
   const form = new FormData(event.target);
   const action = form.get("action");
-  await mutate(
-    `/api/approvals/${form.get("approval_id")}/${action}`,
-    { reason: form.get("reason"), expires_in_seconds: 900, expected_review_digest: form.get("review_digest") },
-    `Approval ${action === "approve" ? "approved" : "rejected"}.`,
-  );
-  document.getElementById("decision-dialog").close();
-  await loadDashboard();
+  const reason = String(form.get("reason") || "").trim();
+  const acknowledgement = event.target.elements.digest_acknowledged;
+  if (reason.length < 10) {
+    showDecisionError("Enter a decision reason of at least 10 characters.");
+    event.target.elements.reason.focus();
+    return;
+  }
+  if (action === "approve" && !acknowledgement.checked) {
+    showDecisionError("Confirm that you reviewed the exact digest, scope, prerequisites, and bounded effect.");
+    acknowledgement.focus();
+    return;
+  }
+  const button = document.getElementById("decision-submit");
+  showDecisionError("");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    await mutate(
+      `/api/approvals/${form.get("approval_id")}/${action}`,
+      { reason, expires_in_seconds: 900, expected_review_digest: form.get("review_digest") },
+      `Approval ${action === "approve" ? "approved" : "rejected"}.`,
+    );
+    document.getElementById("decision-dialog").close();
+    await loadDashboard();
+  } catch (error) {
+    showDecisionError(error.message || "The approval decision could not be recorded.");
+  } finally {
+    button.disabled = false;
+    button.setAttribute("aria-busy", "false");
+  }
 });
 
 document.getElementById("proposal-form").addEventListener("submit", async (event) => {
@@ -1002,6 +1025,7 @@ function openDecision(id, action) {
   const task = item.task || {};
   const form = document.getElementById("decision-form");
   form.reset();
+  showDecisionError("");
   form.elements.approval_id.value = id;
   form.elements.action.value = action;
   form.elements.review_digest.value = item.review_digest;
@@ -2122,6 +2146,13 @@ function toast(message) {
   element.classList.add("show");
   window.clearTimeout(toast.timer);
   toast.timer = window.setTimeout(() => element.classList.remove("show"), 3200);
+}
+
+function showDecisionError(message) {
+  const element = document.getElementById("decision-error");
+  element.textContent = message;
+  element.hidden = !message;
+  if (message) toast(message);
 }
 
 function setLoading(loading) {

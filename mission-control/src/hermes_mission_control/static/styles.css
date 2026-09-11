@@ -826,6 +826,16 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
 }
 #toast.show { opacity: 1; transform: translateY(0); }
 
+.decision-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
 @media (max-width: 1180px) {
   .command-grid { grid-template-columns: minmax(0, 1fr) 280px; }
   .agent-matrix { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
