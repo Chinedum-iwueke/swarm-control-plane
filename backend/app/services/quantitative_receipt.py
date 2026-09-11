@@ -9,6 +9,7 @@ from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.venue_identity import VenueIdentityRegistry
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 
 
@@ -28,6 +29,7 @@ PRODUCERS = {
     "DISC-007": "bt.institutional.discovery.selection_audit_receipt",
     "EXEC-001": "bt.institutional.execution.execution_journal_receipt",
     "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
+    "EXEC-003": "bt.institutional.venue.venue_identity_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -90,6 +92,18 @@ def register_receipt(
         )
         if model is None:
             raise QuantitativeReceiptConflict("EXEC-002 model is not active in the registry.")
+    if receipt["milestone"] == "EXEC-003":
+        mapping_digest = receipt["result"].get("mapping_schema_digest")
+        mapping = db.scalar(
+            select(VenueIdentityRegistry).where(
+                VenueIdentityRegistry.specification_digest == mapping_digest,
+                VenueIdentityRegistry.status == "active",
+            )
+        )
+        if mapping is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-003 venue identity schema is not active in the registry."
+            )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(
         select(QuantitativeProducerReceipt).where(
