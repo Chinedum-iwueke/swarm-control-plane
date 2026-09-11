@@ -272,6 +272,26 @@ def test_approval_dialog_surfaces_validation_and_request_failures(
     assert 'showDecisionError(error.message || "The approval decision could not be recorded.")' in script
 
 
+def test_approval_dialog_cancel_bypasses_decision_requirements(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        page = client.get("/").text
+
+    decision_dialog = page.split('id="decision-dialog"', maxsplit=1)[1].split(
+        "</dialog>", maxsplit=1
+    )[0]
+    assert (
+        '<button type="button" class="secondary" data-close-dialog>Cancel</button>'
+        in decision_dialog
+    )
+    assert (
+        'type="button" class="icon-button close" data-close-dialog'
+        in decision_dialog
+    )
+    assert '<button value="cancel"' not in decision_dialog
+
+
 def test_application_routes_construct_for_supported_python(
     settings: MissionControlSettings,
 ) -> None:
