@@ -407,6 +407,20 @@ def _has_founder_execution_authority(
     return decision is not None and "founder" in decision.effective_roles
 
 
+def _result_metrics(trial_data: dict[str, Any]) -> dict[str, float | int | bool | None]:
+    metrics = trial_data.get("metrics", {})
+    if not isinstance(metrics, dict):
+        raise HTTPException(422, "Alpha trial metrics must be an object.")
+    measurements = {
+        key: value
+        for key, value in metrics.items()
+        if value is None or isinstance(value, (float, int, bool))
+    }
+    if not measurements:
+        raise HTTPException(422, "Alpha trial has no scientific measurements.")
+    return measurements
+
+
 def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
     version = envelope.get("schema_version")
     if version not in {
@@ -552,7 +566,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
                 f"{campaign_label} retained the exact governed real-data run; candidate status "
                 "depends on every declared gate, not the sign of one metric."
             ),
-            metrics=trial_data["metrics"],
+            metrics=_result_metrics(trial_data),
             robustness_status="passed" if passed else "failed",
             rejection_reason=(
                 None
