@@ -50,7 +50,11 @@ from app.schemas.research_bridge import (
     GovernedResearchAdvance,
     GovernedResearchProposal,
 )
-from app.services.evidence import ORCHESTRATOR_ACCESS, register_evidence_object
+from app.services.evidence import (
+    ORCHESTRATOR_ACCESS,
+    canonical_payload_digest,
+    register_evidence_object,
+)
 from app.services.graph import digest_document
 from app.services.laboratory import (
     create_publication,
@@ -352,7 +356,7 @@ def _evidence(object_id, object_type, payload, authority):
             "object_id": object_id,
             "object_type": object_type,
             "content_version": "1",
-            "content_digest": digest_document(payload),
+            "content_digest": canonical_payload_digest(payload),
             "producer": {
                 "system": "bulletproof-bt",
                 "native_type": object_type,
