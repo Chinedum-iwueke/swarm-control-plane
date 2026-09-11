@@ -200,6 +200,7 @@ def test_static_application_and_safe_status(
     fake = FakeControlPlane()
     with TestClient(create_app(settings, control_plane=fake)) as client:
         page = client.get("/")
+        script = client.get("/static/app.js")
         status = client.get("/api/status")
     assert page.status_code == 200
     assert "Hermes Mission Control" in page.text
@@ -212,6 +213,8 @@ def test_static_application_and_safe_status(
     assert 'id="research-panel-library"' in page.text
     assert 'id="research-context-items"' in page.text
     assert settings.read_token() not in page.text
+    assert page.headers["cache-control"] == "no-store"
+    assert script.headers["cache-control"] == "no-store"
     assert status.json()["scope"] == "loopback-only"
     assert fake.closed is True
 
@@ -269,6 +272,7 @@ def test_approval_dialog_surfaces_validation_and_request_failures(
     assert 'id="decision-error"' in page
     assert "Enter a decision reason of at least 10 characters." in script
     assert "Confirm that you reviewed the exact digest" in script
+    assert 'button.textContent = action === "approve" ? "Approving…" : "Rejecting…"' in script
     assert 'showDecisionError(error.message || "The approval decision could not be recorded.")' in script
 
 

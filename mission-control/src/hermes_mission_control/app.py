@@ -93,6 +93,14 @@ def create_app(
         TrustedHostMiddleware,
         allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"],
     )
+
+    @app.middleware("http")
+    async def prevent_stale_interface_assets(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     app.state.control_plane = client
     app.state.knowledge = store
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
