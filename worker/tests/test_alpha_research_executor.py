@@ -125,6 +125,42 @@ def test_qualification_handoff_fails_closed_without_execution_artifact() -> None
         )
 
 
+def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
+    publication_envelope = {
+        "schema_version": "alpha003-publication-envelope-v1.0.0",
+        "bridge_proposal": {"source": {"evidence": "x" * 7_000}},
+        "hypothesis_card": {"citations": "y" * 5_000},
+        "trial": {"selection_bias_audit": "z" * 3_000},
+    }
+    result = WorkflowExecutionResult(
+        workflow="alpha-research-execution",
+        repository="bulletproof_bt",
+        base_commit="a" * 40,
+        task_attempt=1,
+        total_duration_seconds=1,
+        steps=[],
+        success=True,
+        summary={"disposition": "native_execution_complete"},
+        downstream_handoff={"publication_envelope": publication_envelope},
+    )
+
+    assert result.downstream_handoff["publication_envelope"] == publication_envelope
+
+
+def test_downstream_handoff_remains_bounded() -> None:
+    with pytest.raises(ValidationError, match="downstream handoff exceeds 32 KiB"):
+        WorkflowExecutionResult(
+            workflow="alpha-research-execution",
+            repository="bulletproof_bt",
+            base_commit="a" * 40,
+            task_attempt=1,
+            total_duration_seconds=1,
+            steps=[],
+            success=True,
+            downstream_handoff={"payload": "x" * 33_000},
+        )
+
+
 @pytest.mark.parametrize(
     "changes",
     [

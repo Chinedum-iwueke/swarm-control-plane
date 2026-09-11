@@ -417,7 +417,9 @@ class FounderConversationReasoningDocument(StrictModel):
     def clarification_is_complete(self) -> "FounderConversationReasoningDocument":
         if self.response_kind == "needs_clarification":
             if not self.clarification_questions or not self.unresolved_fields:
-                raise ValueError("clarification requires questions and unresolved fields")
+                raise ValueError(
+                    "clarification requires questions and unresolved fields"
+                )
         elif self.clarification_questions or self.unresolved_fields:
             raise ValueError("only clarification may include unresolved fields")
         return self
@@ -708,6 +710,7 @@ class WorkflowExecutionResult(BaseModel):
     artifacts: list[str] = Field(default_factory=list, max_length=20)
     retryable: bool = False
     summary: dict[str, Any] = Field(default_factory=dict)
+    downstream_handoff: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("summary")
     @classmethod
@@ -715,3 +718,10 @@ class WorkflowExecutionResult(BaseModel):
         if len(json.dumps(summary, ensure_ascii=True, sort_keys=True)) > 16_384:
             raise ValueError("execution summary exceeds 16 KiB")
         return summary
+
+    @field_validator("downstream_handoff")
+    @classmethod
+    def bounded_downstream_handoff(cls, handoff: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(handoff, ensure_ascii=True, sort_keys=True)) > 32_768:
+            raise ValueError("downstream handoff exceeds 32 KiB")
+        return handoff

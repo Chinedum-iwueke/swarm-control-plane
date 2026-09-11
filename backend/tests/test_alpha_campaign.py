@@ -305,6 +305,30 @@ def test_campaign_resume_rejects_task_that_is_still_failed() -> None:
         )
 
 
+def test_publication_envelope_prefers_bounded_downstream_handoff() -> None:
+    legacy = {"schema_version": "legacy"}
+    handoff = {"schema_version": "alpha003-publication-envelope-v1.0.0"}
+
+    result = service._publication_envelope_from_result(
+        {
+            "summary": {"publication_envelope": legacy},
+            "downstream_handoff": {"publication_envelope": handoff},
+        }
+    )
+
+    assert result == handoff
+
+
+def test_publication_envelope_accepts_legacy_summary_result() -> None:
+    legacy = {"schema_version": "alpha002-publication-envelope-v1.0.0"}
+
+    result = service._publication_envelope_from_result(
+        {"summary": {"publication_envelope": legacy}}
+    )
+
+    assert result == legacy
+
+
 def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
     from app.services import retrieval
 
