@@ -349,14 +349,14 @@ def _run_object(db: Session, envelope: dict[str, Any]) -> CanonicalEvidenceObjec
 
 
 def _evidence(object_id, object_type, payload, authority):
-    return EvidenceObjectCreate.model_validate(
+    evidence = EvidenceObjectCreate.model_validate(
         {
             "schema_version": "canonical-identity-v1.0.0",
             "object_schema_version": "canonical-evidence-v1.0.0",
             "object_id": object_id,
             "object_type": object_type,
             "content_version": "1",
-            "content_digest": canonical_payload_digest(payload),
+            "content_digest": "0" * 64,
             "producer": {
                 "system": "bulletproof-bt",
                 "native_type": object_type,
@@ -375,6 +375,13 @@ def _evidence(object_id, object_type, payload, authority):
             "authority_class": authority,
             "payload": payload,
             "created_by": "bulletproof-alpha-producer",
+        }
+    )
+    return evidence.model_copy(
+        update={
+            "content_digest": canonical_payload_digest(
+                evidence.payload.model_dump(mode="json")
+            )
         }
     )
 

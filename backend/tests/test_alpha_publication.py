@@ -88,6 +88,27 @@ def test_alpha_publication_uses_canonical_evidence_payload_digest() -> None:
     )
 
 
+def test_alpha_publication_hashes_normalized_source_timestamp() -> None:
+    payload = {
+        "kind": "source",
+        "title": "Admitted exchange panel",
+        "origin": f"snapshot://sha256/{'a' * 64}",
+        "rights": "internal research use",
+        "acquired_at": "2026-04-30T23:59:00Z",
+    }
+
+    evidence = _evidence(
+        "33333333-3333-4333-8333-333333333333",
+        "source",
+        payload,
+        "primary",
+    )
+
+    normalized = evidence.payload.model_dump(mode="json")
+    assert normalized["acquired_at"] == "2026-04-30T23:59:00Z"
+    assert evidence.content_digest == canonical_payload_digest(normalized)
+
+
 @pytest.mark.parametrize(
     "graph,retrieval,corpus",
     [
