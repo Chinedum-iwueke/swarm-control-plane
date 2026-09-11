@@ -141,8 +141,10 @@ document.getElementById("decision-form").addEventListener("submit", async (event
     return;
   }
   const button = document.getElementById("decision-submit");
+  const idleLabel = button.textContent;
   showDecisionError("");
   button.disabled = true;
+  button.textContent = action === "approve" ? "Approving…" : "Rejecting…";
   button.setAttribute("aria-busy", "true");
   try {
     await mutate(
@@ -156,6 +158,7 @@ document.getElementById("decision-form").addEventListener("submit", async (event
     showDecisionError(error.message || "The approval decision could not be recorded.");
   } finally {
     button.disabled = false;
+    button.textContent = idleLabel;
     button.setAttribute("aria-busy", "false");
   }
 });
