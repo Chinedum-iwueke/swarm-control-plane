@@ -258,6 +258,20 @@ def test_approval_center_binds_displayed_review_digest(
     assert 'name="digest_acknowledged"' in page
 
 
+def test_approval_dialog_surfaces_validation_and_request_failures(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        page = client.get("/").text
+        script = client.get("/static/app.js").text
+
+    assert 'id="decision-form" method="dialog" novalidate' in page
+    assert 'id="decision-error"' in page
+    assert "Enter a decision reason of at least 10 characters." in script
+    assert "Confirm that you reviewed the exact digest" in script
+    assert 'showDecisionError(error.message || "The approval decision could not be recorded.")' in script
+
+
 def test_application_routes_construct_for_supported_python(
     settings: MissionControlSettings,
 ) -> None:
