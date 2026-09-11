@@ -193,6 +193,7 @@ from app.models.task_graph import (
     TaskGraphMessage,
     TaskGraphNode,
 )
+from app.models.venue_identity import VenueIdentityRegistry
 from app.models.workload_identity import (
     WorkloadAuthorizationReceipt,
     WorkloadEmergencyGrant,
@@ -368,6 +369,7 @@ __all__ = [
     "TaskGraphEvent",
     "TaskGraphMessage",
     "TaskGraphNode",
+    "VenueIdentityRegistry",
     "WorkloadAuthorizationReceipt",
     "WorkloadEmergencyGrant",
     "WorkloadIdentity",

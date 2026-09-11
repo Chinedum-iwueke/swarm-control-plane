@@ -203,3 +203,28 @@ def test_exec002_requires_active_registered_model():
     db = MagicMock()
     db.scalar.side_effect = [object(), None]
     assert register_receipt(db, payload(value)).milestone == "EXEC-002"
+
+
+def test_exec003_requires_active_registered_venue_identity():
+    value = receipt(
+        milestone="EXEC-003",
+        producer="bt.institutional.venue.venue_identity_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec003-venue-identity-v1.0.0",
+        "mapping_schema_digest": "6" * 64,
+        "qualified": True,
+        "claim": "explicit comparison identity only; no order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="venue identity schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-003"
+    assert record.receipt["authority"]["orders"] is False

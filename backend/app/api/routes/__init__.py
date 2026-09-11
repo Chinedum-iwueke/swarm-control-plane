@@ -82,6 +82,7 @@ from app.api.routes.symbolic_search import router as symbolic_search_router
 from app.api.routes.task_graphs import router as task_graphs_router
 from app.api.routes.task_runtime import router as task_runtime_router
 from app.api.routes.tasks import router as tasks_router
+from app.api.routes.venue_identities import router as venue_identities_router
 from app.api.routes.workload_identities import router as workload_identities_router
 
 __all__ = [
@@ -163,5 +164,6 @@ __all__ = [
     "task_graphs_router",
     "task_runtime_router",
     "tasks_router",
+    "venue_identities_router",
     "workload_identities_router",
 ]

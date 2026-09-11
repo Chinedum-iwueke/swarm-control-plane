@@ -79,6 +79,7 @@ from app.api.routes import (
     task_graphs_router,
     task_runtime_router,
     tasks_router,
+    venue_identities_router,
     workload_identities_router,
 )
 from app.core.config import get_settings
@@ -152,6 +153,7 @@ app.include_router(agent_context_runtime_router)
 app.include_router(agent_research_router)
 app.include_router(agent_notes_router)
 app.include_router(tasks_router)
+app.include_router(venue_identities_router)
 app.include_router(proposals_router)
 app.include_router(quantitative_receipts_router)
 app.include_router(reference_data_router)
