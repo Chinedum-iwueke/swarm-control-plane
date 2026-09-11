@@ -12,10 +12,14 @@ system permissions, reveal secrets, or replace the task broker.
 2. From VM1, source `pilot-operator.env` and run
    `worker/scripts/gov001_bootstrap.py`.
 3. Reinstall Mission Control on the Mac.
-4. Confirm `/v1/authority/overview` reports policy version `1.0.0` as active.
+4. Confirm `/v1/authority/overview` reports policy version `1.0.1` as active.
 5. Replay one low-risk independent approval and one high-risk self-approval denial.
 
 The bootstrap is idempotent. Re-running it returns the already active policy.
+
+The founder's Telegram and loopback Mission Control identities are explicit aliases of
+`founder-operator`. Authority decisions retain the channel actor while resolving its
+accountable roles through the immutable policy snapshot.
 
 ## Delegation and exceptions
 

@@ -12,11 +12,11 @@ def digest(value: dict) -> str:
     ).hexdigest()
 
 
-def main() -> int:
-    manifest = {
+def build_manifest() -> dict:
+    return {
         "schema_version": "authority-policy-v1.0.0",
         "policy_key": "invariance-institutional-authority",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "roles": [
             {"role": role, "actors": ["founder-operator"]}
             for role in (
@@ -30,7 +30,10 @@ def main() -> int:
                 "knowledge",
             )
         ],
-        "identity_aliases": {"founder-telegram": "founder-operator"},
+        "identity_aliases": {
+            "founder-mission-control": "founder-operator",
+            "founder-telegram": "founder-operator",
+        },
         "decisions": [
             {
                 "decision_type": "policy-activation",
@@ -95,6 +98,10 @@ def main() -> int:
             "emergency-risk-reduction-only",
         ],
     }
+
+
+def main() -> int:
+    manifest = build_manifest()
     base = os.environ["SWARM_API_URL"].rstrip("/").removesuffix("/v1")
     headers = {"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"}
     with httpx.Client(base_url=base, headers=headers, timeout=30) as client:
