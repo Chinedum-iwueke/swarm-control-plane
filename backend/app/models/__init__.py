@@ -42,6 +42,7 @@ from app.models.curriculum import (
     ResearchDomainCurriculum,
 )
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
+from app.models.demo_certification_schema import DemoCertificationSchemaRegistry
 from app.models.derived_state import (
     DerivedStateChange,
     DerivedStatePhaseReceipt,
@@ -249,6 +250,7 @@ __all__ = [
     "CorpusSecurityFinding",
     "CorpusSyncItem",
     "CorpusSyncRun",
+    "DemoCertificationSchemaRegistry",
     "DerivedStateChange",
     "DerivedStatePhaseReceipt",
     "DerivedStateReconciliation",

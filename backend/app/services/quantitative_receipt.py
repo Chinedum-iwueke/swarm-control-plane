@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.adapter_certification_schema import AdapterCertificationSchemaRegistry
 from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
+from app.models.demo_certification_schema import DemoCertificationSchemaRegistry
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
@@ -37,6 +38,7 @@ PRODUCERS = {
     "DISC-004": "bt.institutional.discovery.search_proposal_receipt",
     "DISC-005": "bt.institutional.discovery.symbolic_candidate_receipt",
     "DISC-007": "bt.institutional.discovery.selection_audit_receipt",
+    "DEMO-001": "bt.institutional.demo_certification.demo_certification_receipt",
     "EXEC-001": "bt.institutional.execution.execution_journal_receipt",
     "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
     "EXEC-003": "bt.institutional.venue.venue_identity_receipt",
@@ -191,6 +193,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-008 adapter-certification schema is not active in the registry."
+            )
+    if receipt["milestone"] == "DEMO-001":
+        schema_digest = receipt["result"].get("demo_certification_schema_digest")
+        schema = db.scalar(
+            select(DemoCertificationSchemaRegistry).where(
+                DemoCertificationSchemaRegistry.specification_digest == schema_digest,
+                DemoCertificationSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "DEMO-001 demo-certification schema is not active in the registry."
             )
     if receipt["milestone"] == "PORT-004":
         schema_digest = receipt["result"].get("capacity_schema_digest")

@@ -22,6 +22,9 @@ from app.api.routes.corpus import router as corpus_router
 from app.api.routes.corpus_sync import router as corpus_sync_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.data_contracts import router as data_contracts_router
+from app.api.routes.demo_certification_schemas import (
+    router as demo_certification_schemas_router,
+)
 from app.api.routes.derived_state import router as derived_state_router
 from app.api.routes.discovery import router as discovery_router
 from app.api.routes.discovery_portfolio import router as discovery_portfolio_router
@@ -134,6 +137,7 @@ __all__ = [
     "corpus_sync_router",
     "curriculum_router",
     "data_contracts_router",
+    "demo_certification_schemas_router",
     "derived_state_router",
     "discovery_portfolio_router",
     "discovery_router",
