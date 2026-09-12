@@ -15,6 +15,7 @@ from app.api.routes import (
     authority_router,
     autonomous_research_router,
     calibrations_router,
+    candidate_admission_schemas_router,
     causal_pipelines_router,
     channel_conversations_router,
     controls_router,
@@ -172,6 +173,7 @@ app.include_router(retrieval_router)
 app.include_router(research_programs_router)
 app.include_router(runbook_packages_router)
 app.include_router(shadow_monitoring_schemas_router)
+app.include_router(candidate_admission_schemas_router)
 app.include_router(selection_audit_router)
 app.include_router(scientific_fidelity_router)
 app.include_router(statistical_search_router)

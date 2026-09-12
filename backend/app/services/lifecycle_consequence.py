@@ -15,6 +15,7 @@ from app.models.lifecycle_consequence import LifecycleConsequence
 from app.schemas.authority import AuthorityResolutionRequest
 from app.schemas.lifecycle_consequence import ConsequenceCreate, ConsequenceReverse
 from app.services.authority import resolve_authority
+from app.services.candidate_lifecycle_gate import require_risk004_evidence
 from app.services.institutional_lifecycle import (
     digest_document,
     validate_cross_dimension_guard,
@@ -127,6 +128,16 @@ def apply_consequence(
     projection = _locked_projection(db, subject_type, subject_id, payload.dimension)
     _validate_projection(projection, payload.subject_digest, payload.expected_version)
     resulting = consequence_state(payload.dimension, projection.state, payload.action)
+    if payload.dimension == "operations":
+        require_risk004_evidence(
+            db,
+            subject_type=subject_type,
+            subject_digest=payload.subject_digest,
+            requested_action={"promote": "admit", "reinstate": "admit"}.get(
+                payload.action, payload.action
+            ),
+            evidence=payload.evidence,
+        )
     states = _states(db, subject_type, subject_id)
     if payload.action in {"promote", "reinstate"}:
         validate_cross_dimension_guard(
