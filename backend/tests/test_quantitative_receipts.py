@@ -219,6 +219,34 @@ def test_exec008_requires_active_registered_adapter_certification_schema():
     assert record.receipt["result"]["micro_live_eligible"] is False
 
 
+def test_exec009_requires_active_registered_degradation_schema():
+    value = receipt(
+        milestone="EXEC-009",
+        producer="bt.institutional.execution_degradation.execution_degradation_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec009-execution-degradation-v1.0.0",
+        "degradation_schema_digest": "7" * 64,
+        "status": "restricted",
+        "recommended_action": "route_restriction_review",
+        "automatic_execution_change": False,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(
+        QuantitativeReceiptConflict, match="execution-degradation schema"
+    ):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-009"
+    assert record.receipt["authority"]["orders"] is False
+
+
 def test_demo001_requires_active_registered_demo_certification_schema():
     value = receipt(
         milestone="DEMO-001",

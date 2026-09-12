@@ -32,6 +32,7 @@ from app.api.routes import (
     evaluator_routing_router,
     evidence_router,
     execution_calibration_schemas_router,
+    execution_degradation_schemas_router,
     execution_event_schemas_router,
     execution_safety_schemas_router,
     execution_schedule_schemas_router,
@@ -145,6 +146,7 @@ app.include_router(platform_router)
 app.include_router(portfolio_solvers_router)
 app.include_router(portfolio_capacity_schemas_router)
 app.include_router(execution_calibration_schemas_router)
+app.include_router(execution_degradation_schemas_router)
 app.include_router(execution_event_schemas_router)
 app.include_router(execution_schedule_schemas_router)
 app.include_router(execution_safety_schemas_router)
