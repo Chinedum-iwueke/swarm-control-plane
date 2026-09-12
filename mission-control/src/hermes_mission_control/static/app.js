@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "work", "activity", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "research", "knowledge", "notes", "evidence"]);
+const allowedViews = new Set(["command", "work", "activity", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "execution", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
@@ -21,6 +21,7 @@ const state = {
   conversationWorkspace: null,
   conversationWorkspaceLoading: false,
   requestedApprovalOpened: false,
+  executionEnvironment: "all",
 };
 
 const intentHeaders = {
@@ -43,6 +44,17 @@ document.querySelectorAll(".open-intake-copy").forEach((button) => {
 document.getElementById("open-intake").addEventListener("click", () => openIntake("task"));
 document.getElementById("refresh").addEventListener("click", loadDashboard);
 document.getElementById("refresh-activity").addEventListener("click", loadDashboard);
+document.getElementById("execution-environments").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-execution-environment]");
+  if (!button) return;
+  state.executionEnvironment = button.dataset.executionEnvironment;
+  document.querySelectorAll("[data-execution-environment]").forEach((item) => {
+    const active = item === button;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+  renderExecution();
+});
 document.getElementById("task-filter").addEventListener("input", renderTasks);
 document.getElementById("status-filter").addEventListener("change", renderTasks);
 document.getElementById("project-filter").addEventListener("change", renderTasks);
@@ -609,6 +621,7 @@ function renderAll() {
   renderApprovals();
   renderAgents();
   renderInfrastructure();
+  renderExecution();
   renderResearch();
   renderNotes();
   renderArtifacts();
@@ -1142,6 +1155,62 @@ function renderInfrastructure() {
   });
   document.getElementById("infra-tasks").innerHTML = tasks.length ? tasks.map((task) => taskEntityRow(task)).join("") : empty("No infrastructure tasks recorded.");
   bindEntityButtons();
+}
+
+function executionRows(items, columns, emptyMessage) {
+  if (!items.length) return empty(emptyMessage);
+  return `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${items.map((item) => `<tr>${columns.map((column) => `<td class="${column.mono ? "mono" : ""}">${escapeHtml(column.value(item) ?? "–")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function renderExecution() {
+  if (!state.dashboard) return;
+  const telemetry = state.dashboard.execution_telemetry || { venues: [], counts: {}, claim_boundary: "No canonical venue replay has been published." };
+  const venues = (telemetry.venues || []).filter((item) => state.executionEnvironment === "all" || item.environment === state.executionEnvironment);
+  const projections = venues.map((item) => ({ replay: item, view: item.projection || {} }));
+  const orders = projections.flatMap(({ replay, view }) => (view.orders || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const fills = projections.flatMap(({ replay, view }) => (view.fills || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const positions = projections.flatMap(({ replay, view }) => (view.positions || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const cash = projections.flatMap(({ replay, view }) => (view.cash || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const episodes = projections.flatMap(({ replay, view }) => (view.trade_episodes || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const incidents = projections.flatMap(({ replay, view }) => (view.incidents || []).map((item) => ({ ...item, environment: replay.environment, venue: replay.venue })));
+  const degraded = venues.filter((item) => item.status === "degraded").length;
+  const stale = venues.filter((item) => item.status === "stale" || item.projection?.stale).length;
+  document.getElementById("execution-overview-status").innerHTML = `<strong>${venues.length ? `${venues.length} canonical venue ${venues.length === 1 ? "replay" : "replays"}` : "Awaiting canonical telemetry"}</strong><span>${escapeHtml(telemetry.claim_boundary || "")}</span>`;
+  document.getElementById("execution-summary").innerHTML = [
+    metric(venues.length, "Venue accounts", "Pseudonymous, environment-bound"),
+    metric(orders.length, "Orders", `${fills.length} canonical fills`),
+    metric(positions.length, "Positions", `${episodes.length} completed episodes`),
+    metric(degraded + stale, "Need attention", `${degraded} degraded · ${stale} stale`),
+  ].join("");
+  document.getElementById("execution-freshness").textContent = telemetry.generated_at ? `Read ${relativeTime(telemetry.generated_at)}` : "No publication";
+  document.getElementById("execution-venues").innerHTML = venues.length ? venues.map((item) => {
+    const view = item.projection || {};
+    const breaks = (view.sequence_gaps || []).length + (view.reconciliation_discrepancies || []).length;
+    return `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.venue)} · ${escapeHtml(item.account_pseudonym)}</strong><div class="entity-meta"><span class="environment-label environment-${escapeHtml(item.environment)}">${escapeHtml(item.environment)}</span><span>${view.event_count || 0} events</span><span>${view.duplicate_event_count || 0} duplicates suppressed</span><span>Fees ${escapeHtml(view.fees || "0")}</span><span>Funding ${escapeHtml(view.funding || "0")}</span><span>${breaks} reconciliation breaks</span><span>Observed ${relativeTime(item.observed_at)}</span></div></div><div class="entity-side">${statusBadge(item.status)}</div></article>`;
+  }).join("") : empty("No replay has been published for this environment.");
+  const exposure = [...positions, ...cash.map((item) => ({ ...item, instrument_id: item.asset, quantity: item.balance, entry_price: "cash" }))];
+  document.getElementById("execution-positions").innerHTML = executionRows(exposure, [
+    { label: "Environment", value: (item) => item.environment }, { label: "Venue", value: (item) => item.venue },
+    { label: "Instrument / asset", value: (item) => item.instrument_id }, { label: "Quantity / balance", value: (item) => item.quantity, mono: true },
+    { label: "Entry", value: (item) => item.entry_price, mono: true },
+  ], "No canonical positions or cash balances.");
+  const lifecycle = [...orders.map((item) => ({ ...item, record_type: "order" })), ...fills.map((item) => ({ ...item, record_type: "fill", client_order_id: item.execution_id, status: item.price }))];
+  document.getElementById("execution-orders").innerHTML = executionRows(lifecycle, [
+    { label: "Type", value: (item) => item.record_type }, { label: "Environment", value: (item) => item.environment },
+    { label: "Venue", value: (item) => item.venue }, { label: "ID", value: (item) => item.client_order_id, mono: true },
+    { label: "Side", value: (item) => item.side }, { label: "Quantity", value: (item) => item.quantity, mono: true },
+    { label: "Status / price", value: (item) => item.status, mono: true },
+  ], "No canonical orders or fills.");
+  document.getElementById("execution-episodes").innerHTML = executionRows(episodes, [
+    { label: "Environment", value: (item) => item.environment }, { label: "Venue", value: (item) => item.venue },
+    { label: "Instrument", value: (item) => item.instrument_id }, { label: "Side", value: (item) => item.side },
+    { label: "Quantity", value: (item) => item.quantity, mono: true }, { label: "Entry", value: (item) => item.entry_price, mono: true },
+    { label: "Exit", value: (item) => item.exit_price, mono: true }, { label: "Gross PnL", value: (item) => item.gross_pnl, mono: true },
+    { label: "Closed", value: (item) => item.closed_at },
+  ], "No completed trade episodes.");
+  const provenance = projections.map(({ replay, view }) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(replay.venue)} ${escapeHtml(replay.environment)} replay</strong><div class="entity-meta"><span>Receipt <code>${shortHash(replay.receipt_digest)}</code></span><span>Projection <code>${shortHash(replay.projection_digest)}</code></span><span>Event head <code>${shortHash(view.event_head_digest)}</code></span><span>${(view.sequence_gaps || []).length} gaps</span><span>${(view.reconciliation_discrepancies || []).length} discrepancies</span></div></div>${statusBadge(replay.status)}</article>`);
+  const incidentRows = incidents.map((item) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.kind || "Venue incident")}</strong><div class="entity-meta"><span>${escapeHtml(item.venue)}</span><span>${escapeHtml(item.environment)}</span><span>${escapeHtml(item.summary || item.reason || "Canonical incident recorded")}</span></div></div>${statusBadge("critical")}</article>`);
+  document.getElementById("execution-provenance").innerHTML = [...incidentRows, ...provenance].join("") || empty("No incidents or replay receipts published.");
 }
 
 async function transitionServiceAlert(alertId, action) {
@@ -2323,6 +2392,25 @@ function demoDashboard() {
       { id: "op-approval", operation_key: "task:demo-approval", kind: "infrastructure_operation", title: "Rotate the application database certificate", project: "invariance-research", machine: "vm2-deployment", owner_type: "task", owner_id: "demo-approval", state: "waiting_approval", phase: "approval", progress_mode: "indeterminate", progress_current: null, progress_total: null, progress_unit: null, heartbeat_at: now, started_at: null, completed_at: null, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: "c".repeat(64), record_digest: "d".repeat(64), created_at: now, updated_at: now },
       { id: "op-complete", operation_key: "task:demo-complete", kind: "research_experiment", title: "Validate the bounded BTC momentum hypothesis", project: "bulletproof_bt", machine: "vm1-developer", owner_type: "task", owner_id: "demo-complete", state: "succeeded", phase: "complete", progress_mode: "determinate", progress_current: 1, progress_total: 1, progress_unit: "task", heartbeat_at: now, started_at: new Date(Date.now() - 25 * 60_000).toISOString(), completed_at: now, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: "e".repeat(64), record_digest: "f".repeat(64), created_at: now, updated_at: now },
     ],
+    execution_telemetry: {
+      generated_at: now,
+      environment: null,
+      counts: { current: 1, stale: 0, degraded: 0 },
+      claim_boundary: "Canonical replay evidence only. Displayed venue state grants no capital, allocation, promotion, or order authority.",
+      venues: [{
+        id: "replay-demo", receipt_digest: "8".repeat(64), projection_digest: "9".repeat(64), schema_digest: "7".repeat(64),
+        venue: "bybit", environment: "demo", account_pseudonym: "acct-demo-7", observed_at: now, status: "current",
+        projection: {
+          event_count: 9, duplicate_event_count: 1, stale: false, sequence_gaps: [], reconciliation_discrepancies: [],
+          event_head_digest: "6".repeat(64), fees: "0.10", funding: "-0.02", incidents: [],
+          orders: [{ client_order_id: "o1", status: "filled", side: "buy", quantity: "1" }],
+          fills: [{ execution_id: "f1", client_order_id: "o1", side: "buy", quantity: "1", price: "100" }],
+          positions: [{ instrument_id: "bybit:linear:BTCUSDT", quantity: "0", entry_price: "0" }],
+          cash: [{ asset: "USDT", balance: "1009.88" }],
+          trade_episodes: [{ instrument_id: "bybit:linear:BTCUSDT", opened_at: now, closed_at: now, side: "long", quantity: "1", entry_price: "100", exit_price: "110", gross_pnl: "10", status: "closed" }],
+        },
+      }],
+    },
     artifacts: [
       { id: "artifact-evidence", task_id: task.id, attempt_number: 1, artifact_type: "result", name: "research-evidence.json", size_bytes: 1917, sha256: "a68317817f2b39c760f1c4743050ad6a5d5719b51db543c5b0eb9983b4d398c8", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },
       { id: "artifact-audit", task_id: task.id, attempt_number: 1, artifact_type: "evidence", name: "research-audit.json", size_bytes: 818, sha256: "3c34b883b29be9214640e66e8103051e334f1cabd7570a2ffcf3d29b698c8b88", source_commit: task.result.base_commit, workflow: "research-experiment", workflow_version: "1.0.0", verification_status: "verified", location: "workspace-local" },

@@ -77,6 +77,10 @@ from app.models.execution_degradation_schema import ExecutionDegradationSchemaRe
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
 from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
+from app.models.execution_telemetry import (
+    ExecutionTelemetryReplay,
+    ExecutionTelemetrySchemaRegistry,
+)
 from app.models.factor_language import FactorExperimentProgram
 from app.models.falsification import MechanismEvaluation, MechanismPlan
 from app.models.fleet import FleetIncident, FleetIncidentEvent, MachineObservation
@@ -285,6 +289,8 @@ __all__ = [
     "ExecutionEventSchemaRegistry",
     "ExecutionSafetySchemaRegistry",
     "ExecutionScheduleSchemaRegistry",
+    "ExecutionTelemetryReplay",
+    "ExecutionTelemetrySchemaRegistry",
     "FactorExperimentProgram",
     "FleetIncident",
     "FleetIncidentEvent",

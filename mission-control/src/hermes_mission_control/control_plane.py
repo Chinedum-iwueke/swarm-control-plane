@@ -96,6 +96,16 @@ class ControlPlaneClient:
                 "alerts": [],
             },
         )
+        execution_telemetry = await self._optional_object(
+            "/v1/execution/overview",
+            {
+                "generated_at": None,
+                "environment": None,
+                "venues": [],
+                "counts": {"current": 0, "stale": 0, "degraded": 0},
+                "claim_boundary": "No canonical venue replay has been published.",
+            },
+        )
         authority = await self._optional_object(
             "/v1/authority/overview",
             {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
@@ -194,6 +204,7 @@ class ControlPlaneClient:
             "blocked_artifact_register": blocked_artifacts,
             "fleet_health": fleet_health,
             "observability": observability,
+            "execution_telemetry": execution_telemetry,
             "authority": authority,
             "agent_charters": agent_charters,
             "agent_capability_grants": agent_grants,

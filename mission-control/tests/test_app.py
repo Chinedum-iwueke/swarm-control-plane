@@ -206,6 +206,9 @@ def test_static_application_and_safe_status(
     assert "Hermes Mission Control" in page.text
     assert 'id="command"' in page.text
     assert 'id="research"' in page.text
+    assert 'id="execution"' in page.text
+    assert 'id="execution-environments"' in page.text
+    assert 'id="execution-overview-status"' in page.text
     assert 'id="evidence"' in page.text
     assert 'role="tablist" aria-label="Research workspace mode"' in page.text
     assert 'id="research-panel-ask"' in page.text
@@ -217,6 +220,21 @@ def test_static_application_and_safe_status(
     assert script.headers["cache-control"] == "no-store"
     assert status.json()["scope"] == "loopback-only"
     assert fake.closed is True
+
+
+def test_execution_workspace_is_environment_explicit_and_digest_safe(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        html = client.get("/").text
+        script = client.get("/static/app.js").text
+
+    for environment in ("shadow", "demo", "live"):
+        assert f'data-execution-environment="{environment}"' in html
+    assert "renderExecution" in script
+    assert "receipt_digest" in script
+    assert "projection_digest" in script
+    assert "api_key" not in html
 
 
 def test_new_thread_dialog_cancel_bypasses_required_field_validation(

@@ -13,6 +13,7 @@ from app.models.execution_degradation_schema import ExecutionDegradationSchemaRe
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
 from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
+from app.models.execution_telemetry import ExecutionTelemetrySchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.oms_schema import OmsSchemaRegistry
 from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
@@ -49,6 +50,7 @@ PRODUCERS = {
     "EXEC-007": "bt.institutional.runtime_safety.runtime_safety_receipt",
     "EXEC-008": "bt.institutional.adapter_certification.adapter_certification_receipt",
     "EXEC-009": "bt.institutional.execution_degradation.execution_degradation_receipt",
+    "EXEC-011": "bt.institutional.venue_telemetry.venue_telemetry_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -171,6 +173,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-009 execution-degradation schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-011":
+        schema_digest = receipt["result"].get("telemetry_schema_digest")
+        schema = db.scalar(
+            select(ExecutionTelemetrySchemaRegistry).where(
+                ExecutionTelemetrySchemaRegistry.specification_digest == schema_digest,
+                ExecutionTelemetrySchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-011 execution-telemetry schema is not active in the registry."
             )
     if receipt["milestone"] == "EXEC-006":
         schema_digest = receipt["result"].get("execution_schedule_schema_digest")

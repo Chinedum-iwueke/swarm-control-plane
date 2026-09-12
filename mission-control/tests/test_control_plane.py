@@ -47,6 +47,17 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "alerts": [],
                 },
             )
+        if request.url.path == "/v1/execution/overview":
+            return httpx.Response(
+                200,
+                json={
+                    "generated_at": "2026-09-12T12:00:00Z",
+                    "environment": None,
+                    "venues": [],
+                    "counts": {"current": 0, "stale": 0, "degraded": 0},
+                    "claim_boundary": "Canonical replay evidence only.",
+                },
+            )
         if request.url.path == "/v1/operations/summary":
             return httpx.Response(
                 200,
@@ -139,6 +150,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["blocked_artifact_register"]["total"] == 0
     assert result["fleet_health"]["machines"] == []
     assert result["observability"]["services"] == []
+    assert result["execution_telemetry"]["venues"] == []
     assert result["operations"] == []
     assert result["operation_summary"]["active_total"] == 0
     assert result["authority"]["policy"]["status"] == "active"
