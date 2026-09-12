@@ -55,6 +55,9 @@ def activate_policy(db: Session, policy: AuthorityPolicySnapshot, actor: str, no
     if current is not None:
         current.status = "retired"
         current.effective_until = now
+        # The partial unique index permits only one active row. Flush retirement
+        # before activation so SQLAlchemy cannot reorder the two updates.
+        db.flush()
         policy.supersedes_id = current.id
     policy.status = "active"
     policy.effective_from = now

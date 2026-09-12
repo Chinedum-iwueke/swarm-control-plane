@@ -1,9 +1,14 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from app.schemas.authority import AuthorityPolicyManifest, AuthorityResolutionRequest
-from app.services.authority import pure_resolution, validate_exception_request
+from app.services.authority import (
+    activate_policy,
+    pure_resolution,
+    validate_exception_request,
+)
 from fastapi import HTTPException
 
 
@@ -184,3 +189,25 @@ def test_exception_requires_independent_reviewer_and_bounded_expiry() -> None:
     )
     with pytest.raises(HTTPException, match="independent"):
         validate_exception_request(manifest(), exception)
+
+
+def test_policy_activation_flushes_retirement_before_new_activation() -> None:
+    current = SimpleNamespace(
+        id="current-policy", status="active", effective_until=None
+    )
+    candidate = SimpleNamespace(
+        id="candidate-policy",
+        status="draft",
+        effective_from=None,
+        effective_until=None,
+        activated_by=None,
+        activated_at=None,
+        supersedes_id=None,
+    )
+    db = MagicMock()
+    db.scalar.return_value = current
+    activate_policy(db, candidate, "founder-operator", datetime.now(UTC))
+    db.flush.assert_called_once_with()
+    assert current.status == "retired"
+    assert candidate.status == "active"
+    assert candidate.supersedes_id == current.id
