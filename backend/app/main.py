@@ -70,6 +70,7 @@ from app.api.routes import (
     research_programs_router,
     research_router,
     retrieval_router,
+    risk_budget_schemas_router,
     risk_rules_router,
     risk_stress_router,
     runbook_packages_router,
@@ -129,6 +130,7 @@ app.include_router(offline_rl_router)
 app.include_router(off_policy_router)
 app.include_router(risk_stress_router)
 app.include_router(risk_rules_router)
+app.include_router(risk_budget_schemas_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(portfolio_solvers_router)
