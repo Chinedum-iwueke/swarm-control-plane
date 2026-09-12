@@ -22,6 +22,7 @@ from app.models.autonomous_research import (
     AutonomousResearchSessionEvent,
 )
 from app.models.calibration import ModelCalibrationAssessment
+from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
 from app.models.causal_pipeline import (
     CausalDatasetMaterialization,
     CausalDatasetPipeline,
@@ -228,6 +229,7 @@ __all__ = [
     "AuthorityPolicySnapshot",
     "AutonomousResearchSession",
     "AutonomousResearchSessionEvent",
+    "CandidateAdmissionSchemaRegistry",
     "CanonicalEvidenceAuditEvent",
     "CanonicalEvidenceEdge",
     "CanonicalEvidenceObject",

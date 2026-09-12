@@ -8,6 +8,9 @@ from app.api.routes.alpha_campaign import router as alpha_campaign_router
 from app.api.routes.authority import router as authority_router
 from app.api.routes.autonomous_research import router as autonomous_research_router
 from app.api.routes.calibrations import router as calibrations_router
+from app.api.routes.candidate_admission_schemas import (
+    router as candidate_admission_schemas_router,
+)
 from app.api.routes.causal_pipelines import router as causal_pipelines_router
 from app.api.routes.controls import router as controls_router
 from app.api.routes.conversations import channel_router as channel_conversations_router
@@ -111,6 +114,7 @@ __all__ = [
     "authority_router",
     "autonomous_research_router",
     "calibrations_router",
+    "candidate_admission_schemas_router",
     "causal_pipelines_router",
     "channel_conversations_router",
     "controls_router",

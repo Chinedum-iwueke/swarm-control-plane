@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
@@ -49,6 +50,7 @@ PRODUCERS = {
     "RISK-002": "bt.institutional.risk.venue_rule_receipt",
     "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
     "SHADOW-002": "bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
+    "RISK-004": "bt.institutional.candidate_admission.candidate_admission_receipt",
 }
 
 
@@ -174,6 +176,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "SHADOW-002 monitoring schema is not active in the registry."
+            )
+    if receipt["milestone"] == "RISK-004":
+        schema_digest = receipt["result"].get("admission_schema_digest")
+        schema = db.scalar(
+            select(CandidateAdmissionSchemaRegistry).where(
+                CandidateAdmissionSchemaRegistry.specification_digest == schema_digest,
+                CandidateAdmissionSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "RISK-004 admission schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(

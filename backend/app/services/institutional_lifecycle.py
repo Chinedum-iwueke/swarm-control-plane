@@ -20,6 +20,7 @@ from app.schemas.institutional_lifecycle import (
     LifecycleSubjectCreate,
 )
 from app.services.authority import resolve_authority
+from app.services.candidate_lifecycle_gate import require_risk004_evidence
 
 INITIAL_STATES = {
     "research": "proposed",
@@ -191,6 +192,15 @@ def transition(
             status_code=422, detail="Evidence references must be SHA-256 digests."
         )
     resulting_state = next_state(payload.dimension, projection.state, payload.command)
+
+    if payload.dimension == "capital" and payload.command in {"qualify", "allocate"}:
+        require_risk004_evidence(
+            db,
+            subject_type=subject_type,
+            subject_digest=payload.subject_digest,
+            requested_action="allocate",
+            evidence=payload.evidence,
+        )
 
     all_projections = _projections(db, subject_type, subject_id)
     current = {item.dimension: item.state for item in all_projections}
