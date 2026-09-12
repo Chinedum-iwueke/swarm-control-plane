@@ -28,6 +28,7 @@ from app.api.routes import (
     discovery_router,
     evaluator_routing_router,
     evidence_router,
+    execution_calibration_schemas_router,
     execution_event_schemas_router,
     factor_language_router,
     falsification_router,
@@ -130,6 +131,7 @@ app.include_router(risk_rules_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(portfolio_solvers_router)
+app.include_router(execution_calibration_schemas_router)
 app.include_router(execution_event_schemas_router)
 app.include_router(microstructure_models_router)
 app.include_router(prompt_policies_router)

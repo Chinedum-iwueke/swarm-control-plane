@@ -253,3 +253,28 @@ def test_exec004_requires_active_registered_oms_schema():
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-004"
     assert record.receipt["authority"]["orders"] is False
+
+
+def test_exec005_requires_active_registered_execution_calibration_schema():
+    value = receipt(
+        milestone="EXEC-005",
+        producer="bt.institutional.execution_calibration.execution_calibration_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec005-execution-calibration-v1.0.0",
+        "calibration_schema_digest": "4" * 64,
+        "qualified": True,
+        "claim": "execution calibration evidence only; no order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="calibration schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-005"
+    assert record.receipt["authority"]["orders"] is False

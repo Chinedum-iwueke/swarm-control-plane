@@ -21,6 +21,9 @@ from app.api.routes.discovery import router as discovery_router
 from app.api.routes.discovery_portfolio import router as discovery_portfolio_router
 from app.api.routes.evaluator_routing import router as evaluator_routing_router
 from app.api.routes.evidence import router as evidence_router
+from app.api.routes.execution_calibration_schemas import (
+    router as execution_calibration_schemas_router,
+)
 from app.api.routes.execution_event_schemas import (
     router as execution_event_schemas_router,
 )
@@ -114,6 +117,7 @@ __all__ = [
     "discovery_router",
     "evaluator_routing_router",
     "evidence_router",
+    "execution_calibration_schemas_router",
     "execution_event_schemas_router",
     "factor_language_router",
     "falsification_router",
