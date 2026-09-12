@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.oms_schema import OmsSchemaRegistry
@@ -32,6 +33,7 @@ PRODUCERS = {
     "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
     "EXEC-003": "bt.institutional.venue.venue_identity_receipt",
     "EXEC-004": "bt.institutional.oms.oms_reconciliation_receipt",
+    "EXEC-005": "bt.institutional.execution_calibration.execution_calibration_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -117,6 +119,19 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-004 OMS schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-005":
+        schema_digest = receipt["result"].get("calibration_schema_digest")
+        schema = db.scalar(
+            select(ExecutionCalibrationSchemaRegistry).where(
+                ExecutionCalibrationSchemaRegistry.specification_digest
+                == schema_digest,
+                ExecutionCalibrationSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-005 execution-calibration schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(

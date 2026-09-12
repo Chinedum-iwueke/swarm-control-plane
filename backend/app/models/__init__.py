@@ -69,6 +69,7 @@ from app.models.evidence import (
     EvidenceLifecycleImpactReport,
     EvidenceLifecycleState,
 )
+from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.factor_language import FactorExperimentProgram
 from app.models.falsification import MechanismEvaluation, MechanismPlan
@@ -266,6 +267,7 @@ __all__ = [
     "EvidenceOutcomeRecord",
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
+    "ExecutionCalibrationSchemaRegistry",
     "ExecutionEventSchemaRegistry",
     "FactorExperimentProgram",
     "FleetIncident",
