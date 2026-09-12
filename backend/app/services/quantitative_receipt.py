@@ -9,6 +9,7 @@ from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRe
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.oms_schema import OmsSchemaRegistry
+from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.venue_identity import VenueIdentityRegistry
@@ -39,6 +40,7 @@ PRODUCERS = {
     "ML-004": "bt.institutional.ml.calibration_receipt",
     "PORT-002": "bt.institutional.portfolio.dependency_dossier_receipt",
     "PORT-003": "bt.institutional.construction.construction_dossier_receipt",
+    "PORT-004": "bt.institutional.capacity.capacity_dossier_receipt",
     "RL-001": "bt.institutional.rl.offline_dataset_receipt",
     "RL-002": "bt.institutional.rl.off_policy_evaluation_receipt",
     "RISK-001": "bt.institutional.risk.stress_dossier_receipt",
@@ -132,6 +134,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-005 execution-calibration schema is not active in the registry."
+            )
+    if receipt["milestone"] == "PORT-004":
+        schema_digest = receipt["result"].get("capacity_schema_digest")
+        schema = db.scalar(
+            select(PortfolioCapacitySchemaRegistry).where(
+                PortfolioCapacitySchemaRegistry.specification_digest == schema_digest,
+                PortfolioCapacitySchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "PORT-004 portfolio-capacity schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(

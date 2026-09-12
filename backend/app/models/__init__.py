@@ -125,6 +125,7 @@ from app.models.platform import (
     ServiceCatalogReconciliation,
     ServiceCatalogSnapshot,
 )
+from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.prompt_policy import (
     PromptPolicyBundle,
@@ -307,6 +308,7 @@ __all__ = [
     "OperationalNote",
     "OperationalNoteEvent",
     "PackageDeployment",
+    "PortfolioCapacitySchemaRegistry",
     "PortfolioSolverRegistry",
     "PromptPolicyBundle",
     "PromptPolicyEvaluation",

@@ -278,3 +278,28 @@ def test_exec005_requires_active_registered_execution_calibration_schema():
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-005"
     assert record.receipt["authority"]["orders"] is False
+
+
+def test_port004_requires_active_registered_portfolio_capacity_schema():
+    value = receipt(
+        milestone="PORT-004",
+        producer="bt.institutional.capacity.capacity_dossier_receipt",
+    )
+    value["result"] = {
+        "schema_version": "port004-capacity-liquidity-v1.0.0",
+        "capacity_schema_digest": "3" * 64,
+        "qualified": True,
+        "claim": "capacity evidence only; no capital or order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="capacity schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "PORT-004"
+    assert record.receipt["authority"]["capital"] is False

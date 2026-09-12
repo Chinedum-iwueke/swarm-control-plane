@@ -60,6 +60,7 @@ from app.api.routes import (
     operations_router,
     packages_router,
     platform_router,
+    portfolio_capacity_schemas_router,
     portfolio_solvers_router,
     prompt_policies_router,
     proposals_router,
@@ -131,6 +132,7 @@ app.include_router(risk_rules_router)
 app.include_router(packages_router)
 app.include_router(platform_router)
 app.include_router(portfolio_solvers_router)
+app.include_router(portfolio_capacity_schemas_router)
 app.include_router(execution_calibration_schemas_router)
 app.include_router(execution_event_schemas_router)
 app.include_router(microstructure_models_router)
