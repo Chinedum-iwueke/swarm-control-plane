@@ -13,6 +13,7 @@ from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.risk_budget_schema import RiskBudgetSchemaRegistry
+from app.models.shadow_monitoring_schema import ShadowMonitoringSchemaRegistry
 from app.models.venue_identity import VenueIdentityRegistry
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 
@@ -47,6 +48,7 @@ PRODUCERS = {
     "RISK-001": "bt.institutional.risk.stress_dossier_receipt",
     "RISK-002": "bt.institutional.risk.venue_rule_receipt",
     "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
+    "SHADOW-002": "bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
 }
 
 
@@ -160,6 +162,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "RISK-003 risk-budget schema is not active in the registry."
+            )
+    if receipt["milestone"] == "SHADOW-002":
+        schema_digest = receipt["result"].get("shadow_monitoring_schema_digest")
+        schema = db.scalar(
+            select(ShadowMonitoringSchemaRegistry).where(
+                ShadowMonitoringSchemaRegistry.specification_digest == schema_digest,
+                ShadowMonitoringSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "SHADOW-002 monitoring schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(

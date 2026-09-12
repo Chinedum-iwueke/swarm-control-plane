@@ -177,6 +177,7 @@ from app.models.scientific_fidelity import (
     ScientificRepresentation,
 )
 from app.models.selection_audit import SelectionBiasAudit
+from app.models.shadow_monitoring_schema import ShadowMonitoringSchemaRegistry
 from app.models.statistical_search import (
     StatisticalSearchCampaign,
     StatisticalSearchEvent,
@@ -360,6 +361,7 @@ __all__ = [
     "ServiceCatalogReconciliation",
     "ServiceCatalogSnapshot",
     "ServiceSLOState",
+    "ShadowMonitoringSchemaRegistry",
     "StatisticalSearchCampaign",
     "StatisticalSearchEvent",
     "SurveillanceDigest",
