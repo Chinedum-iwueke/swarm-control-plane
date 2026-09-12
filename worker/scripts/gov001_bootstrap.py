@@ -16,7 +16,7 @@ def build_manifest() -> dict:
     return {
         "schema_version": "authority-policy-v1.0.0",
         "policy_key": "invariance-institutional-authority",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "roles": [
             {"role": role, "actors": ["founder-operator"]}
             for role in (
@@ -85,6 +85,7 @@ def build_manifest() -> dict:
                     ("production-eligibility", ["approve", "revoke"], ["production"], ["risk", "security", "engineering"], 3, False, False, [{"field": "originator", "minimum_risk": 0, "rule_key": "independent-production-authorization"}]),
                     ("capital-allocation", ["allocate", "reduce", "halt"], ["production"], ["risk"], 3, False, True, [{"field": "originator", "minimum_risk": 0, "rule_key": "human-capital-authority"}]),
                     ("emergency-containment", ["halt", "isolate", "revoke", "quarantine", "reduce"], ["production", "governance"], [], 3, True, True, []),
+                    ("execution-recovery", ["resume"], ["founder", "production", "governance"], ["risk", "security"], 3, False, True, [{"field": "originator", "minimum_risk": 0, "rule_key": "no-runtime-self-recovery"}]),
                     ("canonical-knowledge-status", ["accept", "supersede", "retract"], ["knowledge"], ["governance", "security"], 2, True, False, [{"field": "originator", "minimum_risk": 1, "rule_key": "independent-knowledge-adjudication"}]),
                     ("policy-exception", ["approve", "reject", "close"], ["governance"], ["security", "risk"], 3, False, True, [{"field": "requester", "minimum_risk": 0, "rule_key": "independent-exception-approval"}]),
                 ]
