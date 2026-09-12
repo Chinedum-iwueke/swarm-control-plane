@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
+from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
 from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
 from app.models.oms_schema import OmsSchemaRegistry
@@ -41,6 +42,7 @@ PRODUCERS = {
     "EXEC-004": "bt.institutional.oms.oms_reconciliation_receipt",
     "EXEC-005": "bt.institutional.execution_calibration.execution_calibration_receipt",
     "EXEC-006": "bt.institutional.execution_scheduler.execution_schedule_receipt",
+    "EXEC-007": "bt.institutional.runtime_safety.runtime_safety_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -162,6 +164,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-006 execution-schedule schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-007":
+        schema_digest = receipt["result"].get("runtime_safety_schema_digest")
+        schema = db.scalar(
+            select(ExecutionSafetySchemaRegistry).where(
+                ExecutionSafetySchemaRegistry.specification_digest == schema_digest,
+                ExecutionSafetySchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-007 execution-safety schema is not active in the registry."
             )
     if receipt["milestone"] == "PORT-004":
         schema_digest = receipt["result"].get("capacity_schema_digest")

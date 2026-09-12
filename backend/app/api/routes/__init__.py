@@ -30,6 +30,9 @@ from app.api.routes.execution_calibration_schemas import (
 from app.api.routes.execution_event_schemas import (
     router as execution_event_schemas_router,
 )
+from app.api.routes.execution_safety_schemas import (
+    router as execution_safety_schemas_router,
+)
 from app.api.routes.execution_schedule_schemas import (
     router as execution_schedule_schemas_router,
 )
@@ -134,6 +137,7 @@ __all__ = [
     "evidence_router",
     "execution_calibration_schemas_router",
     "execution_event_schemas_router",
+    "execution_safety_schemas_router",
     "execution_schedule_schemas_router",
     "factor_language_router",
     "falsification_router",
