@@ -1,3 +1,4 @@
+from app.models.adapter_certification_schema import AdapterCertificationSchemaRegistry
 from app.models.agent import Agent
 from app.models.agent_context import AgentContextManifest, AgentWorkingMemoryReceipt
 from app.models.agent_credential import AgentCredential
@@ -213,6 +214,7 @@ from app.models.workload_identity import (
 )
 
 __all__ = [
+    "AdapterCertificationSchemaRegistry",
     "Agent",
     "AgentCapabilityGrant",
     "AgentCharter",

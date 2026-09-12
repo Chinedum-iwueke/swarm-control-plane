@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.routes import (
+    adapter_certification_schemas_router,
     agent_context_router,
     agent_context_runtime_router,
     agent_fleet_router,
@@ -101,6 +102,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(adapter_certification_schemas_router)
 app.include_router(alpha_campaign_router)
 app.include_router(authority_router)
 app.include_router(causal_pipelines_router)

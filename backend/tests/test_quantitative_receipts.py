@@ -3,6 +3,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+
 from app.api.routes.quantitative_receipts import router
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 from app.services.quantitative_receipt import (
@@ -189,6 +190,34 @@ def test_exec007_requires_active_registered_execution_safety_schema():
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-007"
     assert record.receipt["authority"]["orders"] is False
+
+
+def test_exec008_requires_active_registered_adapter_certification_schema():
+    value = receipt(
+        milestone="EXEC-008",
+        producer="bt.institutional.adapter_certification.adapter_certification_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec008-adapter-certification-v1.0.0",
+        "adapter_certification_schema_digest": "5" * 64,
+        "status": "conformance_only",
+        "qualified": False,
+        "micro_live_eligible": False,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(
+        QuantitativeReceiptConflict, match="adapter-certification schema"
+    ):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-008"
+    assert record.receipt["result"]["micro_live_eligible"] is False
 
 
 def test_registers_port002_only_from_bulletproof_dependency_producer():

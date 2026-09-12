@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.adapter_certification_schema import AdapterCertificationSchemaRegistry
 from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
@@ -43,6 +44,7 @@ PRODUCERS = {
     "EXEC-005": "bt.institutional.execution_calibration.execution_calibration_receipt",
     "EXEC-006": "bt.institutional.execution_scheduler.execution_schedule_receipt",
     "EXEC-007": "bt.institutional.runtime_safety.runtime_safety_receipt",
+    "EXEC-008": "bt.institutional.adapter_certification.adapter_certification_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -176,6 +178,19 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-007 execution-safety schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-008":
+        schema_digest = receipt["result"].get("adapter_certification_schema_digest")
+        schema = db.scalar(
+            select(AdapterCertificationSchemaRegistry).where(
+                AdapterCertificationSchemaRegistry.specification_digest
+                == schema_digest,
+                AdapterCertificationSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-008 adapter-certification schema is not active in the registry."
             )
     if receipt["milestone"] == "PORT-004":
         schema_digest = receipt["result"].get("capacity_schema_digest")
