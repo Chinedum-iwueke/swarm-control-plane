@@ -72,6 +72,7 @@ from app.models.evidence import (
 )
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
+from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
 from app.models.factor_language import FactorExperimentProgram
 from app.models.falsification import MechanismEvaluation, MechanismPlan
 from app.models.fleet import FleetIncident, FleetIncidentEvent, MachineObservation
@@ -275,6 +276,7 @@ __all__ = [
     "EvidenceRetrievalState",
     "ExecutionCalibrationSchemaRegistry",
     "ExecutionEventSchemaRegistry",
+    "ExecutionScheduleSchemaRegistry",
     "FactorExperimentProgram",
     "FleetIncident",
     "FleetIncidentEvent",
