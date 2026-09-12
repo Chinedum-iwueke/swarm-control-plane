@@ -34,7 +34,12 @@ def register_realtime_risk_schema(
         )
     )
     if existing:
-        if existing.specification_digest != payload.specification_digest:
+        if (
+            existing.specification_digest != payload.specification_digest
+            or existing.source_commit != payload.source_commit
+            or existing.producer != payload.producer
+            or existing.specification != payload.specification
+        ):
             raise RealtimeRiskSchemaConflict(
                 "Real-time risk schema name and version are immutable."
             )
