@@ -40,6 +40,10 @@ def test_registers_idempotently_and_rejects_drift():
         register_realtime_risk_schema(
             MagicMock(), payload(specification_digest="0" * 64)
         )
+    with pytest.raises(RealtimeRiskSchemaConflict, match="immutable"):
+        register_realtime_risk_schema(
+            replay, payload(source_commit="b" * 40)
+        )
 
 
 def test_routes_are_protected():
