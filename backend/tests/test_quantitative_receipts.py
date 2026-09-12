@@ -328,3 +328,28 @@ def test_risk003_requires_active_registered_risk_budget_schema():
     record = register_receipt(db, payload(value))
     assert record.milestone == "RISK-003"
     assert record.receipt["authority"]["capital"] is False
+
+
+def test_shadow002_requires_active_registered_monitoring_schema():
+    value = receipt(
+        milestone="SHADOW-002",
+        producer="bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
+    )
+    value["result"] = {
+        "schema_version": "shadow002-prospective-monitoring-v1.0.0",
+        "shadow_monitoring_schema_digest": "1" * 64,
+        "qualified_for_continued_shadow": True,
+        "claim": "prospective monitoring evidence only; no capital or order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="monitoring schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "SHADOW-002"
+    assert record.receipt["authority"]["promotion"] is False

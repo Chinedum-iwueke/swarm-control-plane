@@ -83,6 +83,9 @@ from app.api.routes.risk_stress import router as risk_stress_router
 from app.api.routes.runbook_packages import router as runbook_packages_router
 from app.api.routes.scientific_fidelity import router as scientific_fidelity_router
 from app.api.routes.selection_audit import router as selection_audit_router
+from app.api.routes.shadow_monitoring_schemas import (
+    router as shadow_monitoring_schemas_router,
+)
 from app.api.routes.statistical_search import router as statistical_search_router
 from app.api.routes.supervisor import router as supervisor_router
 from app.api.routes.surveillance import router as surveillance_router
@@ -169,6 +172,7 @@ __all__ = [
     "runbook_packages_router",
     "scientific_fidelity_router",
     "selection_audit_router",
+    "shadow_monitoring_schemas_router",
     "statistical_search_router",
     "supervisor_router",
     "surveillance_router",

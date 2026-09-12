@@ -34,6 +34,7 @@ QuantitativeMilestone = Literal[
     "RISK-001",
     "RISK-002",
     "RISK-003",
+    "SHADOW-002",
 ]
 
 
