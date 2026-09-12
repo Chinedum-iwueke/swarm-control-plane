@@ -303,3 +303,28 @@ def test_port004_requires_active_registered_portfolio_capacity_schema():
     record = register_receipt(db, payload(value))
     assert record.milestone == "PORT-004"
     assert record.receipt["authority"]["capital"] is False
+
+
+def test_risk003_requires_active_registered_risk_budget_schema():
+    value = receipt(
+        milestone="RISK-003",
+        producer="bt.institutional.risk_budget.dynamic_risk_budget_receipt",
+    )
+    value["result"] = {
+        "schema_version": "risk003-dynamic-risk-budget-v1.0.0",
+        "risk_budget_schema_digest": "2" * 64,
+        "qualified": True,
+        "claim": "bounded risk evidence only; no capital or order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="risk-budget schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "RISK-003"
+    assert record.receipt["authority"]["capital"] is False

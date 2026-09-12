@@ -161,6 +161,7 @@ from app.models.retrieval import (
     EvidenceRetrievalProjection,
     EvidenceRetrievalState,
 )
+from app.models.risk_budget_schema import RiskBudgetSchemaRegistry
 from app.models.risk_rules import RiskRuleEvaluation
 from app.models.risk_stress import RiskStressAssessment
 from app.models.runbook_package import RunbookPackage, RunbookPromotion
@@ -338,6 +339,7 @@ __all__ = [
     "ResearchReview",
     "ResearchSource",
     "ResearchTrial",
+    "RiskBudgetSchemaRegistry",
     "RiskRuleEvaluation",
     "RiskStressAssessment",
     "RolePackage",

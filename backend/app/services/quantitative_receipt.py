@@ -12,6 +12,7 @@ from app.models.oms_schema import OmsSchemaRegistry
 from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.risk_budget_schema import RiskBudgetSchemaRegistry
 from app.models.venue_identity import VenueIdentityRegistry
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 
@@ -45,6 +46,7 @@ PRODUCERS = {
     "RL-002": "bt.institutional.rl.off_policy_evaluation_receipt",
     "RISK-001": "bt.institutional.risk.stress_dossier_receipt",
     "RISK-002": "bt.institutional.risk.venue_rule_receipt",
+    "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
 }
 
 
@@ -146,6 +148,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "PORT-004 portfolio-capacity schema is not active in the registry."
+            )
+    if receipt["milestone"] == "RISK-003":
+        schema_digest = receipt["result"].get("risk_budget_schema_digest")
+        schema = db.scalar(
+            select(RiskBudgetSchemaRegistry).where(
+                RiskBudgetSchemaRegistry.specification_digest == schema_digest,
+                RiskBudgetSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "RISK-003 risk-budget schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(
