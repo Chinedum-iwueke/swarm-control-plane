@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.microstructure_model import MicrostructureModelRegistry
+from app.models.oms_schema import OmsSchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.venue_identity import VenueIdentityRegistry
@@ -30,6 +31,7 @@ PRODUCERS = {
     "EXEC-001": "bt.institutional.execution.execution_journal_receipt",
     "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
     "EXEC-003": "bt.institutional.venue.venue_identity_receipt",
+    "EXEC-004": "bt.institutional.oms.oms_reconciliation_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -103,6 +105,18 @@ def register_receipt(
         if mapping is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-003 venue identity schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-004":
+        schema_digest = receipt["result"].get("oms_schema_digest")
+        schema = db.scalar(
+            select(OmsSchemaRegistry).where(
+                OmsSchemaRegistry.specification_digest == schema_digest,
+                OmsSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-004 OMS schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(

@@ -228,3 +228,28 @@ def test_exec003_requires_active_registered_venue_identity():
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-003"
     assert record.receipt["authority"]["orders"] is False
+
+
+def test_exec004_requires_active_registered_oms_schema():
+    value = receipt(
+        milestone="EXEC-004",
+        producer="bt.institutional.oms.oms_reconciliation_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec004-oms-reconciliation-v1.0.0",
+        "oms_schema_digest": "5" * 64,
+        "qualified": True,
+        "claim": "deterministic OMS evidence only; no order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="OMS schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-004"
+    assert record.receipt["authority"]["orders"] is False

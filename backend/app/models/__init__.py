@@ -115,6 +115,7 @@ from app.models.observability import (
 )
 from app.models.off_policy import OffPolicyProposalEvaluation
 from app.models.offline_rl import OfflineRLDatasetContract
+from app.models.oms_schema import OmsSchemaRegistry
 from app.models.operation import Operation, OperationEvent
 from app.models.operational_note import OperationalNote, OperationalNoteEvent
 from app.models.package import PackageDeployment, RolePackage
@@ -298,6 +299,7 @@ __all__ = [
     "ModelFamilyEvaluation",
     "OffPolicyProposalEvaluation",
     "OfflineRLDatasetContract",
+    "OmsSchemaRegistry",
     "Operation",
     "OperationEvent",
     "OperationalNote",
