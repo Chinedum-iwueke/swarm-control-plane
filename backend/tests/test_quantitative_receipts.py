@@ -142,6 +142,31 @@ def test_risk005_requires_active_registered_realtime_risk_schema():
     assert record.receipt["authority"]["orders"] is False
 
 
+def test_exec006_requires_active_registered_execution_schedule_schema():
+    value = receipt(
+        milestone="EXEC-006",
+        producer="bt.institutional.execution_scheduler.execution_schedule_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec006-baseline-schedule-v1.0.0",
+        "execution_schedule_schema_digest": "3" * 64,
+        "qualified": True,
+        "risk005_required_per_child": True,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="execution-schedule schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-006"
+    assert record.receipt["authority"]["orders"] is False
+
+
 def test_registers_port002_only_from_bulletproof_dependency_producer():
     value = receipt(
         milestone="PORT-002",
