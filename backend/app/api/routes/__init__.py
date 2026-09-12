@@ -54,6 +54,7 @@ from app.api.routes.model_evaluations import router as model_evaluations_router
 from app.api.routes.observability import router as observability_router
 from app.api.routes.off_policy import router as off_policy_router
 from app.api.routes.offline_rl import router as offline_rl_router
+from app.api.routes.oms_schemas import router as oms_schemas_router
 from app.api.routes.operational_notes import agent_router as agent_notes_router
 from app.api.routes.operational_notes import router as operational_notes_router
 from app.api.routes.operations import router as operations_router
@@ -139,6 +140,7 @@ __all__ = [
     "observability_router",
     "off_policy_router",
     "offline_rl_router",
+    "oms_schemas_router",
     "operational_notes_router",
     "operations_router",
     "packages_router",
