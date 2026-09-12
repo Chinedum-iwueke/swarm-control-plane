@@ -66,6 +66,7 @@ from app.api.routes import (
     prompt_policies_router,
     proposals_router,
     quantitative_receipts_router,
+    realtime_risk_schemas_router,
     reference_data_router,
     research_bridge_router,
     research_programs_router,
@@ -174,6 +175,7 @@ app.include_router(research_programs_router)
 app.include_router(runbook_packages_router)
 app.include_router(shadow_monitoring_schemas_router)
 app.include_router(candidate_admission_schemas_router)
+app.include_router(realtime_risk_schemas_router)
 app.include_router(selection_audit_router)
 app.include_router(scientific_fidelity_router)
 app.include_router(statistical_search_router)

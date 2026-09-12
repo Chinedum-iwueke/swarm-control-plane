@@ -117,6 +117,31 @@ def test_routes_are_orchestrator_protected():
     }
 
 
+def test_risk005_requires_active_registered_realtime_risk_schema():
+    value = receipt(
+        milestone="RISK-005",
+        producer="bt.institutional.realtime_risk.realtime_risk_decision_receipt",
+    )
+    value["result"] = {
+        "schema_version": "risk005-realtime-risk-v1.0.0",
+        "realtime_risk_schema_digest": "2" * 64,
+        "allowed": False,
+        "claim": "deterministic risk decision evidence only; no order authority",
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock()
+    db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="real-time risk schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "RISK-005"
+    assert record.receipt["authority"]["orders"] is False
+
+
 def test_registers_port002_only_from_bulletproof_dependency_producer():
     value = receipt(
         milestone="PORT-002",
