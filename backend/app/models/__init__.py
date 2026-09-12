@@ -135,6 +135,7 @@ from app.models.prompt_policy import (
 )
 from app.models.proposal import FounderProposal
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.realtime_risk_schema import RealtimeRiskSchemaRegistry
 from app.models.reference_data import ReferenceDataSnapshot
 from app.models.research import (
     ResearchBrief,
@@ -318,6 +319,7 @@ __all__ = [
     "PromptPolicyEvaluation",
     "PromptPolicyEvent",
     "QuantitativeProducerReceipt",
+    "RealtimeRiskSchemaRegistry",
     "ReferenceDataSnapshot",
     "ResearchBrainEvaluation",
     "ResearchBrief",

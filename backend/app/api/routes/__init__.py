@@ -75,6 +75,7 @@ from app.api.routes.prompt_policies import router as prompt_policies_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
 from app.api.routes.quantitative_receipts import router as quantitative_receipts_router
+from app.api.routes.realtime_risk_schemas import router as realtime_risk_schemas_router
 from app.api.routes.reference_data import router as reference_data_router
 from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
@@ -165,6 +166,7 @@ __all__ = [
     "prompt_policies_router",
     "proposals_router",
     "quantitative_receipts_router",
+    "realtime_risk_schemas_router",
     "reference_data_router",
     "research_bridge_router",
     "research_programs_router",

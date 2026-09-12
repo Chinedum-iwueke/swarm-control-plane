@@ -13,6 +13,7 @@ from app.models.oms_schema import OmsSchemaRegistry
 from app.models.portfolio_capacity_schema import PortfolioCapacitySchemaRegistry
 from app.models.portfolio_solver import PortfolioSolverRegistry
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.realtime_risk_schema import RealtimeRiskSchemaRegistry
 from app.models.risk_budget_schema import RiskBudgetSchemaRegistry
 from app.models.shadow_monitoring_schema import ShadowMonitoringSchemaRegistry
 from app.models.venue_identity import VenueIdentityRegistry
@@ -51,6 +52,7 @@ PRODUCERS = {
     "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
     "SHADOW-002": "bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
     "RISK-004": "bt.institutional.candidate_admission.candidate_admission_receipt",
+    "RISK-005": "bt.institutional.realtime_risk.realtime_risk_decision_receipt",
 }
 
 
@@ -83,7 +85,9 @@ def register_receipt(
             )
         )
         if solver is None:
-            raise QuantitativeReceiptConflict("PORT-003 solver is not active in the registry.")
+            raise QuantitativeReceiptConflict(
+                "PORT-003 solver is not active in the registry."
+            )
     if receipt["milestone"] == "EXEC-001":
         schema_digest = receipt["result"].get("event_schema_digest")
         event_schema = db.scalar(
@@ -93,7 +97,9 @@ def register_receipt(
             )
         )
         if event_schema is None:
-            raise QuantitativeReceiptConflict("EXEC-001 event schema is not active in the registry.")
+            raise QuantitativeReceiptConflict(
+                "EXEC-001 event schema is not active in the registry."
+            )
     if receipt["milestone"] == "EXEC-002":
         model_digest = receipt["result"].get("model_schema_digest")
         model = db.scalar(
@@ -103,7 +109,9 @@ def register_receipt(
             )
         )
         if model is None:
-            raise QuantitativeReceiptConflict("EXEC-002 model is not active in the registry.")
+            raise QuantitativeReceiptConflict(
+                "EXEC-002 model is not active in the registry."
+            )
     if receipt["milestone"] == "EXEC-003":
         mapping_digest = receipt["result"].get("mapping_schema_digest")
         mapping = db.scalar(
@@ -188,6 +196,18 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "RISK-004 admission schema is not active in the registry."
+            )
+    if receipt["milestone"] == "RISK-005":
+        schema_digest = receipt["result"].get("realtime_risk_schema_digest")
+        schema = db.scalar(
+            select(RealtimeRiskSchemaRegistry).where(
+                RealtimeRiskSchemaRegistry.specification_digest == schema_digest,
+                RealtimeRiskSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "RISK-005 real-time risk schema is not active in the registry."
             )
     receipt["receipt_digest"] = receipt_digest
     existing = db.scalar(
