@@ -1,3 +1,6 @@
+from app.api.routes.adapter_certification_schemas import (
+    router as adapter_certification_schemas_router,
+)
 from app.api.routes.agent_context import agent_router as agent_context_runtime_router
 from app.api.routes.agent_context import router as agent_context_router
 from app.api.routes.agent_governance import router as agent_governance_router
@@ -107,6 +110,7 @@ from app.api.routes.venue_identities import router as venue_identities_router
 from app.api.routes.workload_identities import router as workload_identities_router
 
 __all__ = [
+    "adapter_certification_schemas_router",
     "agent_context_router",
     "agent_context_runtime_router",
     "agent_fleet_router",
