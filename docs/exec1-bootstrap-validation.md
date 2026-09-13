@@ -11,7 +11,8 @@ the read-only fleet probe, three fresh control-plane observations, Mission Contr
 visibility, and independent watchdog coverage. Venue execution remains disabled until
 the separate DEMO-001 and runtime-safety gates are satisfied.
 
-The 2026-09-13 provisioning pass established key-only operator access, disabled root
+The 2026-09-13 provisioning pass at source commit
+`3047fa7935ebc88db22eef07a916cb8c8b7f5b6c` established key-only operator access, disabled root
 and password SSH, enabled UFW/fail2ban/unattended upgrades/chrony, added 2 GiB swap,
 created the unprivileged execution state boundary, and joined Tailscale. The allocated
 egress geolocated to Oregon, United States. Bybit main/demo returned HTTP 403 and
