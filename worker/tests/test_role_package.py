@@ -16,6 +16,7 @@ DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.ya
 OPERATIONAL_MEMORY_MANIFEST = (
     ROOT / "role-packages/vm1-operational-memory-steward/manifest.yaml"
 )
+EXEC1_FLEET_MANIFEST = ROOT / "role-packages/exec1-fleet-observer/manifest.yaml"
 
 
 def test_versioned_package_and_workflow_digest_verify() -> None:
@@ -68,6 +69,15 @@ def test_operational_memory_steward_is_non_executing() -> None:
     assert package.manifest.required_capabilities == ["operational-memory"]
     assert package.manifest.permission_profile.writable_roots == []
     assert package.manifest.repository_profile.repositories == []
+    assert package.manifest.permission_profile.privileged_operations is False
+
+
+def test_exec1_fleet_observer_is_read_only_and_machine_bound() -> None:
+    package = load_role_package(EXEC1_FLEET_MANIFEST, WORKFLOWS)
+    assert package.manifest.allowed_machines == ["exec1-execution"]
+    assert package.manifest.task_types == ["fleet_observation"]
+    assert package.manifest.repository_profile.repositories == []
+    assert package.manifest.repository_profile.remote_write is False
     assert package.manifest.permission_profile.privileged_operations is False
 
 
