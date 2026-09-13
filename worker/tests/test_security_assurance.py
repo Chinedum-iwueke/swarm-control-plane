@@ -24,7 +24,7 @@ def test_all_catalog_services_and_required_attack_classes_are_covered() -> None:
     model = load_threat_model(MODEL_PATH)
     coverage = validate_catalog_coverage(model, CATALOG_PATH)
 
-    assert coverage["service_count"] == coverage["covered_service_count"] == 13
+    assert coverage["service_count"] == coverage["covered_service_count"] == 14
     assert {item.category for item in model.scenarios} == {
         "injection",
         "exfiltration",

@@ -1,7 +1,7 @@
 # EXEC1 bootstrap validation
 
-Source implementation adds `exec1-execution` to the immutable platform catalog and
-OPS-004 observer bootstrap without introducing capital or order authority. Mission
+Source implementation adds `exec1-execution` to the immutable platform catalog as the
+independent OPS-004 observer without introducing capital or order authority. Mission
 Control already renders arbitrary canonical fleet observations, so no parallel host
 registry or hard-coded UI list was added.
 
@@ -16,9 +16,10 @@ The 2026-09-13 provisioning pass at source commit
 and password SSH, enabled UFW/fail2ban/unattended upgrades/chrony, added 2 GiB swap,
 created the unprivileged execution state boundary, and joined Tailscale. The allocated
 egress geolocated to Oregon, United States. Bybit main/demo returned HTTP 403 and
-Binance futures main returned HTTP 451, so venue execution is honestly blocked. No
-venue credential was installed and no order was submitted. The machine remains useful
-as the independent third-host watchdog and read-only fleet observer.
+Binance futures main returned HTTP 451, so venue execution is permanently excluded. No
+venue credential was installed and no order was submitted. The machine is the
+independent third-host watchdog and read-only fleet observer; the eligible venue role
+belongs to `exec2-lagos`.
 
 Validation passed 263 worker tests with the unrelated parent-branch GOV-001 stale
 version assertion excluded, 783 backend tests, 75 Mission Control tests, changed-file
