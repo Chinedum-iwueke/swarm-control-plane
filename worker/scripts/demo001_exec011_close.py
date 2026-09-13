@@ -20,10 +20,10 @@ PRODUCERS = {
     "EXEC-005": "bt.institutional.execution_calibration.execution_calibration_receipt",
     "EXEC-006": "bt.institutional.execution_scheduler.execution_schedule_receipt",
     "EXEC-007": "bt.institutional.runtime_safety.runtime_safety_receipt",
-    "EXEC-008": "bt.institutional.adapter_certification.adapter_certification_receipt",
-    "EXEC-009": "bt.institutional.execution_degradation.execution_degradation_receipt",
-    "RISK-005": "bt.institutional.realtime_risk.realtime_risk_decision_receipt",
     "SHADOW-002": "bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
+    "RISK-002": "bt.institutional.risk.venue_rule_receipt",
+    "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
+    "RISK-004": "bt.institutional.candidate_admission.candidate_admission_receipt",
 }
 
 
@@ -97,7 +97,13 @@ def publish(native_report: Path, output: Path) -> int:
     if native.get("success") is not True:
         raise RuntimeError("native closure report is not successful")
     receipts = native["receipts"]
-    if set(receipts) != {"EXEC-008", "EXEC-011", "DEMO-001"}:
+    if set(receipts) != {
+        "EXEC-008",
+        "EXEC-009",
+        "EXEC-011",
+        "RISK-005",
+        "DEMO-001",
+    }:
         raise RuntimeError("native closure receipt set is incomplete")
     with client() as api:
         adapter_schema = register_schema(api, "/v1/research/adapter-certification-schemas", {
@@ -110,6 +116,30 @@ def publish(native_report: Path, output: Path) -> int:
             "status": "active",
             "registered_by": "demo001-exec011-closure",
         })
+        risk_schema = register_schema(api, "/v1/research/realtime-risk-schemas", {
+            "name": "real-time-deterministic-risk",
+            "version": "1.1.0",
+            "producer": receipts["RISK-005"]["producer"],
+            "source_commit": receipts["RISK-005"]["source_commit"],
+            "specification_digest": native["risk_specification_digest"],
+            "specification": native["risk_specification"],
+            "status": "active",
+            "registered_by": "demo001-exec011-closure",
+        })
+        degradation_schema = register_schema(
+            api,
+            "/v1/research/execution-degradation-schemas",
+            {
+                "name": "execution-degradation-feedback",
+                "version": "1.1.0",
+                "producer": receipts["EXEC-009"]["producer"],
+                "source_commit": receipts["EXEC-009"]["source_commit"],
+                "specification_digest": native["degradation_specification_digest"],
+                "specification": native["degradation_specification"],
+                "status": "active",
+                "registered_by": "demo001-exec011-closure",
+            },
+        )
         telemetry_schema = register_schema(api, "/v1/execution/telemetry-schemas", {
             "name": "canonical-venue-telemetry",
             "version": "1.0.0",
@@ -132,7 +162,13 @@ def publish(native_report: Path, output: Path) -> int:
         })
         registered = {
             milestone: register_receipt(api, receipts[milestone])
-            for milestone in ("EXEC-008", "EXEC-011", "DEMO-001")
+            for milestone in (
+                "EXEC-008",
+                "RISK-005",
+                "EXEC-009",
+                "EXEC-011",
+                "DEMO-001",
+            )
         }
         telemetry = receipts["EXEC-011"]["result"]
         projection = telemetry["projection"]
@@ -169,6 +205,8 @@ def publish(native_report: Path, output: Path) -> int:
         "success": success,
         "schemas": {
             "EXEC-008": adapter_schema["specification_digest"],
+            "RISK-005": risk_schema["specification_digest"],
+            "EXEC-009": degradation_schema["specification_digest"],
             "EXEC-011": telemetry_schema["specification_digest"],
             "DEMO-001": demo_schema["specification_digest"],
         },

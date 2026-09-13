@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
 
 class ExecutionDegradationSchemaCreate(StrictModel):
     name: Literal["execution-degradation-feedback"]
-    version: Literal["1.0.0"]
+    version: Literal["1.0.0", "1.1.0"]
     producer: Literal[
         "bt.institutional.execution_degradation.execution_degradation_receipt"
     ]

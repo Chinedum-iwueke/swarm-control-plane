@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
 
 class AdapterCertificationSchemaCreate(StrictModel):
     name: Literal["venue-adapter-certification-and-demo-parity"]
-    version: Literal["1.0.0"]
+    version: Literal["1.0.0", "1.1.0"]
     producer: Literal[
         "bt.institutional.adapter_certification.adapter_certification_receipt"
     ]

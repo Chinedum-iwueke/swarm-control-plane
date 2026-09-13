@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
 
 class DemoCertificationSchemaCreate(StrictModel):
     name: Literal["production-like-venue-demo-certification"]
-    version: Literal["1.0.0"]
+    version: Literal["1.0.0", "1.1.0"]
     producer: Literal["bt.institutional.demo_certification.demo_certification_receipt"]
     source_commit: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     specification_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
