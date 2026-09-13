@@ -2328,6 +2328,7 @@ function demoDashboard() {
       { id: "23c62000-1fad-48bb-8ce5-3f4cb26f3779", slug: "vm1-research-runner", display_name: "VM1 Research Runner", machine: "vm1-developer", role: "Restricted research", status: "online", is_enabled: true, risk_ceiling: 1, capabilities: ["git", "python", "backtesting", "research-audit"] },
       { id: "agent-infra", slug: "vm2-infrastructure-operator", display_name: "VM2 Infrastructure Operator", machine: "vm2-deployment", role: "Approved infrastructure runbooks", status: "online", is_enabled: true, risk_ceiling: 3, capabilities: ["infrastructure-observation", "service-health", "controlled-restart"] },
       { id: "agent-exec1", slug: "exec1-fleet-observer", display_name: "EXEC1 Fleet Observer", machine: "exec1-execution", role: "Read-only execution-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
+      { id: "agent-exec2", slug: "exec2-lagos-fleet-observer", display_name: "EXEC2 Lagos Fleet Observer", machine: "exec2-lagos", role: "Read-only venue-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
       { id: "agent-mac", slug: "mac-founder-control", display_name: "Mac Founder Control", machine: "mac-founder", role: "Founder command surface", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["founder-intake", "knowledge-search"] },
     ],
     approvals: [
@@ -2394,6 +2395,7 @@ function demoDashboard() {
         { machine: "vm1-developer", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 12, memory_available_percent: 64, disk_used_percent: 42, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
         { machine: "vm2-deployment", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 18, memory_available_percent: 71, disk_used_percent: 28, cpu_pressure_avg10: 0, io_pressure_avg10: 0, control_plane_backup_verified: true, control_plane_backup_failed: false, control_plane_backup_age_seconds: 3600 }, incidents: [] },
         { machine: "exec1-execution", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 4, memory_available_percent: 82, disk_used_percent: 8, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
+        { machine: "exec2-lagos", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 3, memory_available_percent: 88, disk_used_percent: 6, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
       ],
     },
     operations: [

@@ -20,6 +20,12 @@ PROFILES = {
         "display_name": "EXEC1 Fleet Observer",
         "machine": "exec1-execution",
     },
+    "exec2": {
+        "package": "exec2-lagos-fleet-observer",
+        "slug": "exec2-lagos-fleet-observer",
+        "display_name": "EXEC2 Lagos Fleet Observer",
+        "machine": "exec2-lagos",
+    },
     "vm1": {
         "package": "vm1-fleet-observer",
         "slug": "vm1-fleet-observer",

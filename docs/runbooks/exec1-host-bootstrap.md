@@ -1,16 +1,16 @@
-# EXEC1 execution-host bootstrap
+# EXEC1 independent-observer bootstrap
 
 ## Boundary
 
-`exec1-execution` is the dedicated, always-on venue-facing host. VM1 remains the
+`exec1-execution` is the dedicated, always-on independent observer. VM1 remains the
 research and development machine, VM2 remains the control-plane deployment machine,
-and the founder Mac remains the local Mission Control machine. EXEC1 does not host
-PostgreSQL, Redis, the control-plane API, Telegram, or research workloads.
+the founder Mac remains the local Mission Control machine, and `exec2-lagos` is the
+venue-facing host. EXEC1 does not host PostgreSQL, Redis, the control-plane API,
+Telegram, research workloads, or venue execution.
 
-Provisioning the host does not authorize orders or capital. Venue credentials,
-DEMO-001, LIVE-001, runtime-safety state, and founder/risk approval remain separate
-gates. Secrets must be supplied through root-owned systemd credentials and must never
-enter Git, shell history, fleet telemetry, Mission Control, or Hermes evidence.
+EXEC1 has no capital or order role. It must not receive venue credentials. Its direct
+founder-alert credential must remain separate from Telegram intake and must never enter
+Git, shell history, fleet telemetry, Mission Control, or Hermes evidence.
 
 ## Initial hardening
 
@@ -69,13 +69,11 @@ coverage. Add `exec1-execution=<exec1-private-ip>:22` to the independent watchdo
 target set. A missing EXEC1 sample becomes a sustained availability incident;
 single-sample network noise does not alert.
 
-## Execution activation
+## Execution exclusion
 
-Keep every venue runner disabled until the following are all current: EXEC-003..009,
-EXEC-011, PORT-004, RISK-003..005, SHADOW-002, a venue-observed DEMO-001 receipt,
-runtime freeze/kill recovery, a dedicated trade-only credential with withdrawals
-disabled and IP allowlisting, and exact founder/risk approval. Activate demo before
-micro-live. Never share a credential between environments or venues.
+Keep every venue runner permanently absent from EXEC1. Demo and live execution belong
+only on an admitted venue host such as `exec2-lagos`. Never copy exchange credentials
+or execution state to this observer.
 
 The first QServers allocation observed on 2026-09-13 is not an eligible venue host.
 Independent IP geolocation places its egress in Oregon, United States; Bybit main and
@@ -86,7 +84,6 @@ role while the location issue is resolved.
 
 ## Recovery
 
-Loss of EXEC1 freezes venue submission; it must not move execution onto VM1 or VM2.
-Rebuild a replacement host from this runbook, restore only verified state and
-credentials through their separate custody paths, reconcile venue orders, fills,
-positions and balances, and require a new runtime-readiness receipt before resuming.
+Loss of EXEC1 removes independent outage alerting and opens an observability incident;
+it does not move monitoring or execution onto VM1 or VM2. Rebuild a replacement from
+this runbook and restore only the alerting and fleet-observer credentials.
