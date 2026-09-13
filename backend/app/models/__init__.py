@@ -73,6 +73,7 @@ from app.models.evidence import (
     EvidenceLifecycleState,
 )
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
+from app.models.execution_degradation_schema import ExecutionDegradationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
 from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
@@ -280,6 +281,7 @@ __all__ = [
     "EvidenceRetrievalProjection",
     "EvidenceRetrievalState",
     "ExecutionCalibrationSchemaRegistry",
+    "ExecutionDegradationSchemaRegistry",
     "ExecutionEventSchemaRegistry",
     "ExecutionSafetySchemaRegistry",
     "ExecutionScheduleSchemaRegistry",

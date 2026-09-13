@@ -9,6 +9,7 @@ from app.models.adapter_certification_schema import AdapterCertificationSchemaRe
 from app.models.candidate_admission_schema import CandidateAdmissionSchemaRegistry
 from app.models.demo_certification_schema import DemoCertificationSchemaRegistry
 from app.models.execution_calibration_schema import ExecutionCalibrationSchemaRegistry
+from app.models.execution_degradation_schema import ExecutionDegradationSchemaRegistry
 from app.models.execution_event_schema import ExecutionEventSchemaRegistry
 from app.models.execution_safety_schema import ExecutionSafetySchemaRegistry
 from app.models.execution_schedule_schema import ExecutionScheduleSchemaRegistry
@@ -47,6 +48,7 @@ PRODUCERS = {
     "EXEC-006": "bt.institutional.execution_scheduler.execution_schedule_receipt",
     "EXEC-007": "bt.institutional.runtime_safety.runtime_safety_receipt",
     "EXEC-008": "bt.institutional.adapter_certification.adapter_certification_receipt",
+    "EXEC-009": "bt.institutional.execution_degradation.execution_degradation_receipt",
     "ML-002": "bt.institutional.ml.causal_materialization_receipt",
     "ML-003": "bt.institutional.ml.model_family_evaluation_receipt",
     "ML-004": "bt.institutional.ml.calibration_receipt",
@@ -156,6 +158,19 @@ def register_receipt(
         if schema is None:
             raise QuantitativeReceiptConflict(
                 "EXEC-005 execution-calibration schema is not active in the registry."
+            )
+    if receipt["milestone"] == "EXEC-009":
+        schema_digest = receipt["result"].get("degradation_schema_digest")
+        schema = db.scalar(
+            select(ExecutionDegradationSchemaRegistry).where(
+                ExecutionDegradationSchemaRegistry.specification_digest
+                == schema_digest,
+                ExecutionDegradationSchemaRegistry.status == "active",
+            )
+        )
+        if schema is None:
+            raise QuantitativeReceiptConflict(
+                "EXEC-009 execution-degradation schema is not active in the registry."
             )
     if receipt["milestone"] == "EXEC-006":
         schema_digest = receipt["result"].get("execution_schedule_schema_digest")
