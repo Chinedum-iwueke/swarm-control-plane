@@ -13,6 +13,12 @@ from swarm_worker.role_package import canonical_manifest, load_role_package
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILES = {
+    "exec1": {
+        "package": "exec1-fleet-observer",
+        "slug": "exec1-fleet-observer",
+        "display_name": "EXEC1 Fleet Observer",
+        "machine": "exec1-execution",
+    },
     "vm1": {
         "package": "vm1-fleet-observer",
         "slug": "vm1-fleet-observer",

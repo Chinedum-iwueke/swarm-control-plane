@@ -1,6 +1,6 @@
 {
   "schema_version": "service-catalog-v1.0.0",
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "source_repository": "swarm-control-plane",
   "source_commit": "2d3927355d2cddd8a94c3adb76a5ae9adcfa4c55",
   "entries": [
@@ -15,6 +15,7 @@
     {"service_key":"control-plane-backup","display_name":"Verified control-plane backup","owner":"platform-operations","recovery_owner":"vm2-deployment-architect","runtime_kind":"systemd","intended_machines":["vm2-deployment"],"interfaces":[{"name":"backup-manifest","version":"1.0.0","kind":"filesystem"}],"dependencies":[{"service_key":"control-plane-postgres","required":true}],"data_classes":["restricted-backup"],"slo":{"rpo_seconds":86400,"rto_seconds":1800},"recovery_plan":{"runbook":"ops-005-control-plane-backups"}},
     {"service_key":"fleet-probe-vm1","display_name":"VM1 fleet probe","owner":"platform-operations","recovery_owner":"founder-operator","runtime_kind":"systemd","intended_machines":["vm1-developer"],"interfaces":[{"name":"fleet-observation","version":"1.0.0","kind":"event"}],"dependencies":[{"service_key":"control-plane-api","required":true}],"data_classes":["telemetry"],"slo":{"sample_seconds":30},"recovery_plan":{"runbook":"ops-004-fleet-observability"}},
     {"service_key":"fleet-probe-vm2","display_name":"VM2 fleet probe","owner":"platform-operations","recovery_owner":"vm2-deployment-architect","runtime_kind":"systemd","intended_machines":["vm2-deployment"],"interfaces":[{"name":"fleet-observation","version":"1.0.0","kind":"event"}],"dependencies":[{"service_key":"control-plane-api","required":true}],"data_classes":["telemetry"],"slo":{"sample_seconds":30},"recovery_plan":{"runbook":"ops-004-fleet-observability"}},
+    {"service_key":"fleet-probe-exec1","display_name":"EXEC1 fleet probe","owner":"platform-operations","recovery_owner":"founder-operator","runtime_kind":"systemd","intended_machines":["exec1-execution"],"interfaces":[{"name":"fleet-observation","version":"1.0.0","kind":"event"}],"dependencies":[{"service_key":"control-plane-api","required":true}],"data_classes":["telemetry"],"slo":{"sample_seconds":30},"recovery_plan":{"runbook":"exec1-host-bootstrap"}},
     {"service_key":"mission-control","display_name":"Hermes Mission Control","owner":"company-operations","recovery_owner":"founder-operator","runtime_kind":"launchd","intended_machines":["founder-mac"],"interfaces":[{"name":"local-ui","version":"0.1.0","kind":"http"}],"dependencies":[{"service_key":"control-plane-api","required":true}],"data_classes":["founder-session"],"slo":{"availability_percent":95.0},"recovery_plan":{"runbook":"mission-control-reinstall"}}
   ]
 }

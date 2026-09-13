@@ -2327,6 +2327,7 @@ function demoDashboard() {
       { id: "agent-eng", slug: "vm1-developer-coder", display_name: "VM1 Engineering Worker", machine: "vm1-developer", role: "Restricted engineering", status: "online", is_enabled: true, risk_ceiling: 1, capabilities: ["git", "python", "testing", "backtesting"] },
       { id: "23c62000-1fad-48bb-8ce5-3f4cb26f3779", slug: "vm1-research-runner", display_name: "VM1 Research Runner", machine: "vm1-developer", role: "Restricted research", status: "online", is_enabled: true, risk_ceiling: 1, capabilities: ["git", "python", "backtesting", "research-audit"] },
       { id: "agent-infra", slug: "vm2-infrastructure-operator", display_name: "VM2 Infrastructure Operator", machine: "vm2-deployment", role: "Approved infrastructure runbooks", status: "online", is_enabled: true, risk_ceiling: 3, capabilities: ["infrastructure-observation", "service-health", "controlled-restart"] },
+      { id: "agent-exec1", slug: "exec1-fleet-observer", display_name: "EXEC1 Fleet Observer", machine: "exec1-execution", role: "Read-only execution-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
       { id: "agent-mac", slug: "mac-founder-control", display_name: "Mac Founder Control", machine: "mac-founder", role: "Founder command surface", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["founder-intake", "knowledge-search"] },
     ],
     approvals: [
@@ -2387,6 +2388,14 @@ function demoDashboard() {
       demoDeployment("agent-infra", "vm2-infrastructure-operator", "Restricted VM2 infrastructure observer and controlled operator", ["infrastructure_observation", "infrastructure_operation"], ["infrastructure-observer", "controlled-restart"], ["swarm-control-plane"], 3, ["infrastructure-workspace"]),
     ],
     operation_summary: { counts: { running: 1, waiting_approval: 1, succeeded: 4, failed: 1 }, active_total: 2, terminal_total: 5 },
+    fleet_health: {
+      generated_at: now,
+      machines: [
+        { machine: "vm1-developer", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 12, memory_available_percent: 64, disk_used_percent: 42, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
+        { machine: "vm2-deployment", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 18, memory_available_percent: 71, disk_used_percent: 28, cpu_pressure_avg10: 0, io_pressure_avg10: 0, control_plane_backup_verified: true, control_plane_backup_failed: false, control_plane_backup_age_seconds: 3600 }, incidents: [] },
+        { machine: "exec1-execution", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 4, memory_available_percent: 82, disk_used_percent: 8, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
+      ],
+    },
     operations: [
       { id: "op-rebuild", operation_key: "graph-rebuild:demo", kind: "knowledge_graph_rebuild", title: "Rebuild canonical knowledge graph", project: "systematic-research", machine: "vm2-deployment", owner_type: "service", owner_id: "swarm-api", state: "running", phase: "project-edges", progress_mode: "determinate", progress_current: 684210, progress_total: 1368759, progress_unit: "edges", heartbeat_at: now, started_at: new Date(Date.now() - 16 * 60_000).toISOString(), completed_at: null, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: null, record_digest: "b".repeat(64), created_at: now, updated_at: now },
       { id: "op-approval", operation_key: "task:demo-approval", kind: "infrastructure_operation", title: "Rotate the application database certificate", project: "invariance-research", machine: "vm2-deployment", owner_type: "task", owner_id: "demo-approval", state: "waiting_approval", phase: "approval", progress_mode: "indeterminate", progress_current: null, progress_total: null, progress_unit: null, heartbeat_at: now, started_at: null, completed_at: null, cancellable: false, retryable: false, error_summary: null, links: {}, detail: {}, input_digest: "c".repeat(64), record_digest: "d".repeat(64), created_at: now, updated_at: now },
@@ -2425,12 +2434,14 @@ function demoDashboard() {
         { id: 3, name: "VM2", kind: "machine" },
         { id: 4, name: "Mac", kind: "machine" },
         { id: 5, name: "M8", kind: "milestone" },
+        { id: 6, name: "EXEC1", kind: "machine" },
       ],
       edges: [
         { source: 1, target: 2, relation: "engineered_on" },
         { source: 1, target: 3, relation: "operates_on" },
         { source: 1, target: 4, relation: "directed_from" },
         { source: 5, target: 2, relation: "executed_on" },
+        { source: 1, target: 6, relation: "venue_executes_on" },
       ],
     },
   };
@@ -2448,7 +2459,7 @@ function demoDeployment(agentId, name, role, taskTypes, workflows, repositories,
         role,
         task_types: taskTypes,
         workflows: workflows.map((workflow) => ({ name: workflow })),
-        allowed_machines: [agentId === "agent-infra" ? "vm2-deployment" : "vm1-developer"],
+        allowed_machines: [agentId === "agent-infra" ? "vm2-deployment" : agentId === "agent-exec1" ? "exec1-execution" : "vm1-developer"],
         risk_ceiling: riskCeiling,
         permission_profile: { name: name.replaceAll("vm1-", "restricted-"), network_access: "control-plane", privileged_operations: false, writable_roots: writableRoots },
         repository_profile: { repositories, primary_checkout_write: false, remote_write: false },
