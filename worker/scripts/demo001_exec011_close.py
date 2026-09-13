@@ -23,7 +23,6 @@ PRODUCERS = {
     "SHADOW-002": "bt.institutional.shadow_monitoring.shadow_monitoring_receipt",
     "RISK-002": "bt.institutional.risk.venue_rule_receipt",
     "RISK-003": "bt.institutional.risk_budget.dynamic_risk_budget_receipt",
-    "RISK-004": "bt.institutional.candidate_admission.candidate_admission_receipt",
 }
 
 
@@ -118,7 +117,7 @@ def publish(native_report: Path, output: Path) -> int:
         })
         risk_schema = register_schema(api, "/v1/research/realtime-risk-schemas", {
             "name": "real-time-deterministic-risk",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "producer": receipts["RISK-005"]["producer"],
             "source_commit": receipts["RISK-005"]["source_commit"],
             "specification_digest": native["risk_specification_digest"],
