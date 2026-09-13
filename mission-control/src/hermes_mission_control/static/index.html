@@ -43,6 +43,7 @@
         <p class="nav-label">Systems</p>
         <button class="nav-item" data-view="agents"><span class="nav-glyph">◇</span>Agents</button>
         <button class="nav-item" data-view="infrastructure"><span class="nav-glyph">▦</span>Infrastructure</button>
+        <button class="nav-item" data-view="execution"><span class="nav-glyph">⇄</span>Execution</button>
         <button class="nav-item" data-view="research"><span class="nav-glyph">⌁</span>Research</button>
       </div>
       <div class="nav-group">
@@ -267,6 +268,30 @@
           <div class="band-heading"><div><p class="section-kicker">Runbooks</p><h2>Infrastructure activity</h2></div></div>
           <div id="infra-tasks" class="entity-list"></div>
         </section>
+      </section>
+
+      <section id="execution" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Canonical venue replay</p><h1>Execution</h1><p class="heading-context">Orders, fills, positions, costs, and reconciliation from immutable Bulletproof evidence</p></div>
+          <div class="segmented" id="execution-environments" aria-label="Execution environment">
+            <button class="active" data-execution-environment="all" aria-pressed="true">All</button>
+            <button data-execution-environment="shadow" aria-pressed="false">Shadow</button>
+            <button data-execution-environment="demo" aria-pressed="false">Demo</button>
+            <button data-execution-environment="live" aria-pressed="false">Live</button>
+          </div>
+        </div>
+        <div id="execution-overview-status" class="execution-notice" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="execution-summary" class="metric-row"></div>
+        <section class="operational-band">
+          <div class="band-heading"><div><p class="section-kicker">Venue state</p><h2>Accounts and reconciliation</h2></div><span id="execution-freshness" class="mono"></span></div>
+          <div id="execution-venues" class="entity-list"></div>
+        </section>
+        <div class="execution-grid">
+          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Exposure</p><h2>Positions and cash</h2></div></div><div id="execution-positions" class="table-wrap"></div></section>
+          <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Lifecycle</p><h2>Orders and fills</h2></div></div><div id="execution-orders" class="table-wrap"></div></section>
+        </div>
+        <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Backtest-compatible replay</p><h2>Completed trade episodes</h2></div></div><div id="execution-episodes" class="table-wrap"></div></section>
+        <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Integrity</p><h2>Incidents and provenance</h2></div></div><div id="execution-provenance" class="entity-list"></div></section>
       </section>
 
       <section id="research" class="view">

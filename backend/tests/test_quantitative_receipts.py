@@ -117,6 +117,27 @@ def test_routes_are_orchestrator_protected():
     }
 
 
+def test_exec011_requires_active_registered_telemetry_schema():
+    value = receipt(
+        milestone="EXEC-011",
+        producer="bt.institutional.venue_telemetry.venue_telemetry_receipt",
+    )
+    value["result"] = {
+        "schema_version": "exec011-venue-telemetry-v1.0.0",
+        "telemetry_schema_digest": "7" * 64,
+        "projection_digest": "8" * 64,
+    }
+    value["result_digest"] = digest(value["result"])
+    core = {key: item for key, item in value.items() if key != "receipt_digest"}
+    value["receipt_digest"] = digest(core)
+    db = MagicMock(); db.scalar.side_effect = [None]
+    with pytest.raises(QuantitativeReceiptConflict, match="execution-telemetry schema"):
+        register_receipt(db, payload(value))
+    db = MagicMock(); db.scalar.side_effect = [object(), None]
+    record = register_receipt(db, payload(value))
+    assert record.milestone == "EXEC-011"
+
+
 def test_risk005_requires_active_registered_realtime_risk_schema():
     value = receipt(
         milestone="RISK-005",

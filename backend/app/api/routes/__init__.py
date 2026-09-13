@@ -45,6 +45,7 @@ from app.api.routes.execution_safety_schemas import (
 from app.api.routes.execution_schedule_schemas import (
     router as execution_schedule_schemas_router,
 )
+from app.api.routes.execution_telemetry import router as execution_telemetry_router
 from app.api.routes.factor_language import router as factor_language_router
 from app.api.routes.falsification import router as falsification_router
 from app.api.routes.fleet import agent_router as agent_fleet_router
@@ -151,6 +152,7 @@ __all__ = [
     "execution_event_schemas_router",
     "execution_safety_schemas_router",
     "execution_schedule_schemas_router",
+    "execution_telemetry_router",
     "factor_language_router",
     "falsification_router",
     "fleet_router",

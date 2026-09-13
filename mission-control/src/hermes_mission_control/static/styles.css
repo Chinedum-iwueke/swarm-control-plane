@@ -231,6 +231,23 @@ main { min-width: 0; margin-left: 216px; padding: 24px 28px 48px; }
   background: var(--surface);
   border: 1px solid var(--line);
 }
+.execution-notice { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding: 10px 12px; color: var(--muted); background: var(--blue-soft); border-left: 3px solid var(--blue); }
+.execution-notice strong { color: var(--ink); white-space: nowrap; }
+.execution-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; }
+.environment-label { padding: 1px 5px; border: 1px solid var(--line); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.environment-shadow { color: var(--cyan); background: var(--cyan-soft); }
+.environment-demo { color: var(--amber); background: var(--amber-soft); }
+.environment-live { color: var(--red); background: var(--red-soft); }
+
+@media (max-width: 960px) {
+  .execution-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .execution-notice { align-items: flex-start; flex-direction: column; }
+  #execution .section-heading { flex-wrap: wrap; }
+  #execution .section-heading .segmented { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
+}
 .machine-cell {
   min-height: 66px;
   display: grid;
@@ -274,9 +291,9 @@ main { min-width: 0; margin-left: 216px; padding: 24px 28px 48px; }
   white-space: nowrap;
 }
 .status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.status.success, .status.succeeded, .status.online, .status.approved, .status.active { color: var(--green); background: var(--green-soft); border-color: #b7dccd; }
-.status.pending, .status.queued, .status.leased, .status.running, .status.pending_approval { color: var(--amber); background: var(--amber-soft); border-color: #e8c58f; }
-.status.critical, .status.failed, .status.offline, .status.rejected, .status.paused { color: var(--red); background: var(--red-soft); border-color: #e8b8b5; }
+.status.success, .status.succeeded, .status.online, .status.approved, .status.active, .status.current { color: var(--green); background: var(--green-soft); border-color: #b7dccd; }
+.status.pending, .status.queued, .status.leased, .status.running, .status.pending_approval, .status.stale { color: var(--amber); background: var(--amber-soft); border-color: #e8c58f; }
+.status.critical, .status.failed, .status.offline, .status.rejected, .status.paused, .status.degraded { color: var(--red); background: var(--red-soft); border-color: #e8b8b5; }
 .status.research, .status.result, .status.report, .status.evidence { color: var(--cyan); background: var(--cyan-soft); border-color: #a8d7db; }
 
 .command-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
