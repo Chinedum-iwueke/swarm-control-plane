@@ -2,7 +2,7 @@
 
 ## Scope
 
-OPS-004 observes VM1 and VM2 without collecting process arguments, process
+OPS-004 observes VM1, VM2, and approved independent hosts such as EXEC1 without collecting process arguments, process
 environments, credentials, protected payloads, or arbitrary files. Each Linux probe
 publishes a strict authenticated sample every 15–30 seconds. The control plane stores
 digest-bound samples, evaluates deterministic sustained-signal rules, records incident
@@ -44,12 +44,27 @@ Register one agent for each manifest:
 ```text
 worker/role-packages/vm1-fleet-observer/manifest.yaml
 worker/role-packages/vm2-fleet-observer/manifest.yaml
+worker/role-packages/exec1-fleet-observer/manifest.yaml
 ```
 
-Use `worker/scripts/ops004_bootstrap.py vm1` and `vm2` with distinct mode-0600
+Use `worker/scripts/ops004_bootstrap.py vm1`, `vm2`, or `exec1` with distinct mode-0600
 `--state` paths and the full deployed source commit. The utility signs or reuses the
-exact package, creates the bounded identity, deploys the package, and writes the token
-only into the protected state file; it refuses implicit credential rotation.
+exact package, creates the bounded agent and deployment, activates an exact-package
+charter and capability grants, binds a scoped workload identity, and writes the token
+only into the protected state file. It refuses implicit credential rotation.
+
+For a host registered by a pre-workload-identity version of the bootstrap, repair the
+existing objects and credential without rotation:
+
+```bash
+worker/.venv/bin/python worker/scripts/ops004_bootstrap.py exec1 \
+  --state /etc/invariance-swarm/ops004-exec1-state.json \
+  --repair-governance
+```
+
+The repair validates the recorded agent, package, deployment, machine, and manifest
+digest before creating only missing governance objects. It must report the
+`fleet:write` scope before the probe is restarted.
 
 Place each returned credential in a distinct root-owned file readable by the
 `invariance-fleet-probe` group. Do not reuse worker or orchestrator credentials.
