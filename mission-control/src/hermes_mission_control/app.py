@@ -146,6 +146,13 @@ def create_app(
     async def dashboard() -> dict:
         result = await client.dashboard()
         result["knowledge"] = store.stats()
+        result["mission_control"] = {
+            "machine": "mac-founder-control",
+            "display_name": "Mac",
+            "role": "Founder control",
+            "presence": "online",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+        }
         return result
 
     @app.post("/api/research/scientific-fidelity/adjudications")

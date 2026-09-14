@@ -747,20 +747,22 @@ function renderCommand() {
   const pendingProposals = (data.proposals || []).filter((item) => item.status === "proposed");
   const active = tasks.filter((item) => activeStatuses.has(item.status));
   const failed = tasks.filter((item) => item.status === "failed");
-  const online = agents.filter((item) => agentStatus(item) === "online");
+  const machines = machineInventory(data);
+  const online = machines.filter((item) => item.presence === "online");
   const succeeded = tasks.filter((item) => item.status === "succeeded");
 
   document.getElementById("metrics").innerHTML = [
     metric(active.length, "Active tasks", `${tasks.length} total recorded`),
     metric(pendingApprovals.length + pendingProposals.length, "Pending decisions", (pendingApprovals.length + pendingProposals.length) ? "Founder action required" : "Queue clear"),
-    metric(`${online.length}/${agents.length}`, "Online agents", "Across three machine roles"),
+    metric(`${online.length}/${machines.length}`, "Online machines", "Fused probe and worker evidence"),
     metric(succeeded.length, "Verified outcomes", `${failed.length} failed preserved`),
   ].join("");
 
-  document.getElementById("machine-strip").innerHTML = machineCells(agents);
+  document.getElementById("machine-strip").innerHTML = machineCells(machines);
   document.getElementById("mission-pulse").innerHTML = missionPulse(tasks);
   document.getElementById("active-execution").innerHTML = executionColumns(tasks);
-  document.getElementById("fleet-summary").innerHTML = fleetRows(agents);
+  document.getElementById("fleet-summary").innerHTML = fleetRows(machines);
+  renderCommandVenues(data.execution_telemetry);
   document.getElementById("recent-proof").innerHTML = proofRows(tasks, data.artifacts || []);
   renderAttention();
   renderControls();
@@ -770,22 +772,66 @@ function metric(value, label, context) {
   return `<div class="metric"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span><small>${escapeHtml(context)}</small></div>`;
 }
 
-function machineCells(agents) {
-  const machines = [
-    { key: "vm1", label: "VM1", role: "Engineering", symbol: "V1" },
-    { key: "vm2", label: "VM2", role: "Production", symbol: "V2" },
-    { key: "mac", label: "Mac", role: "Founder control", symbol: "MC" },
-  ];
+function machineCells(machines) {
   return machines.map((machine) => {
-    const members = agents.filter((agent) => machineKey(agent.machine) === machine.key);
-    const online = members.filter((agent) => agentStatus(agent) === "online").length;
-    const status = online ? "online" : members.length ? "offline" : "pending";
     return `<div class="machine-cell">
       <span class="machine-symbol">${machine.symbol}</span>
-      <div><strong>${machine.label} · ${machine.role}</strong><small>${members.length} registered · ${online} online</small></div>
-      ${statusBadge(status)}
+      <div><strong>${escapeHtml(machine.label)} · ${escapeHtml(machine.role)}</strong><small><span>${machine.registeredAgents} registered · ${machine.onlineAgents} active</span><span>Telemetry ${escapeHtml(machine.telemetryStatus)}</span></small></div>
+      ${statusBadge(machine.presence)}
     </div>`;
   }).join("");
+}
+
+function machineProfile(machine) {
+  const value = String(machine || "").toLowerCase();
+  if (value.includes("vm1")) return { order: 10, label: "VM1", role: "Engineering", symbol: "V1" };
+  if (value.includes("vm2")) return { order: 20, label: "VM2", role: "Control plane", symbol: "V2" };
+  if (value.includes("exec1")) return { order: 30, label: "EXEC1", role: "Independent watchdog", symbol: "E1" };
+  if (value.includes("exec2")) return { order: 40, label: "EXEC2", role: "Lagos execution", symbol: "E2" };
+  if (value.includes("mac")) return { order: 50, label: "Mac", role: "Founder control", symbol: "MC" };
+  return { order: 45, label: humanize(machine), role: "Fleet host", symbol: String(machine || "??").slice(0, 2).toUpperCase() };
+}
+
+function machineInventory(data) {
+  const inventory = new Map();
+  (data.fleet_health?.machines || []).forEach((machine) => {
+    inventory.set(machine.machine, {
+      ...machineProfile(machine.machine),
+      key: machine.machine,
+      presence: machine.presence || "offline",
+      health: machine.status || "unknown",
+      telemetryStatus: machine.telemetry_status || "unknown",
+      lastObservedAt: machine.last_observed_at,
+      registeredAgents: machine.registered_agents || 0,
+      onlineAgents: machine.online_agents || 0,
+      agentCountsAuthoritative: machine.registered_agents != null,
+      incidents: machine.incidents || [],
+    });
+  });
+  (data.agents || []).forEach((agent) => {
+    const hasFleetRecord = inventory.has(agent.machine);
+    const current = inventory.get(agent.machine) || {
+      ...machineProfile(agent.machine), key: agent.machine, presence: "offline", health: "unknown",
+      telemetryStatus: "missing", lastObservedAt: null, registeredAgents: 0, onlineAgents: 0, incidents: [],
+    };
+    if (!hasFleetRecord || !current.agentCountsAuthoritative) current.registeredAgents = (data.agents || []).filter((item) => item.machine === agent.machine).length;
+    if (agentStatus(agent) === "online") {
+      current.presence = "online";
+      if (!hasFleetRecord || !current.agentCountsAuthoritative) current.onlineAgents += 1;
+    } else if (current.presence === "offline" && agentStatus(agent) === "degraded") {
+      current.presence = "degraded";
+    }
+    inventory.set(agent.machine, current);
+  });
+  const local = data.mission_control;
+  if (local?.machine) {
+    inventory.set(local.machine, {
+      ...machineProfile(local.machine), key: local.machine, label: local.display_name || "Mac",
+      role: local.role || "Founder control", presence: local.presence || "online", health: "healthy",
+      telemetryStatus: "local", lastObservedAt: local.observed_at, registeredAgents: 1, onlineAgents: 1, incidents: [],
+    });
+  }
+  return [...inventory.values()].sort((left, right) => left.order - right.order || left.label.localeCompare(right.label));
 }
 
 function missionPulse(tasks) {
@@ -819,12 +865,28 @@ function executionColumns(tasks) {
   }).join("");
 }
 
-function fleetRows(agents) {
-  if (!agents.length) return empty("No registered agents.");
-  return agents.slice(0, 5).map((agent) => `<button class="entity-row" data-agent-id="${agent.id}">
-    <div class="entity-primary"><strong>${escapeHtml(agent.display_name || agent.slug)}</strong><div class="entity-meta"><span class="mono">${escapeHtml(agent.machine)}</span><span>${(agent.capabilities || []).length} capabilities</span></div></div>
-    <div class="entity-side">${statusBadge(agentStatus(agent))}</div>
-  </button>`).join("");
+function fleetRows(machines) {
+  if (!machines.length) return empty("No registered machines.");
+  return machines.map((machine) => `<article class="entity-row">
+    <div class="entity-primary"><strong>${escapeHtml(machine.label)} · ${escapeHtml(machine.role)}</strong><div class="entity-meta"><span class="mono">${escapeHtml(machine.key)}</span><span>${machine.registeredAgents} registered agents</span><span>${machine.incidents.length} active incidents</span><span>Last evidence ${relativeTime(machine.lastObservedAt)}</span></div></div>
+    <div class="entity-side">${statusBadge(machine.presence)}${machine.telemetryStatus === "stale" ? statusBadge("telemetry stale") : ""}</div>
+  </article>`).join("");
+}
+
+function renderCommandVenues(telemetry = {}) {
+  const venues = telemetry.venues || [];
+  const episodes = venues.reduce((total, item) => total + Number(item.projection?.trade_episodes?.length || 0), 0);
+  const incidents = venues.reduce((total, item) => total + Number(item.projection?.incidents?.length || 0), 0);
+  document.getElementById("command-venue-summary").innerHTML = [
+    metric(venues.length, "Venue accounts", "Canonical replay only"),
+    metric(venues.filter((item) => item.status === "current").length, "Current", "Digest-bound projections"),
+    metric(episodes, "Trade episodes", "Backtest-compatible replay"),
+    metric(incidents, "Incidents", "Reconciliation and integrity"),
+  ].join("");
+  document.getElementById("command-venues").innerHTML = venues.length ? venues.slice(0, 4).map((item) => `<article class="entity-row">
+    <div class="entity-primary"><strong>${escapeHtml(item.venue)} · ${escapeHtml(item.environment)}</strong><div class="entity-meta"><span>${escapeHtml(item.account_pseudonym)}</span><span>${item.projection?.event_count || 0} events</span><span>Observed ${relativeTime(item.observed_at)}</span><span class="mono">${shortHash(item.projection_digest)}</span></div></div>
+    <div class="entity-side">${statusBadge(item.status)}</div>
+  </article>`).join("") : empty("No canonical venue replay has been published.");
 }
 
 function proofRows(tasks, artifacts) {
@@ -851,8 +913,8 @@ function renderAttention() {
   (data.tasks || []).filter((task) => task.status === "failed").slice(0, 3).forEach((task) => {
     items.push({ severity: "critical", title: task.title, detail: `Failed · ${relativeTime(task.updated_at)}`, task });
   });
-  (data.agents || []).filter((agent) => agentStatus(agent) === "offline").slice(0, 2).forEach((agent) => {
-    items.push({ severity: "critical", title: `${agent.display_name || agent.slug} offline`, detail: agent.machine, agent });
+  machineInventory(data).filter((machine) => machine.presence === "offline").slice(0, 2).forEach((machine) => {
+    items.push({ severity: "critical", title: `${machine.label} offline`, detail: machine.key, machine });
   });
   (data.tasks || []).filter((task) => task.status === "queued").slice(0, 2).forEach((task) => {
     items.push({ severity: "info", title: task.title, detail: `Queued · ${relativeTime(task.updated_at)}`, task });
@@ -872,6 +934,7 @@ function renderAttention() {
       else if (item.approval) navigate("approvals");
       else if (item.task) openTask(item.task.id);
       else if (item.agent) openAgent(item.agent.id);
+      else if (item.machine) navigate("infrastructure");
     });
   });
 }
@@ -2129,14 +2192,7 @@ function statusBadge(status) {
 
 function agentStatus(agent) {
   if (agent.is_enabled === false || agent.enabled === false) return "offline";
-  return agent.status || agent.presence || "offline";
-}
-
-function machineKey(machine = "") {
-  const value = machine.toLowerCase();
-  if (value.includes("vm1")) return "vm1";
-  if (value.includes("vm2")) return "vm2";
-  return "mac";
+  return agent.presence || agent.status || "offline";
 }
 
 function number(value) {
