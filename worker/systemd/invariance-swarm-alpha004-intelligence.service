@@ -39,6 +39,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane
 ReadOnlyPaths=/etc/invariance-swarm/codex-worker
 ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces
+ReadWritePaths=-/home/omenka/Projects/swarm-control-plane/.git/worktrees
 StandardOutput=journal
 StandardError=journal
 
