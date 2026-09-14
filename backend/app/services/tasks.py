@@ -41,6 +41,12 @@ ACTIVE_LEASE_STATUSES = {"leased", "running"}
 def resolve_task_authority(
     db: Session, task: Task, agent: Agent, now: datetime
 ) -> list[dict]:
+    input_contract = (
+        task.input_contract
+        if isinstance(getattr(task, "input_contract", None), dict)
+        else {}
+    )
+    repository = input_contract.get("repository") or task.project
     return [
         resolve_agent_authority(
             db,
@@ -49,7 +55,7 @@ def resolve_task_authority(
                 capability=capability,
                 machine=agent.machine,
                 task_type=task.task_type,
-                repository=task.project,
+                repository=repository,
                 risk_level=task.risk_level,
             ),
             now,

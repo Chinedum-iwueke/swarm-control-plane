@@ -75,12 +75,31 @@ def test_expired_grant_and_conflict_fail_closed():
 
 
 def test_task_authority_resolves_every_declared_capability():
-    task = SimpleNamespace(required_capabilities=["testing", "git"], task_type="code_validation", project="bulletproof_bt", risk_level=1)
+    task = SimpleNamespace(required_capabilities=["testing", "git"], task_type="code_validation", project="bulletproof_bt", input_contract={}, risk_level=1)
     agent = SimpleNamespace(id=uuid4(), machine="vm1-developer")
     with patch("app.services.tasks.resolve_agent_authority", return_value={"allowed": True}) as resolver:
         snapshots = resolve_task_authority(MagicMock(), task, agent, datetime.now(UTC))
     assert snapshots == [{"allowed": True}, {"allowed": True}]
     assert [call.args[2].capability for call in resolver.call_args_list] == ["testing", "git"]
+    assert [call.args[2].repository for call in resolver.call_args_list] == ["bulletproof_bt", "bulletproof_bt"]
+
+
+def test_task_authority_uses_explicit_execution_repository_not_logical_project():
+    task = SimpleNamespace(
+        required_capabilities=["research-intelligence"],
+        task_type="alpha_discovery",
+        project="systematic-research",
+        input_contract={"repository": "swarm-control-plane"},
+        risk_level=0,
+    )
+    agent = SimpleNamespace(id=uuid4(), machine="vm1-developer")
+
+    with patch(
+        "app.services.tasks.resolve_agent_authority", return_value={"allowed": True}
+    ) as resolver:
+        resolve_task_authority(MagicMock(), task, agent, datetime.now(UTC))
+
+    assert resolver.call_args.args[2].repository == "swarm-control-plane"
 
 
 def test_founder_intake_planning_does_not_require_repository_execution_grant():
