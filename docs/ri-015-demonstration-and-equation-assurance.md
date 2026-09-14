@@ -18,11 +18,12 @@ independent live suite and real-runtime response run, not a status override.
 ## Safe LLM equation use
 
 An LLM can help locate, transcribe, parse and explain an equation, but agreement
-with itself is not verification. ALPHA-004 therefore binds every used expression
-to the source object, content digest and excerpt. Exact source replay is permitted;
-deterministic symbolic checks or an independent adjudicator must produce an
-immutable receipt for stronger claims. Unreadable, reconstructed or disputed
-notation remains pending and cannot seed a campaign.
+with itself is not verification. ALPHA-004 therefore binds every located
+expression to the source object, content digest and excerpt. Exact source replay
+supports locating and explanation only; deterministic checks or an independent
+adjudicator must produce an immutable receipt before an equation can drive a
+campaign calculation. Unreadable, reconstructed or disputed notation remains
+pending and cannot seed a campaign.
 
 This gives agents useful source-grounded mathematics without pretending RI-014 is
 globally qualified. A future automated assurance service can combine two

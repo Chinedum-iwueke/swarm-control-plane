@@ -435,6 +435,10 @@ def _candidate_reasons(
         reasons.append("vague_or_underspecified")
     evidence = cycle.context.get("research_intelligence", {}).get("citations", [])
     allowed_pairs = {(item["object_id"], item["content_digest"]) for item in evidence}
+    citation_text = {
+        (item["object_id"], item["content_digest"]): item.get("text", "")
+        for item in evidence
+    }
     supplied_pairs = {
         (str(object_id), digest)
         for object_id, digest in zip(
@@ -454,8 +458,18 @@ def _candidate_reasons(
         if equation.verification == "source_replayed":
             compact_expression = "".join(equation.expression.split())
             compact_source = "".join(equation.source_excerpt.split())
-            if compact_expression not in compact_source:
+            compact_citation = "".join(
+                citation_text.get(
+                    (str(equation.source_object_id), equation.source_content_digest),
+                    "",
+                ).split()
+            )
+            if (
+                compact_expression not in compact_source
+                or compact_source not in compact_citation
+            ):
                 reasons.append("equation_source_replay_mismatch")
+            reasons.append("equation_verification_required_for_campaign")
     binding_index = None
     for item in cycle.context.get("datasets", []):
         required_fields = set(candidate.data.required_fields)

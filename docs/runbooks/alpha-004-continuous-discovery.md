@@ -32,10 +32,11 @@ descriptive statements, missing requested columns, missing volume/depth evidence
 weak liquidity scope and semantic
 duplicates are retained as rejected candidates.
 
-An equation is usable only when it is replayed from the cited source or bound to
-an immutable deterministic or independent verification receipt. LLM output is
-never a verification receipt. Pending, invented or source-mismatched expressions
-are rejected from the campaign.
+Source replay makes an equation locatable and explainable, but does not make it
+calculation-bearing while RI-014 remains unqualified. Campaign use requires an
+immutable deterministic or independent verification receipt. LLM output is never
+its own verification receipt. Pending, replay-only, invented or source-mismatched
+expressions are rejected from the campaign.
 
 ## Production sequence
 
