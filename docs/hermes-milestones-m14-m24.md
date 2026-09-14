@@ -72,8 +72,12 @@ visibility. LLM-assisted equations remain source-bound and cannot self-certify.
 RI-014D makes equation use just-in-time and cached: two parser families plus
 deterministic token, AST and source checks can issue a machine receipt, while
 stronger independence requires an AGT-006 receipt and disagreements fail closed
-visibly. Production exit requires migration `a0d6e8f92b51`, three active supervised
-services, one approved weekly mandate and a terminal real-data campaign attempt.
+visibly. Migration `a0d6e8f92b51` and live report
+`675ffd7409aedb864dd535272ff89b150ef9ce0a2e1afa65310d1ac7cf10ed4c`
+demonstrated cache reuse, mismatch rejection and a source-bound
+`machine_verified` receipt. ALPHA-004 operational exit separately requires three
+active supervised services, one approved weekly mandate and a terminal real-data
+campaign attempt.
 
 Exit: a fixed discovery budget produces a complete searchable family including every
 failure.
