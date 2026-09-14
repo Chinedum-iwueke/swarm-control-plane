@@ -1,0 +1,6 @@
+name: alpha-discovery
+task_type: alpha_discovery
+allowed_repositories:
+  - swarm-control-plane
+timeout_seconds: 1800
+steps: []

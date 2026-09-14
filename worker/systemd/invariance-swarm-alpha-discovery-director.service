@@ -1,0 +1,34 @@
+[Unit]
+Description=Hermes continuous evidence-grounded alpha discovery director
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
+ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.workers.alpha_discovery --continuous --poll-seconds 15
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

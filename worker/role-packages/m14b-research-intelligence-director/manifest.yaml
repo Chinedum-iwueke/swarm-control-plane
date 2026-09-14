@@ -1,9 +1,12 @@
 schema_version: 1
 name: m14b-research-intelligence-director
-version: 1.0.0
+version: 1.1.0
 role: Cited research question discovery and ranking
-task_types: [research_intelligence]
-workflows: []
+task_types: [alpha_discovery]
+workflows:
+- name: alpha-discovery
+  file: alpha-discovery.yaml
+  sha256: b7f26a7fc38b6dcb7f79cb23f402d4dda8fc4114c8ed0dfc2d31b0b5d446aef1
 required_capabilities:
 - research-intelligence
 - knowledge-retrieval
@@ -20,6 +23,6 @@ permission_profile:
   privileged_operations: false
   writable_roots: []
 repository_profile:
-  repositories: []
+  repositories: [swarm-control-plane]
   primary_checkout_write: false
   remote_write: false

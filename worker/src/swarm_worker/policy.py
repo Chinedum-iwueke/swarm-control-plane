@@ -200,9 +200,7 @@ class AlphaResearchExecutionContract(BaseModel):
 
     @model_validator(mode="after")
     def stage_contract(self):
-        if (
-            self.stage in {"draft", "qualify"} or self.qualification is not None
-        ) and (
+        if (self.stage in {"draft", "qualify"} or self.qualification is not None) and (
             self.window_start is None or self.window_end is None or self.venue is None
         ):
             raise ValueError(
@@ -237,6 +235,25 @@ class AlphaResearchExecutionContract(BaseModel):
             ) from exc
         return str(path)
 
+
+class AlphaDiscoveryContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: Literal["swarm-control-plane"]
+    workflow: Literal["alpha-discovery"]
+    base_ref: str = Field(min_length=1, max_length=255)
+    stage: Literal["intelligence", "hypothesis"]
+    mandate_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    mandate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cycle_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    maximum_candidates: int = Field(ge=2, le=20)
+    context: dict[str, Any]
+    authority: Literal["no_capital_research"]
+
+    @field_validator("base_ref")
+    @classmethod
+    def safe_base_ref(cls, value: str) -> str:
+        return validate_base_ref(value)
 
 class ValidatedTaskPolicy(BaseModel):
     contract: (
@@ -277,6 +294,7 @@ def validate_task_policy(
         "research_experiment",
         "research_memory_sync",
         "alpha_research_execution",
+        "alpha_discovery",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -316,6 +334,7 @@ def _parse_contract(
     | ResearchExperimentContract
     | ResearchMemorySyncContract
     | AlphaResearchExecutionContract
+    | AlphaDiscoveryContract
 ):
     try:
         models = {
@@ -324,6 +343,7 @@ def _parse_contract(
             "research_experiment": ResearchExperimentContract,
             "research_memory_sync": ResearchMemorySyncContract,
             "alpha_research_execution": AlphaResearchExecutionContract,
+            "alpha_discovery": AlphaDiscoveryContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)

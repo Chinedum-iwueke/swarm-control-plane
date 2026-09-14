@@ -1,12 +1,12 @@
 schema_version: 1
 name: m13-senior-research-specialist
-version: 1.0.0
+version: 1.1.0
 role: Read-only cited research proposer
-task_types: [research_experiment]
+task_types: [alpha_discovery]
 workflows:
-- name: research-experiment
-  file: research-experiment.yaml
-  sha256: e508a9fff88e0fff5cc00e30de7540371efe0acf78ca4cba04d82421a418e5f3
+- name: alpha-discovery
+  file: alpha-discovery.yaml
+  sha256: b7f26a7fc38b6dcb7f79cb23f402d4dda8fc4114c8ed0dfc2d31b0b5d446aef1
 required_capabilities: [research-proposal, knowledge-retrieval, prior-art]
 allowed_machines: [vm1-developer]
 risk_ceiling: 1
@@ -19,6 +19,6 @@ permission_profile:
   privileged_operations: false
   writable_roots: []
 repository_profile:
-  repositories: [bulletproof_bt]
+  repositories: [swarm-control-plane]
   primary_checkout_write: false
   remote_write: false

@@ -42,6 +42,7 @@ class DiscoveryAttentionCandidate(BaseModel):
         "autonomous_session",
         "mechanism_evaluation",
         "selection_bias_audit",
+        "alpha_discovery_candidate",
     ]
     source_id: uuid.UUID
     source_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

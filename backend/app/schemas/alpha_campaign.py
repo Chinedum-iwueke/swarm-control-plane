@@ -61,11 +61,14 @@ class AlphaCampaignCreate(StrictModel):
     may_self_approve: Literal[False] = False
     may_place_orders: Literal[False] = False
     may_promote_live: Literal[False] = False
-    execution_protocol: Literal["alpha002-native-v1", "alpha003-governed-v1"] | None = (
-        None
-    )
+    execution_protocol: (
+        Literal["alpha002-native-v1", "alpha003-governed-v1", "alpha004-delegated-v1"]
+        | None
+    ) = None
     execution_window_start: datetime | None = None
     execution_window_end: datetime | None = None
+    research_mandate_id: uuid.UUID | None = None
+    research_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
 
     @model_validator(mode="after")
     def unique_scope(self):
@@ -78,17 +81,24 @@ class AlphaCampaignCreate(StrictModel):
             not item.replace("-", "").replace("_", "").isalnum() for item in normalized
         ):
             raise ValueError("allowed instruments must be exchange-safe identifiers")
-        if self.execution_protocol == "alpha003-governed-v1":
+        if self.execution_protocol in {
+            "alpha003-governed-v1",
+            "alpha004-delegated-v1",
+        }:
             if self.execution_window_start is None or self.execution_window_end is None:
                 raise ValueError("ALPHA-003 requires an immutable execution window")
             if self.execution_window_start >= self.execution_window_end:
                 raise ValueError("execution window must be increasing")
+        if self.execution_protocol == "alpha004-delegated-v1" and (
+            self.research_mandate_id is None or self.research_mandate_digest is None
+        ):
+            raise ValueError("ALPHA-004 requires an immutable research mandate")
         return self
 
 
 class AlphaCampaignActivation(StrictModel):
     expected_campaign_digest: str = Field(pattern=_DIGEST)
-    actor: Literal["founder-operator"]
+    actor: Literal["founder-operator", "alpha-continuous-director"]
     reason: str = Field(min_length=10, max_length=2000)
 
 

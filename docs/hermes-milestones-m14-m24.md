@@ -64,6 +64,14 @@ Introduce a typed signal DSL and budgeted human-, literature-, and memory-led se
 Every generated variant is registered before evaluation; broad unconstrained mining
 remains prohibited.
 
+ALPHA-004 adds the continuous production feeder for this milestone: separately
+chartered RI and senior-research agents, weekly digest-bound no-capital mandates,
+DATA-002/003 admission, predictive/falsifiability rejection, DISC-009 replenishment,
+BT-009 campaign creation, outcome feedback, and Mission Control throughput/stall
+visibility. LLM-assisted equations remain source-bound and cannot self-certify.
+Production exit still requires migration `f9c5d7e81a40`, three active supervised
+services, one approved weekly mandate and a terminal real-data campaign attempt.
+
 Exit: a fixed discovery budget produces a complete searchable family including every
 failure.
 
