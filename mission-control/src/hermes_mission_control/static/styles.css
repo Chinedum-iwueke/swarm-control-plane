@@ -226,7 +226,7 @@ main { min-width: 0; margin-left: 216px; padding: 24px 28px 48px; }
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   margin-bottom: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -273,6 +273,7 @@ main { min-width: 0; margin-left: 216px; padding: 24px 28px 48px; }
 }
 .machine-cell strong { display: block; font-size: 12px; }
 .machine-cell small { color: var(--muted); }
+.machine-cell small span { display: block; }
 
 .status {
   display: inline-flex;

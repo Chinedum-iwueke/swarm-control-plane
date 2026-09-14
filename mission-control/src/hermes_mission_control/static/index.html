@@ -70,7 +70,7 @@
           <div>
             <p class="eyebrow">Company operating picture</p>
             <h1>Command</h1>
-            <p class="heading-context" id="command-context">Current state across VM1, VM2, and Mac</p>
+            <p class="heading-context" id="command-context">Current state across the registered fleet</p>
           </div>
           <div class="heading-actions">
             <button class="secondary" id="refresh">↻ <span>Refresh</span></button>
@@ -97,6 +97,15 @@
                 <button class="text-button" data-navigate="tasks">Open ledger →</button>
               </div>
               <div id="active-execution" class="execution-flow"></div>
+            </section>
+
+            <section class="operational-band">
+              <div class="band-heading">
+                <div><p class="section-kicker">Trading desk</p><h2>Venue replay</h2></div>
+                <button class="text-button" data-navigate="execution">Open execution →</button>
+              </div>
+              <div id="command-venue-summary" class="metric-row"></div>
+              <div id="command-venues" class="entity-list"></div>
             </section>
 
             <section class="operational-band two-column-band">

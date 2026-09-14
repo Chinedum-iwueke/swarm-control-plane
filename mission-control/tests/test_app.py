@@ -37,6 +37,8 @@ class FakeControlPlane:
             "control_scopes": [],
             "package_deployments": [],
             "proposals": [],
+            "fleet_health": {"machines": []},
+            "execution_telemetry": {"venues": []},
         }
 
     async def create_intake(self, payload) -> dict:
@@ -209,6 +211,8 @@ def test_static_application_and_safe_status(
     assert 'id="execution"' in page.text
     assert 'id="execution-environments"' in page.text
     assert 'id="execution-overview-status"' in page.text
+    assert 'id="command-venue-summary"' in page.text
+    assert 'id="command-venues"' in page.text
     assert 'id="evidence"' in page.text
     assert 'role="tablist" aria-label="Research workspace mode"' in page.text
     assert 'id="research-panel-ask"' in page.text
@@ -222,6 +226,17 @@ def test_static_application_and_safe_status(
     assert fake.closed is True
 
 
+def test_dashboard_reports_local_mission_control_presence(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        dashboard = client.get("/api/dashboard").json()
+
+    assert dashboard["mission_control"]["machine"] == "mac-founder-control"
+    assert dashboard["mission_control"]["presence"] == "online"
+    assert dashboard["mission_control"]["observed_at"]
+
+
 def test_execution_workspace_is_environment_explicit_and_digest_safe(
     settings: MissionControlSettings,
 ) -> None:
@@ -232,6 +247,9 @@ def test_execution_workspace_is_environment_explicit_and_digest_safe(
     for environment in ("shadow", "demo", "live"):
         assert f'data-execution-environment="{environment}"' in html
     assert "renderExecution" in script
+    assert "machineInventory" in script
+    assert "exec2" in script
+    assert 'return agent.presence || agent.status || "offline"' in script
     assert "receipt_digest" in script
     assert "projection_digest" in script
     assert "api_key" not in html

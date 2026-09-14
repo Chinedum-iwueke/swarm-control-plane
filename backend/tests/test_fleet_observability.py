@@ -1,11 +1,17 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from app.models.fleet import FleetIncident, FleetIncidentEvent
 from app.schemas.fleet import FleetMetrics, MachineObservationCreate, ServiceHealth
-from app.services.fleet import _advance, evaluate_observation
+from app.services.agents import calculate_presence
+from app.services.fleet import (
+    STALE_AFTER,
+    _advance,
+    evaluate_observation,
+    resolve_machine_presence,
+)
 from pydantic import ValidationError
 
 
@@ -151,3 +157,19 @@ def test_backup_freshness_warns_before_deadline_and_recovers() -> None:
     assert backup_call.args[3] is True
     assert backup_call.args[4] == "warning"
     assert backup_call.args[5]["critical_after_seconds"] == 604_800
+
+
+def test_machine_presence_evidence_thresholds_are_aligned() -> None:
+    assert STALE_AFTER.total_seconds() == 90
+    now = datetime.now(UTC)
+    agent = SimpleNamespace(is_enabled=True, last_heartbeat_at=now)
+    assert calculate_presence(agent) == "online"
+    assert resolve_machine_presence(now, ["offline"], now) == ("online", "current")
+    assert resolve_machine_presence(now - timedelta(days=1), ["online"], now) == (
+        "online",
+        "stale",
+    )
+    assert resolve_machine_presence(None, ["offline"], now) == (
+        "offline",
+        "missing",
+    )

@@ -16,9 +16,11 @@ from app.schemas.fleet import (
     MachineObservationCreate,
     MachineObservationResponse,
 )
+from app.services.agents import calculate_presence
 from app.services.fleet import (
     evaluate_staleness,
     record_observation,
+    resolve_machine_presence,
     transition_incident,
 )
 
@@ -48,9 +50,12 @@ def create_observation(
 
 @router.get("/health")
 def fleet_health(db: Annotated[Session, Depends(get_db)]):
-    evaluate_staleness(db)
+    now = datetime.now(UTC)
+    evaluate_staleness(db, now)
     machines = []
-    names = db.scalars(select(MachineObservation.machine).distinct()).all()
+    agents = list(db.scalars(select(Agent)).all())
+    names = set(db.scalars(select(MachineObservation.machine).distinct()).all())
+    names.update(agent.machine for agent in agents)
     for name in sorted(names):
         latest = db.scalar(
             select(MachineObservation)
@@ -67,9 +72,20 @@ def fleet_health(db: Annotated[Session, Depends(get_db)]):
                 .order_by(FleetIncident.updated_at.desc())
             ).all()
         )
+        machine_agents = [agent for agent in agents if agent.machine == name]
+        agent_presences = [calculate_presence(agent, now) for agent in machine_agents]
+        presence, telemetry_status = resolve_machine_presence(
+            latest.observed_at if latest is not None else None,
+            agent_presences,
+            now,
+        )
         machines.append(
             {
                 "machine": name,
+                "presence": presence,
+                "telemetry_status": telemetry_status,
+                "registered_agents": len(machine_agents),
+                "online_agents": agent_presences.count("online"),
                 "status": "critical"
                 if any(i.state == "critical" for i in incidents)
                 else "warning"

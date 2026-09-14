@@ -29,6 +29,30 @@ THRESHOLDS = {
 }
 
 
+def resolve_machine_presence(
+    latest_observed_at: datetime | None,
+    agent_presences: list[str],
+    now: datetime,
+) -> tuple[str, str]:
+    observation_fresh = bool(
+        latest_observed_at is not None and now - latest_observed_at <= STALE_AFTER
+    )
+    if observation_fresh or "online" in agent_presences:
+        presence = "online"
+    elif "degraded" in agent_presences:
+        presence = "degraded"
+    else:
+        presence = "offline"
+    telemetry_status = (
+        "current"
+        if observation_fresh
+        else "stale"
+        if latest_observed_at is not None
+        else "missing"
+    )
+    return presence, telemetry_status
+
+
 def record_observation(
     db: Session, agent_id: UUID, payload: MachineObservationCreate
 ) -> MachineObservation:
