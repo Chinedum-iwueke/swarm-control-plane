@@ -185,3 +185,51 @@ def test_llm_equation_is_not_accepted_as_verified_without_receipt():
     ]
     with pytest.raises(ValidationError, match="immutable verification receipt"):
         AlphaPredictiveCandidate.model_validate(raw)
+
+
+def test_source_replayed_equation_cannot_drive_campaign_while_fidelity_is_unqualified():
+    base, object_id = candidate()
+    raw = base.model_dump(mode="json")
+    raw["equations"] = [
+        {
+            "expression": "r_t = p_t / p_{t-1} - 1",
+            "meaning": "The one-period return used as the predictive target.",
+            "source_object_id": str(object_id),
+            "source_content_digest": DIGEST,
+            "source_excerpt": "r_t = p_t / p_{t-1} - 1",
+            "verification": "source_replayed",
+            "verification_receipt_digest": None,
+        }
+    ]
+    value = AlphaPredictiveCandidate.model_validate(raw)
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [
+                    {
+                        "object_id": str(object_id),
+                        "content_digest": DIGEST,
+                        "text": "The source states r_t = p_t / p_{t-1} - 1.",
+                    }
+                ]
+            },
+            "datasets": [
+                {
+                    "binding_index": 0,
+                    "venue": "bybit",
+                    "instruments": ["BTCUSDT"],
+                    "timeframe": "1m",
+                    "rows": 10_000,
+                    "output_columns": [
+                        "timestamp",
+                        "close",
+                        "funding_rate",
+                        "volume",
+                    ],
+                }
+            ],
+        }
+    )
+    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
+    reasons, _ = _candidate_reasons(value, cycle, mandate, [])
+    assert "equation_verification_required_for_campaign" in reasons
