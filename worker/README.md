@@ -30,7 +30,9 @@ failures.
 ## Environment
 
 The systemd unit reads `/etc/invariance-swarm/vm1-worker.env`. Keep it owned by
-root and mode `0600`. It must define:
+root and mode `0600`. The unit sets `NODE_OPTIONS=--jitless` for Codex-backed
+engineering missions so Node can run while `MemoryDenyWriteExecute=true`
+remains enforced. It must define:
 
 ```text
 SWARM_API_URL=http://100.112.117.59:8787

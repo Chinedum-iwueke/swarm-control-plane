@@ -14,6 +14,7 @@ WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
 EnvironmentFile=/etc/invariance-swarm/vm1-worker.env
 ReadOnlyPaths=/etc/invariance-swarm/codex-worker
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=NODE_OPTIONS=--jitless
 Environment=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin
 Environment=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv
 ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/invariance-swarm-worker run
