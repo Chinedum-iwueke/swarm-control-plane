@@ -30,6 +30,10 @@ class FounderChannelDecision(StrictModel):
     authority_exception_id: uuid.UUID | None = None
 
 
+class FounderChannelDigestDecision(FounderChannelDecision):
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class FounderChannelApproval(ApprovalResponse):
     task_number: str
     task_title: str

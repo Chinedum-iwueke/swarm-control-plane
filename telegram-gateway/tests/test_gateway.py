@@ -73,6 +73,8 @@ class Channel:
         self.proposal_decisions: list[tuple[str, str, str]] = []
         self.proposal_values: list[dict] = []
         self.approval_values: list[dict] = []
+        self.alpha_mandate_values: list[dict] = []
+        self.alpha_mandate_approvals: list[tuple[str, str, str]] = []
         self.mission_values: list[dict] = []
         self.mission_approvals: list[tuple[str, str]] = []
         self.note_values: list[dict] = []
@@ -163,6 +165,9 @@ class Channel:
     async def approvals(self):
         return self.approval_values
 
+    async def alpha_mandates(self):
+        return self.alpha_mandate_values
+
     async def notifications(self):
         return self.notification_values
 
@@ -199,6 +204,12 @@ class Channel:
         return {}
 
     async def decide_approval(self, approval_id, action, reason):
+        return {}
+
+    async def approve_alpha_mandate(self, mandate_id, expected_digest, reason):
+        self.alpha_mandate_approvals.append(
+            (mandate_id, expected_digest, reason)
+        )
         return {}
 
 
@@ -247,6 +258,24 @@ def approval_notification(suffix: str = "02") -> dict:
             "task_type": value["scope"]["task_type"],
             "risk_level": value["risk_level"],
             "plan_digest": value["plan_digest"],
+        },
+    }
+
+
+def alpha_mandate_notification() -> dict:
+    return {
+        "id": "notification-alpha-mandate",
+        "kind": "alpha_mandate_approval_required",
+        "payload": {
+            "mandate_id": "mandate-1",
+            "mandate_key": "ALPHA004-WEEK-20260914",
+            "objective": "Continuously test bounded predictive hypotheses.",
+            "mandate_digest": "a" * 64,
+            "valid_until": "2026-09-21T22:06:30Z",
+            "allowed_venues": ["bybit"],
+            "allowed_instruments": ["BTCUSDT"],
+            "maximum_total_trials": 500,
+            "authority": "no_capital_research",
         },
     }
 
@@ -1181,6 +1210,46 @@ async def test_outbox_notification_is_acknowledged_after_delivery(
 
     assert len(telegram.sent) == 1
     assert channel.acknowledged == [("notification-02", "telegram:456:10001")]
+
+
+@pytest.mark.asyncio
+async def test_alpha_mandate_notification_is_digest_safe_and_actionable(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [alpha_mandate_notification()]
+    channel.alpha_mandate_values = [
+        {
+            "id": "mandate-1",
+            "mandate_key": "ALPHA004-WEEK-20260914",
+            "status": "awaiting_approval",
+            "mandate_digest": "a" * 64,
+            "valid_until": "2026-09-21T22:06:30Z",
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+    assert "no orders or capital" in telegram.sent[-1][1]
+    token = telegram.sent[-1][2]["button_url"].rsplit("review_", 1)[1]
+
+    await gateway._review_handoff(token)
+    assert "no-capital historical research only" in telegram.sent[-1][1]
+    await gateway._decide_handoff(token, "approve")
+
+    assert channel.alpha_mandate_approvals == [
+        (
+            "mandate-1",
+            "a" * 64,
+            "Founder Telegram approved weekly mandate aaaaaaaaaaaa.",
+        )
+    ]
 
 
 @pytest.mark.asyncio

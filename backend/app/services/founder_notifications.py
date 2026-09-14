@@ -15,6 +15,7 @@ from app.models import (
     TaskApproval,
     TaskDependency,
 )
+from app.models.alpha_discovery import AlphaResearchMandate
 
 
 def approval_readiness(
@@ -122,11 +123,46 @@ def reconcile_founder_notifications(db: Session) -> list[FounderNotification]:
             ),
         )
 
+    mandates = db.scalars(
+        select(AlphaResearchMandate).where(
+            AlphaResearchMandate.status == "awaiting_approval"
+        )
+    ).all()
+    for mandate in mandates:
+        key = f"alpha-mandate:{mandate.id}:{mandate.mandate_digest}"
+        current_keys.add(key)
+        _insert_once(
+            db,
+            FounderNotification(
+                kind="alpha_mandate_approval_required",
+                entity_id=mandate.id,
+                deduplication_key=key,
+                state="pending",
+                payload={
+                    "mandate_id": str(mandate.id),
+                    "mandate_key": mandate.mandate_key,
+                    "objective": mandate.objective,
+                    "mandate_digest": mandate.mandate_digest,
+                    "valid_until": mandate.valid_until.isoformat(),
+                    "allowed_venues": mandate.specification["allowed_venues"],
+                    "allowed_instruments": mandate.specification[
+                        "allowed_instruments"
+                    ],
+                    "maximum_total_trials": mandate.budget["maximum_total_trials"],
+                    "authority": mandate.specification["authority"],
+                },
+            ),
+        )
+
     pending = db.scalars(
         select(FounderNotification).where(
             FounderNotification.state.in_(["pending", "waiting"]),
             FounderNotification.kind.in_(
-                ["approval_required", "mission_approval_required"]
+                [
+                    "approval_required",
+                    "mission_approval_required",
+                    "alpha_mandate_approval_required",
+                ]
             ),
         )
     ).all()
