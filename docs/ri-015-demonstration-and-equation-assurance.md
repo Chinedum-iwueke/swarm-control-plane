@@ -25,9 +25,10 @@ adjudicator must produce an immutable receipt before an equation can drive a
 campaign calculation. Unreadable, reconstructed or disputed notation remains
 pending and cannot seed a campaign.
 
-This gives agents useful source-grounded mathematics without pretending RI-014 is
-globally qualified. A future automated assurance service can combine two
-independent OCR/math parsers, symbolic equivalence tests, dimensional/unit checks,
-source-image coordinates and an independent model adjudicator. Only consensus
-with replayable evidence should issue a verification receipt; disagreements stay
-in the scientific review queue.
+RI-014D now supplies this just-in-time assurance service. It combines exact
+canonical source binding, two parser families, semantic-token equality, lossless
+AST checks, cached immutable receipts and optional AGT-006-independent attempts.
+Only consensus with replayable evidence issues a verification receipt;
+disagreements remain visible as `needs_attention`. This improves usable coverage
+without changing RI-015 to `qualified`: its independent hidden live-corpus
+reasoning evaluation remains required.

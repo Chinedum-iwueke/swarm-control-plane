@@ -11,6 +11,8 @@ from app.models.evidence import CanonicalEvidenceObject
 from app.models.scientific_fidelity import (
     MathematicsCapabilityProfile,
     ScientificAdjudication,
+    ScientificAssuranceReceipt,
+    ScientificAssuranceRequest,
     ScientificBenchmark,
     ScientificCalculationReceipt,
     ScientificCorrectionProposal,
@@ -26,6 +28,11 @@ from app.schemas.scientific_fidelity import (
     MathematicsSearchRequest,
     ScientificAdjudicationCreate,
     ScientificAdjudicationResponse,
+    ScientificAssuranceAttemptCreate,
+    ScientificAssuranceAttemptResponse,
+    ScientificAssuranceReceiptResponse,
+    ScientificAssuranceRequestCreate,
+    ScientificAssuranceRequestResponse,
     ScientificBenchmarkCreate,
     ScientificBenchmarkResponse,
     ScientificCalculationCreate,
@@ -34,6 +41,12 @@ from app.schemas.scientific_fidelity import (
     ScientificCorrectionResponse,
     ScientificRepresentationCreate,
     ScientificRepresentationResponse,
+)
+from app.services.scientific_assurance import (
+    assurance_overview,
+    finalize_assurance,
+    request_assurance,
+    submit_attempt,
 )
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
@@ -380,3 +393,91 @@ def list_mathematics_capabilities(db: Annotated[Session, Depends(get_db)]):
             )
         ).all()
     )
+
+
+@router.post(
+    "/assurance/requests",
+    response_model=ScientificAssuranceRequestResponse,
+    status_code=201,
+)
+def create_assurance_request(
+    payload: ScientificAssuranceRequestCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    try:
+        record = request_assurance(db, payload)
+        db.commit()
+        db.refresh(record)
+        return record
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/assurance/requests/{request_id}/attempts",
+    response_model=ScientificAssuranceAttemptResponse,
+    status_code=201,
+)
+def create_assurance_attempt(
+    request_id: UUID,
+    payload: ScientificAssuranceAttemptCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    try:
+        record = submit_attempt(db, request_id, payload)
+        db.commit()
+        db.refresh(record)
+        return record
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/assurance/requests/{request_id}/finalize",
+    response_model=ScientificAssuranceReceiptResponse | None,
+)
+def finalize_assurance_request(
+    request_id: UUID, db: Annotated[Session, Depends(get_db)]
+):
+    try:
+        record = finalize_assurance(db, request_id)
+        db.commit()
+        if record:
+            db.refresh(record)
+        return record
+    except ScientificFidelityConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/assurance/requests", response_model=list[ScientificAssuranceRequestResponse]
+)
+def list_assurance_requests(db: Annotated[Session, Depends(get_db)]):
+    return list(
+        db.scalars(
+            select(ScientificAssuranceRequest).order_by(
+                ScientificAssuranceRequest.created_at.desc()
+            )
+        ).all()
+    )
+
+
+@router.get(
+    "/assurance/receipts", response_model=list[ScientificAssuranceReceiptResponse]
+)
+def list_assurance_receipts(db: Annotated[Session, Depends(get_db)]):
+    return list(
+        db.scalars(
+            select(ScientificAssuranceReceipt).order_by(
+                ScientificAssuranceReceipt.created_at.desc()
+            )
+        ).all()
+    )
+
+
+@router.get("/assurance/overview")
+def get_assurance_overview(db: Annotated[Session, Depends(get_db)]):
+    return assurance_overview(db)
