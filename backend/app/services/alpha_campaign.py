@@ -244,6 +244,7 @@ def validate_real_data_bindings(
                 "lake_governance_digest": lake.snapshot_digest,
                 "venue": venue,
                 "instruments": sorted(manifest_instruments),
+                "output_columns": manifest.get("output_columns", []),
                 "rows": build.rows,
                 "builder_commit": build.builder_commit,
                 "producer_receipt_digest": producer_receipt.receipt_digest,
