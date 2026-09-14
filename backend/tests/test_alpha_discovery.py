@@ -59,7 +59,7 @@ def candidate(**changes):
             "venue": "bybit",
             "instrument": "BTCUSDT",
             "timeframe": "1m",
-            "required_fields": ["timestamp", "close", "funding_rate"],
+            "required_fields": ["timestamp", "close", "funding_rate", "volume"],
             "minimum_history_observations": 500,
             "liquidity_floor_usd": 0,
         },
@@ -146,6 +146,12 @@ def test_candidate_gate_accepts_predictive_available_question_and_rejects_instru
                     "instruments": ["BTCUSDT"],
                     "timeframe": "1m",
                     "rows": 10_000,
+                    "output_columns": [
+                        "timestamp",
+                        "close",
+                        "funding_rate",
+                        "volume",
+                    ],
                 }
             ],
         }

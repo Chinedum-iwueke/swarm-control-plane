@@ -29,6 +29,7 @@ def main() -> int:
             "institutional evidence using admitted Binance and Bybit perpetual data."
         ),
     )
+    parser.add_argument("--minimum-liquidity-usd", type=float, default=1_000_000)
     args = parser.parse_args()
     headers = {"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"}
     with httpx.Client(
@@ -66,7 +67,7 @@ def main() -> int:
             "dataset_bindings": bindings,
             "allowed_venues": specification["allowed_venues"],
             "allowed_instruments": specification["allowed_instruments"],
-            "minimum_liquidity_usd": 0,
+            "minimum_liquidity_usd": args.minimum_liquidity_usd,
             "budget": {
                 "maximum_cycles": 42,
                 "maximum_hypotheses": 100,

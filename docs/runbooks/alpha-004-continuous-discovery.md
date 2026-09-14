@@ -28,7 +28,8 @@ Candidates must name a predictor, future target, horizon, direction, causal
 timing, null hypothesis, finite parameter budget, point-in-time features,
 mechanism, rivals and falsification criteria. Exact evidence object IDs and
 content digests must replay against the cycle context. Instructions, vague topics,
-descriptive statements, missing data, weak liquidity scope and semantic
+descriptive statements, missing requested columns, missing volume/depth evidence,
+weak liquidity scope and semantic
 duplicates are retained as rejected candidates.
 
 An equation is usable only when it is replayed from the cited source or bound to
