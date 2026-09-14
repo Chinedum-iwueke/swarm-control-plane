@@ -84,6 +84,14 @@ _BINDING_KEYS = {
     "evidence_class",
     "research_principal",
 }
+_LIQUIDITY_FIELDS = {
+    "volume",
+    "quote_volume",
+    "turnover",
+    "volume_usd",
+    "bid_size",
+    "ask_size",
+}
 
 
 def now() -> datetime:
@@ -220,6 +228,7 @@ def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
                 "dataset_key": item["dataset_key"],
                 "venue": item["venue"],
                 "instruments": item["instruments"],
+                "output_columns": item["output_columns"],
                 "rows": item["rows"],
                 "timeframe": "1m",
                 "availability": "admitted",
@@ -449,11 +458,15 @@ def _candidate_reasons(
                 reasons.append("equation_source_replay_mismatch")
     binding_index = None
     for item in cycle.context.get("datasets", []):
+        required_fields = set(candidate.data.required_fields)
+        output_columns = set(item.get("output_columns", []))
         if (
             item["venue"] == candidate.data.venue
             and candidate.data.instrument in item["instruments"]
             and item["timeframe"] == candidate.data.timeframe
             and item["rows"] >= candidate.data.minimum_history_observations
+            and required_fields.issubset(output_columns)
+            and bool(required_fields & _LIQUIDITY_FIELDS)
         ):
             binding_index = item["binding_index"]
             break
