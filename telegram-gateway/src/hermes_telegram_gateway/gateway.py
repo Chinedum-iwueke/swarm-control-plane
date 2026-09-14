@@ -130,6 +130,27 @@ class RestrictedTelegramGateway:
                     button_text="Review mission plan",
                     button_url=f"https://t.me/{self._username}?start=review_{token}",
                 )
+            elif kind == "alpha_mandate_approval_required":
+                token = self._store.create(
+                    "alpha-mandate",
+                    payload["mandate_id"],
+                    payload["mandate_digest"],
+                    self._settings.handoff_ttl_seconds,
+                )
+                venues = ", ".join(payload["allowed_venues"])
+                instruments = ", ".join(payload["allowed_instruments"])
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Weekly alpha research mandate approval required\n"
+                    f"{payload['mandate_key']}\n{payload['objective']}\n"
+                    f"Scope: {venues} · {instruments}\n"
+                    f"Trial ceiling: {payload['maximum_total_trials']}\n"
+                    f"Authority: {payload['authority']} · no orders or capital\n"
+                    f"Expires: {payload['valid_until']}\n"
+                    f"Digest: {payload['mandate_digest']}",
+                    button_text="Review research mandate",
+                    button_url=f"https://t.me/{self._username}?start=review_{token}",
+                )
             elif kind == "task_ready":
                 sent = await self._telegram.send(
                     self._settings.founder_chat_id,
@@ -870,6 +891,35 @@ class RestrictedTelegramGateway:
             )
             return
         kind, entity_id, expected_digest = handoff
+        if kind == "alpha-mandate":
+            current = next(
+                (
+                    item
+                    for item in await self._channel.alpha_mandates()
+                    if item["id"] == entity_id
+                ),
+                None,
+            )
+            if (
+                current is None
+                or current["status"] != "awaiting_approval"
+                or current["mandate_digest"] != expected_digest
+            ):
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Research mandate digest or state no longer matches.",
+                )
+                return
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Approve {current['mandate_key']} through "
+                f"{current['valid_until']}?\n"
+                f"Authority: no-capital historical research only\n"
+                f"Digest: {expected_digest}\n\n"
+                f"Approve: /approve {token}\n"
+                "Decline by leaving the mandate unapproved in Mission Control.",
+            )
+            return
         if kind == "mission":
             current = next(
                 (
@@ -976,6 +1026,42 @@ class RestrictedTelegramGateway:
             )
             return
         kind, entity_id, expected_digest = handoff
+        if kind == "alpha-mandate":
+            if action != "approve":
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Leave the weekly mandate unapproved to decline it.",
+                )
+                return
+            current = next(
+                (
+                    item
+                    for item in await self._channel.alpha_mandates()
+                    if item["id"] == entity_id
+                ),
+                None,
+            )
+            if (
+                current is None
+                or current["status"] != "awaiting_approval"
+                or current["mandate_digest"] != expected_digest
+            ):
+                await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Research mandate digest or state no longer matches.",
+                )
+                return
+            await self._channel.approve_alpha_mandate(
+                entity_id,
+                expected_digest,
+                f"Founder Telegram approved weekly mandate {expected_digest[:12]}.",
+            )
+            self._store.consume(token)
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                f"Weekly research mandate {current['mandate_key']} approved.",
+            )
+            return
         if kind == "mission":
             if action != "approve":
                 await self._telegram.send(

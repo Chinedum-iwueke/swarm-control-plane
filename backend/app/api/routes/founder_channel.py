@@ -20,6 +20,7 @@ from app.models import (
     Task,
     TaskApproval,
 )
+from app.models.alpha_discovery import AlphaResearchMandate
 from app.schemas import (
     ApprovalResponse,
     FounderChannelApproval,
@@ -32,8 +33,14 @@ from app.schemas import (
     TaskCreate,
     TaskResponse,
 )
+from app.schemas.alpha_discovery import (
+    AlphaResearchMandateApproval,
+    AlphaResearchMandateResponse,
+)
+from app.schemas.founder_channel import FounderChannelDigestDecision
 from app.schemas.operational_note import OperationalNoteResponse
 from app.schemas.research_program import ResearchDailyCycleResponse
+from app.services.alpha_discovery import approve_mandate, serialize_mandate
 from app.services.authority import resolve_task_approval
 from app.services.founder_notifications import (
     acknowledge_notification,
@@ -181,6 +188,50 @@ def list_supervised_missions(
         )
         for item in missions
     ]
+
+
+@router.get(
+    "/alpha-mandates", response_model=list[AlphaResearchMandateResponse]
+)
+def list_alpha_mandates(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    mandates = db.scalars(
+        select(AlphaResearchMandate).order_by(
+            AlphaResearchMandate.created_at.desc()
+        )
+    ).all()
+    return [serialize_mandate(item) for item in mandates]
+
+
+@router.post(
+    "/alpha-mandates/{mandate_id}/approve",
+    response_model=AlphaResearchMandateResponse,
+)
+def approve_alpha_mandate(
+    mandate_id: uuid.UUID,
+    payload: FounderChannelDigestDecision,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    mandate = db.scalar(
+        select(AlphaResearchMandate)
+        .where(AlphaResearchMandate.id == mandate_id)
+        .with_for_update()
+    )
+    if mandate is None:
+        raise HTTPException(status_code=404, detail="Alpha mandate not found.")
+    approve_mandate(
+        db,
+        mandate,
+        AlphaResearchMandateApproval(
+            expected_mandate_digest=payload.expected_digest,
+            actor="founder-operator",
+            reason=payload.reason,
+        ),
+    )
+    db.commit()
+    db.refresh(mandate)
+    return serialize_mandate(mandate)
 
 
 @router.post("/missions/{mission_id}/approve", response_model=FounderChannelMission)

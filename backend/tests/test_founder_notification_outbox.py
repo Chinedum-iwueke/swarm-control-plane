@@ -59,7 +59,7 @@ def test_five_pending_approvals_activate_only_the_actionable_gate() -> None:
         (index == 0, [] if index == 0 else ["prior:queued"], tasks[index], None)
         for index in range(5)
     ]
-    db = DB([[], approvals, [], [], [], []], SimpleNamespace(id=41))
+    db = DB([[], approvals, [], [], [], [], []], SimpleNamespace(id=41))
     with (
         patch(
             "app.services.founder_notifications.approval_readiness",
@@ -94,7 +94,7 @@ def test_stale_pending_gate_is_superseded() -> None:
         superseded_at=None,
         updated_at=now,
     )
-    db = DB([[], [], [], [stale], [], []], None)
+    db = DB([[], [], [], [], [stale], [], []], None)
 
     assert reconcile_founder_notifications(db) == []  # type: ignore[arg-type]
     assert stale.state == "superseded"
@@ -110,13 +110,41 @@ def test_task_ready_message_is_superseded_after_lease() -> None:
         updated_at=None,
     )
     db = DB(
-        [[], [], [], [], [ready], []],
+        [[], [], [], [], [], [ready], []],
         None,
         task=SimpleNamespace(status="leased"),
     )
 
     assert reconcile_founder_notifications(db) == []  # type: ignore[arg-type]
     assert ready.state == "superseded"
+
+
+def test_awaiting_alpha_mandate_enters_founder_outbox() -> None:
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        mandate_key="ALPHA004-WEEK-20260914",
+        mandate_digest="a" * 64,
+        objective="Continuously test bounded predictive hypotheses.",
+        valid_until=datetime.now(UTC),
+        specification={
+            "allowed_venues": ["bybit"],
+            "allowed_instruments": ["BTCUSDT"],
+            "authority": "no_capital_research",
+        },
+        budget={"maximum_total_trials": 500},
+    )
+    db = DB([[], [], [], [mandate], [], [], []], None)
+    with patch(
+        "app.services.founder_notifications._insert_once",
+        side_effect=lambda database, value: value,
+    ) as insert:
+        reconcile_founder_notifications(db)  # type: ignore[arg-type]
+
+    notification = insert.call_args.args[1]
+    assert notification.kind == "alpha_mandate_approval_required"
+    assert notification.entity_id == mandate.id
+    assert notification.payload["mandate_digest"] == mandate.mandate_digest
+    assert notification.payload["authority"] == "no_capital_research"
 
 
 def test_acknowledgement_is_idempotent_and_rejects_superseded_gate() -> None:
@@ -130,3 +158,11 @@ def test_acknowledgement_is_idempotent_and_rejects_superseded_gate() -> None:
     assert pending.state == "acknowledged"
     assert pending.acknowledged_at == acknowledged_at
     assert pending.acknowledged_by == "telegram:456"
+
+
+def test_founder_channel_exposes_digest_safe_alpha_mandate_handoff() -> None:
+    from app.main import app
+
+    paths = app.openapi()["paths"]
+    assert "/v1/founder-channel/alpha-mandates" in paths
+    assert "/v1/founder-channel/alpha-mandates/{mandate_id}/approve" in paths

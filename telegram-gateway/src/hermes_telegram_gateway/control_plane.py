@@ -93,6 +93,9 @@ class FounderChannelClient:
     async def approvals(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/approvals")
 
+    async def alpha_mandates(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/v1/founder-channel/alpha-mandates")
+
     async def notifications(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/notifications")
 
@@ -144,6 +147,19 @@ class FounderChannelClient:
             "POST",
             f"/v1/founder-channel/approvals/{approval_id}/{action}",
             json={"reason": reason, "expires_in_seconds": 900},
+        )
+
+    async def approve_alpha_mandate(
+        self, mandate_id: str, expected_digest: str, reason: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/founder-channel/alpha-mandates/{mandate_id}/approve",
+            json={
+                "reason": reason,
+                "expected_digest": expected_digest,
+                "expires_in_seconds": 900,
+            },
         )
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
