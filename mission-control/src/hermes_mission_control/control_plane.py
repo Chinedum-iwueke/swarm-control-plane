@@ -73,6 +73,16 @@ class ControlPlaneClient:
         alpha_campaigns = await self._optional_collection(
             "/v1/research/alpha-campaigns"
         )
+        alpha_discovery = await self._optional_object(
+            "/v1/research/alpha-discovery/overview",
+            {
+                "mandates": [],
+                "cycles": [],
+                "throughput": {},
+                "stalls": [],
+                "agents": [],
+            },
+        )
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
@@ -199,6 +209,7 @@ class ControlPlaneClient:
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
             "alpha_campaigns": alpha_campaigns,
+            "alpha_discovery": alpha_discovery,
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,
@@ -239,6 +250,17 @@ class ControlPlaneClient:
             raise ValueError("Unsupported scientific adjudication fields.")
         return await self._request(
             "POST", "/v1/research/scientific-fidelity/adjudications", json=payload
+        )
+
+    async def approve_alpha_mandate(
+        self, mandate_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        if set(payload) != {"expected_mandate_digest", "reason"}:
+            raise ValueError("Alpha mandate approval fields are invalid.")
+        return await self._request(
+            "POST",
+            f"/v1/research/alpha-discovery/mandates/{mandate_id}/approve",
+            json={**payload, "actor": "founder-operator"},
         )
 
     async def scientific_review_context(

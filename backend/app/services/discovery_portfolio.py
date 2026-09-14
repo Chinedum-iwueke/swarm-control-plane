@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.alpha_discovery import AlphaDiscoveryCandidate
 from app.models.autonomous_research import AutonomousResearchSession
 from app.models.curriculum import ResearchBrainEvaluation, ResearchDomainCurriculum
 from app.models.discovery import DiscoveryMap
@@ -55,6 +56,24 @@ def _curriculum_uncertainty(record: ResearchBrainEvaluation) -> float:
 def _source(
     db: Session, payload, project: str, source_epoch: datetime
 ) -> tuple[float, str]:
+    if payload.source_type == "alpha_discovery_candidate":
+        record = db.get(AlphaDiscoveryCandidate, payload.source_id)
+        if (
+            record is None
+            or record.candidate_digest != payload.source_digest
+            or record.disposition != "accepted"
+            or record.created_at > source_epoch
+        ):
+            raise HTTPException(
+                409, "ALPHA-004 candidate is absent, rejected or post-epoch."
+            )
+        if " ".join(payload.question.lower().split()) != " ".join(
+            record.question.lower().split()
+        ):
+            raise HTTPException(
+                422, "Candidate question does not match ALPHA-004 evidence."
+            )
+        return 1.0, record.candidate_digest
     if payload.source_type == "curriculum_evaluation":
         record = db.get(ResearchBrainEvaluation, payload.source_id)
         if record is None or record.record_digest != payload.source_digest:

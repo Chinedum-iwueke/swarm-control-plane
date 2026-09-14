@@ -13,6 +13,7 @@ from app.models.alpha_campaign import (
     AlphaCampaignAttempt,
     AlphaCampaignEvent,
 )
+from app.models.alpha_discovery import AlphaDiscoveryCandidate, AlphaResearchMandate
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
@@ -85,7 +86,9 @@ def _append_event(
     return event
 
 
-def _validate_real_data(db: Session, payload: AlphaCampaignCreate) -> list[dict]:
+def validate_real_data_bindings(
+    db: Session, payload: AlphaCampaignCreate
+) -> list[dict]:
     admitted: list[dict] = []
     allowed_venues = set(payload.allowed_venues)
     allowed_instruments = {item.upper() for item in payload.allowed_instruments}
@@ -261,7 +264,7 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             422,
             "Campaign requires an allocated discovery portfolio with a selected inquiry.",
         )
-    admitted = _validate_real_data(db, payload)
+    admitted = validate_real_data_bindings(db, payload)
     selected = db.scalars(
         select(DiscoveryPortfolioCandidate)
         .where(
@@ -286,16 +289,25 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
     )
     specification["dataset_bindings"] = admitted
     specification["discovery_allocation_digest"] = portfolio.allocation_digest
-    specification["research_queue"] = [
-        {
+    research_queue = []
+    for item in selected:
+        entry = {
             "source_candidate_id": str(item.id),
             "source_candidate_digest": item.candidate_digest,
             "question": item.question,
             "domain_key": item.domain_key,
             "rank": item.rank,
         }
-        for item in selected
-    ]
+        if getattr(item, "source_type", None) == "alpha_discovery_candidate":
+            source = db.get(AlphaDiscoveryCandidate, item.source_id)
+            if source is None or source.candidate_digest != item.source_digest:
+                raise HTTPException(409, "ALPHA-004 source candidate is unavailable.")
+            entry["dataset_binding_index"] = source.document["dataset_binding_index"]
+            entry["instrument"] = source.document["data"]["instrument"]
+            entry["discovery_candidate_id"] = str(source.id)
+            entry["discovery_candidate_digest"] = source.candidate_digest
+        research_queue.append(entry)
+    specification["research_queue"] = research_queue
     specification["authority_boundary"] = {
         "capital": False,
         "orders": False,
@@ -360,6 +372,22 @@ def activate_campaign(
         raise HTTPException(409, "Only an awaiting campaign can be activated.")
     if campaign.campaign_digest != payload.expected_campaign_digest:
         raise HTTPException(409, "Campaign digest changed before activation.")
+    if payload.actor == "alpha-continuous-director":
+        if campaign.specification.get("execution_protocol") != "alpha004-delegated-v1":
+            raise HTTPException(403, "Director activation requires ALPHA-004 protocol.")
+        mandate = db.get(
+            AlphaResearchMandate, campaign.specification.get("research_mandate_id")
+        )
+        if (
+            mandate is None
+            or mandate.status != "active"
+            or mandate.mandate_digest
+            != campaign.specification.get("research_mandate_digest")
+            or not (mandate.valid_from <= now() < mandate.valid_until)
+        ):
+            raise HTTPException(
+                403, "Weekly research mandate is absent, expired or changed."
+            )
     campaign.status = "running"
     campaign.phase = "hypothesis"
     campaign.next_action = "compile_evidence_grounded_hypothesis"
@@ -396,7 +424,8 @@ def _stage_contract(
     card_approval: dict | None = None,
     qualification: dict | None = None,
 ) -> dict:
-    binding = campaign.specification["dataset_bindings"][0]
+    binding_index = int(source.get("dataset_binding_index", 0))
+    binding = campaign.specification["dataset_bindings"][binding_index]
     question = " ".join(source["question"].split())
     return {
         "repository": "bulletproof_bt",
@@ -415,7 +444,9 @@ def _stage_contract(
         "memory_database": "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite",
         "bundle_root": "/home/omenka/.local/share/invariance-swarm/alpha002-bundles",
         "dataset_key": binding["dataset_key"],
-        "instrument": campaign.specification["allowed_instruments"][0],
+        "instrument": source.get(
+            "instrument", campaign.specification["allowed_instruments"][0]
+        ),
         "timeframe": "1m",
         "tier": "Tier2B",
         "max_variants": campaign.budget["max_variants_per_hypothesis"],
@@ -587,6 +618,24 @@ def _create_strategy_engineering_task(
 
 
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
+    delegated = (
+        campaign.specification.get("execution_protocol") == "alpha004-delegated-v1"
+    )
+    if delegated:
+        mandate = db.get(
+            AlphaResearchMandate, campaign.specification.get("research_mandate_id")
+        )
+        if (
+            mandate is None
+            or mandate.status != "active"
+            or mandate.mandate_digest
+            != campaign.specification.get("research_mandate_digest")
+            or not (mandate.valid_from <= now() < mandate.valid_until)
+        ):
+            campaign.status = "needs_attention"
+            campaign.next_action = "renew_weekly_research_mandate"
+            campaign.terminal_reason = {"category": "research_mandate_unavailable"}
+            return None
     queue = campaign.specification["research_queue"]
     if campaign.hypothesis_count >= len(queue):
         return None
@@ -650,63 +699,71 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 "result": engineering.result,
             }
         return engineering
-    confirmation = db.scalar(
-        select(Task).where(
-            Task.task_number == _stage_task_number(campaign, source, "C")
-        )
-    )
-    if confirmation is None:
-        campaign.phase = "hypothesis_approval"
-        campaign.next_action = "founder_hypothesis_card_approval"
-        return _create_stage_task(
-            db,
-            campaign,
-            source,
-            suffix="C",
-            title=f"Approve hypothesis card: {card['title']}",
-            contract=_stage_contract(
-                db, campaign, source, stage="draft", hypothesis_card=card
-            ),
-            approval_required=True,
-        )
-    if confirmation.status == "succeeded":
-        approved = confirmation.result["summary"]
+    if delegated:
         approval_receipt = {
-            "actor": approved["approved_by"],
-            "approved_at": approved["approved_at"],
-            "plan_digest": approved["plan_digest"],
+            "actor": mandate.approved_by,
+            "approved_at": mandate.approved_at.isoformat(),
+            "plan_digest": mandate.mandate_digest,
+            "delegation": "weekly_no_capital_research_mandate",
         }
     else:
-        approval = db.scalar(
-            select(TaskApproval).where(TaskApproval.task_id == confirmation.id)
+        confirmation = db.scalar(
+            select(Task).where(
+                Task.task_number == _stage_task_number(campaign, source, "C")
+            )
         )
-        if approval is None or approval.status != "approved":
+        if confirmation is None:
             campaign.phase = "hypothesis_approval"
             campaign.next_action = "founder_hypothesis_card_approval"
-            return confirmation
-        consume_task_approval(db, confirmation, now())
-        confirmation.status = "succeeded"
-        confirmation.completed_at = now()
-        confirmation.result = {
-            "summary": {
-                "card_digest": digest_document(card),
-                "approved_by": approval.decided_by,
+            return _create_stage_task(
+                db,
+                campaign,
+                source,
+                suffix="C",
+                title=f"Approve hypothesis card: {card['title']}",
+                contract=_stage_contract(
+                    db, campaign, source, stage="draft", hypothesis_card=card
+                ),
+                approval_required=True,
+            )
+        if confirmation.status == "succeeded":
+            approved = confirmation.result["summary"]
+            approval_receipt = {
+                "actor": approved["approved_by"],
+                "approved_at": approved["approved_at"],
+                "plan_digest": approved["plan_digest"],
+            }
+        else:
+            approval = db.scalar(
+                select(TaskApproval).where(TaskApproval.task_id == confirmation.id)
+            )
+            if approval is None or approval.status != "approved":
+                campaign.phase = "hypothesis_approval"
+                campaign.next_action = "founder_hypothesis_card_approval"
+                return confirmation
+            consume_task_approval(db, confirmation, now())
+            confirmation.status = "succeeded"
+            confirmation.completed_at = now()
+            confirmation.result = {
+                "summary": {
+                    "card_digest": digest_document(card),
+                    "approved_by": approval.decided_by,
+                    "approved_at": approval.issued_at.isoformat(),
+                    "plan_digest": approval.plan_digest,
+                }
+            }
+            append_task_event(
+                db,
+                confirmation,
+                "task_succeeded",
+                "Founder approved the immutable hypothesis card.",
+                payload=confirmation.result["summary"],
+            )
+            approval_receipt = {
+                "actor": approval.decided_by,
                 "approved_at": approval.issued_at.isoformat(),
                 "plan_digest": approval.plan_digest,
             }
-        }
-        append_task_event(
-            db,
-            confirmation,
-            "task_succeeded",
-            "Founder approved the immutable hypothesis card.",
-            payload=confirmation.result["summary"],
-        )
-        approval_receipt = {
-            "actor": approval.decided_by,
-            "approved_at": approval.issued_at.isoformat(),
-            "plan_digest": approval.plan_digest,
-        }
     qualification_task = db.scalar(
         select(Task).where(
             Task.task_number == _stage_task_number(campaign, source, "Q")
@@ -754,8 +811,12 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         )
     )
     if execution is None:
-        campaign.phase = "execution_approval"
-        campaign.next_action = "founder_execution_approval"
+        campaign.phase = "execution" if delegated else "execution_approval"
+        campaign.next_action = (
+            "await_native_bulletproof_execution"
+            if delegated
+            else "founder_execution_approval"
+        )
         return _create_stage_task(
             db,
             campaign,
@@ -770,7 +831,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 hypothesis_card=qualification["card"],
                 qualification=qualification,
             ),
-            approval_required=True,
+            approval_required=not delegated,
         )
     campaign.phase = (
         "execution" if execution.status != "pending_approval" else "execution_approval"
@@ -809,7 +870,10 @@ def _dataset_path(db: Session, campaign: AlphaCampaign, binding: dict) -> str:
 def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
     if campaign.status != "running":
         return None
-    if campaign.specification.get("execution_protocol") == "alpha003-governed-v1":
+    if campaign.specification.get("execution_protocol") in {
+        "alpha003-governed-v1",
+        "alpha004-delegated-v1",
+    }:
         return _advance_governed_pipeline(db, campaign)
     if campaign.specification.get("execution_protocol") != "alpha002-native-v1":
         return None
@@ -975,7 +1039,8 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
     source = queue[campaign.hypothesis_count]
     number = (
         _stage_task_number(campaign, source, "E")
-        if campaign.specification.get("execution_protocol") == "alpha003-governed-v1"
+        if campaign.specification.get("execution_protocol")
+        in {"alpha003-governed-v1", "alpha004-delegated-v1"}
         else _execution_task_number(campaign, source)
     )
     task = db.scalar(select(Task).where(Task.task_number == number))
@@ -1242,7 +1307,10 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             reason,
         )
         return
-    if campaign.specification.get("execution_protocol") == "alpha003-governed-v1":
+    if campaign.specification.get("execution_protocol") in {
+        "alpha003-governed-v1",
+        "alpha004-delegated-v1",
+    }:
         task = _advance_governed_pipeline(db, campaign)
         if task is not None and task.status in {"failed", "cancelled"}:
             campaign.status = "needs_attention"

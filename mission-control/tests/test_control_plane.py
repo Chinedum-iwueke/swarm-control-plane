@@ -129,6 +129,17 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "claim_boundary": "Derived state is current.",
                 },
             )
+        if request.url.path == "/v1/research/alpha-discovery/overview":
+            return httpx.Response(
+                200,
+                json={
+                    "mandates": [],
+                    "cycles": [],
+                    "throughput": {},
+                    "stalls": [],
+                    "agents": [],
+                },
+            )
         return httpx.Response(200, json=[])
 
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
@@ -160,6 +171,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["intelligence_evaluation"]["status"] == "not_demonstrated"
     assert result["derived_state"]["current"] is True
     assert result["alpha_campaigns"] == []
+    assert result["alpha_discovery"]["mandates"] == []
 
 
 @pytest.mark.asyncio

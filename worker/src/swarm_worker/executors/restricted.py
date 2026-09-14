@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from swarm_worker.config import WorkerSettings
+from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
 from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.code_validation import (
     CodeValidationExecutor,
@@ -44,6 +45,12 @@ class RestrictedExecutor:
         self._alpha_research = AlphaResearchExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds
         )
+        self._alpha_discovery = AlphaDiscoveryExecutor(
+            codex_home=codex_home,
+            codex_model=codex_model,
+            timeout_seconds=engineering_timeout_seconds,
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+        )
 
     async def execute(
         self,
@@ -59,6 +66,7 @@ class RestrictedExecutor:
             "research_experiment": self._research,
             "research_memory_sync": self._memory_sync,
             "alpha_research_execution": self._alpha_research,
+            "alpha_discovery": self._alpha_discovery,
         }
         executor = executors[task.task_type]
         if executor is None:

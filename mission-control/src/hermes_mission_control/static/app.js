@@ -1329,6 +1329,7 @@ function renderResearch() {
   const datasetManifests = state.dashboard.research_dataset_manifests || [];
   const datasetBuilds = state.dashboard.research_dataset_builds || [];
   const alphaCampaigns = state.dashboard.alpha_campaigns || [];
+  const alphaDiscovery = state.dashboard.alpha_discovery || { mandates: [], cycles: [], throughput: {}, stalls: [], agents: [] };
   const dossiers = state.dashboard.evidence_dossiers || [];
   const lifecycleStates = state.dashboard.evidence_lifecycle_states || [];
   const blockedRegister = state.dashboard.blocked_artifact_register || { total: 0, counts_by_classification: {}, items: [] };
@@ -1432,6 +1433,24 @@ function renderResearch() {
   `).join("") : empty("No supervised daily research cycle has been scheduled.");
   document.querySelectorAll("[data-research-cycle-decision]").forEach((button) => {
     button.addEventListener("click", () => decideResearchCycle(button));
+  });
+  const activeMandates = (alphaDiscovery.mandates || []).filter((item) => item.status === "active");
+  document.getElementById("alpha-discovery-status").textContent = `${activeMandates.length} active mandate${activeMandates.length === 1 ? "" : "s"} · ${(alphaDiscovery.stalls || []).length} stalls`;
+  const throughput = alphaDiscovery.throughput || {};
+  const throughputKeys = ["generated", "rejected", "duplicated", "accepted", "compiled", "tested", "falsified", "invalid", "failed", "awaiting_engineering", "shadow_candidates"];
+  document.getElementById("alpha-discovery-throughput").innerHTML = throughputKeys.map((key) => `<div class="machine-cell"><div><strong>${throughput[key] || 0}</strong><small>${escapeHtml(humanize(key))}</small></div></div>`).join("");
+  document.getElementById("alpha-discovery-mandates").innerHTML = (alphaDiscovery.mandates || []).length ? alphaDiscovery.mandates.map((mandate) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(mandate.mandate_key)} · v${escapeHtml(mandate.version)}</strong><div class="entity-meta"><span>${mandate.cycle_count} cycles</span><span>${mandate.hypothesis_count} hypotheses</span><span>${mandate.trial_count} trials</span><span>Expires ${formatDate(mandate.valid_until)}</span><span class="mono">${shortHash(mandate.mandate_digest)}</span></div><p>${escapeHtml(mandate.objective)}</p></div><div class="entity-side">${mandate.status === "awaiting_approval" ? `<button class="primary compact" data-alpha-mandate-approve="${mandate.id}">Approve week</button>` : ""}${statusBadge(mandate.status)}</div></article>`).join("") : empty("No bounded weekly research mandate has been registered.");
+  document.getElementById("alpha-discovery-agents").innerHTML = (alphaDiscovery.agents || []).length ? alphaDiscovery.agents.map((agent) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(agent.slug))}</strong><div class="entity-meta"><span>${escapeHtml(humanize(agent.status))}</span><span>Heartbeat ${relativeTime(agent.last_heartbeat_at)}</span></div></div>${statusBadge(agent.presence)}</article>`).join("") : empty("The supervised RI director and senior researcher have not been deployed.");
+  document.getElementById("alpha-discovery-cycles").innerHTML = (alphaDiscovery.cycles || []).length ? alphaDiscovery.cycles.slice(0, 12).map((cycle) => `<article class="entity-row"><div class="entity-primary"><strong>Cycle ${cycle.ordinal} · ${escapeHtml(humanize(cycle.phase))}</strong><div class="entity-meta"><span>Next: ${escapeHtml(humanize(cycle.next_action))}</span><span>${cycle.metrics?.generated || 0} generated</span><span>${cycle.metrics?.rejected || 0} rejected</span><span>Heartbeat ${relativeTime(cycle.heartbeat_at)}</span></div></div>${statusBadge(cycle.status)}</article>`).join("") : empty("No ALPHA-004 discovery cycle has started.");
+  document.querySelectorAll("[data-alpha-mandate-approve]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const mandate = (alphaDiscovery.mandates || []).find((item) => item.id === button.dataset.alphaMandateApprove);
+      if (!mandate) return;
+      const reason = window.prompt("Approval rationale for this exact seven-day no-capital mandate:");
+      if (!reason || reason.trim().length < 10) return toast("A substantive approval rationale is required.");
+      await mutate(`/api/research/alpha-discovery/mandates/${mandate.id}/approve`, { expected_mandate_digest: mandate.mandate_digest, reason: reason.trim() }, "Weekly no-capital research mandate approved.");
+      await loadDashboard();
+    });
   });
   const activeCampaigns = alphaCampaigns.filter((item) => item.status === "running");
   document.getElementById("alpha-campaign-count").textContent = `${activeCampaigns.length} active · ${alphaCampaigns.length} total`;

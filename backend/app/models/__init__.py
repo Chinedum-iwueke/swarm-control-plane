@@ -12,6 +12,12 @@ from app.models.alpha_campaign import (
     AlphaCampaignAttempt,
     AlphaCampaignEvent,
 )
+from app.models.alpha_discovery import (
+    AlphaDiscoveryCandidate,
+    AlphaDiscoveryCycle,
+    AlphaDiscoveryEvent,
+    AlphaResearchMandate,
+)
 from app.models.authority import (
     AuthorityDecisionRecord,
     AuthorityDelegation,
@@ -232,6 +238,10 @@ __all__ = [
     "AlphaCampaign",
     "AlphaCampaignAttempt",
     "AlphaCampaignEvent",
+    "AlphaDiscoveryCandidate",
+    "AlphaDiscoveryCycle",
+    "AlphaDiscoveryEvent",
+    "AlphaResearchMandate",
     "ApprovalEvent",
     "Artifact",
     "AuthorityDecisionRecord",

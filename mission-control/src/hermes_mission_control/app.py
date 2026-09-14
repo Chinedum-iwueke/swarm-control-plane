@@ -159,6 +159,13 @@ def create_app(
     async def scientific_adjudication(request: Request) -> dict:
         return await client.adjudicate_scientific_representation(await request.json())
 
+    @app.post(
+        "/api/research/alpha-discovery/mandates/{mandate_id}/approve",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def approve_alpha_mandate(mandate_id: str, request: Request) -> dict:
+        return await client.approve_alpha_mandate(mandate_id, await request.json())
+
     @app.get("/api/research/scientific-fidelity/review-context/{representation_id}")
     async def scientific_review_context(representation_id: str) -> dict:
         return await client.scientific_review_context(representation_id)
