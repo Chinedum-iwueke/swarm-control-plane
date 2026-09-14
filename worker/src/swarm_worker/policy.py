@@ -262,6 +262,7 @@ class ValidatedTaskPolicy(BaseModel):
         | ResearchExperimentContract
         | ResearchMemorySyncContract
         | AlphaResearchExecutionContract
+        | AlphaDiscoveryContract
     )
     workflow: WorkflowDefinition
 
