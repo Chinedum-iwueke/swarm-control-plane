@@ -32,15 +32,17 @@ descriptive statements, missing requested columns, missing volume/depth evidence
 weak liquidity scope and semantic
 duplicates are retained as rejected candidates.
 
-Source replay makes an equation locatable and explainable, but does not make it
-calculation-bearing while RI-014 remains unqualified. Campaign use requires an
-immutable deterministic or independent verification receipt. LLM output is never
-its own verification receipt. Pending, replay-only, invented or source-mismatched
-expressions are rejected from the campaign.
+Source replay makes an equation locatable and explainable. RI-014D automatically
+requests exact, cached assurance when a candidate needs it. Campaign use requires
+the resulting source-, expression- and level-bound deterministic or independent
+receipt. LLM output is never its own verification receipt. Pending, replay-only,
+invented, weaker or source-mismatched receipts are rejected from the campaign.
 
 ## Production sequence
 
-1. Deploy migration `f9c5d7e81a40` and rebuild the VM2 API.
+1. Deploy through migration `a0d6e8f92b51` and rebuild the VM2 API. Assert both
+   `/v1/research/alpha-discovery/mandates` and
+   `/v1/research/scientific-fidelity/assurance/overview` exist in OpenAPI first.
 2. Install `invariance-swarm-alpha-discovery-director.service` on VM2.
 3. Bootstrap the `intelligence` and `researcher` profiles on VM1, then install
    their two systemd services.

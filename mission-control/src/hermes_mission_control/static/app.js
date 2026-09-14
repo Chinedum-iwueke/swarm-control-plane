@@ -1339,6 +1339,7 @@ function renderResearch() {
   const scientificReviewQueue = state.dashboard.scientific_review_queue || [];
   const scientificBenchmarks = state.dashboard.scientific_benchmarks || [];
   const mathematicsCapabilities = state.dashboard.mathematics_capabilities || [];
+  const scientificAssurance = state.dashboard.scientific_assurance || { counts: {}, requests: [], receipts: [] };
   const intelligenceEvaluation = state.dashboard.intelligence_evaluation || { status: "not_demonstrated", domains: {}, limitations: [] };
   const derivedState = state.dashboard.derived_state || { current: false, pending_changes: 0, retrieval: { stale: true }, graph: { stale: true }, latest_run: null };
   const lifecycleItems = state.dashboard.institutional_lifecycles?.items || [];
@@ -1358,6 +1359,10 @@ function renderResearch() {
     <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.benchmark_version)}</strong><div class="entity-meta"><span>${item.counts.adjudicated || 0}/${item.counts.sampled || 0} adjudicated</span><span>${item.counts.conflicted || 0} conflicts</span><span class="mono">${shortHash(item.sample_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : "";
   document.getElementById("mathematics-capabilities").innerHTML = mathematicsCapabilities.length ? mathematicsCapabilities.map((item) => `
     <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(item.agent_role))}</strong><div class="entity-meta"><span>${item.demonstrated_tasks.length} demonstrated tasks</span><span>${item.limitations.length} limitations</span><span class="mono">${shortHash(item.record_digest)}</span></div></div>${statusBadge(item.status)}</article>`).join("") : empty("No agent mathematics capability has been independently demonstrated yet.");
+  const assuranceCounts = scientificAssurance.counts || {};
+  document.getElementById("scientific-assurance-status").innerHTML = statusBadge(((assuranceCounts.needs_attention || 0) + (assuranceCounts.abstained || 0)) > 0 ? "needs_attention" : "operational");
+  document.getElementById("scientific-assurance").innerHTML = (scientificAssurance.requests || []).length ? (scientificAssurance.requests || []).slice(0, 12).map((item) => `
+    <article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.purpose)}</strong><div class="entity-meta"><span>${escapeHtml(humanize(item.required_level))}</span><span class="mono">${shortHash(item.expression_digest)}</span><span>${relativeTime(item.created_at)}</span></div><p>${escapeHtml(item.expression)}</p></div>${statusBadge(item.status)}</article>`).join("") : empty("No equation has required just-in-time assurance yet.");
   const intelligenceDomains = Object.entries(intelligenceEvaluation.domains || {});
   document.getElementById("intelligence-evaluation-status").innerHTML = statusBadge(intelligenceEvaluation.status);
   document.getElementById("intelligence-evaluation").innerHTML = `

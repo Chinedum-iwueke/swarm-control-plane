@@ -4,17 +4,25 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
 from app.schemas.scientific_fidelity import (
     FidelityManifestCreate,
     MathematicsCapabilityCreate,
     MathematicsContextPackRequest,
     ScientificAdjudicationCreate,
+    ScientificAssuranceRequestCreate,
     ScientificBenchmarkCreate,
     ScientificCalculationCreate,
     ScientificCorrectionCreate,
     ScientificRepresentationCreate,
 )
 from app.scientific_fidelity_pilot import _region, _table_grid, _table_region
+from app.services.scientific_assurance import (
+    assurance_decision,
+    expression_digest,
+    receipt_matches_equation,
+    request_assurance,
+)
 from app.services.scientific_fidelity import (
     ScientificFidelityConflict,
     _evaluate_tree,
@@ -269,6 +277,102 @@ def test_openapi_exposes_fidelity_review_and_manifest_contracts():
     assert "/v1/research/scientific-fidelity/mathematics/context-packs" in paths
     assert "/v1/research/scientific-fidelity/mathematics/calculations" in paths
     assert "/v1/research/scientific-fidelity/mathematics/capabilities" in paths
+    assert "/v1/research/scientific-fidelity/assurance/requests" in paths
+    assert "/v1/research/scientific-fidelity/assurance/receipts" in paths
+    assert "/v1/research/scientific-fidelity/assurance/overview" in paths
+
+
+def test_assurance_expression_digest_preserves_mathematical_symbols():
+    assert expression_digest("rₜ = π / σₜ") == expression_digest(" rₜ   =  π / σₜ ")
+    assert expression_digest("rₜ = π / σₜ") != expression_digest("rₜ = p / σₜ")
+    assert expression_digest("x $= y") != expression_digest("x = y")
+
+
+def test_assurance_rejects_expression_not_bound_to_representation():
+    source_id = uuid.uuid4()
+    representation = SimpleNamespace(
+        scientific_type="equation",
+        normalized_content="rₜ = π / σₜ",
+        source_object_id=source_id,
+    )
+    source = SimpleNamespace(object_type="scientific_object")
+    db = MagicMock()
+    db.get.side_effect = [representation, source]
+    with pytest.raises(ScientificFidelityConflict, match="does not match"):
+        request_assurance(
+            db,
+            ScientificAssuranceRequestCreate(
+                representation_id=uuid.uuid4(),
+                expression="rₜ = p / σₜ",
+                purpose="Test an exact source-bound calculation.",
+                requested_by="test-suite",
+            ),
+        )
+
+
+def test_assurance_receipt_is_bound_to_source_expression_and_level():
+    source_id = uuid.uuid4()
+    expression = "rₜ = π / σₜ"
+    receipt = SimpleNamespace(
+        status="verified",
+        source_object_id=source_id,
+        source_content_digest="a" * 64,
+        expression_digest=expression_digest(expression),
+        assurance_level="machine_verified",
+    )
+    db = MagicMock()
+    db.scalar.return_value = receipt
+    assert receipt_matches_equation(
+        db,
+        "b" * 64,
+        source_object_id=source_id,
+        source_content_digest="a" * 64,
+        expression=expression,
+        required_level="machine_verified",
+    )
+    assert not receipt_matches_equation(
+        db,
+        "b" * 64,
+        source_object_id=source_id,
+        source_content_digest="a" * 64,
+        expression="rₜ = p / σₜ",
+        required_level="machine_verified",
+    )
+    assert not receipt_matches_equation(
+        db,
+        "b" * 64,
+        source_object_id=source_id,
+        source_content_digest="a" * 64,
+        expression=expression,
+        required_level="independently_verified",
+    )
+
+
+def test_assurance_decision_automates_verification_abstention_and_escalation():
+    checks = {"source_bound": True, "ast_complete": True}
+    parser_attempt = SimpleNamespace(
+        outcome="passed",
+        independent_of_representation=False,
+        independence_receipt_digest=None,
+    )
+    assert assurance_decision("machine_verified", checks, [parser_attempt]) == (
+        "verified",
+        "machine_verified",
+    )
+    assert assurance_decision(
+        "independently_verified", checks, [parser_attempt]
+    ) == ("awaiting_independent_attempt", "unverified")
+    mismatch = SimpleNamespace(
+        outcome="mismatch",
+        independent_of_representation=False,
+        independence_receipt_digest="a" * 64,
+    )
+    assert assurance_decision(
+        "independently_verified", checks, [parser_attempt, mismatch]
+    ) == ("abstained", "unverified")
+    assert assurance_decision(
+        "machine_verified", {"source_bound": False}, [parser_attempt]
+    ) == ("abstained", "unverified")
 
 
 def test_producer_cannot_self_adjudicate():
@@ -449,6 +553,7 @@ def test_calculation_rejects_material_uncertainty():
     request = ScientificCalculationCreate(
         representation_id=representation_id,
         context_pack_digest="b" * 64,
+        assurance_receipt_digest="c" * 64,
         substitutions={},
         executed_by="math-tool",
     )

@@ -69,7 +69,10 @@ chartered RI and senior-research agents, weekly digest-bound no-capital mandates
 DATA-002/003 admission, predictive/falsifiability rejection, DISC-009 replenishment,
 BT-009 campaign creation, outcome feedback, and Mission Control throughput/stall
 visibility. LLM-assisted equations remain source-bound and cannot self-certify.
-Production exit still requires migration `f9c5d7e81a40`, three active supervised
+RI-014D makes equation use just-in-time and cached: two parser families plus
+deterministic token, AST and source checks can issue a machine receipt, while
+stronger independence requires an AGT-006 receipt and disagreements fail closed
+visibly. Production exit requires migration `a0d6e8f92b51`, three active supervised
 services, one approved weekly mandate and a terminal real-data campaign attempt.
 
 Exit: a fixed discovery budget produces a complete searchable family including every

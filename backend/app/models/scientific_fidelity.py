@@ -198,6 +198,7 @@ class ScientificCalculationReceipt(Base):
         index=True,
     )
     context_pack_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    assurance_receipt_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     expression_tree: Mapped[dict] = mapped_column(JSONB, nullable=False)
     substitutions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     units: Mapped[list] = mapped_column(JSONB, nullable=False)
@@ -249,6 +250,107 @@ class MathematicsCapabilityProfile(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     record_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     evaluated_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ScientificAssuranceRequest(Base):
+    __tablename__ = "scientific_assurance_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    representation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_representations.id"),
+        nullable=False,
+        index=True,
+    )
+    expression: Mapped[str] = mapped_column(Text, nullable=False)
+    expression_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    required_level: Mapped[str] = mapped_column(String(40), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ScientificAssuranceAttempt(Base):
+    __tablename__ = "scientific_assurance_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "request_id",
+            "provider_family",
+            "extractor_version",
+            name="uq_scientific_assurance_attempt_provider",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_assurance_requests.id"),
+        nullable=False,
+        index=True,
+    )
+    provider_family: Mapped[str] = mapped_column(String(100), nullable=False)
+    extractor_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    produced_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    independence_receipt_digest: Mapped[str | None] = mapped_column(String(64))
+    independent_review_digest: Mapped[str | None] = mapped_column(String(64))
+    independent_of_representation: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    semantic_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    checks: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    attempt_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ScientificAssuranceReceipt(Base):
+    __tablename__ = "scientific_assurance_receipts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_assurance_requests.id"),
+        unique=True,
+        nullable=False,
+    )
+    representation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scientific_representations.id"),
+        nullable=False,
+        index=True,
+    )
+    source_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_evidence_objects.id"),
+        nullable=False,
+        index=True,
+    )
+    source_content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_region_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    expression_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    assurance_level: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    deterministic_checks: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    attempt_digests: Mapped[list] = mapped_column(JSONB, nullable=False)
+    limitations: Mapped[list] = mapped_column(JSONB, nullable=False)
+    claim_boundary: Mapped[str] = mapped_column(Text, nullable=False)
+    record_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(150), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

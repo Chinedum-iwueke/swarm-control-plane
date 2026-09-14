@@ -224,6 +224,7 @@ class MathematicsContextPackRequest(StrictModel):
 class ScientificCalculationCreate(StrictModel):
     representation_id: UUID
     context_pack_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    assurance_receipt_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     substitutions: dict[str, float]
     executed_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
 
@@ -233,6 +234,7 @@ class ScientificCalculationResponse(StrictModel):
     id: UUID
     representation_id: UUID
     context_pack_digest: str
+    assurance_receipt_digest: str
     expression_tree: dict
     substitutions: dict
     units: list
@@ -268,4 +270,87 @@ class MathematicsCapabilityResponse(StrictModel):
     status: str
     record_digest: str
     evaluated_by: str
+    created_at: datetime
+
+
+AssuranceLevel = Literal["machine_verified", "independently_verified"]
+
+
+class ScientificAssuranceRequestCreate(StrictModel):
+    representation_id: UUID
+    expression: str = Field(min_length=1, max_length=4000)
+    purpose: str = Field(min_length=10, max_length=2000)
+    required_level: AssuranceLevel = "machine_verified"
+    policy_version: str = Field(
+        default="ri014d-assurance-v1.0.0", min_length=1, max_length=80
+    )
+    requested_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+
+
+class ScientificAssuranceRequestResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    representation_id: UUID
+    expression: str
+    expression_digest: str
+    purpose: str
+    required_level: str
+    policy_version: str
+    status: str
+    cache_key: str
+    requested_by: str
+    created_at: datetime
+
+
+class ScientificAssuranceAttemptCreate(StrictModel):
+    provider_family: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=100
+    )
+    extractor_version: str = Field(min_length=1, max_length=100)
+    produced_by: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+    independence_receipt_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    independent_review_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    content: str = Field(min_length=1, max_length=8000)
+    semantic_payload: dict = Field(default_factory=dict)
+
+
+class ScientificAssuranceAttemptResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    request_id: UUID
+    provider_family: str
+    extractor_version: str
+    produced_by: str
+    independence_receipt_digest: str | None
+    independent_review_digest: str | None
+    independent_of_representation: bool
+    content: str
+    semantic_payload: dict
+    checks: dict
+    outcome: str
+    attempt_digest: str
+    created_at: datetime
+
+
+class ScientificAssuranceReceiptResponse(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    request_id: UUID
+    representation_id: UUID
+    source_object_id: UUID
+    source_content_digest: str
+    source_region_digest: str
+    expression_digest: str
+    assurance_level: str
+    status: str
+    deterministic_checks: dict
+    attempt_digests: list
+    limitations: list
+    claim_boundary: str
+    record_digest: str
+    issued_by: str
     created_at: datetime

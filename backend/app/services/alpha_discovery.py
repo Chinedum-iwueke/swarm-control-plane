@@ -423,6 +423,7 @@ def _candidate_reasons(
     cycle: AlphaDiscoveryCycle,
     mandate: AlphaResearchMandate,
     prior_questions: list[str],
+    db: Session | None = None,
 ) -> tuple[list[str], int | None]:
     reasons: list[str] = []
     question = " ".join(candidate.question.lower().split())
@@ -470,6 +471,28 @@ def _candidate_reasons(
             ):
                 reasons.append("equation_source_replay_mismatch")
             reasons.append("equation_verification_required_for_campaign")
+        if equation.verification in {
+            "deterministically_verified",
+            "independently_verified",
+        }:
+            valid_receipt = False
+            if db is not None and equation.verification_receipt_digest:
+                from app.services.scientific_assurance import receipt_matches_equation
+
+                valid_receipt = receipt_matches_equation(
+                    db,
+                    equation.verification_receipt_digest,
+                    source_object_id=equation.source_object_id,
+                    source_content_digest=equation.source_content_digest,
+                    expression=equation.expression,
+                    required_level=(
+                        "independently_verified"
+                        if equation.verification == "independently_verified"
+                        else "machine_verified"
+                    ),
+                )
+            if not valid_receipt:
+                reasons.append("equation_assurance_receipt_invalid_or_unbound")
     binding_index = None
     for item in cycle.context.get("datasets", []):
         required_fields = set(candidate.data.required_fields)
@@ -518,8 +541,30 @@ def _materialize_candidates(
     for raw_candidate in raw[: mandate.budget["maximum_candidates_per_cycle"]]:
         try:
             candidate = AlphaPredictiveCandidate.model_validate(raw_candidate)
+            assured_equations = []
+            for equation in candidate.equations:
+                if equation.verification == "source_replayed":
+                    from app.services.scientific_assurance import assure_source_equation
+
+                    receipt = assure_source_equation(
+                        db,
+                        source_object_id=equation.source_object_id,
+                        source_content_digest=equation.source_content_digest,
+                        expression=equation.expression,
+                        purpose=f"ALPHA-004 candidate {candidate.candidate_key}",
+                        requested_by="alpha-continuous-director",
+                    )
+                    if receipt:
+                        equation = equation.model_copy(
+                            update={
+                                "verification": "deterministically_verified",
+                                "verification_receipt_digest": receipt.record_digest,
+                            }
+                        )
+                assured_equations.append(equation)
+            candidate = candidate.model_copy(update={"equations": assured_equations})
             reasons, binding_index = _candidate_reasons(
-                candidate, cycle, mandate, prior_questions
+                candidate, cycle, mandate, prior_questions, db
             )
             document = candidate.model_dump(mode="json") | {
                 "dataset_binding_index": binding_index

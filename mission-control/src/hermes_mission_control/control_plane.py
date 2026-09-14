@@ -168,6 +168,15 @@ class ControlPlaneClient:
         mathematics_capabilities = await self._optional_collection(
             "/v1/research/scientific-fidelity/mathematics/capabilities"
         )
+        scientific_assurance = await self._optional_object(
+            "/v1/research/scientific-fidelity/assurance/overview",
+            {
+                "counts": {},
+                "requests": [],
+                "receipts": [],
+                "claim_boundary": "Scientific assurance service is unavailable.",
+            },
+        )
         intelligence_evaluation = await self._optional_object(
             "/v1/research/intelligence-evaluation/readiness",
             {
@@ -230,6 +239,7 @@ class ControlPlaneClient:
             "scientific_review_queue": scientific_review_queue,
             "scientific_benchmarks": scientific_benchmarks,
             "mathematics_capabilities": mathematics_capabilities,
+            "scientific_assurance": scientific_assurance,
             "intelligence_evaluation": intelligence_evaluation,
             "derived_state": derived_state,
         }

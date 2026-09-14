@@ -1,15 +1,17 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
+
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
 )
 from app.services.alpha_discovery import _candidate_reasons
-from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
@@ -233,3 +235,48 @@ def test_source_replayed_equation_cannot_drive_campaign_while_fidelity_is_unqual
     mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
     reasons, _ = _candidate_reasons(value, cycle, mandate, [])
     assert "equation_verification_required_for_campaign" in reasons
+
+
+def test_verified_equation_requires_a_bound_assurance_receipt():
+    base, object_id = candidate()
+    raw = base.model_dump(mode="json")
+    raw["equations"] = [
+        {
+            "expression": "r_t = p_t / p_{t-1} - 1",
+            "meaning": "The one-period return used as the predictive target.",
+            "source_object_id": str(object_id),
+            "source_content_digest": DIGEST,
+            "source_excerpt": "r_t = p_t / p_{t-1} - 1",
+            "verification": "deterministically_verified",
+            "verification_receipt_digest": "b" * 64,
+        }
+    ]
+    value = AlphaPredictiveCandidate.model_validate(raw)
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [
+                    {
+                        "object_id": str(object_id),
+                        "content_digest": DIGEST,
+                        "text": "r_t = p_t / p_{t-1} - 1",
+                    }
+                ]
+            },
+            "datasets": [
+                {
+                    "binding_index": 0,
+                    "venue": "bybit",
+                    "instruments": ["BTCUSDT"],
+                    "timeframe": "1m",
+                    "rows": 10_000,
+                    "output_columns": ["timestamp", "close", "volume"],
+                }
+            ],
+        }
+    )
+    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
+    db = MagicMock()
+    db.scalar.return_value = None
+    reasons, _ = _candidate_reasons(value, cycle, mandate, [], db)
+    assert "equation_assurance_receipt_invalid_or_unbound" in reasons

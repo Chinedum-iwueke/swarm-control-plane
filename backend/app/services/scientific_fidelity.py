@@ -890,6 +890,20 @@ def calculate_scientific_expression(
     tree = record.semantic_payload.get("expression_tree")
     if not tree or any(item.get("material") for item in record.uncertainties):
         raise ScientificFidelityConflict("Calculation dependencies are unresolved.")
+    from app.services.scientific_assurance import receipt_matches_equation
+
+    source = db.get(CanonicalEvidenceObject, record.source_object_id)
+    if source is None or not receipt_matches_equation(
+        db,
+        payload.assurance_receipt_digest,
+        source_object_id=record.source_object_id,
+        source_content_digest=source.content_digest,
+        expression=record.normalized_content,
+        required_level="machine_verified",
+    ):
+        raise ScientificFidelityConflict(
+            "Calculation requires an exact, source-bound RI-014D assurance receipt."
+        )
     try:
         substitutions = {
             key: Decimal(str(value)) for key, value in payload.substitutions.items()
@@ -904,6 +918,7 @@ def calculate_scientific_expression(
     material = {
         "representation_id": str(record.id),
         "context_pack_digest": payload.context_pack_digest,
+        "assurance_receipt_digest": payload.assurance_receipt_digest,
         "expression_tree": tree,
         "substitutions": {k: str(v) for k, v in substitutions.items()},
         "units": record.semantic_payload.get("units", []),

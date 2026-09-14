@@ -39,3 +39,22 @@ structural block matching, and includes CFF Type1 font decoding support. The
 live pilot requires equation, table and figure strata before comparing semantic
 tokens, cell grids and captions. Qualification still requires the independent
 adjudication benchmark; pilot acceptance rates are diagnostic only.
+
+## RI-014D just-in-time assurance
+
+Deploy through migration `a0d6e8f92b51`. RI-014D evaluates only an equation an
+agent intends to use. It first reuses an exact cached receipt. Otherwise it binds
+the request to the canonical scientific object, runs independent parser outputs
+through token and AST checks, and emits `machine_verified` only when every
+deterministic gate agrees. Requests that require an independent model remain
+`awaiting_independent_attempt`; discrepancies become `needs_attention`.
+
+Independent attempts must carry an AGT-006 independence receipt whose subject
+digest is the assurance request cache key. Run the live bounded proof with:
+
+```bash
+docker compose exec -T api python -m app.ri014d_pilot
+```
+
+Rollback stops new assurance requests and downgrades `a0d6e8f92b51`; existing
+representation, adjudication and benchmark evidence remains immutable.
