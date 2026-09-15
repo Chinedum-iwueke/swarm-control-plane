@@ -75,9 +75,19 @@ class ProposalEngineeringMissionContract(StrictModel):
     def bounded_evidence(cls, value):
         if len(value.encode()) > 48000:
             raise ValueError("engineering evidence exceeds 48000 bytes")
-        parsed = json.loads(value)
+        try:
+            parsed = json.loads(value)
+        except RecursionError as error:
+            raise ValueError("engineering evidence nesting exceeds safe limits") from error
         if not isinstance(parsed, dict) or len(parsed) > 20:
             raise ValueError("engineering evidence must be a bounded JSON object")
+        pending = [(parsed, 0)]
+        while pending:
+            node, depth = pending.pop()
+            if depth > 32:
+                raise ValueError("engineering evidence nesting exceeds safe limits")
+            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            pending.extend((child, depth + 1) for child in children)
         json.dumps(parsed, allow_nan=False)
         return value
 

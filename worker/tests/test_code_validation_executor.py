@@ -307,7 +307,8 @@ async def test_timeout_terminates_child_process_group(
     """
     (workspace.repository / "test_child.py").write_text(textwrap.dedent(test_code))
 
-    result = await executor(step_timeout_seconds=2.0).execute(
+    # Allow pytest startup under load before exercising process-group timeout.
+    result = await executor(step_timeout_seconds=5.0).execute(
         task=make_task(),
         workflow=make_workflow(("run-tests", ["pytest", "-q"])),
         workspace=workspace,

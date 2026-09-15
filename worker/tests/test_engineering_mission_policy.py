@@ -115,7 +115,9 @@ def test_scientific_evidence_is_optional_and_bounded_across_consumers():
             model.model_validate(oversized)
 
 
-@pytest.mark.parametrize("evidence", ["not-json", "[]", '{"x": NaN}'])
+@pytest.mark.parametrize("evidence", ["not-json", "[]", '{"x": NaN}',
+    '{"x":' + '[' * 40 + '0' + ']' * 40 + '}',
+    '{"x":' + '[' * 1500 + '0' + ']' * 1500 + '}'])
 def test_scientific_evidence_rejects_invalid_or_non_object_json(evidence):
     from swarm_worker.models import ProposalEngineeringMissionContract
     document = dict(contract().model_dump(), evidence_context=evidence)

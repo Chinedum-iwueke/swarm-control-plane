@@ -604,11 +604,16 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     db.get.return_value.candidate_digest = "8" * 64
     with pytest.raises(HTTPException, match="absent or changed"):
         service._create_strategy_engineering_task(db, record, source, {})
+    db.get.return_value.candidate_digest = "7" * 64
+    db.get.return_value.question = "Does a different signal predict a different target?"
+    with pytest.raises(HTTPException, match="absent or changed"):
+        service._create_strategy_engineering_task(db, record, source, {})
     assert len(persisted) == 1
 
     from app.schemas.proposal import ProposalEngineeringMissionContract
     from pydantic import ValidationError
     for bad_evidence in ("[]", "not-json", '{"x": NaN}',
+                         '{"x":' + '[' * 1500 + '0' + ']' * 1500 + '}',
                          json.dumps({"text": "x" * 48001})):
         document = dict(task.input_contract, evidence_context=bad_evidence)
         with pytest.raises(ValidationError):

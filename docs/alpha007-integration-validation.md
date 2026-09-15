@@ -125,3 +125,13 @@ task scopes and approvals are not rewritten. Focused campaign tests passed 20,
 proposal contracts eight, worker engineering/planner tests 30; lint passed.
 This handoff source pass is not deployed and does not establish that a new native
 strategy has been generated, qualified or backtested.
+
+Independent review found excessive JSON nesting could escape normal contract
+validation as RecursionError. All three consumers now reject decoding recursion
+and depth beyond 32 with controlled validation errors before re-encoding. Changed
+question and deep-JSON regressions pass: focused engineering/planner suite 32,
+strengthened backend engineering handoff one. The full backend suite before this
+review correction passed 852 with one optional skip. A repeated unchanged
+process-group test failed before child startup under concurrent test load; its
+test-only startup budget is now five seconds while still asserting actual timeout
+and child termination. No production timeout or safety threshold was changed.
