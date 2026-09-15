@@ -108,6 +108,12 @@ def _event(
     payload: dict,
     cycle: AlphaDiscoveryCycle | None = None,
 ) -> None:
+    db.scalar(
+        select(AlphaResearchMandate.id)
+        .where(AlphaResearchMandate.id == mandate.id)
+        .with_for_update()
+    )
+    db.flush()
     prior = db.scalar(
         select(AlphaDiscoveryEvent)
         .where(AlphaDiscoveryEvent.mandate_id == mandate.id)
