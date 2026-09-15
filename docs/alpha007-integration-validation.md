@@ -102,3 +102,12 @@ this correction passed 852 backend tests (one optional database skip) and 301
 worker tests. Corrected planner tests passed 17 cases. The same exact inventory
 unit remains live, with progress through the canonical Binance partitions; no
 scan restart, complete inventory or concurrent scientific execution is inferred.
+
+PR #270 merged and deployed on VM2 at `40ca4c759`; the running container confirms
+the `all_eligible` intake default. All eight CI gates passed. Final backend suite
+passed 852 tests with one optional skip; final worker suite passed 302. An earlier
+concurrent worker/backend run hit an unchanged two-second child-start timeout test
+before its child marker existed; the isolated test and subsequent full worker run
+passed. The exact native inventory unit remains active across this API deployment.
+Long-running VM1 planner/researcher processes still require a controlled restart
+before the new prompt can be claimed loaded in those service processes.
