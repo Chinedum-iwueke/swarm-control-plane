@@ -38,3 +38,17 @@ terminal transitions. Fresh verification: 834 backend tests passed (one optional
 database skip); 19 native inventory/admission/producer tests passed.
 Hermes PR #268 and Bulletproof PR #307 are open with CI running. No production
 scan, quality admission, expanded execution scope or backtest is claimed.
+
+Production pass: Hermes PR #268 merged at e9ef1696e and VM2 API rebuilt/recreated.
+Running image sha256:0606f0664916a02c0fbd4fb0c1e6f0e133ffec53d85ed2064e4f5a529b886353
+was healthy and exposed the scoped inventory route. Real operation
+d3dfa5fd-924a-4574-a301-3aa005240686 acknowledged before its scanner started;
+live API inspection confirmed heartbeat, PID and more than 27,000 accounted
+objects. Exact filesystem counts revealed 1,846,467 raw files and 2,769 canonical
+files, exceeding the 250,000-object single-envelope contract. The operator stopped
+the attempt explicitly for this engineering mismatch, not an observation timeout.
+The ledger retained its terminal failed receipt at 2026-09-15T21:03:46.496137Z and
+process inspection confirmed both supervisor and scanner were gone. No complete
+inventory publication occurred. Native bounded 10,000-object shards and window
+quality are now under implementation; shard custody must be verified before the
+next full scan. Initial combined native inventory/quality/admission tests: 29 passed.
