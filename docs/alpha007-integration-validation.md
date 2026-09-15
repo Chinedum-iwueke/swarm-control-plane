@@ -135,3 +135,24 @@ review correction passed 852 with one optional skip. A repeated unchanged
 process-group test failed before child startup under concurrent test load; its
 test-only startup budget is now five seconds while still asserting actual timeout
 and child termination. No production timeout or safety threshold was changed.
+
+The corrected source pass is pushed as PR #271; independent review confirms the
+recursion and question-mismatch findings closed. Fresh full suites passed 852
+backend tests (one optional skip) and 309 worker tests. All eight PR #271 CI checks passed; deployment remains pending.
+API ledger readback independently confirmed operation
+`1f24f55d-45c3-4eae-b3ac-6c129023f9c3`, run
+`0767bfbe-206f-4290-9900-f9771b7a83b8`, state running/phase inventory, heartbeat
+2026-09-15T21:39:47.392352Z and 652 processed files. Process inspection confirms
+the same supervisor/native child, not a restarted scan. Native template discovery
+and evaluator receipt binding remain next engineering work; no scientific
+independence is inferred solely from a hardcoded qualification gate.
+
+Native generated-card discovery is now implemented in the source worktree. It
+uses a normalized exact-question digest and source-reviewed JSON under
+`research/hypotheses/cards`, reuses the existing hypothesis-card validator, and
+rejects changed dataset/window bindings, self-confirmation, symlinks and excessive
+parameter budgets. Unrelated/non-BTC questions cannot fall back to the BTC
+template. Qualification variant counts are calculated from the real grid rather
+than reported as a constant. Twenty combined native assignment/card/capacity-grid
+tests passed in 64.89 seconds and lint passed. This source-only pass does
+not establish semantic correctness, independent review, deployment or execution.
