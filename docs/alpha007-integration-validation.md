@@ -176,3 +176,15 @@ provenance remain open; this source pass is not deployed and no genuine reviewer
 receipt or concurrent scientific run is inferred from unit fixtures. The same
 live inventory supervisor remains active, with progress reaching 1,600 objects;
 complete-root registration and quality admission are still pending.
+
+Automatic strategy review routing now creates an immutable route after exact
+approval binding, using the actual qualifier as primary and every historical
+producer as an exclusion. The existing router checks excluded producer
+agent/package/context conflicts and disclosed correlation ceilings before
+assignment. Missing reviewer capacity is retained as a blocked route with its
+reason in campaign planning state. Focused routing/campaign tests pass 49; the
+full backend suite passes 875 with one optional skip and two existing warnings.
+Lint passes. Actual supervised reviewer execution and blocked-route recovery
+after profile registration remain subsequent integration work, not demonstrated
+by this source-only routing pass. The original inventory child is verified live
+after 47 minutes, with no restart.

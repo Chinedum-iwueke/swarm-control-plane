@@ -230,6 +230,17 @@ def _route_profiles(
             identity = _profile_identity(profile)
             producer_corr = _correlation(producer, identity)
             reasons = list(producer_corr["hard_conflicts"])
+            excluded_corr = [
+                _correlation(item.model_dump(mode="json"), identity)
+                for item in payload.excluded_producers
+            ]
+            if any(item["hard_conflicts"] for item in excluded_corr):
+                reasons.append("excluded_producer_hard_conflict")
+            if any(
+                item["shared_dimension_count"] > payload.max_pairwise_shared_dimensions
+                for item in excluded_corr
+            ):
+                reasons.append("excluded_producer_correlation_ceiling")
             if review_kind not in profile.review_kinds:
                 reasons.append("review_kind")
             if not required_caps.issubset(set(profile.capabilities)):
@@ -258,6 +269,7 @@ def _route_profiles(
             )
             report = {
                 "producer": producer_corr,
+                "excluded_producers": excluded_corr,
                 "selected_evaluators": selected_corr,
                 "correlation_score": score,
                 "claim_boundary": "identity/package/context separation is enforced; shared provider/model/runtime/host dimensions are disclosed, not described as independent",
@@ -284,6 +296,9 @@ def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute
         policy={
             "required_review_kinds": payload.required_review_kinds,
             "required_capabilities": payload.required_capabilities,
+            "excluded_producers": [
+                item.model_dump(mode="json") for item in payload.excluded_producers
+            ],
             "max_pairwise_shared_dimensions": payload.max_pairwise_shared_dimensions,
             "hard_separation": ["agent_id", "package_digest", "context_group"],
             "disclosed_correlation": list(CORRELATION_DIMENSIONS),
@@ -515,8 +530,8 @@ def alpha_strategy_reviews_approved(
         )
     ):
         return False
-    if qualifier_identity is not None:
-        if qualifier_identity not in excluded_identities or any(
+    if qualifier_identity is not None and (
+        qualifier_identity not in excluded_identities or any(
             qualifier_identity.get(key) != route.producer.get(key)
             for key in (
                 "agent_id",
@@ -527,8 +542,9 @@ def alpha_strategy_reviews_approved(
                 "model_family",
                 "runtime",
             )
-        ):
-            return False
+        )
+    ):
+        return False
     receipt = db.scalar(
         select(EvaluationIndependenceReceipt).where(
             EvaluationIndependenceReceipt.route_id == route.id

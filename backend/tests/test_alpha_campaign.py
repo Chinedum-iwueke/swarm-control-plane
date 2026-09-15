@@ -637,18 +637,34 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
             "agent_id": str(task.assigned_agent_id),
             "context_group": "compiler-test",
             "package_digest": "d" * 64,
+            "machine": "vm1",
+            "provider": "deterministic",
+            "model_family": "none",
+            "runtime": "python",
         },
     )
+    route_create = MagicMock(side_effect=lambda db, payload: SimpleNamespace(
+        id=uuid4(), subject_type=payload.subject_type,
+        subject_digest=payload.subject_digest, status="blocked",
+        blocked_reason={"category": "independent_evaluator_unavailable"},
+    ))
+    monkeypatch.setattr(service, "create_route", route_create)
     assert service._advance_governed_pipeline(db, record) is qualification
     if mutation:
         assert record.status == "needs_attention"
         assert record.next_action == "repair_qualification_approval_binding"
         create.assert_not_called()
+        route_create.assert_not_called()
         return
     assert record.phase == "independent_strategy_review"
     assert record.next_action == "route_independent_strategy_review"
     assert record.terminal_reason["subject"]["source_commit"] == COMMIT
     assert len(record.terminal_reason["subject_digest"]) == 64
+    route_create.assert_called_once()
+    routing = route_create.call_args.args[1]
+    assert len(routing.excluded_producers) == 2
+    assert routing.producer.agent_id == qualification.assigned_agent_id
+    assert record.terminal_reason["route_status"] == "blocked"
     create.assert_not_called()
 
 

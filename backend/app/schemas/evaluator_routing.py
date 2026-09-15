@@ -32,6 +32,7 @@ class EvaluationRouteCreate(BaseModel):
     subject_id: str = Field(min_length=1, max_length=150)
     subject_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     producer: ProducerIdentity
+    excluded_producers: list[ProducerIdentity] = Field(default_factory=list, max_length=10)
     required_review_kinds: list[str] = Field(min_length=1, max_length=10)
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
     max_pairwise_shared_dimensions: int = Field(default=4, ge=0, le=4)

@@ -333,6 +333,23 @@ def test_router_blocks_self_review_and_unavailable_independence() -> None:
     )
 
 
+def test_router_excludes_historical_drafter_from_both_review_kinds():
+    from app.schemas.evaluator_routing import ProducerIdentity
+
+    candidates = [
+        profile(TWO, "c" * 64, "old-draft", "statistical"),
+        profile(THREE, "d" * 64, "review", "adversarial"),
+    ]
+    excluded = ProducerIdentity(
+        actor=str(TWO), agent_id=TWO, package_digest="c" * 64,
+        context_group="old-draft", machine="vm1", provider="openai",
+        model_family="codex", runtime="codex-cli",
+    )
+    selected, blocked = _route_profiles(candidates, route(excluded_producers=[excluded]))
+    assert selected == []
+    assert "excluded_producer_hard_conflict" in blocked["excluded"][0]["reasons"]
+
+
 def test_router_enforces_pairwise_correlation_ceiling() -> None:
     profiles = [
         profile(TWO, "c" * 64, "stat-context", "statistical"),

@@ -34,9 +34,11 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
 )
+from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity
 from app.schemas.task import TaskCreate
 from app.services.evaluator_routing import (
     alpha_strategy_reviews_approved,
+    create_route,
     require_independence,
     task_producer_identity,
 )
@@ -944,7 +946,24 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         .order_by(EvaluationRoute.created_at.desc())
         .limit(1)
     )
-    if review_route is None or not alpha_strategy_reviews_approved(
+    if review_route is None:
+        routed_producers = [
+            ProducerIdentity(actor=identity["agent_id"], **identity)
+            for identity in identities
+        ]
+        review_route = create_route(
+            db,
+            EvaluationRouteCreate(
+                subject_type="alpha_strategy_qualification",
+                subject_id=str(qualification_task.id),
+                subject_digest=subject_digest,
+                producer=routed_producers[1],
+                excluded_producers=routed_producers,
+                required_review_kinds=["strategy_spec", "causality_leakage"],
+                requested_by="alpha-campaign-director",
+            ),
+        )
+    if not alpha_strategy_reviews_approved(
         db,
         review_route,
         subject_digest=subject_digest,
@@ -960,6 +979,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "subject": subject,
             "subject_digest": subject_digest,
             "route_id": str(review_route.id) if review_route else None,
+            "route_status": review_route.status,
+            "routing_blockers": review_route.blocked_reason,
         }
         return qualification_task
     independence = require_independence(db, review_route)
