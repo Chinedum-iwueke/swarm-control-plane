@@ -18,6 +18,20 @@ class AlphaDiscoveryError(RuntimeError):
     """A bounded discovery agent failed closed."""
 
 
+def _runtime_options(attempt_directory):
+    runtime = attempt_directory / "codex-runtime"
+    if runtime.is_symlink():
+        raise AlphaDiscoveryError("Codex runtime must not be a symbolic link.")
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    runtime.chmod(0o700)
+    return (
+        "-c",
+        f"sqlite_home={json.dumps(str(runtime))}",
+        "-c",
+        f"log_dir={json.dumps(str(runtime / 'logs'))}",
+    )
+
+
 class AlphaDiscoveryExecutor:
     def __init__(
         self,
@@ -68,6 +82,7 @@ class AlphaDiscoveryExecutor:
         prompt_path.write_text(_prompt(contract), encoding="utf-8")
         for path in (schema_path, prompt_path):
             path.chmod(0o600)
+        runtime_options = _runtime_options(workspace.plan.attempt_directory)
 
         command = (
             "codex",
@@ -78,6 +93,7 @@ class AlphaDiscoveryExecutor:
             "read-only",
             "-c",
             "sandbox_workspace_write.network_access=false",
+            *runtime_options,
             "--model",
             self._model,
             "--output-schema",

@@ -1,9 +1,33 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
+import pytest
+
+from swarm_worker.executors.alpha_discovery import (
+    AlphaDiscoveryError,
+    AlphaDiscoveryExecutor,
+    _runtime_options,
+)
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
+
+
+def test_discovery_runtime_is_private_and_separate_from_credentials(tmp_path):
+    options = _runtime_options(tmp_path)
+    runtime = tmp_path / "codex-runtime"
+    assert runtime.stat().st_mode & 0o777 == 0o700
+    assert options == (
+        "-c",
+        f'sqlite_home="{runtime}"',
+        "-c",
+        f'log_dir="{runtime / "logs"}"',
+    )
+
+
+def test_discovery_runtime_rejects_symlink(tmp_path):
+    (tmp_path / "codex-runtime").symlink_to(tmp_path)
+    with pytest.raises(AlphaDiscoveryError, match="symbolic link"):
+        _runtime_options(tmp_path)
 
 
 def test_discovery_subprocess_keeps_fixed_jitless_sandbox_environment(monkeypatch):
