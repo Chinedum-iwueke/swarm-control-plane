@@ -80,3 +80,15 @@ uses frozen half-open window 2025-05-01 through 2026-05-01 UTC. Restart is disab
 to prevent accidental duplicate scans, and control-group shutdown cleans children.
 The scan is in progress: no complete root, panel quality, wider execution approval
 or overlapping scientific backtest is claimed yet.
+
+Next source pass separates researcher visibility from mandate execution scope:
+discovery reuses the inventory endpoint's receipt-backed summary as `lake_catalog`,
+while `datasets` remains the exact admitted mandate inventory. Founder universe
+hints now default to `all_eligible`; explicit stable/volatile hints remain valid.
+The supervised researcher prompt requests hypothesis-specific cross-group baskets
+and retains out-of-scope ideas as gaps, never as executable candidates. Regression
+tests prove a catalog-visible ETH asset with no admitted binding still fails
+DATA-002/003 availability. Focused backend tests passed 57 cases, including the
+new context/default tests; the final strengthened context suite passed 23 cases.
+Worker contract/prompt tests passed seven cases, and backend lint passed. This
+source pass is not deployed and does not prove adaptive basket execution.

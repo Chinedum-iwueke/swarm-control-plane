@@ -47,6 +47,7 @@ from app.services.alpha_campaign import (
 from app.services.discovery_portfolio import register_portfolio
 from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import digest_document
+from app.services.quantitative_receipt import lake_inventory_summary
 from app.services.retrieval import hybrid_search
 from app.services.tasks import build_task, persist_new_task
 
@@ -356,6 +357,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         ],
         "portfolio_gaps": ["no_current_risk004_admitted_candidate"],
         "datasets": _dataset_inventory(mandate),
+        "lake_catalog": lake_inventory_summary(db),
         "research_constraints": {
             "minimum_liquidity_usd": mandate.specification["minimum_liquidity_usd"],
             "liquidity_measurement_fields": sorted(_LIQUIDITY_FIELDS),
@@ -369,6 +371,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
                 "bulletproof_source_commit"
             ],
             "universe_selection": "preregister before outcomes; admitted instruments only",
+            "catalog_visibility_is_not_execution_admission": True,
             "new_code_requires_explicit_approval": True,
             "capital_or_order_authority": False,
         },

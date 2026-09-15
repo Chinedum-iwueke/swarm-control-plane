@@ -32,6 +32,33 @@ class QuantitativeReceiptConflict(RuntimeError):
     pass
 
 
+def lake_inventory_summary(db: Session) -> dict:
+    record = db.scalar(
+        select(QuantitativeProducerReceipt)
+        .where(
+            QuantitativeProducerReceipt.milestone == "DATA-002",
+            QuantitativeProducerReceipt.producer
+            == "bt.institutional.lake_inventory.full_lake_inventory_receipt",
+        )
+        .order_by(QuantitativeProducerReceipt.registered_at.desc())
+        .limit(1)
+    )
+    if record is None:
+        return {"status": "not_registered", "execution_authority": False}
+    result = record.receipt["result"]
+    return {
+        "status": "cataloged_pending_quality",
+        "receipt_id": str(record.id),
+        "receipt_digest": record.receipt_digest,
+        "source_commit": record.source_commit,
+        "object_count": result["object_count"],
+        "dispositions": result["dispositions"],
+        "assets": result["assets"],
+        "claim_boundary": result["claim_boundary"],
+        "execution_authority": False,
+    }
+
+
 PRODUCERS = {
     "ALPHA-001": "bt.institutional.alpha.real_data_admission_receipt",
     "DATA-001": "bt.institutional.data.reference_snapshot_receipt",

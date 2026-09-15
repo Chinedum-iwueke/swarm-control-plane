@@ -101,7 +101,7 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
         "preregistered_point_in_time"
     )
     universe_slices: list[Literal["stable", "volatile", "all_eligible"]] = Field(
-        default_factory=lambda: ["stable", "volatile"], min_length=1, max_length=3
+        default_factory=lambda: ["all_eligible"], min_length=1, max_length=3
     )
 
 
