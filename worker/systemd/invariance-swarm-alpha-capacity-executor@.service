@@ -12,7 +12,9 @@ WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
 EnvironmentFile=/etc/invariance-swarm/alpha-capacity-executor-%i.env
 Environment=SWARM_BULLETPROOF_CAPACITY_DB=/home/omenka/.local/state/invariance-swarm/research-capacity.sqlite
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=NODE_OPTIONS=--jitless
 Environment=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin
+Environment=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv
 ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/invariance-swarm-worker run
 Restart=on-failure
 RestartSec=10
@@ -23,6 +25,19 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
+ReadOnlyPaths=/etc/invariance-swarm/codex-worker
 ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces
 ReadWritePaths=/home/omenka/Projects/bulletproof_bt/.git/worktrees
 ReadWritePaths=/home/omenka/.local/state/invariance-swarm
