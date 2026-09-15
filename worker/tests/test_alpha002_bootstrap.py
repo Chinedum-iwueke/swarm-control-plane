@@ -133,10 +133,13 @@ def test_partial_registration_requires_explicit_scoped_recovery(
                 "/v1/agents": [agent],
                 "/v1/packages/deployments": [
                     {
-                        "id": "deployment",
-                        "agent_id": agent["id"],
-                        "package_id": state()["package_id"],
-                        "is_active": True,
+                        "deployment": {
+                            "id": "deployment",
+                            "agent_id": agent["id"],
+                            "package_id": state()["package_id"],
+                            "is_active": True,
+                        },
+                        "package": {"id": state()["package_id"]},
                     }
                 ],
                 "/v1/agent-governance/charters": [],

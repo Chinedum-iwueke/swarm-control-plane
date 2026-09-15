@@ -32,4 +32,7 @@ supports explicit `--recover-registration`, validating the existing agent and
 deployment before reuse. Lost slot-2 credentials are replaced through scoped
 workload rotation, saved mode 0600, then finalized; slot 1 is untouched.
 Regression tests cover refusal of implicit recovery and successful scoped recovery.
+The deployment-list fixture now matches the API's nested `{deployment, package}`
+contract. It reproduced the live `KeyError: agent_id` before the bootstrap lookup
+was corrected to unwrap `deployment`; deployment creation remains a flat response.
 Privileged activation remains pending until the corrected script succeeds.

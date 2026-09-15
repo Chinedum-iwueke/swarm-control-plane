@@ -217,9 +217,10 @@ def main() -> int:
             )
         deployments = call(api, "GET", "/v1/packages/deployments")
         active_deployments = [
-            item
+            item["deployment"]
             for item in deployments
-            if item["agent_id"] == registration["agent"]["id"] and item["is_active"]
+            if item["deployment"]["agent_id"] == registration["agent"]["id"]
+            and item["deployment"]["is_active"]
         ]
         if active_deployments and (
             len(active_deployments) != 1
