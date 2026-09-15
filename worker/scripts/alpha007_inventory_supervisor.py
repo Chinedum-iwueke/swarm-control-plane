@@ -57,6 +57,23 @@ def latest_progress(path):
     return {}
 
 
+def new_events(path, offset):
+    events = []
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        while True:
+            before = handle.tell()
+            line = handle.readline()
+            if not line.endswith(b"\n"):
+                return events, before
+            try:
+                event = json.loads(line)
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-repo", type=Path, required=True)
@@ -89,6 +106,28 @@ def main():
     publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
     environment = dict(os.environ, PYTHONPATH=str(repo / "src"))
     process = None
+    offset = 0
+    shard_receipts = set()
+
+    def publish_shards(log_path):
+        nonlocal offset
+        events, offset = new_events(log_path, offset)
+        for event in events:
+            if event.get("event") != "lake_inventory_shard_ready":
+                continue
+            path = Path(event["path"]).resolve(strict=True)
+            if path.parent != directory.resolve() or path.suffix != ".json":
+                raise RuntimeError("Native shard path escapes the operation directory")
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if (document.get("receipt_digest") != event.get("receipt_digest")
+                    or document["result"].get("run_id") != run_id):
+                raise RuntimeError("Native shard event conflicts with its receipt")
+            if document["receipt_digest"] not in shard_receipts:
+                publish(args.operator_host, "/v1/research/quantitative-receipts",
+                        {"receipt": document, "registered_by": "founder-operator"})
+                shard_receipts.add(document["receipt_digest"])
+                operation["detail"]["shards_registered"] = len(shard_receipts)
+
     def interrupted(signum, frame):
         raise KeyboardInterrupt(f"Supervisor interrupted by signal {signum}")
 
@@ -99,7 +138,7 @@ def main():
             process = subprocess.Popen([
                 str(args.python), str(repo / "scripts/inventory_full_lake.py"),
                 "--data-root", str(args.data_root), "--source-commit", commit,
-                "--output", str(output),
+                "--run-id", run_id, "--output", str(output),
             ], stdout=log, stderr=subprocess.STDOUT, env=environment)
             started = time.monotonic()
             operation["detail"]["pid"] = process.pid
@@ -108,10 +147,12 @@ def main():
                     raise TimeoutError("Inventory exceeded its bounded runtime")
                 operation["detail"]["elapsed_seconds"] = int(time.monotonic() - started)
                 operation["detail"].update(latest_progress(Path(log.name)))
+                publish_shards(Path(log.name))
                 publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
                 time.sleep(10)
             if process.returncode:
                 raise RuntimeError(f"Native inventory exited {process.returncode}; see {log.name}")
+            publish_shards(Path(log.name))
         operation["phase"] = "publication"
         publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
         receipt = json.loads(output.read_text(encoding="utf-8"))

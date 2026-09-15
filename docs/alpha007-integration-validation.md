@@ -52,3 +52,17 @@ process inspection confirmed both supervisor and scanner were gone. No complete
 inventory publication occurred. Native bounded 10,000-object shards and window
 quality are now under implementation; shard custody must be verified before the
 next full scan. Initial combined native inventory/quality/admission tests: 29 passed.
+
+The corrective implementation now emits bounded native shards, orders partition
+paths globally (including directory/file prefix collisions), and binds a v2 root
+to every shard. Hermes validates source/run/index/content bindings, completeness,
+non-overlap and summaries before accepting the root. Incremental supervisor
+publication preserves completed shard custody. Native quality streams verified
+shards, keeps panel metrics rather than duplicating millions of raw-object records,
+and reports non-panel adapters as unresolved. A dedicated quality CLI consumes the
+same shard files; its protected-output handoff test passes. Quality registration
+requires the bound inventory and content identity and grants no execution admission.
+Fresh full suites: 847 backend passed (one optional database skip), 295 worker
+passed. Native inventory/quality/admission/producer suite: 32 passed; lint passed.
+The expanded shard pipeline is not yet production-replayed; the two concurrent
+native backtests and wider approved research scope remain open.

@@ -1,6 +1,7 @@
 import hashlib
 import json
 from collections import Counter
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -76,6 +77,118 @@ def _digest(value) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _validate_inventory_root(db: Session, receipt: dict) -> None:
+    result = receipt["result"]
+    shards = result.get("shards")
+    if not isinstance(shards, list) or not shards or len(shards) > 10000:
+        raise QuantitativeReceiptConflict("Complete inventory requires bounded registered shards.")
+    if (result.get("shard_count") != len(shards) or not isinstance(result.get("run_id"), str)
+            or not isinstance(result.get("claim_boundary"), str) or not result["claim_boundary"]):
+        raise QuantitativeReceiptConflict("Malformed inventory root binding.")
+    if receipt["dataset_digest"] != _digest(shards) or receipt["input_digest"] != _digest(shards):
+        raise QuantitativeReceiptConflict("Inventory root descriptors are not content-bound.")
+    counts, assets = Counter(), set()
+    previous_path = None
+    total = 0
+    for index, descriptor in enumerate(shards):
+        if not isinstance(descriptor, dict) or descriptor.get("shard_index") != index:
+            raise QuantitativeReceiptConflict("Inventory shard indices must be contiguous.")
+        record = db.scalar(select(QuantitativeProducerReceipt).where(
+            QuantitativeProducerReceipt.receipt_digest == descriptor.get("receipt_digest"),
+            QuantitativeProducerReceipt.producer == "bt.institutional.lake_inventory.lake_inventory_shard_receipt",
+            QuantitativeProducerReceipt.source_commit == receipt["source_commit"],
+        ))
+        if record is None:
+            raise QuantitativeReceiptConflict("Inventory shard is not registered under the bound source.")
+        shard = record.receipt["result"]
+        if (shard.get("run_id") != result["run_id"] or shard.get("shard_index") != index
+                or shard.get("object_count") != descriptor.get("object_count")
+                or record.dataset_digest != descriptor.get("dataset_digest")):
+            raise QuantitativeReceiptConflict("Inventory shard conflicts with its root binding.")
+        paths = [item["partition_id"] for item in shard["objects"]]
+        if paths != sorted(paths) or (previous_path is not None and paths[0] <= previous_path):
+            raise QuantitativeReceiptConflict("Inventory shard paths overlap or are not globally ordered.")
+        previous_path = paths[-1]
+        counts.update(shard["dispositions"])
+        assets.update(tuple(identity) for identity in shard["assets"])
+        total += shard["object_count"]
+    if (result.get("object_count") != total or result.get("dispositions") != dict(counts)
+            or result.get("assets") != [list(identity) for identity in sorted(assets)]):
+        raise QuantitativeReceiptConflict("Inventory root summaries do not match registered shards.")
+    if result.get("group_labels_are_optional_metadata") is not True:
+        raise QuantitativeReceiptConflict("Inventory group labels cannot become mandatory universes.")
+
+
+def _validate_full_lake_quality(db: Session, receipt: dict) -> None:
+    result = receipt["result"]
+    objects = result.get("objects")
+    skipped = result.get("unprocessed_dispositions")
+    if (result.get("schema_version") != "data003-full-lake-quality-v1.0.0"
+            or not isinstance(objects, list) or len(objects) > 10000
+            or result.get("object_count") != len(objects)
+            or not isinstance(skipped, dict)
+            or any(type(count) is not int or count < 0 for count in skipped.values())
+            or not isinstance(result.get("claim_boundary"), str)):
+        raise QuantitativeReceiptConflict("Malformed bounded full-lake quality receipt.")
+    try:
+        start = datetime.fromisoformat(result["window_start"])
+        end = datetime.fromisoformat(result["window_end"])
+        if start.utcoffset() is None or end.utcoffset() is None or end <= start:
+            raise ValueError("invalid window")
+    except (KeyError, TypeError, ValueError) as error:
+        raise QuantitativeReceiptConflict("Quality window clocks must be aware and ordered.") from error
+    inventory = db.scalar(select(QuantitativeProducerReceipt).where(
+        QuantitativeProducerReceipt.receipt_digest == result.get("inventory_receipt_digest"),
+        QuantitativeProducerReceipt.producer == "bt.institutional.lake_inventory.full_lake_inventory_receipt",
+    ))
+    if inventory is None or inventory.dataset_digest != receipt["dataset_digest"]:
+        raise QuantitativeReceiptConflict("Quality requires the complete bound registered inventory.")
+    if (result.get("inventoried_object_count") != inventory.receipt["result"]["object_count"]
+            or len(objects) + sum(skipped.values()) != result["inventoried_object_count"]):
+        raise QuantitativeReceiptConflict("Quality accounting does not cover its inventory.")
+    requested = {}
+    for item in objects:
+        if not isinstance(item, dict) or not isinstance(item.get("partition_id"), str):
+            raise QuantitativeReceiptConflict("Quality object identity is required.")
+        if item["partition_id"] in requested or item.get("execution_eligible") is not False:
+            raise QuantitativeReceiptConflict("Quality cannot duplicate objects or infer execution admission.")
+        if item.get("panel_quality_passed") is True and (
+            not isinstance(item.get("checks"), dict) or not item["checks"]
+            or any(value is not True for value in item["checks"].values())
+            or item.get("reason_codes") != []
+        ):
+            raise QuantitativeReceiptConflict("Passing quality contradicts its checks.")
+        requested[item["partition_id"]] = item
+
+    def source_objects():
+        root = inventory.receipt["result"]
+        if "objects" in root:
+            yield from root["objects"]
+        else:
+            for descriptor in root["shards"]:
+                record = db.scalar(select(QuantitativeProducerReceipt).where(
+                    QuantitativeProducerReceipt.receipt_digest == descriptor["receipt_digest"]))
+                if record is None:
+                    raise QuantitativeReceiptConflict("Bound inventory lost shard custody.")
+                yield from record.receipt["result"]["objects"]
+
+    remaining = set(requested)
+    for source in source_objects():
+        if not remaining:
+            break
+        key = source["partition_id"]
+        if key not in remaining:
+            continue
+        item = requested[key]
+        if (source.get("layer") != "canonical" or source.get("dataset") != "research_panel"
+                or any(item.get(field) != source.get(field) for field in
+                       ("content_digest", "market", "venue", "instrument", "timeframe"))):
+            raise QuantitativeReceiptConflict("Quality object conflicts with its source inventory.")
+        remaining.remove(key)
+    if remaining:
+        raise QuantitativeReceiptConflict("Quality includes objects absent from the inventory.")
+
+
 def register_receipt(
     db: Session, payload: QuantitativeReceiptCreate
 ) -> QuantitativeProducerReceipt:
@@ -83,8 +196,11 @@ def register_receipt(
     receipt_digest = receipt.pop("receipt_digest")
     inventory_producer = "bt.institutional.lake_inventory.full_lake_inventory_receipt"
     is_inventory = receipt["producer"] == inventory_producer
+    is_inventory_shard = receipt["producer"] == "bt.institutional.lake_inventory.lake_inventory_shard_receipt"
+    is_full_quality = receipt["producer"] == "bt.institutional.lake_quality.full_lake_quality_receipt"
     if PRODUCERS[receipt["milestone"]] != receipt["producer"] and not (
-        receipt["milestone"] == "DATA-002" and is_inventory
+        receipt["milestone"] == "DATA-002" and (is_inventory or is_inventory_shard)
+        or receipt["milestone"] == "DATA-003" and is_full_quality
     ):
         raise QuantitativeReceiptConflict(
             "Producer is not authoritative for the declared milestone."
@@ -93,11 +209,15 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Result digest does not match content.")
     if _digest(receipt) != receipt_digest:
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
-    if is_inventory:
+    if is_full_quality:
+        _validate_full_lake_quality(db, receipt)
+    if is_inventory and receipt["result"].get("schema_version") == "data002-full-lake-inventory-v2.0.0":
+        _validate_inventory_root(db, receipt)
+    elif is_inventory or is_inventory_shard:
         result = receipt["result"]
         objects = result.get("objects")
         if (
-            result.get("schema_version") != "data002-full-lake-inventory-v1.0.0"
+            result.get("schema_version") != ("data002-lake-inventory-shard-v1.0.0" if is_inventory_shard else "data002-full-lake-inventory-v1.0.0")
             or not isinstance(objects, list)
             or len(objects) > 250_000
             or result.get("object_count") != len(objects)
@@ -107,6 +227,12 @@ def register_receipt(
             or not isinstance(result.get("claim_boundary"), str)
         ):
             raise QuantitativeReceiptConflict("Malformed full-lake inventory.")
+        if is_inventory_shard and (not objects or len(objects) > 10000
+                                   or not isinstance(result.get("run_id"), str)
+                                   or not result["run_id"]
+                                   or type(result.get("shard_index")) is not int
+                                   or result["shard_index"] < 0):
+            raise QuantitativeReceiptConflict("Malformed bounded inventory shard.")
         counts = result["dispositions"]
         if any(not isinstance(count, int) or count < 0 for count in counts.values()) or sum(counts.values()) != len(objects):
             raise QuantitativeReceiptConflict("Inventory disposition counts do not match.")

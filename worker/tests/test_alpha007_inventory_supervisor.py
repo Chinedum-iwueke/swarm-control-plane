@@ -101,3 +101,15 @@ def test_sigterm_stops_child(supervisor, monkeypatch, tmp_path):
     assert child.stopped
     assert states[-1] == "failed"
     assert signal.getsignal(signal.SIGTERM) == original
+
+
+def test_partial_progress_lines_are_resumed_not_lost(supervisor, tmp_path):
+    path = tmp_path / "events.jsonl"
+    path.write_bytes(b'{"event":"first"}\n{"event":')
+    events, offset = supervisor.new_events(path, 0)
+    assert events == [{"event": "first"}]
+    with path.open("ab") as handle:
+        handle.write(b'"second"}\n')
+    events, final = supervisor.new_events(path, offset)
+    assert events == [{"event": "second"}]
+    assert final == path.stat().st_size
