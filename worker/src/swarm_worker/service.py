@@ -20,6 +20,7 @@ from swarm_worker.api_client import (
     WorkerAPIError,
 )
 from swarm_worker.config import WorkerSettings
+from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.code_validation import LeaseLost
 from swarm_worker.executors.restricted import RestrictedExecutor
 from swarm_worker.models import (
@@ -294,6 +295,9 @@ class WorkerService:
                     runtime_version=__version__,
                     capabilities=identity.capabilities,
                     metadata={
+                        "research_capacity": AlphaResearchExecutor(
+                            heartbeat_interval_seconds=30
+                        ).capacity_progress(),
                         "agent_slug": settings.swarm_agent_slug,
                         "machine": settings.swarm_machine,
                         "worker_version": __version__,

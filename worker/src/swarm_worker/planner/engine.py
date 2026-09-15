@@ -7,6 +7,8 @@ import signal
 import tempfile
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from swarm_worker.models import (
     FounderConversationReasoningDocument,
     FounderProposalDocument,
@@ -82,17 +84,35 @@ class CodexProposalPlanner:
         return await self._generate_proposal(task, None)
 
     async def _reason(self, task: Task) -> FounderConversationReasoningDocument:
-        payload = await self._invoke(
-            self._strict_output_schema(
-                FounderConversationReasoningDocument.model_json_schema()
-            ),
-            self._reasoning_prompt(task),
-            "reasoning",
+        schema = self._strict_output_schema(
+            FounderConversationReasoningDocument.model_json_schema()
         )
-        try:
-            return FounderConversationReasoningDocument.model_validate(payload)
-        except ValueError as exc:
-            raise PlannerError("Planner reasoning did not match its contract.") from exc
+        prompt = self._reasoning_prompt(task)
+        feedback = ""
+        for attempt in range(2):
+            payload = await self._invoke(schema, prompt + feedback, "reasoning")
+            try:
+                return FounderConversationReasoningDocument.model_validate(payload)
+            except ValidationError as exc:
+                errors = [
+                    {"field": ".".join(map(str, item["loc"])), "type": item["type"]}
+                    for item in exc.errors(include_input=False, include_url=False)
+                ]
+                if attempt:
+                    raise PlannerError(
+                        "Planner reasoning contract failed after bounded repair: "
+                        + json.dumps(errors)
+                    ) from exc
+                feedback = (
+                    "\nYour previous candidate failed validation: "
+                    + json.dumps(errors)
+                    + "\nRegenerate from the original evidence. For respond or "
+                    "compile_proposal, clarification_questions and unresolved_fields "
+                    "must both be empty. Downstream scientific checks belong in "
+                    "interpretation, not unresolved_fields. needs_clarification must "
+                    "contain both questions and unresolved fields. Never remove a "
+                    "real blocker by inventing data or authority. No execution is authorized."
+                )
 
     async def _generate_proposal(
         self,
@@ -377,6 +397,14 @@ class CodexProposalPlanner:
             "intake boundary: when an active mandate is supplied, choose compile_proposal so the "
             "independent RI director and senior researcher can challenge it. Do not answer as though "
             "the idea were already valid, and do not compile it directly as a legacy research_experiment. "
+            "For respond and compile_proposal, return empty clarification_questions and "
+            "unresolved_fields. Describe downstream data, scientific or approval blockers in "
+            "interpretation; an intake proposal is not execution qualification. For "
+            "needs_clarification, both arrays must be nonempty. Respect planning-only turns "
+            "and never reinterpret historical run-it messages as renewed approval. Use the "
+            "registered market_data_catalog and representation_guidance to discuss signal "
+            "cadence separately from execution cadence. A reviewed capability snapshot is "
+            "not proof that a specific dataset, universe or engine version is qualified. "
             "Return only the required schema.\n\n"
             f"Conversation input:\n{json.dumps(request, ensure_ascii=True)}"
         )

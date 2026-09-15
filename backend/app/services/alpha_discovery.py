@@ -1081,6 +1081,7 @@ def overview(db: Session) -> dict:
                     "vm1-alpha004-research-intelligence-director",
                     "vm1-alpha004-senior-researcher",
                     "vm1-alpha-research-executor-v2",
+                    "vm1-alpha-research-executor-capacity-2",
                 ]
             )
         )

@@ -397,6 +397,7 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
     from app.models import (
         Agent,
         AlphaResearchMandate,
+        MarketDataCatalogSnapshot,
         ResearchDatasetManifest,
         ResearchHypothesis,
     )
@@ -407,6 +408,11 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
     datasets = db.scalars(
         select(ResearchDatasetManifest).order_by(ResearchDatasetManifest.registered_at.desc()).limit(12)
     ).all()
+    catalog = db.scalar(
+        select(MarketDataCatalogSnapshot)
+        .order_by(MarketDataCatalogSnapshot.registered_at.desc())
+        .limit(1)
+    )
     hypotheses = db.scalars(
         select(ResearchHypothesis).order_by(ResearchHypothesis.registered_at.desc()).limit(12)
     ).all()
@@ -453,7 +459,9 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
                     key: item.manifest[key]
                     for key in (
                         "schema_version", "dataset_id", "venue", "instrument",
-                        "timeframe", "start", "end", "availability",
+                        "timeframe", "start", "end", "availability", "provider",
+                        "instruments", "date_start", "date_end", "timezone",
+                        "output_columns", "transformations", "fallback_policy",
                     )
                     if key in item.manifest
                 },
@@ -498,6 +506,36 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
             "universe_slices": ["stable", "volatile"],
             "selection_rule": "freeze the selected universe and alternatives before outcome evaluation",
             "workflow": "founder-hypothesis-intake",
+        },
+        "market_data_catalog": {
+            "available": catalog is not None,
+            "digest": catalog.catalog_digest if catalog else None,
+            "as_of": catalog.as_of.isoformat() if catalog else None,
+            "partitions": catalog.catalog.get("partitions", [])[:100] if catalog else [],
+            "memberships": catalog.catalog.get("memberships", [])[:100] if catalog else [],
+            "source_availability": catalog.catalog.get("source_availability", [])[:100] if catalog else [],
+            "scope": "Latest registered snapshot, bounded to 100 entries per section; not an exhaustive filesystem inventory or an access grant.",
+        },
+        "representation_guidance": {
+            "producer": "bulletproof_bt",
+            "source_commit": "6b3c068c4bb59b639d7c2f4ec3cf30643da3735d",
+            "source_path": "src/bt/data/resample.py",
+            "source_sha256": "890317433c979f6bb4043a77ef7c1d7c74fd8a4da323c9d1028697890c05cc12",
+            "reviewed_signal_timeframes": ["1m", "5m", "7m", "10m", "12m", "1h", "2h", "1d"],
+            "duration_contract": "Positive integer m/h/d durations within the native timestamp range; examples are not an allowlist. Seconds and fractional durations are unsupported.",
+            "base_feed": "1m UTC",
+            "strict": True,
+            "rules": [
+                "Use Bulletproof's native resampler; no Hermes aggregation engine.",
+                "Expose only complete closed buckets at rollover; no fabricated missing minutes or final partial bucket.",
+                "HTFBar.ts labels bucket start, not information availability; preserve the emission clock.",
+                "Signal cadence can differ from the 1m execution clock; freeze both before evaluating outcomes.",
+                "Choose representation from mechanism and horizon, not the best observed result; timeframe alternatives count toward the search budget.",
+                "Auxiliary funding, open-interest, mark and index fields need their own point-in-time transformation contract; OHLCV aggregation does not establish theirs.",
+                "Stable/volatile universe labels require registered point-in-time memberships; never infer broad admission from local files.",
+                "Odd-duration buckets use epoch-anchored UTC alignment, not a daily reset; freeze alignment and require complete constituent minutes.",
+            ],
+            "claim_boundary": "Reviewed native capability snapshot for planning only. Exact campaign engine version, data entitlement, resampling configuration and output audit must be qualified before execution.",
         },
         "claim_boundary": "Context is advisory evidence only and grants no execution authority.",
     }
