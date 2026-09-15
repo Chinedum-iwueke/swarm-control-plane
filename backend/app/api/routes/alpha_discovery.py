@@ -9,6 +9,7 @@ from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.alpha_discovery import AlphaFounderResearchIdea, AlphaResearchMandate
 from app.schemas.alpha_discovery import (
+    AlphaDiscoveryGroundingRecovery,
     AlphaDiscoveryOverview,
     AlphaFounderResearchIdeaCreate,
     AlphaFounderResearchIdeaResponse,
@@ -21,16 +22,30 @@ from app.services.alpha_discovery import (
     overview,
     queue_founder_idea,
     reconcile_mandate,
+    recover_discovery_grounding,
     register_mandate,
     serialize_mandate,
 )
 
 
 def _serialize_idea(item: AlphaFounderResearchIdea) -> dict:
-    return {key: getattr(item, key) for key in (
-        "id", "mandate_id", "cycle_id", "conversation_id", "submitted_by", "idea",
-        "constraints", "idea_digest", "status", "created_at", "updated_at",
-    )}
+    return {
+        key: getattr(item, key)
+        for key in (
+            "id",
+            "mandate_id",
+            "cycle_id",
+            "conversation_id",
+            "submitted_by",
+            "idea",
+            "constraints",
+            "idea_digest",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+    }
+
 
 router = APIRouter(
     prefix="/v1/research/alpha-discovery",
@@ -88,7 +103,9 @@ def submit_founder_idea(
 @router.get("/ideas", response_model=list[AlphaFounderResearchIdeaResponse])
 def list_founder_ideas(db: Annotated[Session, Depends(get_db)]):
     items = db.scalars(
-        select(AlphaFounderResearchIdea).order_by(AlphaFounderResearchIdea.created_at.desc()).limit(100)
+        select(AlphaFounderResearchIdea)
+        .order_by(AlphaFounderResearchIdea.created_at.desc())
+        .limit(100)
     ).all()
     return [_serialize_idea(item) for item in items]
 
@@ -117,6 +134,22 @@ def reconcile(mandate_id: UUID, db: Annotated[Session, Depends(get_db)]):
     db.commit()
     db.refresh(mandate)
     return serialize_mandate(mandate)
+
+
+@router.post("/mandates/{mandate_id}/recover-grounding")
+def recover_grounding(
+    mandate_id: UUID,
+    payload: AlphaDiscoveryGroundingRecovery,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = _locked(db, mandate_id)
+    cycle = recover_discovery_grounding(db, mandate, payload)
+    db.commit()
+    return {
+        "cycle_id": str(cycle.id),
+        "status": cycle.status,
+        "cycle_digest": cycle.cycle_digest,
+    }
 
 
 @router.get("/overview", response_model=AlphaDiscoveryOverview)

@@ -83,3 +83,32 @@ The corrected namespace probe first reported temporary model capacity, then
 completed authenticated inference with `runtime-ok` under the same read-only
 credential binding. Privileged unit reinstall and productive recovery are still
 required; the original and resumed failures remain retained.
+
+After corrected production unit installation at 20:10 UTC, audited attempt 5
+completed intelligence inference successfully at 20:13 UTC. It honestly
+abstained from inventing a hypothesis because its immutable context contained
+zero RI citations. Live comparison reproduced the query problem: the long
+operating mandate returned zero hits, while focused momentum/cost, liquidity
+and volatility queries retrieved cited uploaded literature under unchanged
+calibration thresholds.
+
+Discovery now runs at most four data-aware queries, rotates bounded conceptual
+facets across cycles, retains query-level receipts and canonical citation
+provenance, deduplicates objects, and rejects mixed corpus digests. Field presence
+only guides retrieval; auxiliary availability and hypothesis feasibility gates
+remain mandatory. Mathematical campaign authority requires a bound deterministic
+or independent verification receipt, not source replay alone.
+
+An explicit `recover-grounding` API creates a fresh cycle only for the expected
+terminal, ungrounded, campaign-free cycle under an active unchanged mandate with
+remaining cycle/hypothesis/trial budget and fresh citations. It requires a founder
+actor and reason, refuses active stages and founder-idea reassignment, and retains
+the old cycle/digest plus a recovery event. It does not change automatic cadence,
+data scope, code approvals, execution approval or capital authority. Repeated
+requests with the old cycle ID fail closed rather than creating duplicate work.
+Successful inference and retrieval are not terminal backtest or two-job proof.
+The current reviewed native drafting producer implements weekend momentum only;
+other mechanisms require genuine native strategy engineering and explicit code
+approval, not rewriting their questions to fit that template. The researcher now
+receives the frozen eight-variant limit, one-year execution window, reviewed
+native commit and preregistered-universe requirement in its supplied context.

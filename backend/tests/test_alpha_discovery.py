@@ -9,11 +9,208 @@ from app.schemas.alpha_discovery import (
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
 )
-from app.services.alpha_discovery import _candidate_reasons, _recover_resumed_stage
+from app.services.alpha_discovery import (
+    _bounded_context,
+    _candidate_reasons,
+    _discovery_corpus,
+    _discovery_queries,
+    _recover_resumed_stage,
+    recover_discovery_grounding,
+)
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
+    mandate = SimpleNamespace(
+        objective="Discover mechanisms.",
+        mandate_digest=DIGEST,
+        specification={
+            "execution_window_start": "2025-05-01T00:00:00Z",
+            "execution_window_end": "2026-05-01T00:00:00Z",
+            "bulletproof_source_commit": COMMIT,
+        },
+        budget={"maximum_variants_per_hypothesis": 8},
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._discovery_corpus",
+        lambda db, mandate: {"citations": []},
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._dataset_inventory", lambda mandate: []
+    )
+    context = _bounded_context(db, mandate)
+    constraints = context["research_constraints"]
+    assert constraints["maximum_variants_per_hypothesis"] == 8
+    assert (
+        constraints["execution_window_start"]
+        == mandate.specification["execution_window_start"]
+    )
+    assert constraints["bulletproof_source_commit"] == COMMIT
+    assert constraints["new_code_requires_explicit_approval"]
+    assert not constraints["capital_or_order_authority"]
+    assert "verification_receipt" in context["equation_policy"]["campaign_use_requires"]
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["valid", "expired", "changed", "running", "grounded", "exhausted", "empty"],
+)
+def test_grounding_recovery_preserves_old_cycle_and_approval(monkeypatch, condition):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_from=moment - timedelta(days=1),
+        valid_until=moment + timedelta(days=1),
+        mandate_digest=DIGEST,
+        cycle_count=1,
+        hypothesis_count=0,
+        trial_count=0,
+        budget={
+            "maximum_cycles": 42,
+            "maximum_hypotheses": 100,
+            "maximum_total_trials": 500,
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        status="completed",
+        campaign_id=None,
+        context={"research_intelligence": {"citations": []}},
+        intelligence_task_id=None,
+        hypothesis_task_id=None,
+        cycle_digest="d" * 64,
+    )
+    payload = SimpleNamespace(
+        expected_mandate_digest=DIGEST,
+        expected_cycle_id=cycle.id,
+        actor="founder-operator",
+        reason="Recover empty frozen grounding after verified retrieval repair.",
+    )
+    if condition == "expired":
+        mandate.valid_until = moment - timedelta(seconds=1)
+    if condition == "changed":
+        payload.expected_cycle_id = uuid4()
+    if condition == "running":
+        cycle.status = "running"
+    if condition == "grounded":
+        cycle.context["research_intelligence"]["citations"] = [
+            {"object_id": str(uuid4())}
+        ]
+    if condition == "exhausted":
+        mandate.cycle_count = 42
+    db = MagicMock()
+    db.scalar.side_effect = [cycle, None]
+    context = {
+        "research_intelligence": {
+            "citations": [] if condition == "empty" else [{"object_id": str(uuid4())}]
+        }
+    }
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._bounded_context", lambda db, mandate: context
+    )
+    new_cycle = MagicMock(
+        return_value=SimpleNamespace(
+            id=uuid4(), status="running", cycle_digest="e" * 64
+        )
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    if condition == "valid":
+        result = recover_discovery_grounding(db, mandate, payload)
+        assert result.id != cycle.id
+        assert cycle.status == "completed"
+        assert cycle.context["research_intelligence"]["citations"] == []
+        assert mandate.mandate_digest == DIGEST
+        assert event.call_args.args[2] == "ungrounded_discovery_recovered_by_operator"
+        assert new_cycle.call_args.kwargs["prepared_context"] is context
+    else:
+        with pytest.raises(HTTPException) as error:
+            recover_discovery_grounding(db, mandate, payload)
+        assert error.value.status_code == 409
+        new_cycle.assert_not_called()
+        event.assert_not_called()
+
+
+def test_discovery_query_plan_is_bounded_data_aware_and_rotates():
+    mandate = SimpleNamespace(
+        objective="Discover predictive mechanisms on admitted data.",
+        cycle_count=0,
+        specification={
+            "dataset_bindings": [{"output_columns": ["close", "high", "low", "volume"]}]
+        },
+    )
+    first = _discovery_queries(mandate)
+    assert len(first) == 4
+    assert "momentum transaction costs" in first
+    assert all("funding" not in q for q in first)
+    mandate.cycle_count = 3
+    assert _discovery_queries(mandate) != first
+
+
+def test_discovery_grounding_keeps_provenance_and_deduplicates(monkeypatch):
+    mandate = SimpleNamespace(
+        objective="Discover mechanisms.",
+        cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close"]}]},
+    )
+    object_id = uuid4()
+    calls = []
+
+    def search(db, request, access):
+        calls.append(request)
+        hits = (
+            []
+            if len(calls) == 1
+            else [
+                {
+                    "object_id": object_id,
+                    "text": "Cited predictive mechanism.",
+                    "confidence": 0.7,
+                    "citation": {"content_digest": DIGEST, "coordinates": {}},
+                }
+            ]
+        )
+        return {
+            "corpus_digest": DIGEST,
+            "abstained": not hits,
+            "hits": hits,
+            "confidence": 0.7 if hits else 0,
+        }
+
+    monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", search)
+    corpus = _discovery_corpus(MagicMock(), mandate)
+    assert not corpus["abstained"]
+    assert len(corpus["citations"]) == 1
+    assert len(corpus["citations"][0]["retrieved_for"]) == 2
+    assert len(corpus["query_receipts"]) == 3
+    assert all(request.limit == 6 for request in calls)
+
+
+def test_discovery_grounding_rejects_mixed_corpus_epochs(monkeypatch):
+    mandate = SimpleNamespace(
+        objective="Discover mechanisms.",
+        cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close"]}]},
+    )
+    search = MagicMock(
+        side_effect=[
+            {"corpus_digest": DIGEST, "abstained": True, "hits": [], "confidence": 0},
+            {"corpus_digest": "c" * 64, "abstained": True, "hits": [], "confidence": 0},
+        ]
+    )
+    monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", search)
+    corpus = _discovery_corpus(MagicMock(), mandate)
+    assert corpus["abstained"]
+    assert corpus["citations"] == []
+    assert "Corpus changed" in corpus["error"]
 
 
 @pytest.mark.parametrize("condition", ["valid", "missing", "stale", "wrong_digest"])
