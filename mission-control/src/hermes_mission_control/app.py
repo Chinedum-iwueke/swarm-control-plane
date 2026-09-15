@@ -166,6 +166,18 @@ def create_app(
     async def approve_alpha_mandate(mandate_id: str, request: Request) -> dict:
         return await client.approve_alpha_mandate(mandate_id, await request.json())
 
+    @app.get("/api/research/backtests")
+    async def backtest_activity(
+        category: Annotated[
+            str, Query(pattern="^(all|waiting|running|finished)$")
+        ] = "all",
+        tier: Annotated[str, Query(pattern="^(all|Tier2A|Tier2B|Tier3)$")] = "all",
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        return await client.backtest_activity(
+            category=category, tier=tier, offset=offset
+        )
+
     @app.get("/api/research/scientific-fidelity/review-context/{representation_id}")
     async def scientific_review_context(representation_id: str) -> dict:
         return await client.scientific_review_context(representation_id)

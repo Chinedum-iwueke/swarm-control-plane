@@ -344,6 +344,13 @@
           <div class="band-heading"><div><p class="section-kicker">Autonomous laboratory</p><h2>Real-data alpha campaigns</h2></div><span id="alpha-campaign-count" class="count">No campaigns</span></div>
           <div id="alpha-campaigns" class="entity-list"></div>
         </section>
+        <section class="operational-band" aria-labelledby="backtest-heading">
+          <div class="band-heading"><div><p class="section-kicker">Bulletproof laboratory</p><h2 id="backtest-heading">Backtest queue</h2></div><span id="backtest-count" class="count" aria-live="polite">Loading</span></div>
+          <div class="filter-row"><label for="backtest-view">View</label><select id="backtest-view"><option value="all">All</option><option value="waiting">Waiting</option><option value="running">Running</option><option value="finished">Finished</option></select><label for="backtest-tier">Tier</label><select id="backtest-tier"><option value="all">All tiers</option><option>Tier2A</option><option>Tier2B</option><option>Tier3</option></select></div>
+          <div id="backtest-items" class="entity-list"></div>
+          <div class="filter-row"><button id="backtest-previous" class="secondary" aria-label="Previous backtest page">Previous</button><button id="backtest-next" class="secondary" aria-label="Next backtest page">Next</button></div>
+          <p id="backtest-coverage" class="muted"></p>
+        </section>
         <section class="operational-band">
           <div class="band-heading"><div><p class="section-kicker">Point-in-time data</p><h2>Deterministic dataset builds</h2></div></div>
           <div id="research-datasets" class="entity-list"></div>

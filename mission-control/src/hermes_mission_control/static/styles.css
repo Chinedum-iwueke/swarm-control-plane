@@ -1027,6 +1027,12 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
 .conversation-composer textarea { min-height: 92px; resize: vertical; }
 .conversation-composer button { align-self: end; }
 .conversation-dialog textarea { min-height: 150px; }
+.filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+#backtest-items .entity-primary { min-width: 0; }
+#backtest-items .entity-meta span, #backtest-items strong { overflow-wrap: anywhere; }
+#backtest-items .entity-primary strong { white-space: normal; overflow: visible; }
+#backtest-items dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; }
+#backtest-items dd { margin: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 860px) {
   .conversation-workspace { grid-template-columns: 1fr; }

@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -64,6 +64,19 @@ def list_campaigns(
         statement.order_by(AlphaCampaign.created_at.desc()).limit(limit)
     ).all()
     return [serialize_campaign(db, item) for item in campaigns]
+
+
+@router.get("/backtests/activity")
+def backtest_activity(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    category: Literal["all", "waiting", "running", "finished"] = "all",
+    tier: Literal["all", "Tier2A", "Tier2B", "Tier3"] = "all",
+):
+    from app.services.backtest_activity import overview
+
+    return overview(db, limit, offset, category, tier)
 
 
 @router.get("/{campaign_id}", response_model=AlphaCampaignResponse)

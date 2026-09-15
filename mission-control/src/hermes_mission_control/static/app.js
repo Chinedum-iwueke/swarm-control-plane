@@ -22,6 +22,9 @@ const state = {
   conversationWorkspaceLoading: false,
   requestedApprovalOpened: false,
   executionEnvironment: "all",
+  backtestPage: null,
+  backtestOffset: 0,
+  backtestLoading: false,
 };
 
 const intentHeaders = {
@@ -1318,7 +1321,63 @@ function formatDuration(seconds) {
   return `${(value / 86400).toFixed(1)}d`;
 }
 
+async function loadBacktests() {
+  if (state.backtestLoading) { state.backtestReload = true; return; }
+  state.backtestLoading = true;
+  document.getElementById("backtest-previous").disabled = true;
+  document.getElementById("backtest-next").disabled = true;
+  const view = document.getElementById("backtest-view").value;
+  const tier = document.getElementById("backtest-tier").value;
+  try {
+    const page = await request(`/api/research/backtests?category=${view}&tier=${tier}&offset=${state.backtestOffset}`);
+    if (view === document.getElementById("backtest-view").value && tier === document.getElementById("backtest-tier").value && page.offset === state.backtestOffset) {
+      state.backtestPage = page;
+      renderBacktests();
+    }
+  } catch (error) {
+    document.getElementById("backtest-count").textContent = "Unavailable";
+    document.getElementById("backtest-coverage").textContent = `Backtest queue unavailable: ${error.message}`;
+  } finally {
+    state.backtestLoading = false;
+    if (state.backtestReload) { state.backtestReload = false; loadBacktests(); }
+  }
+}
+
+function renderBacktests() {
+  const page = state.backtestPage || state.dashboard?.backtest_activity || { unavailable: true };
+  const items = page.items || [];
+  const container = document.getElementById("backtest-items");
+  const expanded = new Set([...container.querySelectorAll("details[open]")].map((node) => node.closest("[data-backtest-id]").dataset.backtestId));
+  document.getElementById("backtest-count").textContent = page.unavailable ? "Unavailable" : `${page.total || 0} records`;
+  const content = items.length ? items.map((item) => `<article class="entity-row" data-backtest-id="${escapeHtml(item.task_id)}">
+    <div class="entity-primary"><strong>${escapeHtml(item.question)}</strong>
+      <div class="entity-meta"><span>${escapeHtml(item.task_number)}</span><span>${escapeHtml(item.tier || "Tier not recorded")}</span><span>${escapeHtml(humanize(item.stage))}</span><span>${escapeHtml(item.instrument || "Instrument not recorded")}</span><span>${item.trial_count ?? 0} trials / ${item.max_variants ?? "not recorded"} maximum</span></div>
+      <div class="entity-meta"><span>${formatDate(item.window_start)} to ${formatDate(item.window_end)}</span><span>Heartbeat ${relativeTime(item.heartbeat_at)}</span><span>${escapeHtml(humanize(item.promotion))}</span><span>${escapeHtml(humanize(item.progress?.phase || ""))}</span>${item.progress?.capacity_governed ? "<span>Capacity governed</span>" : ""}</div>
+      ${item.category === "finished" ? `<p>${escapeHtml(humanize(item.outcome || item.disposition || item.status))} · ${escapeHtml(humanize(item.execution_evidence))}</p>` : ""}
+      ${item.failed_gates?.length ? `<p class="operation-error">${item.failed_gates.map((gate) => escapeHtml(humanize(gate))).join(" · ")}</p>` : ""}
+      ${item.error_category ? `<p class="operation-error">${escapeHtml(humanize(item.error_category))}</p>` : ""}
+      <details><summary>Evidence and gates</summary><div class="entity-meta"><span>Dataset ${escapeHtml(item.dataset_key || "Not recorded")}</span><span class="mono">${escapeHtml(item.dataset_digest || "")}</span><span class="mono">Code ${escapeHtml(item.base_ref || "")}</span><span class="mono">Receipt ${escapeHtml(item.receipt_digest || "Not recorded")}</span></div><dl>${Object.entries({ ...(item.metrics || {}), ...(item.gate_report || {}) }).map(([key, value]) => `<dt>${escapeHtml(humanize(key))}</dt><dd>${escapeHtml(String(value))}</dd>`).join("")}</dl></details>
+    </div><div class="entity-side">${statusBadge(item.status)}</div></article>`).join("") : empty(page.unavailable ? "Backtest queue unavailable." : "No backtests in this view.");
+  const signature = JSON.stringify(items);
+  if (container.dataset.signature !== signature) {
+    container.innerHTML = content;
+    container.dataset.signature = signature;
+    container.querySelectorAll("[data-backtest-id]").forEach((node) => { if (expanded.has(node.dataset.backtestId)) node.querySelector("details").open = true; });
+  }
+  document.getElementById("backtest-coverage").textContent = page.unavailable ? "" : `${page.offset || 0}-${(page.offset || 0) + items.length} of ${page.total || 0} · Updated ${relativeTime(page.generated_at)}`;
+  document.getElementById("backtest-previous").disabled = !state.backtestOffset;
+  document.getElementById("backtest-next").disabled = !page.has_more;
+}
+
+for (const id of ["backtest-view", "backtest-tier"]) {
+  document.getElementById(id).addEventListener("change", () => { state.backtestOffset = 0; loadBacktests(); });
+}
+document.getElementById("backtest-previous").addEventListener("click", () => { state.backtestOffset = Math.max(0, state.backtestOffset - 50); loadBacktests(); });
+document.getElementById("backtest-next").addEventListener("click", () => { state.backtestOffset += 50; loadBacktests(); });
+
 function renderResearch() {
+  renderBacktests();
+  if (!state.demo) loadBacktests();
   if (!state.dashboard) return;
   const tasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_experiment");
   const cycles = state.dashboard.research_cycles || [];
@@ -2563,4 +2622,7 @@ window.setInterval(() => {
 window.setInterval(() => {
   if (!state.demo && state.activeView === "work") loadConversations();
 }, 10000);
+window.setInterval(() => {
+  if (!state.demo && state.activeView === "research") loadBacktests();
+}, 15000);
 loadDashboard();

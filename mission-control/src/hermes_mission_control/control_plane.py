@@ -35,6 +35,13 @@ class ControlPlaneClient:
     async def close(self) -> None:
         await self._client.aclose()
 
+    async def backtest_activity(self, *, category="all", tier="all", offset=0) -> dict:
+        return await self._request(
+            "GET",
+            "/v1/research/alpha-campaigns/backtests/activity",
+            params={"category": category, "tier": tier, "offset": offset, "limit": 50},
+        )
+
     async def dashboard(self) -> dict[str, Any]:
         health = await self._request("GET", "/health", authenticated=False)
         tasks = await self._request("GET", "/v1/tasks", params={"limit": 100})
@@ -72,6 +79,10 @@ class ControlPlaneClient:
         )
         alpha_campaigns = await self._optional_collection(
             "/v1/research/alpha-campaigns"
+        )
+        backtest_activity = await self._optional_object(
+            "/v1/research/alpha-campaigns/backtests/activity",
+            {"items": [], "counts": {}, "total": 0, "unavailable": True},
         )
         alpha_discovery = await self._optional_object(
             "/v1/research/alpha-discovery/overview",
@@ -218,6 +229,7 @@ class ControlPlaneClient:
             "research_dataset_manifests": dataset_manifests,
             "research_dataset_builds": dataset_builds,
             "alpha_campaigns": alpha_campaigns,
+            "backtest_activity": backtest_activity,
             "alpha_discovery": alpha_discovery,
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
@@ -273,9 +285,7 @@ class ControlPlaneClient:
             json={**payload, "actor": "founder-operator"},
         )
 
-    async def scientific_review_context(
-        self, representation_id: str
-    ) -> dict[str, Any]:
+    async def scientific_review_context(self, representation_id: str) -> dict[str, Any]:
         return await self._request(
             "GET",
             f"/v1/research/scientific-fidelity/review-context/{representation_id}",
