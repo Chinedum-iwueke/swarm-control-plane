@@ -112,3 +112,12 @@ other mechanisms require genuine native strategy engineering and explicit code
 approval, not rewriting their questions to fit that template. The researcher now
 receives the frozen eight-variant limit, one-year execution window, reviewed
 native commit and preregistered-universe requirement in its supplied context.
+
+Fresh-context recovery initially returned HTTP 500: two pending discovery events
+both received sequence 10 because production sessions disable autoflush. The
+transaction rolled back; no duplicate cycle was committed. Event append now locks
+the mandate row and flushes pending events before reading the prior chain head.
+An isolated PostgreSQL replay with `autoflush=False` exercises two event appends
+in one transaction and checks contiguous sequence and digest linkage. The new
+alpha-discovery CI job runs this database-backed regression on each PR and main
+push; focused mocks alone are not accepted as this transaction proof.
