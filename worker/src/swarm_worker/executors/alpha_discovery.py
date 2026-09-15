@@ -257,8 +257,8 @@ def _schema(stage: str) -> dict:
     candidate_properties = {
         "candidate_key": {"type": "string"},
         "title": {"type": "string"},
-        "domain_key": {"type": "string"},
-        "cluster_key": {"type": "string"},
+        "domain_key": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 100},
+        "cluster_key": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 100},
         "question": {"type": "string"},
         "predictor": {"type": "string"},
         "target": {"type": "string"},
@@ -350,6 +350,9 @@ and cite exact supplied object ID/digest pairs. Equations are
 optional. Never invent or repair an equation. A source_replayed equation must occur verbatim apart from whitespace
 in its supplied source excerpt; otherwise mark it pending_independent_verification so the controller rejects it.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
+Domain and cluster keys must use lowercase letters, digits and hyphens, never underscores.
+Read research_constraints before choosing data requirements. Include the actual liquidity measurement
+fields required to enforce the mandate's liquidity floor, not merely predictor fields.
 When context contains founder_research_idea, challenge that exact idea before formalizing it. Do not accept its
 premise by default. Obey its frozen minimum-history, maximum-variant and preregistered universe-selection constraints.
 Universe selection must happen before outcome evaluation; retain rejected alternatives and never choose a universe

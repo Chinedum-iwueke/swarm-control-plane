@@ -357,6 +357,9 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         "portfolio_gaps": ["no_current_risk004_admitted_candidate"],
         "datasets": _dataset_inventory(mandate),
         "research_constraints": {
+            "minimum_liquidity_usd": mandate.specification["minimum_liquidity_usd"],
+            "liquidity_measurement_fields": sorted(_LIQUIDITY_FIELDS),
+            "historical_group_labels_are_not_mandatory_universes": True,
             "maximum_variants_per_hypothesis": mandate.budget[
                 "maximum_variants_per_hypothesis"
             ],

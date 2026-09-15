@@ -1,10 +1,59 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from app.schemas.operation import OperationWrite
 from app.services.operations import _task_state
 from pydantic import ValidationError
+
+
+@pytest.mark.parametrize("kind", ["full_lake_inventory", "backtest"])
+def test_inventory_report_cannot_rewrite_other_workloads(monkeypatch, kind):
+    from app.api.routes.operations import report_lake_inventory
+    from fastapi import HTTPException
+
+    payload = OperationWrite(operation_key="lake-inventory:test", kind=kind,
+                             title="Full lake inventory", project="bulletproof-bt",
+                             machine="vm1-developer", owner_type="system", owner_id="founder-operator",
+                             state="running", phase="hashing", input_digest="a" * 64)
+    db = MagicMock()
+    db.scalar.return_value = None
+    write = MagicMock(return_value=SimpleNamespace(kind=kind))
+    monkeypatch.setattr("app.api.routes.operations.upsert_operation", write)
+    if kind == "backtest":
+        with pytest.raises(HTTPException) as error:
+            report_lake_inventory(payload, db)
+        assert error.value.status_code == 422
+        write.assert_not_called()
+    else:
+        assert report_lake_inventory(payload, db).kind == "full_lake_inventory"
+        write.assert_called_once()
+
+
+@pytest.mark.parametrize("mutation", ["inputs", "resurrection", "repeat"])
+def test_inventory_reports_preserve_run_binding_and_terminal_state(monkeypatch, mutation):
+    from app.api.routes.operations import report_lake_inventory
+    from fastapi import HTTPException
+    previous = SimpleNamespace(kind="full_lake_inventory", input_digest="a" * 64, state="succeeded")
+    payload = OperationWrite(operation_key="lake-inventory:test", kind="full_lake_inventory",
+                             title="Full lake inventory", project="bulletproof-bt",
+                             machine="vm1-developer", owner_type="system", owner_id="founder-operator",
+                             state="running" if mutation == "resurrection" else "succeeded", phase="complete",
+                             input_digest=("b" if mutation == "inputs" else "a") * 64)
+    db = MagicMock()
+    db.scalar.return_value = previous
+    write = MagicMock()
+    monkeypatch.setattr("app.api.routes.operations.upsert_operation", write)
+    if mutation == "repeat":
+        assert report_lake_inventory(payload, db) is previous
+    else:
+        with pytest.raises(HTTPException) as error:
+            report_lake_inventory(payload, db)
+        assert error.value.status_code == 409
+    write.assert_not_called()
+    statement = db.scalar.call_args.args[0]
+    assert statement._for_update_arg is not None
 
 
 def test_operation_contract_requires_honest_progress() -> None:

@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import Counter
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -80,7 +81,11 @@ def register_receipt(
 ) -> QuantitativeProducerReceipt:
     receipt = payload.receipt.model_dump(mode="json")
     receipt_digest = receipt.pop("receipt_digest")
-    if PRODUCERS[receipt["milestone"]] != receipt["producer"]:
+    inventory_producer = "bt.institutional.lake_inventory.full_lake_inventory_receipt"
+    is_inventory = receipt["producer"] == inventory_producer
+    if PRODUCERS[receipt["milestone"]] != receipt["producer"] and not (
+        receipt["milestone"] == "DATA-002" and is_inventory
+    ):
         raise QuantitativeReceiptConflict(
             "Producer is not authoritative for the declared milestone."
         )
@@ -88,6 +93,60 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Result digest does not match content.")
     if _digest(receipt) != receipt_digest:
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
+    if is_inventory:
+        result = receipt["result"]
+        objects = result.get("objects")
+        if (
+            result.get("schema_version") != "data002-full-lake-inventory-v1.0.0"
+            or not isinstance(objects, list)
+            or len(objects) > 250_000
+            or result.get("object_count") != len(objects)
+            or any(not isinstance(item, dict) for item in objects)
+            or not isinstance(result.get("assets"), list)
+            or not isinstance(result.get("dispositions"), dict)
+            or not isinstance(result.get("claim_boundary"), str)
+        ):
+            raise QuantitativeReceiptConflict("Malformed full-lake inventory.")
+        counts = result["dispositions"]
+        if any(not isinstance(count, int) or count < 0 for count in counts.values()) or sum(counts.values()) != len(objects):
+            raise QuantitativeReceiptConflict("Inventory disposition counts do not match.")
+        if any(item.get("disposition") not in ("quarantined", "cataloged_pending_quality") for item in objects):
+            raise QuantitativeReceiptConflict("Unknown inventory disposition.")
+        if counts != dict(Counter(item.get("disposition") for item in objects)):
+            raise QuantitativeReceiptConflict("Inventory classifications do not match its objects.")
+        assets = set()
+        for item in objects:
+            if "instrument" in item:
+                identity = tuple(item.get(key) for key in ("market", "venue", "instrument"))
+                if any(not isinstance(value, str) or not value for value in identity):
+                    raise QuantitativeReceiptConflict("Malformed inventory asset identity.")
+                assets.add(identity)
+            if item.get("disposition") == "cataloged_pending_quality":
+                content_digest = item.get("content_digest")
+                if (
+                    not isinstance(content_digest, str)
+                    or len(content_digest) != 64
+                    or any(char not in "0123456789abcdef" for char in content_digest)
+                    or not isinstance(item.get("output_columns"), list)
+                    or not isinstance(item.get("row_count"), int)
+                    or item["row_count"] < 0
+                ):
+                    raise QuantitativeReceiptConflict("Cataloged inventory object lacks content/schema metadata.")
+        if result["assets"] != [list(identity) for identity in sorted(assets)]:
+            raise QuantitativeReceiptConflict("Inventory asset summary does not match its objects.")
+        identities = [item.get("partition_id") for item in objects]
+        if any(not isinstance(key, str) or not key for key in identities):
+            raise QuantitativeReceiptConflict("Inventory object identity is required.")
+        if len(set(identities)) != len(identities):
+            raise QuantitativeReceiptConflict("Duplicate inventory object identity.")
+        if any(
+            item.get("execution_eligible") is not False
+            or item.get("disposition") not in {"quarantined", "cataloged_pending_quality"}
+            for item in objects
+        ):
+            raise QuantitativeReceiptConflict("Inventory cannot infer execution admission.")
+        if receipt["dataset_digest"] != _digest(objects) or receipt["input_digest"] != _digest(objects):
+            raise QuantitativeReceiptConflict("Inventory objects are not content-bound.")
     if receipt["milestone"] == "PORT-003":
         solver_digest = receipt["result"].get("solver_digest")
         solver = db.scalar(

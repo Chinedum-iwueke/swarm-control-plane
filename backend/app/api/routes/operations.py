@@ -3,16 +3,22 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.operation import Operation, OperationEvent
-from app.schemas.operation import OperationEventResponse, OperationResponse
+from app.schemas.operation import (
+    OperationEventResponse,
+    OperationResponse,
+    OperationWrite,
+)
 from app.services.operations import (
     mark_stalled_operations,
     operation_summary,
     reconcile_task_operations,
+    upsert_operation,
 )
 
 router = APIRouter(
@@ -21,6 +27,37 @@ router = APIRouter(
     dependencies=[Depends(require_orchestrator)],
 )
 
+
+@router.post("/lake-inventory/report", response_model=OperationResponse)
+def report_lake_inventory(payload: OperationWrite, db: Annotated[Session, Depends(get_db)]):
+    if (
+        not payload.operation_key.startswith("lake-inventory:")
+        or payload.kind != "full_lake_inventory"
+        or payload.project != "bulletproof-bt"
+        or payload.machine != "vm1-developer"
+        or payload.owner_type != "system"
+        or payload.owner_id != "founder-operator"
+        or payload.cancellable
+        or payload.input_digest is None
+    ):
+        raise HTTPException(422, "Report must bind the no-capital native lake inventory operation.")
+    previous = db.scalar(select(Operation).where(Operation.operation_key == payload.operation_key).with_for_update())
+    if previous is not None and previous.kind != "full_lake_inventory":
+        raise HTTPException(409, "Operation key belongs to another workload.")
+    if previous is not None:
+        if previous.input_digest != payload.input_digest:
+            raise HTTPException(409, "Inventory run inputs are immutable.")
+        if previous.state in {"succeeded", "failed", "cancelled"}:
+            if payload.state != previous.state:
+                raise HTTPException(409, "Terminal inventory runs cannot be resumed by a heartbeat.")
+            return previous
+    try:
+        record = upsert_operation(db, payload, actor="founder-operator")
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Concurrent inventory report; retry the same run binding.") from exc
+    db.refresh(record)
+    return record
 
 @router.get("", response_model=list[OperationResponse])
 def list_operations(
