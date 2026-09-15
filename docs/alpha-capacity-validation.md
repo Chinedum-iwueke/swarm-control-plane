@@ -107,3 +107,8 @@ the old cycle/digest plus a recovery event. It does not change automatic cadence
 data scope, code approvals, execution approval or capital authority. Repeated
 requests with the old cycle ID fail closed rather than creating duplicate work.
 Successful inference and retrieval are not terminal backtest or two-job proof.
+The current reviewed native drafting producer implements weekend momentum only;
+other mechanisms require genuine native strategy engineering and explicit code
+approval, not rewriting their questions to fit that template. The researcher now
+receives the frozen eight-variant limit, one-year execution window, reviewed
+native commit and preregistered-universe requirement in its supplied context.
