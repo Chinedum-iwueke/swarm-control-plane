@@ -10,6 +10,7 @@ from app.schemas.alpha_discovery import (
     AlphaResearchMandateCreate,
 )
 from app.services.alpha_discovery import (
+    _bounded_context,
     _candidate_reasons,
     _discovery_corpus,
     _discovery_queries,
@@ -21,6 +22,39 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
+    mandate = SimpleNamespace(
+        objective="Discover mechanisms.",
+        mandate_digest=DIGEST,
+        specification={
+            "execution_window_start": "2025-05-01T00:00:00Z",
+            "execution_window_end": "2026-05-01T00:00:00Z",
+            "bulletproof_source_commit": COMMIT,
+        },
+        budget={"maximum_variants_per_hypothesis": 8},
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._discovery_corpus",
+        lambda db, mandate: {"citations": []},
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._dataset_inventory", lambda mandate: []
+    )
+    context = _bounded_context(db, mandate)
+    constraints = context["research_constraints"]
+    assert constraints["maximum_variants_per_hypothesis"] == 8
+    assert (
+        constraints["execution_window_start"]
+        == mandate.specification["execution_window_start"]
+    )
+    assert constraints["bulletproof_source_commit"] == COMMIT
+    assert constraints["new_code_requires_explicit_approval"]
+    assert not constraints["capital_or_order_authority"]
+    assert "verification_receipt" in context["equation_policy"]["campaign_use_requires"]
 
 
 @pytest.mark.parametrize(

@@ -350,6 +350,19 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         ],
         "portfolio_gaps": ["no_current_risk004_admitted_candidate"],
         "datasets": _dataset_inventory(mandate),
+        "research_constraints": {
+            "maximum_variants_per_hypothesis": mandate.budget[
+                "maximum_variants_per_hypothesis"
+            ],
+            "execution_window_start": mandate.specification["execution_window_start"],
+            "execution_window_end": mandate.specification["execution_window_end"],
+            "bulletproof_source_commit": mandate.specification[
+                "bulletproof_source_commit"
+            ],
+            "universe_selection": "preregister before outcomes; admitted instruments only",
+            "new_code_requires_explicit_approval": True,
+            "capital_or_order_authority": False,
+        },
         "equation_policy": {
             "llm_output_is_never_ground_truth": True,
             "allowed_statuses": [
