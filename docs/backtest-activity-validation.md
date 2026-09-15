@@ -40,18 +40,34 @@ not yet demonstrated. No capital or order authority was changed.
 - Backend activity tests: 10 passed, including authentication, stage boundaries,
   receipt/metric custody, pagination and heartbeat projection.
 - Mission Control suite: 78 passed.
-- Worker suite: 283 passed, including mandate override validation before network access.
+- Worker suite: 283 passed before the two admission-binding regressions; the
+  final focused mandate suite has six passing tests.
 - Desktop 1440px and mobile 390px Playwright checks passed: filters, pagination,
   detail preservation, no horizontal overflow and no JavaScript errors. Ruff,
   JavaScript syntax and whitespace checks passed.
 
-## New mandate preparation on VM1
+## New mandate request and admission refresh
 
 The panel's Parquet metadata spans 2021-01-01 to 2026-05-18 with 2,827,851 rows.
 This supports requesting a one-year window, not a claim of complete usable
 coverage for every auxiliary field. Execution availability gates remain binding.
-Run in a child root shell, then review the distinct approval in Telegram or
-Mission Control. Do not replay old execution approvals.
+
+The first new-commit mandate request correctly failed before writing a mandate:
+the existing admission receipt bound the older native commit. Rebuilt admission
+under explicit `PYTHONPATH=/home/omenka/Projects/bulletproof_bt/src`, after checking
+both the import path and checkout commit. This matters because the shared native
+virtualenv still has an editable package pointing at an older worktree. The
+verified producer reread identity/lineage and SHA-256 of the unchanged panel.
+Registered receipt `09c3b6a6-b7d5-4efe-88a6-637259ab47ce`, digest
+`eadd66dbc7d6091db9db10e0e138abe20290ad941332ad142259c748e355d201`,
+binds the reviewed `a864ac0` engine with no financial authority.
+
+New mandate `aae38741-7f41-40bc-8612-0ba266467a55`, key
+`ALPHA004-CAPACITY-20260915`, digest
+`311dd79128e35416091545cc16d5c95334917bc9ae0bf1d7eb24151b9a09e974`,
+was requested through Mission Control's existing operator client and is awaiting
+founder approval. Do not rerun the creation command or reuse old approvals.
+The following is the reproducible request, not an outstanding setup command:
 
 ```bash
 sudo bash <<'ROOT'
@@ -64,6 +80,7 @@ worker/.venv/bin/python worker/scripts/alpha004_mandate.py \
   --mandate-key ALPHA004-CAPACITY-20260915 \
   --source-campaign-id fb19a294-58b8-45fa-9259-4d60f34d8e24 \
   --bulletproof-source-commit a864ac0910890f98f457eb4140b28ede9921e91d \
+  --producer-receipt-id 09c3b6a6-b7d5-4efe-88a6-637259ab47ce \
   --window-start 2025-05-01T00:00:00Z \
   --window-end 2026-05-01T00:00:00Z
 ROOT
@@ -71,3 +88,12 @@ ROOT
 
 The command requests approval; it does not approve or launch research itself.
 An existing key/version is immutable: inspect conflicts, do not overwrite it.
+
+## Deployment verification
+
+Control-plane PR #262 merged at `f22fe150f`. VM2 built/running image identities
+match `sha256:a933025365098c812a638b5fcd1a67d0b49a379b98853487c6bfe3f32c144a59`;
+health passes and migration remains `b1e7f9a03c62`. Mission Control on Mac was
+reinstalled and its launch agent is running. Its live desktop and mobile checks
+show all 12 historical tasks, including the eight-trial negative Tier2B result,
+without scroll jumps, horizontal overflow or JavaScript exceptions.

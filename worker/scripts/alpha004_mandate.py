@@ -6,6 +6,7 @@ import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import httpx
 
@@ -35,6 +36,7 @@ def main() -> int:
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--source-campaign-id")
     parser.add_argument("--bulletproof-source-commit")
+    parser.add_argument("--producer-receipt-id", type=UUID)
     parser.add_argument("--window-start")
     parser.add_argument("--window-end")
     args = parser.parse_args()
@@ -81,6 +83,25 @@ def main() -> int:
             {key: value for key, value in item.items() if key in BINDING_KEYS}
             for item in specification["dataset_bindings"]
         ]
+        if args.producer_receipt_id:
+            if len(bindings) != 1:
+                raise RuntimeError(
+                    "An explicit producer receipt requires exactly one dataset binding."
+                )
+            bindings[0]["producer_receipt_id"] = str(args.producer_receipt_id)
+        source_commit = (
+            args.bulletproof_source_commit or specification["bulletproof_source_commit"]
+        )
+        for binding in bindings:
+            receipt_response = client.get(
+                f"/v1/research/quantitative-receipts/{binding['producer_receipt_id']}"
+            )
+            receipt_response.raise_for_status()
+            admission = receipt_response.json()
+            if admission["source_commit"] != source_commit:
+                raise RuntimeError(
+                    "Real-data admission is bound to another engine commit. Rebuild/register the native ALPHA-001 admission receipt and supply --producer-receipt-id; no mandate was written."
+                )
         moment = datetime.now(UTC)
         payload = {
             "mandate_key": args.mandate_key or f"ALPHA004-WEEK-{moment:%Y%m%d}",
@@ -88,8 +109,7 @@ def main() -> int:
             "objective": args.objective,
             "valid_from": moment.isoformat(),
             "valid_until": (moment + timedelta(days=7)).isoformat(),
-            "bulletproof_source_commit": args.bulletproof_source_commit
-            or specification["bulletproof_source_commit"],
+            "bulletproof_source_commit": source_commit,
             "execution_window_start": args.window_start
             or specification["execution_window_start"],
             "execution_window_end": args.window_end
