@@ -8,6 +8,33 @@ from app.services.operations import _task_state
 from pydantic import ValidationError
 
 
+def test_active_operations_are_not_hidden_by_recent_terminal_history(monkeypatch):
+    import sqlite3
+
+    from app.api.routes.operations import list_operations
+    from app.models.operation import Operation
+    from sqlalchemy import select
+    from sqlalchemy.dialects import sqlite
+
+    monkeypatch.setattr("app.api.routes.operations.reconcile_task_operations", lambda db: None)
+    monkeypatch.setattr("app.api.routes.operations.mark_stalled_operations", lambda db: None)
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    list_operations(db, states=None, limit=2)
+    original = db.scalars.call_args.args[0]
+    statement = select(Operation.operation_key).order_by(*original._order_by_clauses).limit(2)
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("CREATE TABLE operations (operation_key TEXT, state TEXT, updated_at TEXT)")
+        connection.executemany("INSERT INTO operations VALUES (?, ?, ?)", [
+            ("old-live-scan", "running", "2026-09-15T20:00:00"),
+            ("recent-history-one", "succeeded", "2026-09-15T21:00:00"),
+            ("recent-history-two", "failed", "2026-09-15T21:01:00"),
+        ])
+        query = str(statement.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
+        rows = connection.execute(query).fetchall()
+    assert rows[0] == ("old-live-scan",)
+
+
 @pytest.mark.parametrize("kind", ["full_lake_inventory", "backtest"])
 def test_inventory_report_cannot_rewrite_other_workloads(monkeypatch, kind):
     from app.api.routes.operations import report_lake_inventory

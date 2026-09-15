@@ -67,7 +67,10 @@ def list_operations(
 ):
     reconcile_task_operations(db)
     mark_stalled_operations(db)
-    statement = select(Operation).order_by(Operation.updated_at.desc()).limit(limit)
+    statement = select(Operation).order_by(
+        Operation.state.in_(["succeeded", "failed", "cancelled"]).asc(),
+        Operation.updated_at.desc(),
+    ).limit(limit)
     if states:
         statement = statement.where(Operation.state.in_(states))
     return list(db.scalars(statement).all())

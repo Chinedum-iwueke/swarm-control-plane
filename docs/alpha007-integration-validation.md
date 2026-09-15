@@ -62,7 +62,7 @@ shards, keeps panel metrics rather than duplicating millions of raw-object recor
 and reports non-panel adapters as unresolved. A dedicated quality CLI consumes the
 same shard files; its protected-output handoff test passes. Quality registration
 requires the bound inventory and content identity and grants no execution admission.
-Fresh full suites: 847 backend passed (one optional database skip), 295 worker
+Fresh full suites: 850 backend passed (one optional database skip), 295 worker
 passed. Native inventory/quality/admission/producer suite: 32 passed; lint passed.
 The expanded shard pipeline is not yet production-replayed; the two concurrent
 native backtests and wider approved research scope remain open.
