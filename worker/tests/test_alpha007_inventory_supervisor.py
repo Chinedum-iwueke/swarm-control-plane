@@ -113,3 +113,58 @@ def test_partial_progress_lines_are_resumed_not_lost(supervisor, tmp_path):
     events, final = supervisor.new_events(path, offset)
     assert events == [{"event": "second"}]
     assert final == path.stat().st_size
+
+
+def test_inventory_registration_precedes_native_quality(supervisor, monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", ["supervisor", "--native-repo", str(tmp_path),
+                        "--data-root", str(tmp_path), "--python", "/bin/false",
+                        "--output-dir", str(tmp_path / "state"),
+                        "--quality-window-start", "2025-05-01T00:00:00+00:00",
+                        "--quality-window-end", "2026-05-01T00:00:00+00:00"])
+    monkeypatch.setattr(supervisor.subprocess, "check_output",
+                        lambda command, **kwargs: "" if "status" in command else "a" * 40)
+    published = []
+    commands = []
+
+    def report(host, path, payload):
+        published.append((path, json.loads(json.dumps(payload))))
+        return {"id": "registered", "receipt_digest": "digest"}
+
+    def launch(command, **kwargs):
+        commands.append(command)
+        if "quality_full_lake.py" in command[1]:
+            assert any(payload.get("receipt", {}).get("receipt_digest") == "inventory"
+                       for path, payload in published)
+            output = command[command.index("--output") + 1]
+            Path(output).write_text('{"receipt_digest":"quality","result":{"dispositions":{"quarantined":1}}}')
+        else:
+            Path(command[-1]).write_text('{"receipt_digest":"inventory"}')
+        return SimpleNamespace(poll=lambda: 0, returncode=0, pid=123)
+
+    monkeypatch.setattr(supervisor, "publish", report)
+    monkeypatch.setattr(supervisor.subprocess, "Popen", launch)
+    supervisor.main()
+    assert len(commands) == 2
+    receipts = [payload["receipt"]["receipt_digest"] for path, payload in published
+                if path.endswith("quantitative-receipts")]
+    assert receipts == ["inventory", "quality"]
+    terminal = published[-1][1]
+    assert terminal["state"] == "succeeded"
+    assert terminal["detail"]["quality_dispositions"] == {"quarantined": 1}
+    assert "quality_receipt_id" in terminal["links"]
+
+
+@pytest.mark.parametrize("start,end", [("invalid", "2026-05-01T00:00:00+00:00"),
+                                       ("2025-05-01T00:00:00", "2026-05-01T00:00:00"),
+                                       ("2025-05-01T00:00:01+00:00", "2026-05-01T00:00:00+00:00"),
+                                       ("2026-05-01T00:00:00+00:00", "2025-05-01T00:00:00+00:00")])
+def test_invalid_quality_clocks_fail_before_any_inventory_work(supervisor, monkeypatch, tmp_path, start, end):
+    monkeypatch.setattr("sys.argv", ["supervisor", "--native-repo", str(tmp_path),
+                        "--data-root", str(tmp_path), "--python", "/bin/false",
+                        "--output-dir", str(tmp_path / "state"),
+                        "--quality-window-start", start, "--quality-window-end", end])
+    monkeypatch.setattr(supervisor, "publish", lambda *args: pytest.fail("ledger started"))
+    with pytest.raises(SystemExit) as error:
+        supervisor.main()
+    assert error.value.code == 2
+    assert not (tmp_path / "state").exists()
