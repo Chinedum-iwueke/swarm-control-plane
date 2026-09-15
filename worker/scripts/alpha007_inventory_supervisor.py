@@ -1,6 +1,7 @@
 """Supervise a read-only native inventory through the existing operator session."""
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -52,9 +53,26 @@ def latest_progress(path):
             event = json.loads(line)
         except (ValueError, UnicodeDecodeError):
             continue
-        if isinstance(event, dict) and event.get("event") == "lake_inventory_progress":
-            return {key: event[key] for key in ("objects_completed", "partition_id") if key in event}
+        if isinstance(event, dict) and event.get("event") in {"lake_inventory_progress", "lake_quality_progress"}:
+            return {key: event[key] for key in ("objects_completed", "panels_completed", "partition_id") if key in event}
     return {}
+
+
+def new_events(path, offset):
+    events = []
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        while True:
+            before = handle.tell()
+            line = handle.readline()
+            if not line.endswith(b"\n"):
+                return events, before
+            try:
+                event = json.loads(line)
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if isinstance(event, dict):
+                events.append(event)
 
 
 def main():
@@ -65,7 +83,22 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--operator-host", default="mac2")
     parser.add_argument("--timeout-seconds", type=int, default=21600)
+    parser.add_argument("--quality-window-start")
+    parser.add_argument("--quality-window-end")
     args = parser.parse_args()
+    if bool(args.quality_window_start) != bool(args.quality_window_end):
+        parser.error("quality requires both frozen window clocks")
+    if args.quality_window_start:
+        try:
+            start = datetime.fromisoformat(args.quality_window_start)
+            end = datetime.fromisoformat(args.quality_window_end)
+            if (start.utcoffset() is None or end.utcoffset() is None or end <= start
+                    or start.second or end.second or start.microsecond or end.microsecond):
+                raise ValueError("window is not aware, ordered and minute-aligned")
+        except (TypeError, ValueError):
+            parser.error("quality window must use aware, ordered, whole-minute ISO clocks")
+    if args.timeout_seconds <= 0:
+        parser.error("runtime bound must be positive")
     repo = args.native_repo.resolve()
     commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     if subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain"], text=True):
@@ -76,6 +109,9 @@ def main():
     os.chmod(directory, 0o700)
     output = directory / "receipt.json"
     binding = {"source_commit": commit, "data_root": str(args.data_root.resolve()), "run_id": run_id}
+    if args.quality_window_start:
+        binding.update(quality_window_start=args.quality_window_start,
+                       quality_window_end=args.quality_window_end)
     operation = {
         "operation_key": "lake-inventory:" + run_id,
         "kind": "full_lake_inventory", "title": "Full Binance/Bybit lake inventory",
@@ -87,8 +123,32 @@ def main():
     }
     # The ledger must acknowledge the operation before any large scan begins.
     publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
+    print(json.dumps({"event": "lake_inventory_supervised_started", "run_id": run_id,
+                      "output_directory": str(directory)}), flush=True)
     environment = dict(os.environ, PYTHONPATH=str(repo / "src"))
     process = None
+    offset = 0
+    shard_receipts = set()
+
+    def publish_shards(log_path):
+        nonlocal offset
+        events, offset = new_events(log_path, offset)
+        for event in events:
+            if event.get("event") != "lake_inventory_shard_ready":
+                continue
+            path = Path(event["path"]).resolve(strict=True)
+            if path.parent != directory.resolve() or path.suffix != ".json":
+                raise RuntimeError("Native shard path escapes the operation directory")
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if (document.get("receipt_digest") != event.get("receipt_digest")
+                    or document["result"].get("run_id") != run_id):
+                raise RuntimeError("Native shard event conflicts with its receipt")
+            if document["receipt_digest"] not in shard_receipts:
+                publish(args.operator_host, "/v1/research/quantitative-receipts",
+                        {"receipt": document, "registered_by": "founder-operator"})
+                shard_receipts.add(document["receipt_digest"])
+                operation["detail"]["shards_registered"] = len(shard_receipts)
+
     def interrupted(signum, frame):
         raise KeyboardInterrupt(f"Supervisor interrupted by signal {signum}")
 
@@ -99,7 +159,7 @@ def main():
             process = subprocess.Popen([
                 str(args.python), str(repo / "scripts/inventory_full_lake.py"),
                 "--data-root", str(args.data_root), "--source-commit", commit,
-                "--output", str(output),
+                "--run-id", run_id, "--output", str(output),
             ], stdout=log, stderr=subprocess.STDOUT, env=environment)
             started = time.monotonic()
             operation["detail"]["pid"] = process.pid
@@ -108,16 +168,49 @@ def main():
                     raise TimeoutError("Inventory exceeded its bounded runtime")
                 operation["detail"]["elapsed_seconds"] = int(time.monotonic() - started)
                 operation["detail"].update(latest_progress(Path(log.name)))
+                publish_shards(Path(log.name))
                 publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
                 time.sleep(10)
             if process.returncode:
                 raise RuntimeError(f"Native inventory exited {process.returncode}; see {log.name}")
+            publish_shards(Path(log.name))
         operation["phase"] = "publication"
         publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
         receipt = json.loads(output.read_text(encoding="utf-8"))
         registered = publish(args.operator_host, "/v1/research/quantitative-receipts",
                              {"receipt": receipt, "registered_by": "founder-operator"})
-        operation.update(state="succeeded", phase="complete", links=registered)
+        operation["links"] = {"inventory_receipt_id": registered["id"],
+                              "inventory_receipt_digest": registered.get("receipt_digest")}
+        if args.quality_window_start:
+            operation["phase"] = "window_quality"
+            publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
+            quality_output = directory / "quality.json"
+            with (directory / "quality-progress.jsonl").open("x", encoding="utf-8") as log:
+                os.chmod(log.name, 0o600)
+                process = subprocess.Popen([
+                    str(args.python), str(repo / "scripts/quality_full_lake.py"),
+                    "--data-root", str(args.data_root), "--inventory", str(output),
+                    "--source-commit", commit, "--output", str(quality_output),
+                    "--window-start", args.quality_window_start,
+                    "--window-end", args.quality_window_end,
+                ], stdout=log, stderr=subprocess.STDOUT, env=environment)
+                operation["detail"]["pid"] = process.pid
+                while process.poll() is None:
+                    if time.monotonic() - started > args.timeout_seconds:
+                        raise TimeoutError("Inventory/quality exceeded its bounded runtime")
+                    operation["detail"]["elapsed_seconds"] = int(time.monotonic() - started)
+                    operation["detail"].update(latest_progress(Path(log.name)))
+                    publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
+                    time.sleep(10)
+                if process.returncode:
+                    raise RuntimeError(f"Native quality exited {process.returncode}; see {log.name}")
+            quality = json.loads(quality_output.read_text(encoding="utf-8"))
+            qualified = publish(args.operator_host, "/v1/research/quantitative-receipts",
+                                {"receipt": quality, "registered_by": "founder-operator"})
+            operation["links"].update(quality_receipt_id=qualified["id"],
+                                      quality_receipt_digest=qualified.get("receipt_digest"))
+            operation["detail"]["quality_dispositions"] = quality["result"]["dispositions"]
+        operation.update(state="succeeded", phase="complete")
         publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
         print(json.dumps({"run_id": run_id, "output": str(output), "registered": registered}))
     except BaseException as error:

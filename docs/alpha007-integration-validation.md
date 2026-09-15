@@ -38,3 +38,31 @@ terminal transitions. Fresh verification: 834 backend tests passed (one optional
 database skip); 19 native inventory/admission/producer tests passed.
 Hermes PR #268 and Bulletproof PR #307 are open with CI running. No production
 scan, quality admission, expanded execution scope or backtest is claimed.
+
+Production pass: Hermes PR #268 merged at e9ef1696e and VM2 API rebuilt/recreated.
+Running image sha256:0606f0664916a02c0fbd4fb0c1e6f0e133ffec53d85ed2064e4f5a529b886353
+was healthy and exposed the scoped inventory route. Real operation
+d3dfa5fd-924a-4574-a301-3aa005240686 acknowledged before its scanner started;
+live API inspection confirmed heartbeat, PID and more than 27,000 accounted
+objects. Exact filesystem counts revealed 1,846,467 raw files and 2,769 canonical
+files, exceeding the 250,000-object single-envelope contract. The operator stopped
+the attempt explicitly for this engineering mismatch, not an observation timeout.
+The ledger retained its terminal failed receipt at 2026-09-15T21:03:46.496137Z and
+process inspection confirmed both supervisor and scanner were gone. No complete
+inventory publication occurred. Native bounded 10,000-object shards and window
+quality are now under implementation; shard custody must be verified before the
+next full scan. Initial combined native inventory/quality/admission tests: 29 passed.
+
+The corrective implementation now emits bounded native shards, orders partition
+paths globally (including directory/file prefix collisions), and binds a v2 root
+to every shard. Hermes validates source/run/index/content bindings, completeness,
+non-overlap and summaries before accepting the root. Incremental supervisor
+publication preserves completed shard custody. Native quality streams verified
+shards, keeps panel metrics rather than duplicating millions of raw-object records,
+and reports non-panel adapters as unresolved. A dedicated quality CLI consumes the
+same shard files; its protected-output handoff test passes. Quality registration
+requires the bound inventory and content identity and grants no execution admission.
+Fresh full suites: 850 backend passed (one optional database skip), 295 worker
+passed. Native inventory/quality/admission/producer suite: 32 passed; lint passed.
+The expanded shard pipeline is not yet production-replayed; the two concurrent
+native backtests and wider approved research scope remain open.
