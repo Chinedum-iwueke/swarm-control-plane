@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import time
 from uuid import uuid4
@@ -88,6 +89,10 @@ def main():
     publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
     environment = dict(os.environ, PYTHONPATH=str(repo / "src"))
     process = None
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt(f"Supervisor interrupted by signal {signum}")
+
+    previous_handler = signal.signal(signal.SIGTERM, interrupted)
     try:
         with (directory / "progress.jsonl").open("x", encoding="utf-8") as log:
             os.chmod(log.name, 0o600)
@@ -110,7 +115,8 @@ def main():
         operation["phase"] = "publication"
         publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
         receipt = json.loads(output.read_text(encoding="utf-8"))
-        registered = publish(args.operator_host, "/v1/research/quantitative-receipts", receipt)
+        registered = publish(args.operator_host, "/v1/research/quantitative-receipts",
+                             {"receipt": receipt, "registered_by": "founder-operator"})
         operation.update(state="succeeded", phase="complete", links=registered)
         publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
         print(json.dumps({"run_id": run_id, "output": str(output), "registered": registered}))
@@ -129,6 +135,8 @@ def main():
         except Exception:
             pass
         raise
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
 
 
 if __name__ == "__main__":

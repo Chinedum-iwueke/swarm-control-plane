@@ -51,3 +51,53 @@ def test_failed_ledger_prevents_scan(supervisor, monkeypatch, tmp_path):
     monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("scan launched"))
     with pytest.raises(RuntimeError, match="ledger unavailable"):
         supervisor.main()
+
+
+def test_complete_scan_wraps_publication(supervisor, monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", ["supervisor", "--native-repo", str(tmp_path),
+                        "--data-root", str(tmp_path), "--python", "/bin/false",
+                        "--output-dir", str(tmp_path / "state")])
+    monkeypatch.setattr(supervisor.subprocess, "check_output",
+                        lambda command, **kwargs: "" if "status" in command else "a" * 40)
+    calls = []
+    monkeypatch.setattr(supervisor, "publish",
+                        lambda host, path, payload: calls.append((path, json.loads(json.dumps(payload)))) or {"id": "registered"})
+
+    def launch(command, **kwargs):
+        Path(command[-1]).write_text('{"receipt_digest":"digest"}')
+        return SimpleNamespace(poll=lambda: 0, returncode=0, pid=123)
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", launch)
+    supervisor.main()
+    publication = [payload for path, payload in calls if path.endswith("quantitative-receipts")]
+    assert publication == [{"receipt": {"receipt_digest": "digest"}, "registered_by": "founder-operator"}]
+    assert calls[-1][1]["state"] == "succeeded"
+
+
+def test_sigterm_stops_child(supervisor, monkeypatch, tmp_path):
+    import signal
+
+    monkeypatch.setattr("sys.argv", ["supervisor", "--native-repo", str(tmp_path),
+                        "--data-root", str(tmp_path), "--python", "/bin/false",
+                        "--output-dir", str(tmp_path / "state")])
+    monkeypatch.setattr(supervisor.subprocess, "check_output",
+                        lambda command, **kwargs: "" if "status" in command else "a" * 40)
+    states = []
+    child = SimpleNamespace(poll=lambda: None, pid=123, stopped=False)
+    child.terminate = lambda: setattr(child, "stopped", True)
+    child.wait = lambda **kwargs: 0
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *args, **kwargs: child)
+
+    def report(host, path, payload):
+        states.append(payload["state"])
+        if len(states) == 2:
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        return {"id": "operation"}
+
+    monkeypatch.setattr(supervisor, "publish", report)
+    original = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(KeyboardInterrupt):
+        supervisor.main()
+    assert child.stopped
+    assert states[-1] == "failed"
+    assert signal.getsignal(signal.SIGTERM) == original
