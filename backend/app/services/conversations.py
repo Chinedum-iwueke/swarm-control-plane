@@ -503,7 +503,7 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
             "minimum_history_days": 365,
             "maximum_variants": 8,
             "universe_selection_policy": "preregistered_point_in_time",
-            "universe_slices": ["stable", "volatile"],
+            "universe_slices": ["all_eligible"],
             "selection_rule": "freeze the selected universe and alternatives before outcome evaluation",
             "workflow": "founder-hypothesis-intake",
         },

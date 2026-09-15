@@ -92,3 +92,13 @@ DATA-002/003 availability. Focused backend tests passed 57 cases, including the
 new context/default tests; the final strengthened context suite passed 23 cases.
 Worker contract/prompt tests passed seven cases, and backend lint passed. This
 source pass is not deployed and does not prove adaptive basket execution.
+
+Pre-landing review caught chat grounding and planner instructions explicitly
+overriding the new API default with stable/volatile. Both now default to
+`all_eligible`, preserve explicit founder-selected group hints and retain admitted
+mandate boundaries. Regression covers chat grounding, planner instructions and
+typed proposal pass-through for both defaults and legacy hints. Full suites before
+this correction passed 852 backend tests (one optional database skip) and 301
+worker tests. Corrected planner tests passed 17 cases. The same exact inventory
+unit remains live, with progress through the canonical Binance partitions; no
+scan restart, complete inventory or concurrent scientific execution is inferred.
