@@ -394,7 +394,12 @@ def record_planning_started(db: Session, task: Task) -> None:
 
 
 def _grounding_context(db: Session, project: str | None, query: str) -> dict:
-    from app.models import Agent, ResearchDatasetManifest, ResearchHypothesis
+    from app.models import (
+        Agent,
+        AlphaResearchMandate,
+        ResearchDatasetManifest,
+        ResearchHypothesis,
+    )
     from app.schemas.retrieval import HybridRetrievalRequest
     from app.services.evidence import ORCHESTRATOR_ACCESS
     from app.services.retrieval import hybrid_search
@@ -406,6 +411,12 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
         select(ResearchHypothesis).order_by(ResearchHypothesis.registered_at.desc()).limit(12)
     ).all()
     agents = db.scalars(select(Agent).where(Agent.is_enabled.is_(True)).order_by(Agent.slug).limit(50)).all()
+    mandates = db.scalars(
+        select(AlphaResearchMandate)
+        .where(AlphaResearchMandate.status == "active", AlphaResearchMandate.valid_until > datetime.now(UTC))
+        .order_by(AlphaResearchMandate.created_at.desc())
+        .limit(3)
+    ).all()
     try:
         retrieval = hybrid_search(
             db,
@@ -466,6 +477,28 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
             {"slug": item.slug, "machine": item.machine, "capabilities": item.capabilities, "risk_ceiling": item.risk_ceiling}
             for item in agents
         ],
+        "active_research_mandates": [
+            {
+                "id": str(item.id),
+                "key": item.mandate_key,
+                "digest": item.mandate_digest,
+                "valid_until": item.valid_until.isoformat(),
+                "allowed_venues": item.specification.get("allowed_venues", []),
+                "allowed_instruments": item.specification.get("allowed_instruments", []),
+                "execution_window_start": item.specification.get("execution_window_start"),
+                "execution_window_end": item.specification.get("execution_window_end"),
+                "maximum_variants": min(8, int(item.budget.get("maximum_variants_per_hypothesis", 8))),
+            }
+            for item in mandates
+        ],
+        "founder_hypothesis_intake_policy": {
+            "minimum_history_days": 365,
+            "maximum_variants": 8,
+            "universe_selection_policy": "preregistered_point_in_time",
+            "universe_slices": ["stable", "volatile"],
+            "selection_rule": "freeze the selected universe and alternatives before outcome evaluation",
+            "workflow": "founder-hypothesis-intake",
+        },
         "claim_boundary": "Context is advisory evidence only and grants no execution authority.",
     }
 
@@ -511,6 +544,12 @@ def _specification_guide(project: str | None) -> dict:
                 "live trading",
                 "production promotion",
             ],
+            "founder_hypothesis_intake": {
+                "purpose": "queue a founder idea for RI evidence retrieval and independent senior-researcher challenge before any test",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+            },
         }
     return {
         "required": ["bounded objective", "target route", "acceptance criteria"],

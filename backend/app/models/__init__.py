@@ -16,6 +16,7 @@ from app.models.alpha_discovery import (
     AlphaDiscoveryCandidate,
     AlphaDiscoveryCycle,
     AlphaDiscoveryEvent,
+    AlphaFounderResearchIdea,
     AlphaResearchMandate,
 )
 from app.models.authority import (
@@ -244,6 +245,7 @@ __all__ = [
     "AlphaDiscoveryCandidate",
     "AlphaDiscoveryCycle",
     "AlphaDiscoveryEvent",
+    "AlphaFounderResearchIdea",
     "AlphaResearchMandate",
     "ApprovalEvent",
     "Artifact",

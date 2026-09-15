@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
 from app.db.session import get_db
-from app.models.alpha_discovery import AlphaResearchMandate
+from app.models.alpha_discovery import AlphaFounderResearchIdea, AlphaResearchMandate
 from app.schemas.alpha_discovery import (
     AlphaDiscoveryOverview,
+    AlphaFounderResearchIdeaCreate,
+    AlphaFounderResearchIdeaResponse,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
     AlphaResearchMandateResponse,
@@ -17,10 +19,18 @@ from app.schemas.alpha_discovery import (
 from app.services.alpha_discovery import (
     approve_mandate,
     overview,
+    queue_founder_idea,
     reconcile_mandate,
     register_mandate,
     serialize_mandate,
 )
+
+
+def _serialize_idea(item: AlphaFounderResearchIdea) -> dict:
+    return {key: getattr(item, key) for key in (
+        "id", "mandate_id", "cycle_id", "conversation_id", "submitted_by", "idea",
+        "constraints", "idea_digest", "status", "created_at", "updated_at",
+    )}
 
 router = APIRouter(
     prefix="/v1/research/alpha-discovery",
@@ -61,6 +71,26 @@ def list_mandates(db: Annotated[Session, Depends(get_db)]):
         select(AlphaResearchMandate).order_by(AlphaResearchMandate.created_at.desc())
     ).all()
     return [serialize_mandate(item) for item in mandates]
+
+
+@router.post("/ideas", response_model=AlphaFounderResearchIdeaResponse, status_code=201)
+def submit_founder_idea(
+    payload: AlphaFounderResearchIdeaCreate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = _locked(db, payload.mandate_id)
+    item = queue_founder_idea(db, mandate, payload)
+    db.commit()
+    db.refresh(item)
+    return _serialize_idea(item)
+
+
+@router.get("/ideas", response_model=list[AlphaFounderResearchIdeaResponse])
+def list_founder_ideas(db: Annotated[Session, Depends(get_db)]):
+    items = db.scalars(
+        select(AlphaFounderResearchIdea).order_by(AlphaFounderResearchIdea.created_at.desc()).limit(100)
+    ).all()
+    return [_serialize_idea(item) for item in items]
 
 
 @router.post(

@@ -324,6 +324,10 @@ and cite exact supplied object ID/digest pairs. Equations are
 optional. Never invent or repair an equation. A source_replayed equation must occur verbatim apart from whitespace
 in its supplied source excerpt; otherwise mark it pending_independent_verification so the controller rejects it.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
+When context contains founder_research_idea, challenge that exact idea before formalizing it. Do not accept its
+premise by default. Obey its frozen minimum-history, maximum-variant and preregistered universe-selection constraints.
+Universe selection must happen before outcome evaluation; retain rejected alternatives and never choose a universe
+because it produced the best result.
 
 MANDATE DIGEST: {contract.mandate_digest}
 STAGE: {contract.stage}

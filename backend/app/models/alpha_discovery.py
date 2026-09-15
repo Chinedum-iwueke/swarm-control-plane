@@ -99,6 +99,34 @@ class AlphaDiscoveryCycle(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AlphaFounderResearchIdea(Base):
+    __tablename__ = "alpha_founder_research_ideas"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("alpha_research_mandates.id"), nullable=False, index=True
+    )
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("alpha_discovery_cycles.id"), index=True
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("founder_conversations.id"), index=True
+    )
+    submitted_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    idea: Mapped[str] = mapped_column(Text, nullable=False)
+    constraints: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    idea_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class AlphaDiscoveryCandidate(Base):
     __tablename__ = "alpha_discovery_candidates"
     __table_args__ = (UniqueConstraint("cycle_id", "candidate_key"),)
