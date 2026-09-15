@@ -36,3 +36,13 @@ The deployment-list fixture now matches the API's nested `{deployment, package}`
 contract. It reproduced the live `KeyError: agent_id` before the bootstrap lookup
 was corrected to unwrap `deployment`; deployment creation remains a flat response.
 Privileged activation remains pending until the corrected script succeeds.
+
+Activation succeeded at 2026-09-15 18:52 UTC. The capacity director and both slots
+are active with zero restarts and successful authenticated idle polling. The queue
+is empty; concurrent terminal BT-009 proof remains outstanding. Recent Telegram
+failures predate activation: discovery cycles 019–021 crashed in Node/V8 with
+SIGTRAP (-5), and older founder turns failed the reasoning contract. Discovery's
+restricted subprocess environment dropped the service's jitless setting. The
+executor now supplies fixed `NODE_OPTIONS=--jitless` without inheriting secrets or
+arbitrary Node options. Existing discovery workers require restart to load this fix;
+no failed task or old approval was replayed automatically.
