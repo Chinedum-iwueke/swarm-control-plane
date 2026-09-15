@@ -188,3 +188,17 @@ Lint passes. Actual supervised reviewer execution and blocked-route recovery
 after profile registration remain subsequent integration work, not demonstrated
 by this source-only routing pass. The original inventory child is verified live
 after 47 minutes, with no restart.
+
+Blocked strategy review routes now reconcile when the active evaluator catalog
+changes. Retry uses the same frozen subject, producer and exclusion policy,
+appends an audit event and creates assignments only after all required kinds
+are available. Unchanged catalogs emit no repeated retry events; assigned routes
+are not replaced. Fifty-one focused routing/campaign tests pass and lint passes.
+This closes source-level recovery, not actual reviewer provisioning/execution or
+production deployment. The original inventory supervisor remains active and has
+progressed to 1,730 objects.
+
+Full backend validation passed 877 tests with one optional skip and two existing
+warnings. Recovery additionally refreshes the route under a database row lock
+before checking its state, preventing competing director cycles from assigning
+the same blocked route concurrently.

@@ -317,15 +317,57 @@ def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute
         payload.requested_by,
         {"route_digest": route.route_digest, "subject_digest": route.subject_digest},
     )
-    profiles = list(
+    return _assign_route(db, route, payload, _active_profiles(db))
+
+
+def _active_profiles(db: Session) -> list[EvaluatorProfile]:
+    return list(
         db.scalars(
             select(EvaluatorProfile)
             .where(EvaluatorProfile.status == "active")
             .order_by(EvaluatorProfile.profile_digest)
         ).all()
     )
+
+
+def _catalog_digest(profiles: list[EvaluatorProfile]) -> str:
+    return digest(sorted(profile.profile_digest for profile in profiles))
+
+
+def retry_blocked_route(db: Session, route: EvaluationRoute) -> EvaluationRoute:
+    """Serialize recovery on the route row; never replace assigned reviews."""
+    db.refresh(route, with_for_update=True)
+    if route.status != "blocked":
+        return route
+    profiles = _active_profiles(db)
+    catalog_digest = _catalog_digest(profiles)
+    if route.blocked_reason.get("evaluator_catalog_digest") == catalog_digest:
+        return route
+    payload = EvaluationRouteCreate(
+        subject_type=route.subject_type,
+        subject_id=route.subject_id,
+        subject_digest=route.subject_digest,
+        producer=route.producer,
+        excluded_producers=route.policy.get("excluded_producers", []),
+        required_review_kinds=route.policy["required_review_kinds"],
+        required_capabilities=route.policy.get("required_capabilities", []),
+        max_pairwise_shared_dimensions=route.policy["max_pairwise_shared_dimensions"],
+        requested_by=route.requested_by,
+    )
+    append_event(db, route, "routing_retried", "evaluator-router", {
+        "route_digest": route.route_digest,
+        "evaluator_catalog_digest": catalog_digest,
+    })
+    return _assign_route(db, route, payload, profiles)
+
+
+def _assign_route(
+    db: Session, route: EvaluationRoute, payload: EvaluationRouteCreate,
+    profiles: list[EvaluatorProfile],
+) -> EvaluationRoute:
     selected, blocked = _route_profiles(profiles, payload)
     if blocked:
+        blocked = {**blocked, "evaluator_catalog_digest": _catalog_digest(profiles)}
         route.status = "blocked"
         route.blocked_reason = blocked
         append_event(db, route, "route_blocked", "evaluator-router", blocked)
@@ -360,6 +402,7 @@ def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute
             },
         )
     route.status = "assigned"
+    route.blocked_reason = {}
     return route
 
 

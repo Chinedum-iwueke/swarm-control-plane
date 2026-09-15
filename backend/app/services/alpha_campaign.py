@@ -40,6 +40,7 @@ from app.services.evaluator_routing import (
     alpha_strategy_reviews_approved,
     create_route,
     require_independence,
+    retry_blocked_route,
     task_producer_identity,
 )
 from app.services.governance import consume_task_approval
@@ -963,6 +964,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 requested_by="alpha-campaign-director",
             ),
         )
+    elif review_route.status == "blocked":
+        review_route = retry_blocked_route(db, review_route)
     if not alpha_strategy_reviews_approved(
         db,
         review_route,

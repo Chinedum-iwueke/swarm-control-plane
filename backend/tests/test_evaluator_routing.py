@@ -17,6 +17,7 @@ from app.services.evaluator_routing import (
     digest,
     producer_identity_for_lease,
     require_independence,
+    retry_blocked_route,
     task_producer_identity,
 )
 from fastapi import HTTPException
@@ -25,6 +26,60 @@ ONE = uuid.UUID("10000000-0000-4000-8000-000000000001")
 TWO = uuid.UUID("20000000-0000-4000-8000-000000000002")
 THREE = uuid.UUID("30000000-0000-4000-8000-000000000003")
 DIGEST = "a" * 64
+
+
+def blocked_route_fixture():
+    payload = route()
+    return SimpleNamespace(
+        id=uuid.uuid4(), subject_type=payload.subject_type,
+        subject_id=payload.subject_id, subject_digest=payload.subject_digest,
+        producer=payload.producer.model_dump(mode="json"),
+        policy={
+            "required_review_kinds": payload.required_review_kinds,
+            "required_capabilities": payload.required_capabilities,
+            "excluded_producers": [], "max_pairwise_shared_dimensions": 4,
+        },
+        requested_by=payload.requested_by, route_digest=DIGEST,
+        status="blocked", blocked_reason={"evaluator_catalog_digest": digest([])},
+    )
+
+
+def test_blocked_route_does_not_emit_retries_without_catalog_change(monkeypatch):
+    import app.services.evaluator_routing as service
+
+    record = blocked_route_fixture()
+    monkeypatch.setattr(service, "_active_profiles", lambda db: [])
+    event = MagicMock()
+    monkeypatch.setattr(service, "append_event", event)
+    assert retry_blocked_route(MagicMock(), record) is record
+    event.assert_not_called()
+
+
+def test_blocked_route_recovers_with_fresh_profiles_without_rewriting_request(monkeypatch):
+    import app.services.evaluator_routing as service
+
+    record = blocked_route_fixture()
+    original = digest({"producer": record.producer, "policy": record.policy})
+    profiles = [
+        profile(TWO, "c" * 64, "stat-review", "statistical"),
+        profile(THREE, "d" * 64, "adv-review", "adversarial"),
+    ]
+    monkeypatch.setattr(service, "_active_profiles", lambda db: profiles)
+    event = MagicMock()
+    monkeypatch.setattr(service, "append_event", event)
+    db = MagicMock()
+    assert retry_blocked_route(db, record) is record
+    db.refresh.assert_called_once_with(record, with_for_update=True)
+    assert record.status == "assigned"
+    assert record.blocked_reason == {}
+    assert record.route_digest == DIGEST
+    assert digest({"producer": record.producer, "policy": record.policy}) == original
+    assert db.add.call_count == 2
+    assert [call.args[2] for call in event.call_args_list] == [
+        "routing_retried", "evaluator_assigned", "evaluator_assigned",
+    ]
+    retry_blocked_route(db, record)
+    assert db.add.call_count == 2
 
 
 def alpha_review_fixture():
