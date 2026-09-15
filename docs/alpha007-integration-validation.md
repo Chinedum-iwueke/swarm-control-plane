@@ -27,3 +27,14 @@ registration, DATA-003 quality admission, mixed-basket execution, expanded
 mandate activation or two-job BT-009 closure is inferred from these local tests.
 Next: supervised scan with periodic ledger heartbeat, immutable publication,
 native coverage/quality receipts and hypothesis-specific basket eligibility.
+
+Pre-landing review identified silent subtree omission, unsafe path reopening,
+special-file blocking, nested-column timestamp indexing, unvalidated summaries,
+and report lifecycle races. Follow-up fixes use explicit traversal failure,
+no-follow directory descriptors and one regular file descriptor for hash/metadata,
+scalar timezone-aware timestamp bounds, device/inode/size/mtime/ctime stability,
+derived disposition/assets validation, immutable input bindings and row-locked
+terminal transitions. Fresh verification: 834 backend tests passed (one optional
+database skip); 19 native inventory/admission/producer tests passed.
+Hermes PR #268 and Bulletproof PR #307 are open with CI running. No production
+scan, quality admission, expanded execution scope or backtest is claimed.
