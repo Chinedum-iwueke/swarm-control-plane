@@ -240,36 +240,80 @@ def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
     return inventory
 
 
-def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
-    query = (
-        mandate.objective + " predictive mechanism falsification market microstructure"
-    )
+def _discovery_queries(mandate) -> list[str]:
+    columns = {
+        column
+        for binding in mandate.specification["dataset_bindings"]
+        for column in binding["output_columns"]
+    }
+    facets = []
+    if "close" in columns:
+        facets.extend(["momentum transaction costs", "mean reversion short horizon"])
+    if {"high", "low", "close"}.issubset(columns):
+        facets.append("volatility return predictability")
+    if "volume" in columns:
+        facets.extend(["liquidity price impact", "volume return predictability"])
+    if "funding_rate" in columns:
+        facets.append("funding carry reversal")
+    if facets:
+        offset = mandate.cycle_count % len(facets)
+        facets = (facets[offset:] + facets[:offset])[:3]
+    return list(dict.fromkeys([mandate.objective[:1000], *facets]))
+
+
+def _discovery_corpus(db, mandate) -> dict:
+    queries = _discovery_queries(mandate)
+    citations = {}
+    receipts = []
+    corpus_digest = None
     try:
-        retrieval = hybrid_search(
-            db, HybridRetrievalRequest(query=query, limit=12), ORCHESTRATOR_ACCESS
-        )
-        citations = [
-            {
-                "object_id": str(hit["object_id"]),
-                "content_digest": hit["citation"]["content_digest"],
-                "coordinates": hit["citation"]["coordinates"],
-                "text": hit["text"][:1600],
-                "confidence": hit["confidence"],
-            }
-            for hit in retrieval["hits"]
-        ]
-        corpus = {
-            "digest": retrieval["corpus_digest"],
-            "abstained": retrieval["abstained"],
-            "citations": citations,
+        for query in queries:
+            retrieval = hybrid_search(
+                db, HybridRetrievalRequest(query=query, limit=6), ORCHESTRATOR_ACCESS
+            )
+            current_digest = retrieval["corpus_digest"]
+            if corpus_digest is not None and corpus_digest != current_digest:
+                raise HTTPException(409, "Corpus changed during discovery grounding.")
+            corpus_digest = current_digest
+            receipts.append(
+                {
+                    "query": query,
+                    "abstained": retrieval["abstained"],
+                    "confidence": retrieval["confidence"],
+                    "corpus_digest": current_digest,
+                }
+            )
+            for hit in retrieval["hits"][:3]:
+                key = str(hit["object_id"])
+                if key in citations:
+                    citations[key]["retrieved_for"].append(query)
+                    continue
+                citations[key] = {
+                    "object_id": key,
+                    "content_digest": hit["citation"]["content_digest"],
+                    "coordinates": hit["citation"]["coordinates"],
+                    "text": hit["text"][:1600],
+                    "confidence": hit["confidence"],
+                    "retrieved_for": [query],
+                }
+        return {
+            "digest": corpus_digest,
+            "abstained": not citations,
+            "citations": list(citations.values()),
+            "query_receipts": receipts,
         }
     except HTTPException as exc:
-        corpus = {
+        return {
             "digest": None,
             "abstained": True,
             "citations": [],
+            "query_receipts": receipts,
             "error": str(exc.detail),
         }
+
+
+def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
+    corpus = _discovery_corpus(db, mandate)
     attempts = db.scalars(
         select(AlphaCampaignAttempt)
         .order_by(AlphaCampaignAttempt.created_at.desc())
@@ -313,7 +357,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
                 "deterministically_verified",
                 "pending_independent_verification",
             ],
-            "campaign_use_requires": "source_replayed_or_deterministically_verified",
+            "campaign_use_requires": "bound_deterministic_or_independent_verification_receipt",
         },
     }
 
@@ -462,9 +506,15 @@ def _new_cycle(
     db: Session,
     mandate: AlphaResearchMandate,
     founder_idea: AlphaFounderResearchIdea | None = None,
+    *,
+    prepared_context: dict | None = None,
 ) -> AlphaDiscoveryCycle:
     ordinal = mandate.cycle_count + 1
-    context = _bounded_context(db, mandate)
+    context = (
+        prepared_context
+        if prepared_context is not None
+        else _bounded_context(db, mandate)
+    )
     if founder_idea:
         context["founder_research_idea"] = {
             "id": str(founder_idea.id),
@@ -847,6 +897,73 @@ def _portfolio_and_campaign(
         },
         cycle,
     )
+
+
+def recover_discovery_grounding(db: Session, mandate, payload):
+    moment = now()
+    if mandate.status != "active" or not (
+        mandate.valid_from <= moment < mandate.valid_until
+    ):
+        raise HTTPException(409, "Grounding recovery requires an active mandate.")
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before grounding recovery.")
+    cycle = db.scalar(
+        select(AlphaDiscoveryCycle)
+        .where(AlphaDiscoveryCycle.mandate_id == mandate.id)
+        .order_by(AlphaDiscoveryCycle.ordinal.desc())
+        .limit(1)
+    )
+    if cycle is None or cycle.id != payload.expected_cycle_id:
+        raise HTTPException(409, "Discovery cycle changed before grounding recovery.")
+    if (
+        cycle.status not in {"completed", "rejected", "needs_attention"}
+        or cycle.campaign_id
+    ):
+        raise HTTPException(
+            409, "Only a terminal ungrounded discovery cycle can be recovered."
+        )
+    if cycle.context.get("research_intelligence", {}).get("citations"):
+        raise HTTPException(409, "Grounded discovery cannot use grounding recovery.")
+    for task_id in (cycle.intelligence_task_id, cycle.hypothesis_task_id):
+        if task_id:
+            task = db.get(Task, task_id)
+            if task is None or task.status not in {"succeeded", "failed", "cancelled"}:
+                raise HTTPException(409, "Discovery stage is still active.")
+    if db.scalar(
+        select(AlphaFounderResearchIdea).where(
+            AlphaFounderResearchIdea.cycle_id == cycle.id
+        )
+    ):
+        raise HTTPException(
+            409, "Founder ideas require explicit new intake, not automatic recovery."
+        )
+    for consumed, limit in (
+        (mandate.cycle_count, "maximum_cycles"),
+        (mandate.hypothesis_count, "maximum_hypotheses"),
+        (mandate.trial_count, "maximum_total_trials"),
+    ):
+        if consumed >= mandate.budget[limit]:
+            raise HTTPException(409, "Mandate research budget is exhausted.")
+    context = _bounded_context(db, mandate)
+    if not context.get("research_intelligence", {}).get("citations"):
+        raise HTTPException(409, "Grounding recovery still has no current citations.")
+    recovered = _new_cycle(db, mandate, prepared_context=context)
+    _event(
+        db,
+        mandate,
+        "ungrounded_discovery_recovered_by_operator",
+        {
+            "actor": payload.actor,
+            "reason": payload.reason,
+            "previous_cycle_id": str(cycle.id),
+            "previous_cycle_digest": cycle.cycle_digest,
+            "new_cycle_id": str(recovered.id),
+            "new_cycle_digest": recovered.cycle_digest,
+            "automatic_cadence_unchanged": True,
+        },
+        recovered,
+    )
+    return recovered
 
 
 def _recover_resumed_stage(db: Session, mandate, cycle) -> bool:
