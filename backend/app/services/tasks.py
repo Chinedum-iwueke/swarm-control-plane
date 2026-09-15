@@ -330,6 +330,10 @@ def lease_next_task(
             valid_approval,
             graph_parallelism_available,
             or_(
+                Task.task_type != "alpha_strategy_review",
+                Task.input_contract["evaluator_agent_id"].astext == str(agent.id),
+            ),
+            or_(
                 Task.mission_id.is_(None),
                 exists(
                     select(EngineeringMission.id).where(
@@ -403,9 +407,9 @@ def lease_next_task(
     task.failure = {}
 
     producer_identity = None
-    if task.operation_type == "alpha_research_execution" and task.input_contract.get(
+    if task.operation_type == "alpha_strategy_review" or (task.operation_type == "alpha_research_execution" and task.input_contract.get(
         "stage"
-    ) in {"draft", "qualify"}:
+    ) in {"draft", "qualify"}):
         producer_identity = producer_identity_for_lease(
             db,
             agent,

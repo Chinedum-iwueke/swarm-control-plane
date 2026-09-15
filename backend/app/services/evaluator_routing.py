@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -245,6 +247,11 @@ def _route_profiles(
                 reasons.append("review_kind")
             if not required_caps.issubset(set(profile.capabilities)):
                 reasons.append("capabilities")
+            if (
+                payload.subject_type == "alpha_strategy_qualification"
+                and f"alpha-strategy-review:{review_kind}" not in profile.capabilities
+            ):
+                reasons.append("strategy_review_executor_capability")
             selected_corr = [
                 _correlation(_profile_identity(item[1]), identity) for item in selected
             ]
@@ -404,6 +411,51 @@ def _assign_route(
     route.status = "assigned"
     route.blocked_reason = {}
     return route
+
+
+def complete_strategy_review_task(db: Session, task: Task, agent: Agent, result: dict) -> None:
+    """Called only after authenticated task lease verification, in its transaction."""
+    if task.task_type != "alpha_strategy_review":
+        return
+    contract = task.input_contract
+    try:
+        route_id = UUID(contract["route_id"])
+        assignment_id = UUID(contract["assignment_id"])
+        review = AlphaStrategyReview.model_validate(result["summary"]["alpha_strategy_review"])
+        completion = EvaluatorAssignmentComplete(
+            evaluator_agent_id=agent.id,
+            review_id=f"task:{task.id}:attempt:{task.attempt_count}",
+            review_digest=result["summary"]["review_digest"],
+            alpha_strategy_review=review,
+        )
+    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+        raise HTTPException(422, "Strategy review task result or contract is invalid.") from exc
+    if contract.get("evaluator_agent_id") != str(agent.id) or task.assigned_agent_id != agent.id:
+        raise HTTPException(403, "Strategy review is assigned to another evaluator.")
+    route = db.scalar(select(EvaluationRoute).where(EvaluationRoute.id == route_id).with_for_update())
+    assignment = db.scalar(select(EvaluatorAssignment).where(
+        EvaluatorAssignment.id == assignment_id, EvaluatorAssignment.route_id == route_id,
+    ).with_for_update())
+    if route is None or assignment is None:
+        raise HTTPException(409, "Strategy review route or assignment is missing.")
+    identity = task_producer_identity(db, task)
+    profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+    if (
+        identity is None or profile is None
+        or identity != _profile_identity(profile)
+        or contract.get("evaluator_profile_digest") != profile.profile_digest
+        or contract.get("evaluator_package_digest") != profile.package_digest
+    ):
+        raise HTTPException(409, "Reviewer lease identity differs from the routed profile/package.")
+    if (
+        route.subject_type != "alpha_strategy_qualification"
+        or route.subject_digest != contract.get("subject_digest")
+        or assignment.review_kind != contract.get("review_kind")
+        or digest(contract.get("subject")) != route.subject_digest
+        or contract.get("authority") != "review_only_no_execution"
+    ):
+        raise HTTPException(422, "Strategy review task differs from its routed subject.")
+    complete_assignment(db, route, assignment, completion)
 
 
 def complete_assignment(

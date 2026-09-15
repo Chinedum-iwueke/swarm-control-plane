@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from swarm_worker.models import AgentIdentity, Task
+from swarm_worker.strategy_review_contract import AlphaStrategyReviewContract
 from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
 
 _SAFE_REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -286,6 +287,7 @@ class ValidatedTaskPolicy(BaseModel):
         | ResearchMemorySyncContract
         | AlphaResearchExecutionContract
         | AlphaDiscoveryContract
+        | AlphaStrategyReviewContract
     )
     workflow: WorkflowDefinition
 
@@ -319,6 +321,7 @@ def validate_task_policy(
         "research_memory_sync",
         "alpha_research_execution",
         "alpha_discovery",
+        "alpha_strategy_review",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -359,6 +362,7 @@ def _parse_contract(
     | ResearchMemorySyncContract
     | AlphaResearchExecutionContract
     | AlphaDiscoveryContract
+    | AlphaStrategyReviewContract
 ):
     try:
         models = {
@@ -368,6 +372,7 @@ def _parse_contract(
             "research_memory_sync": ResearchMemorySyncContract,
             "alpha_research_execution": AlphaResearchExecutionContract,
             "alpha_discovery": AlphaDiscoveryContract,
+            "alpha_strategy_review": AlphaStrategyReviewContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)

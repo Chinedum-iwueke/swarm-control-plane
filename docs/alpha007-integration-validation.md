@@ -226,3 +226,21 @@ bound to the same native `19d361c` and frozen quality window. Recovery was
 started only after terminal/missing-handle verification, not a polling timeout.
 Boot configuration persistence is verified; an intentional reboot drill was not
 performed. Complete inventory/quality registration remains pending.
+
+Reviewer integration now uses the existing workflow loader, policy validation and
+restricted dispatcher with a closed shared contract and pinned native repository.
+Assigned evaluator routes materialize ordinary governed tasks; blocked routes
+materialize none. SQL lease selection binds the exact evaluator agent, while
+normal grant/capability/source access resolution remains required. Completion
+runs only after authenticated running-lease verification, locks route/assignment,
+replays the routed subject and compares actual lease-time profile/package identity
+before recording the immutable typed verdict. Changed actors, packages, subjects,
+review kinds, missing lease provenance and malformed results are rejected.
+Required review-executor capabilities are checked during route selection so
+profiles without an executable role do not produce invisible unleaseable work.
+Full suites pass 885 backend tests (one optional skip, two existing warnings) and
+320 worker tests; lint and diff checks pass. This source is not deployed. Actual
+reviewer role/profile/grant provisioning, engineering-author provenance and a
+genuine routed review receipt remain open. Replacement scan run
+`93a00b1f-e9ae-4dca-931c-efc6bf9dd99a` remains live under supervisor 18776 and
+has reached 1,221 objects; no complete-root or quality receipt is claimed.

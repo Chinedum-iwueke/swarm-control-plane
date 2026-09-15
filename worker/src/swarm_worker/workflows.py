@@ -20,6 +20,7 @@ WORKFLOW_FILES = {
     "research-memory-sync": "research-memory-sync.yaml",
     "alpha-research-execution": "alpha-research-execution.yaml",
     "alpha-discovery": "alpha-discovery.yaml",
+    "alpha-strategy-review": "alpha-strategy-review.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -156,6 +157,7 @@ class WorkflowDefinition(BaseModel):
     task_type: Literal[
         "code_validation",
         "engineering_mission",
+        "alpha_strategy_review",
         "research_experiment",
         "research_memory_sync",
         "alpha_research_execution",
@@ -192,6 +194,7 @@ class WorkflowDefinition(BaseModel):
                 "research_memory_sync",
                 "alpha_research_execution",
                 "alpha_discovery",
+                "alpha_strategy_review",
             }
             and steps
         ):
@@ -202,6 +205,7 @@ class WorkflowDefinition(BaseModel):
                 "research_memory_sync",
                 "alpha_research_execution",
                 "alpha_discovery",
+                "alpha_strategy_review",
             }
             and not steps
         ):

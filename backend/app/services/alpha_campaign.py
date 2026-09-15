@@ -21,7 +21,11 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
     DiscoveryPortfolioCandidate,
 )
-from app.models.evaluator_routing import EvaluationRoute
+from app.models.evaluator_routing import (
+    EvaluationRoute,
+    EvaluatorAssignment,
+    EvaluatorProfile,
+)
 from app.models.governance import FounderNotification, TaskApproval
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
@@ -678,6 +682,44 @@ def _create_strategy_engineering_task(
     return task
 
 
+def _materialize_strategy_review_tasks(
+    db: Session, route: EvaluationRoute, subject: dict, qualification: dict,
+) -> None:
+    if route.status != "assigned":
+        return
+    assignments = db.scalars(select(EvaluatorAssignment).where(
+        EvaluatorAssignment.route_id == route.id, EvaluatorAssignment.status == "assigned",
+    )).all()
+    for assignment in assignments:
+        profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+        if profile is None:
+            raise HTTPException(409, "Routed strategy reviewer profile is missing.")
+        number = f"AR-{assignment.id}"
+        if db.scalar(select(Task).where(Task.task_number == number)) is not None:
+            continue
+        task = build_task(TaskCreate(
+            task_number=number, project="bulletproof-bt", task_type="alpha_strategy_review",
+            title=f"Independent {assignment.review_kind} review",
+            objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
+            risk_level=0, created_by="alpha-campaign-director", max_attempts=2,
+            required_capabilities=[f"alpha-strategy-review:{assignment.review_kind}"],
+            allowed_machines=[profile.machine],
+            input_contract={
+                "repository": "bulletproof_bt", "workflow": "alpha-strategy-review",
+                "base_ref": subject["source_commit"], "route_id": str(route.id),
+                "assignment_id": str(assignment.id), "evaluator_agent_id": str(profile.agent_id),
+                "evaluator_profile_digest": profile.profile_digest,
+                "evaluator_package_digest": profile.package_digest,
+                "review_kind": assignment.review_kind, "subject_digest": route.subject_digest,
+                "subject": deepcopy(subject), "qualification": deepcopy(qualification),
+                "max_duration_seconds": 900, "authority": "review_only_no_execution",
+            },
+            expected_outputs=["typed strategy review verdict", "retained review logs"],
+            acceptance_criteria=["Exact subject/source binding", "No producer self-review", "No execution authority"],
+        ))
+        persist_new_task(db, task)
+
+
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
     delegated = (
         campaign.specification.get("execution_protocol") == "alpha004-delegated-v1"
@@ -966,6 +1008,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         )
     elif review_route.status == "blocked":
         review_route = retry_blocked_route(db, review_route)
+    _materialize_strategy_review_tasks(db, review_route, subject, qualification)
     if not alpha_strategy_reviews_approved(
         db,
         review_route,

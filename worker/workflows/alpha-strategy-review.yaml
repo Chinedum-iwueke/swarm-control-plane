@@ -1,0 +1,6 @@
+name: alpha-strategy-review
+task_type: alpha_strategy_review
+allowed_repositories:
+  - bulletproof_bt
+timeout_seconds: 1800
+steps: []

@@ -668,6 +668,38 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
     create.assert_not_called()
 
 
+def test_routed_review_tasks_preserve_subject_profile_and_source_without_execution(monkeypatch):
+    assignment = SimpleNamespace(id=uuid4(), evaluator_profile_id=uuid4(), review_kind="strategy_spec")
+    profile = SimpleNamespace(agent_id=uuid4(), machine="vm1-developer", profile_digest="b" * 64, package_digest="c" * 64)
+    route = SimpleNamespace(id=uuid4(), status="assigned", subject_digest=DIGEST)
+    subject = {"source_commit": COMMIT, "card_digest": "d" * 64}
+    qualification = {"card": {"status": "confirmed"}, "artifact_bundle": {"strategy_spec": "exact"}}
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [assignment]
+    db.get.return_value = profile
+    db.scalar.return_value = None
+    build = MagicMock(return_value=SimpleNamespace(id=uuid4()))
+    persist = MagicMock()
+    monkeypatch.setattr(service, "build_task", build)
+    monkeypatch.setattr(service, "persist_new_task", persist)
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    payload = build.call_args.args[0]
+    assert payload.task_type == "alpha_strategy_review"
+    assert payload.required_capabilities == ["alpha-strategy-review:strategy_spec"]
+    assert payload.input_contract["base_ref"] == COMMIT
+    assert payload.input_contract["evaluator_agent_id"] == str(profile.agent_id)
+    assert payload.input_contract["evaluator_package_digest"] == profile.package_digest
+    assert payload.input_contract["qualification"] == qualification
+    assert payload.input_contract["authority"] == "review_only_no_execution"
+    persist.assert_called_once()
+    db.scalar.return_value = SimpleNamespace(id=uuid4())
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    assert persist.call_count == 1
+    route.status = "blocked"
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    assert persist.call_count == 1
+
+
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
 ):

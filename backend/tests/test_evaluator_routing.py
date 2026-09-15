@@ -14,6 +14,7 @@ from app.services.evaluator_routing import (
     _route_profiles,
     alpha_strategy_reviews_approved,
     complete_assignment,
+    complete_strategy_review_task,
     digest,
     producer_identity_for_lease,
     require_independence,
@@ -26,6 +27,57 @@ ONE = uuid.UUID("10000000-0000-4000-8000-000000000001")
 TWO = uuid.UUID("20000000-0000-4000-8000-000000000002")
 THREE = uuid.UUID("30000000-0000-4000-8000-000000000003")
 DIGEST = "a" * 64
+
+
+@pytest.mark.parametrize("mutation", [None, "actor", "subject", "kind", "result", "package", "lease"])
+def test_review_task_completion_binds_authenticated_actor_route_and_output(monkeypatch, mutation):
+    import app.services.evaluator_routing as service
+
+    subject = {"source_commit": "a" * 40, "card_digest": "b" * 64}
+    subject_digest = digest(subject)
+    record = SimpleNamespace(id=uuid.uuid4(), subject_type="alpha_strategy_qualification", subject_digest=subject_digest)
+    reviewer = profile(TWO, "f" * 64, "routed-review", "strategy_spec")
+    assignment = SimpleNamespace(id=uuid.uuid4(), review_kind="strategy_spec", evaluator_profile_id=reviewer.id)
+    contract = {
+        "route_id": str(record.id), "assignment_id": str(assignment.id), "evaluator_agent_id": str(TWO),
+        "subject": subject, "subject_digest": subject_digest, "review_kind": "strategy_spec",
+        "authority": "review_only_no_execution",
+        "evaluator_profile_digest": reviewer.profile_digest, "evaluator_package_digest": reviewer.package_digest,
+    }
+    task = SimpleNamespace(id=uuid.uuid4(), task_type="alpha_strategy_review", assigned_agent_id=TWO,
+                           input_contract=contract, attempt_count=1)
+    review = AlphaStrategyReview(subject_digest=subject_digest, verdict="reject", checks=["availability"],
+                                 rationale="The pinned source contains unresolved causal timing.", blockers=["future join"])
+    result = {"summary": {"alpha_strategy_review": review.model_dump(mode="json"),
+                          "review_digest": digest(review.model_dump(mode="json"))}}
+    if mutation == "actor":
+        contract["evaluator_agent_id"] = str(ONE)
+    elif mutation == "subject":
+        contract["subject_digest"] = "f" * 64
+    elif mutation == "kind":
+        contract["review_kind"] = "causality_leakage"
+    elif mutation == "result":
+        result = {}
+    elif mutation == "package":
+        contract["evaluator_package_digest"] = "9" * 64
+    db = MagicMock()
+    db.scalar.side_effect = [record, assignment]
+    db.get.return_value = reviewer
+    monkeypatch.setattr(service, "task_producer_identity", lambda db, task:
+                        None if mutation == "lease" else _profile_identity(reviewer))
+    completion = MagicMock()
+    monkeypatch.setattr(service, "complete_assignment", completion)
+    if mutation:
+        with pytest.raises(HTTPException):
+            complete_strategy_review_task(db, task, SimpleNamespace(id=TWO), result)
+        completion.assert_not_called()
+    else:
+        complete_strategy_review_task(db, task, SimpleNamespace(id=TWO), result)
+        completion.assert_called_once()
+        payload = completion.call_args.args[3]
+        assert payload.evaluator_agent_id == TWO
+        assert payload.alpha_strategy_review.verdict == "reject"
+        assert payload.review_digest == digest(review.model_dump(mode="json"))
 
 
 def blocked_route_fixture():

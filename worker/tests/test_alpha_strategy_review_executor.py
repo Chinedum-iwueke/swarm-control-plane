@@ -26,9 +26,24 @@ def contract():
         "route_id": "20000000-0000-4000-8000-000000000001",
         "assignment_id": "30000000-0000-4000-8000-000000000001",
         "evaluator_agent_id": "40000000-0000-4000-8000-000000000001",
+        "evaluator_profile_digest": "e" * 64, "evaluator_package_digest": "f" * 64,
         "review_kind": "strategy_spec", "subject_digest": review_digest(subject),
         "subject": subject, "qualification": qualification, "authority": "review_only_no_execution",
     }
+
+
+def test_strategy_review_uses_allowlisted_workflow_and_typed_policy():
+    from pathlib import Path
+
+    from swarm_worker.policy import _parse_contract
+    from swarm_worker.workflows import WorkflowLoader
+
+    parsed = _parse_contract("alpha_strategy_review", contract())
+    assert isinstance(parsed, AlphaStrategyReviewContract)
+    workflow = WorkflowLoader(Path(__file__).parents[1] / "workflows").load(parsed.workflow)
+    assert workflow.task_type == "alpha_strategy_review"
+    assert workflow.allowed_repositories == ["bulletproof_bt"]
+    assert workflow.steps == []
 
 
 @pytest.mark.parametrize("change", ["subject", "card", "artifacts", "source", "self", "authority"])
