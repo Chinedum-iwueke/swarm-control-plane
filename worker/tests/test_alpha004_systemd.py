@@ -12,12 +12,32 @@ def test_alpha004_units_allow_only_disposable_workspace_bookkeeping() -> None:
         unit = (ROOT / "systemd" / name).read_text(encoding="utf-8")
 
         assert "ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane" in unit
-        assert (
-            "ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces" in unit
-        )
+        assert "ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces" in unit
         assert (
             "ReadWritePaths=-/home/omenka/Projects/swarm-control-plane/"
             ".git/worktrees" in unit
         )
         assert "NoNewPrivileges=true" in unit
         assert "CapabilityBoundingSet=" in unit
+        assert "ProtectSystem=strict" in unit
+        assert "ReadOnlyPaths=/etc/invariance-swarm/codex-worker" in unit
+        assert (
+            "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:"
+            "/var/lib/invariance-swarm/codex-discovery-runtime/auth.json" in unit
+        )
+        assert "ReadWritePaths=/etc/invariance-swarm/codex-worker" not in unit
+        assert (
+            "ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime" in unit
+        )
+        assert unit.index(
+            "EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env"
+        ) > unit.index("EnvironmentFile=/etc/invariance-swarm/alpha004-")
+
+
+def test_runtime_installer_does_not_copy_or_truncate_credentials():
+    source = (ROOT / "systemd/install-alpha004-research-agents.sh").read_text()
+    assert 'if [[ ! -e "$runtime/auth.json" ]]' in source
+    assert 'install -o root -g root -m 0600 /dev/null "$runtime/auth.json"' in source
+    assert 'test ! -L "$runtime"' in source
+    assert 'test ! -L "$runtime/auth.json"' in source
+    assert "cp " not in source

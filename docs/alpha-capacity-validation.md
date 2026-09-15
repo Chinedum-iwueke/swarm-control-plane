@@ -69,3 +69,17 @@ matching task/cycle/mandate/stage bindings. It preserves failure events, does no
 create an approval, and cannot automatically replay an old execution instruction.
 Two concurrent terminal BT-009 receipts remain outstanding, not inferred from
 online services, local pool tests, or historical one-month results.
+
+After operator reauthentication/restart, audited resume created attempt 4 on
+2026-09-15 at 20:04 UTC. It still failed initialization under systemd confinement.
+A matching read-only namespace trace established the remaining mandatory write:
+`CODEX_HOME/installation_id` is opened read-write even with SQLite/log overrides.
+The corrected units therefore use a private writable runtime home with a
+read-only bind mount of the original `auth.json`, never a credential copy.
+The installer creates only an empty mount target, does not truncate it on repeat,
+and preserves strict filesystem confinement. Discovery disables plugin/app
+integration so cached plugins cannot expand this bounded workflow.
+The corrected namespace probe first reported temporary model capacity, then
+completed authenticated inference with `runtime-ok` under the same read-only
+credential binding. Privileged unit reinstall and productive recovery are still
+required; the original and resumed failures remain retained.
