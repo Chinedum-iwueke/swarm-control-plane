@@ -20,6 +20,7 @@ from app.models.alpha_discovery import (
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.task import Task
+from app.models.task_event import TaskEvent
 from app.schemas.alpha_campaign import (
     AlphaCampaignActivation,
     AlphaCampaignBudget,
@@ -386,8 +387,12 @@ def _task(
 def queue_founder_idea(
     db: Session, mandate: AlphaResearchMandate, payload: AlphaFounderResearchIdeaCreate
 ) -> AlphaFounderResearchIdea:
-    if mandate.status != "active" or not (mandate.valid_from <= now() < mandate.valid_until):
-        raise HTTPException(409, "Founder research ideas require an active weekly mandate.")
+    if mandate.status != "active" or not (
+        mandate.valid_from <= now() < mandate.valid_until
+    ):
+        raise HTTPException(
+            409, "Founder research ideas require an active weekly mandate."
+        )
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before the idea was queued.")
     constraints = {
@@ -402,7 +407,9 @@ def queue_founder_idea(
             "mandate_digest": mandate.mandate_digest,
             "idea": payload.idea,
             "constraints": constraints,
-            "conversation_id": str(payload.conversation_id) if payload.conversation_id else None,
+            "conversation_id": str(payload.conversation_id)
+            if payload.conversation_id
+            else None,
         }
     )
     existing = db.scalar(
@@ -427,12 +434,18 @@ def queue_founder_idea(
         db,
         mandate,
         "founder_research_idea_queued",
-        {"idea_id": str(idea.id), "idea_digest": idea.idea_digest, "constraints": constraints},
+        {
+            "idea_id": str(idea.id),
+            "idea_digest": idea.idea_digest,
+            "constraints": constraints,
+        },
     )
     return idea
 
 
-def _next_founder_idea(db: Session, mandate: AlphaResearchMandate) -> AlphaFounderResearchIdea | None:
+def _next_founder_idea(
+    db: Session, mandate: AlphaResearchMandate
+) -> AlphaFounderResearchIdea | None:
     return db.scalar(
         select(AlphaFounderResearchIdea)
         .where(
@@ -517,9 +530,7 @@ def _candidate_reasons(
     )
     if founder_constraints:
         maximum_variants = int(founder_constraints.get("maximum_variants", 8))
-        minimum_history_days = int(
-            founder_constraints.get("minimum_history_days", 365)
-        )
+        minimum_history_days = int(founder_constraints.get("minimum_history_days", 365))
         if candidate.parameter_budget.maximum_variants > maximum_variants:
             reasons.append("founder_variant_budget_exceeded")
         if candidate.data.minimum_history_observations < minimum_history_days * 1440:
@@ -527,7 +538,9 @@ def _candidate_reasons(
         window_start = datetime.fromisoformat(
             mandate.specification["execution_window_start"]
         )
-        window_end = datetime.fromisoformat(mandate.specification["execution_window_end"])
+        window_end = datetime.fromisoformat(
+            mandate.specification["execution_window_end"]
+        )
         if (window_end - window_start).total_seconds() < minimum_history_days * 86400:
             reasons.append("mandate_window_below_founder_minimum")
     question = " ".join(candidate.question.lower().split())
@@ -836,6 +849,63 @@ def _portfolio_and_campaign(
     )
 
 
+def _recover_resumed_stage(db: Session, mandate, cycle) -> bool:
+    if cycle.status != "needs_attention" or cycle.campaign_id:
+        return False
+    stage = {
+        "intelligence_synthesis": "intelligence",
+        "hypothesis_generation": "hypothesis",
+    }.get(cycle.phase)
+    if stage is None:
+        return False
+    task = db.get(Task, getattr(cycle, f"{stage}_task_id"))
+    if task is None or task.status not in {"queued", "leased", "running", "succeeded"}:
+        return False
+    contract = task.input_contract or {}
+    if any(
+        contract.get(key) != value
+        for key, value in {
+            "cycle_id": str(cycle.id),
+            "mandate_id": str(mandate.id),
+            "mandate_digest": mandate.mandate_digest,
+            "stage": stage,
+        }.items()
+    ):
+        return False
+    failed = db.scalar(
+        select(AlphaDiscoveryEvent)
+        .where(
+            AlphaDiscoveryEvent.cycle_id == cycle.id,
+            AlphaDiscoveryEvent.event_type == f"{stage}_stage_failed",
+        )
+        .order_by(AlphaDiscoveryEvent.sequence.desc())
+        .limit(1)
+    )
+    resumed = db.scalar(
+        select(TaskEvent)
+        .where(TaskEvent.task_id == task.id, TaskEvent.event_type == "task_resumed")
+        .order_by(TaskEvent.id.desc())
+        .limit(1)
+    )
+    if failed is None or resumed is None or resumed.created_at <= failed.created_at:
+        return False
+    cycle.status = "running"
+    cycle.completed_at = None
+    cycle.next_action = "await_recovered_discovery_stage"
+    _event(
+        db,
+        mandate,
+        "discovery_stage_resumed_by_operator",
+        {
+            "task_id": str(task.id),
+            "task_resume_event_id": resumed.id,
+            "requested_by": (resumed.payload or {}).get("requested_by"),
+        },
+        cycle,
+    )
+    return True
+
+
 def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     moment = now()
     mandate.heartbeat_at = moment
@@ -892,12 +962,17 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             cycle.status = "needs_attention"
             cycle.next_action = campaign.next_action
         return
+    _recover_resumed_stage(db, mandate, cycle)
     if cycle.status in _TERMINAL_CYCLE:
         founder_idea = db.scalar(
-            select(AlphaFounderResearchIdea).where(AlphaFounderResearchIdea.cycle_id == cycle.id)
+            select(AlphaFounderResearchIdea).where(
+                AlphaFounderResearchIdea.cycle_id == cycle.id
+            )
         )
         if founder_idea and founder_idea.status == "processing":
-            founder_idea.status = "completed" if cycle.status == "completed" else cycle.status
+            founder_idea.status = (
+                "completed" if cycle.status == "completed" else cycle.status
+            )
         elapsed = (moment - (cycle.completed_at or cycle.created_at)).total_seconds()
         if (
             mandate.cycle_count >= mandate.budget["maximum_cycles"]

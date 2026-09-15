@@ -9,11 +9,60 @@ from app.schemas.alpha_discovery import (
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
 )
-from app.services.alpha_discovery import _candidate_reasons
+from app.services.alpha_discovery import _candidate_reasons, _recover_resumed_stage
 from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+@pytest.mark.parametrize("condition", ["valid", "missing", "stale", "wrong_digest"])
+def test_stage_recovery_requires_later_bound_operator_resume(monkeypatch, condition):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), mandate_digest=DIGEST)
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        status="needs_attention",
+        phase="intelligence_synthesis",
+        campaign_id=None,
+        intelligence_task_id=uuid4(),
+        completed_at=moment,
+    )
+    task = SimpleNamespace(
+        id=cycle.intelligence_task_id,
+        status="queued",
+        input_contract={
+            "cycle_id": str(cycle.id),
+            "mandate_id": str(mandate.id),
+            "mandate_digest": DIGEST,
+            "stage": "intelligence",
+        },
+    )
+    if condition == "wrong_digest":
+        task.input_contract["mandate_digest"] = "c" * 64
+    failed = SimpleNamespace(created_at=moment)
+    resumed = (
+        None
+        if condition == "missing"
+        else SimpleNamespace(
+            id=42,
+            created_at=moment + timedelta(seconds=-1 if condition == "stale" else 1),
+            payload={"requested_by": "founder-operator"},
+        )
+    )
+    db = MagicMock()
+    db.get.return_value = task
+    db.scalar.side_effect = [failed, resumed]
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    assert _recover_resumed_stage(db, mandate, cycle) is (condition == "valid")
+    if condition == "valid":
+        assert cycle.status == "running"
+        assert cycle.completed_at is None
+        assert event.call_args.args[2] == "discovery_stage_resumed_by_operator"
+    else:
+        assert cycle.status == "needs_attention"
+        event.assert_not_called()
 
 
 def binding():

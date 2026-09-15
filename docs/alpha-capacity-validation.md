@@ -46,3 +46,26 @@ restricted subprocess environment dropped the service's jitless setting. The
 executor now supplies fixed `NODE_OPTIONS=--jitless` without inheriting secrets or
 arbitrary Node options. Existing discovery workers require restart to load this fix;
 no failed task or old approval was replayed automatically.
+
+## Approved mandate and discovery recovery (2026-09-15)
+
+The founder approved `ALPHA004-CAPACITY-20260915`, mandate
+`aae38741-7f41-40bc-8612-0ba266467a55`, against reviewed native commit
+`a864ac0910890f98f457eb4140b28ede9921e91d`. Its immutable execution window is
+2025-05-01 through 2026-05-01 and its existing data authority is Bybit BTCUSDT.
+Fresh native admission receipt `09c3b6a6-b7d5-4efe-88a6-637259ab47ce` binds the
+same panel to that commit. Admission does not establish complete funding coverage;
+auxiliary availability remains a separate execution gate.
+
+First intelligence task `A4-aae38741-001-I` failed three attempts because Codex
+runtime initialization attempted writes on a read-only filesystem. SQLite and
+log locations now use a private, mode-0700 attempt directory while credential
+custody remains read-only. A subsequent live startup probe passed initialization
+but failed authentication with `refresh_token_reused`; operator reauthentication
+is required before productive discovery can be demonstrated.
+
+Cycle recovery requires an explicit `task_resumed` event after its failure and
+matching task/cycle/mandate/stage bindings. It preserves failure events, does not
+create an approval, and cannot automatically replay an old execution instruction.
+Two concurrent terminal BT-009 receipts remain outstanding, not inferred from
+online services, local pool tests, or historical one-month results.
