@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -543,6 +544,114 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["dataset_digest"] == DIGEST
 
 
+@pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
+def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
+    record = campaign()
+    frozen = {
+        "dataset_build_id": str(uuid4()),
+        "dataset_digest": DIGEST,
+        "venue": "bybit",
+        "instrument": "BTCUSDT",
+        "timeframe": "1m",
+        "window_start": "2025-01-01T00:00:00Z",
+        "window_end": "2026-01-01T00:00:00Z",
+    }
+    dataset = {
+        key: frozen[key]
+        for key in (
+            "dataset_build_id",
+            "dataset_digest",
+            "venue",
+            "instrument",
+            "timeframe",
+        )
+    }
+    window = {"start": frozen["window_start"], "end": frozen["window_end"]}
+    card = {
+        "status": "draft",
+        "research_question": record.specification["research_queue"][0]["question"],
+        "dataset_binding": dataset,
+        "execution_window": window,
+        "parameters": {"lookback": [60]},
+    }
+    draft = SimpleNamespace(
+        assigned_agent_id=uuid4(),
+        status="succeeded",
+        result={"summary": {"hypothesis_card": card}},
+    )
+    confirmation = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "approved_by": "founder-operator",
+                "approved_at": datetime.now(UTC).isoformat(),
+                "plan_digest": DIGEST,
+            }
+        },
+    )
+    confirmed = deepcopy(card)
+    confirmed.update(
+        {
+            "status": "confirmed",
+            "confirmed_by": "founder-operator",
+            "confirmed_at": confirmation.result["summary"]["approved_at"],
+        }
+    )
+    qualification = SimpleNamespace(
+        id=uuid4(),
+        assigned_agent_id=uuid4(),
+        status="succeeded",
+        input_contract=frozen,
+        result={
+            "summary": {
+                "qualification": {
+                    "qualified": True,
+                    "card": confirmed,
+                    "card_digest": service.digest_document(confirmed),
+                    "dataset": dataset,
+                    "window": window,
+                    "parameter_grid": card["parameters"],
+                    "artifact_bundle": {"technical": "ready"},
+                    "review": {"independent_of_drafter": True},
+                }
+            }
+        },
+    )
+    db = MagicMock()
+    result = qualification.result["summary"]["qualification"]
+    if mutation == "claim":
+        result["card"]["claim"] = "A substituted hypothesis"
+    elif mutation == "dataset":
+        result["card"]["dataset_binding"]["dataset_digest"] = "c" * 64
+    elif mutation == "window":
+        result["card"]["execution_window"]["end"] = "2027-01-01T00:00:00Z"
+    elif mutation == "digest":
+        result["card_digest"] = "c" * 64
+    db.scalar.side_effect = [draft, confirmation, qualification, None]
+    create = MagicMock()
+    monkeypatch.setattr(service, "_create_stage_task", create)
+    monkeypatch.setattr(
+        service,
+        "task_producer_identity",
+        lambda db, task: {
+            "agent_id": str(task.assigned_agent_id),
+            "context_group": "compiler-test",
+            "package_digest": "d" * 64,
+        },
+    )
+    assert service._advance_governed_pipeline(db, record) is qualification
+    if mutation:
+        assert record.status == "needs_attention"
+        assert record.next_action == "repair_qualification_approval_binding"
+        create.assert_not_called()
+        return
+    assert record.phase == "independent_strategy_review"
+    assert record.next_action == "route_independent_strategy_review"
+    assert record.terminal_reason["subject"]["source_commit"] == COMMIT
+    assert len(record.terminal_reason["subject_digest"]) == 64
+    create.assert_not_called()
+
+
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
 ):
@@ -552,8 +661,12 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         allowed_instruments=["ETHUSDT"],
         execution_window_start="2025-05-01T00:00:00Z",
         execution_window_end="2026-05-01T00:00:00Z",
-        authority_boundary={"capital": False, "orders": False,
-                            "production_promotion": False, "self_approval": False},
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
     )
     source = record.specification["research_queue"][0]
     source["discovery_candidate_id"] = str(uuid4())
@@ -561,7 +674,9 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     source_document = {"predictor": "lagged displacement", "target": "next-hour return"}
     db = MagicMock()
     db.get.return_value = SimpleNamespace(
-        candidate_digest="7" * 64, question=source["question"], document=source_document,
+        candidate_digest="7" * 64,
+        question=source["question"],
+        document=source_document,
     )
     persisted = []
     monkeypatch.setattr(
@@ -594,6 +709,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     ]
     assert task.input_contract["base_ref"] == COMMIT
     import json
+
     evidence = json.loads(task.input_contract["evidence_context"])
     assert evidence["question"] == source["question"]
     assert evidence["dataset_binding"] == record.specification["dataset_bindings"][0]
@@ -612,9 +728,14 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
 
     from app.schemas.proposal import ProposalEngineeringMissionContract
     from pydantic import ValidationError
-    for bad_evidence in ("[]", "not-json", '{"x": NaN}',
-                         '{"x":' + '[' * 1500 + '0' + ']' * 1500 + '}',
-                         json.dumps({"text": "x" * 48001})):
+
+    for bad_evidence in (
+        "[]",
+        "not-json",
+        '{"x": NaN}',
+        '{"x":' + "[" * 1500 + "0" + "]" * 1500 + "}",
+        json.dumps({"text": "x" * 48001}),
+    ):
         document = dict(task.input_contract, evidence_context=bad_evidence)
         with pytest.raises(ValidationError):
             ProposalEngineeringMissionContract.model_validate(document)

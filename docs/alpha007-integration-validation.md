@@ -156,3 +156,23 @@ template. Qualification variant counts are calculated from the real grid rather
 than reported as a constant. Twenty combined native assignment/card/capacity-grid
 tests passed in 64.89 seconds and lint passed. This source-only pass does
 not establish semantic correctness, independent review, deployment or execution.
+
+The next source pass replaces compiler self-attestation with explicit immutable
+strategy-specification and causality/leakage reviews. Producer package/context
+identities are frozen from authorized registry profiles at task lease, never
+guessed retrospectively. Both drafter and qualifier identities are excluded from
+review, including same-agent package rollovers; an explicit qualifier identity
+binds the route primary. Qualification must replay the exact founder-approved
+card, dataset, window and parameter grid before a new execution task is created.
+Native execution checks the governed review before output allocation or compute;
+missing review is retained as a zero-trial independent-evaluation failure, not
+scientific falsification. Receipt hashes are replayed within authenticated
+control-plane assignments, not treated as offline authority.
+
+Native focused regression coverage passes 31 tests after the package-rollover
+correction; the full backend suite passes 874 tests with one optional skip and
+two existing deprecation warnings. Production reviewer registration/execution and engineering-author
+provenance remain open; this source pass is not deployed and no genuine reviewer
+receipt or concurrent scientific run is inferred from unit fixtures. The same
+live inventory supervisor remains active, with progress reaching 1,600 objects;
+complete-root registration and quality admission are still pending.

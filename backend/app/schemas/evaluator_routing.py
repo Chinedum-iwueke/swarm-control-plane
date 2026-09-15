@@ -44,10 +44,27 @@ class EvaluationRouteCreate(BaseModel):
         return self
 
 
+class AlphaStrategyReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    verdict: Literal["approve", "reject"]
+    rationale: str = Field(min_length=20, max_length=4000)
+    checks: list[str] = Field(min_length=1, max_length=30)
+    blockers: list[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def consistent_verdict(self):
+        if self.verdict == "approve" and self.blockers:
+            raise ValueError("Approved reviews cannot contain unresolved blockers")
+        return self
+
+
 class EvaluatorAssignmentComplete(BaseModel):
     evaluator_agent_id: uuid.UUID
     review_id: str = Field(min_length=1, max_length=150)
     review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    alpha_strategy_review: AlphaStrategyReview | None = None
 
 
 class EvaluatorProfileResponse(BaseModel):

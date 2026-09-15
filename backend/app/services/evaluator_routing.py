@@ -16,7 +16,10 @@ from app.models.evaluator_routing import (
     EvaluatorAssignment,
     EvaluatorProfile,
 )
+from app.models.task import Task
+from app.models.task_event import TaskEvent
 from app.schemas.evaluator_routing import (
+    AlphaStrategyReview,
     EvaluationRouteCreate,
     EvaluatorAssignmentComplete,
     EvaluatorProfileCreate,
@@ -142,6 +145,55 @@ def _profile_identity(profile: EvaluatorProfile) -> dict:
         "package_digest": profile.package_digest,
         "profile_digest": profile.profile_digest,
     }
+
+
+def producer_identity_for_lease(
+    db: Session, agent: Agent, package_digests: list[str]
+) -> dict | None:
+    if not package_digests:
+        return None
+    profile = db.scalar(
+        select(EvaluatorProfile)
+        .where(
+            EvaluatorProfile.agent_id == agent.id,
+            EvaluatorProfile.status == "active",
+            EvaluatorProfile.package_digest.in_(package_digests),
+        )
+        .order_by(EvaluatorProfile.created_at.desc())
+        .limit(1)
+    )
+    if profile is None:
+        return None
+    runtime = (
+        "/".join(filter(None, [agent.runtime, agent.runtime_version])) or "unknown"
+    )
+    if profile.machine != agent.machine or profile.runtime != runtime:
+        return None
+    return _profile_identity(profile)
+
+
+def task_producer_identity(db: Session, task: Task) -> dict | None:
+    event = db.scalar(
+        select(TaskEvent)
+        .where(
+            TaskEvent.task_id == task.id,
+            TaskEvent.event_type == "task_leased",
+            TaskEvent.agent_id == task.assigned_agent_id,
+            TaskEvent.attempt_number == task.attempt_count,
+        )
+        .order_by(TaskEvent.id.desc())
+        .limit(1)
+    )
+    if event is None:
+        return None
+    identity = event.payload.get("producer_identity")
+    if (
+        not isinstance(identity, dict)
+        or identity.get("agent_id") != str(task.assigned_agent_id)
+        or event.payload.get("producer_identity_digest") != digest(identity)
+    ):
+        return None
+    return identity
 
 
 def _hard_conflicts(first: dict, second: dict) -> list[str]:
@@ -309,6 +361,21 @@ def complete_assignment(
         raise HTTPException(
             403, "Only the routed evaluator may complete this assignment."
         )
+    review = None
+    if route.subject_type == "alpha_strategy_qualification":
+        review = payload.alpha_strategy_review
+        if review is None:
+            raise HTTPException(
+                422, "Alpha strategy evaluation requires an explicit review verdict."
+            )
+        if review.subject_digest != route.subject_digest:
+            raise HTTPException(
+                422, "Alpha strategy review identifies a different subject."
+            )
+        if digest(review.model_dump(mode="json")) != payload.review_digest:
+            raise HTTPException(
+                422, "Alpha strategy review digest does not match its content."
+            )
     assignment.status = "completed"
     assignment.review_id = payload.review_id
     assignment.review_digest = payload.review_digest
@@ -324,6 +391,11 @@ def complete_assignment(
             "review_kind": assignment.review_kind,
             "review_id": payload.review_id,
             "review_digest": payload.review_digest,
+            **(
+                {"alpha_strategy_review": review.model_dump(mode="json")}
+                if review
+                else {}
+            ),
         },
     )
     assignments = list(
@@ -362,6 +434,27 @@ def _issue_receipt(
         ],
         "claim_boundary": "independence demonstrated under declared identity/package/context rules; disclosed shared runtime dimensions remain correlated risk",
     }
+    if route.subject_type == "alpha_strategy_qualification":
+        for item, document in zip(
+            sorted(assignments, key=lambda value: value.review_kind),
+            assertion["assignments"],
+        ):
+            profile = db.get(EvaluatorProfile, item.evaluator_profile_id)
+            event = db.scalar(
+                select(EvaluationRouteEvent).where(
+                    EvaluationRouteEvent.route_id == route.id,
+                    EvaluationRouteEvent.event_type == "evaluation_completed",
+                    EvaluationRouteEvent.actor == item.completed_by,
+                    EvaluationRouteEvent.payload["assignment_digest"].astext
+                    == item.assignment_digest,
+                )
+            )
+            if profile is None or event is None:
+                raise HTTPException(
+                    409, "Alpha review lacks immutable evaluator provenance."
+                )
+            document["evaluator_identity"] = _profile_identity(profile)
+            document["alpha_strategy_review"] = event.payload["alpha_strategy_review"]
     receipt = EvaluationIndependenceReceipt(
         route_id=route.id,
         subject_digest=route.subject_digest,
@@ -398,6 +491,135 @@ def require_independence(
             "Independent evaluation is incomplete; promotion must remain blocked.",
         )
     return receipt
+
+
+def alpha_strategy_reviews_approved(
+    db: Session,
+    route: EvaluationRoute,
+    *,
+    subject_digest: str,
+    producer_agent_id,
+    excluded_agent_ids=(),
+    excluded_identities=(),
+    qualifier_identity=None,
+) -> bool:
+    """Require both routed independence and immutable approving review content."""
+    if (
+        route.subject_type != "alpha_strategy_qualification"
+        or route.subject_digest != subject_digest
+        or route.status != "completed"
+        or str(route.producer.get("agent_id")) != str(producer_agent_id)
+        or producer_agent_id is None
+        or not {"strategy_spec", "causality_leakage"}.issubset(
+            set(route.policy.get("required_review_kinds", []))
+        )
+    ):
+        return False
+    if qualifier_identity is not None:
+        if qualifier_identity not in excluded_identities or any(
+            qualifier_identity.get(key) != route.producer.get(key)
+            for key in (
+                "agent_id",
+                "package_digest",
+                "context_group",
+                "machine",
+                "provider",
+                "model_family",
+                "runtime",
+            )
+        ):
+            return False
+    receipt = db.scalar(
+        select(EvaluationIndependenceReceipt).where(
+            EvaluationIndependenceReceipt.route_id == route.id
+        )
+    )
+    if (
+        receipt is None
+        or receipt.subject_digest != subject_digest
+        or receipt.verdict != "independence_demonstrated"
+        or receipt.receipt_digest != digest(receipt.assertion)
+        or receipt.assertion.get("route_digest") != route.route_digest
+        or receipt.assertion.get("subject_digest") != subject_digest
+        or receipt.assertion.get("producer") != route.producer
+        or receipt.assertion.get("policy") != route.policy
+    ):
+        return False
+    assignments = list(
+        db.scalars(
+            select(EvaluatorAssignment).where(EvaluatorAssignment.route_id == route.id)
+        ).all()
+    )
+    events = list(
+        db.scalars(
+            select(EvaluationRouteEvent).where(
+                EvaluationRouteEvent.route_id == route.id,
+                EvaluationRouteEvent.event_type == "evaluation_completed",
+            )
+        ).all()
+    )
+    required = set(route.policy["required_review_kinds"])
+    if {item.review_kind for item in assignments} != required:
+        return False
+    asserted = receipt.assertion.get("assignments")
+    if not isinstance(asserted, list) or len(asserted) != len(assignments):
+        return False
+    reviewed_identities = []
+    for assignment in assignments:
+        profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+        matching = [
+            event
+            for event in events
+            if (
+                event.payload.get("assignment_digest") == assignment.assignment_digest
+                and event.payload.get("review_digest") == assignment.review_digest
+                and event.actor == assignment.completed_by
+            )
+        ]
+        if (
+            assignment.status != "completed"
+            or profile is None
+            or str(profile.agent_id) != assignment.completed_by
+            or str(profile.agent_id)
+            in {str(producer_agent_id), *(str(actor) for actor in excluded_agent_ids)}
+            or len(matching) != 1
+        ):
+            return False
+        identity = _profile_identity(profile)
+        for other in (route.producer, *excluded_identities, *reviewed_identities):
+            if _hard_conflicts(identity, other):
+                return False
+            if _correlation(identity, other)[
+                "shared_dimension_count"
+            ] > route.policy.get("max_pairwise_shared_dimensions", 4):
+                return False
+        reviewed_identities.append(identity)
+        try:
+            review = AlphaStrategyReview.model_validate(
+                matching[0].payload.get("alpha_strategy_review")
+            )
+        except ValueError:
+            return False
+        if (
+            review.subject_digest != subject_digest
+            or review.verdict != "approve"
+            or digest(review.model_dump(mode="json")) != assignment.review_digest
+        ):
+            return False
+        attested = [
+            item
+            for item in asserted
+            if (
+                item.get("assignment_digest") == assignment.assignment_digest
+                and item.get("review_kind") == assignment.review_kind
+                and item.get("review_digest") == assignment.review_digest
+                and item.get("alpha_strategy_review") == review.model_dump(mode="json")
+                and item.get("evaluator_identity") == _profile_identity(profile)
+            )
+        ]
+        if len(attested) != 1:
+            return False
+    return bool(assignments)
 
 
 def serialize_route(db: Session, route: EvaluationRoute) -> dict:

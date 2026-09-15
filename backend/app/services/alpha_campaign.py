@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -20,6 +21,7 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
     DiscoveryPortfolioCandidate,
 )
+from app.models.evaluator_routing import EvaluationRoute
 from app.models.governance import FounderNotification, TaskApproval
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
@@ -33,6 +35,11 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignCreate,
 )
 from app.schemas.task import TaskCreate
+from app.services.evaluator_routing import (
+    alpha_strategy_reviews_approved,
+    require_independence,
+    task_producer_identity,
+)
 from app.services.governance import consume_task_approval
 from app.services.graph import digest_document
 from app.services.tasks import append_task_event, build_task, persist_new_task
@@ -561,7 +568,9 @@ def _create_strategy_engineering_task(
             or candidate.candidate_digest != source["discovery_candidate_digest"]
             or " ".join(candidate.question.split()) != question
         ):
-            raise HTTPException(409, "Engineering discovery evidence is absent or changed.")
+            raise HTTPException(
+                409, "Engineering discovery evidence is absent or changed."
+            )
         candidate_document = candidate.document
     evidence = {
         "schema_version": "alpha-strategy-engineering-evidence-v1.0.0",
@@ -572,7 +581,9 @@ def _create_strategy_engineering_task(
         "source_candidate_digest": source["source_candidate_digest"],
         "discovery_candidate": candidate_document,
         "dataset_binding": binding,
-        "instrument": source.get("instrument", campaign.specification["allowed_instruments"][0]),
+        "instrument": source.get(
+            "instrument", campaign.specification["allowed_instruments"][0]
+        ),
         "window": {
             "start": campaign.specification["execution_window_start"],
             "end": campaign.specification["execution_window_end"],
@@ -596,7 +607,9 @@ def _create_strategy_engineering_task(
             f"strategy for this admitted Research Intelligence question: {question}"
         ),
         "allowed_paths": [
-            "research/hypotheses", "src/bt/strategy", "tests",
+            "research/hypotheses",
+            "src/bt/strategy",
+            "tests",
             "src/bt/governance/alpha_strategy_pipeline.py",
             "scripts/run_alpha_research_assignment.py",
         ],
@@ -841,6 +854,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     if (
         not isinstance(qualification, dict)
         or qualification.get("qualified") is not True
+        or not isinstance(qualification.get("card"), dict)
+        or not isinstance(qualification.get("artifact_bundle"), dict)
     ):
         campaign.status = "needs_attention"
         campaign.phase = "strategy_engineering"
@@ -850,6 +865,113 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "qualification": qualification,
         }
         return qualification_task
+    expected_card = deepcopy(card)
+    expected_card.update(
+        {
+            "status": "confirmed",
+            "confirmed_by": approval_receipt["actor"],
+            "confirmed_at": approval_receipt["approved_at"],
+        }
+    )
+    for field in ("claim", "entry", "exit"):
+        if field in expected_card.get("field_provenance", {}):
+            expected_card["field_provenance"][field]["state"] = "confirmed"
+    frozen = qualification_task.input_contract
+    expected_dataset = {
+        key: frozen.get(key)
+        for key in (
+            "dataset_build_id",
+            "dataset_digest",
+            "venue",
+            "instrument",
+            "timeframe",
+        )
+    }
+    expected_window = {
+        "start": frozen.get("window_start"),
+        "end": frozen.get("window_end"),
+    }
+    if (
+        qualification["card"] != expected_card
+        or qualification.get("card_digest") != digest_document(expected_card)
+        or expected_card.get("research_question")
+        != " ".join(source["question"].split())
+        or expected_card.get("dataset_binding") != expected_dataset
+        or expected_card.get("execution_window") != expected_window
+        or qualification.get("dataset") != expected_dataset
+        or qualification.get("window") != expected_window
+        or qualification.get("parameter_grid") != expected_card.get("parameters")
+    ):
+        campaign.status = "needs_attention"
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "repair_qualification_approval_binding"
+        campaign.terminal_reason = {
+            "category": "qualification_differs_from_approved_card"
+        }
+        return qualification_task
+    producers = [draft.assigned_agent_id, qualification_task.assigned_agent_id]
+    identities = [
+        task_producer_identity(db, task) for task in (draft, qualification_task)
+    ]
+    if any(actor is None for actor in producers) or any(
+        identity is None for identity in identities
+    ):
+        campaign.phase = "independent_strategy_review"
+        campaign.next_action = "repair_strategy_producer_provenance"
+        campaign.terminal_reason = {"category": "strategy_producer_identity_missing"}
+        return qualification_task
+    subject = {
+        "campaign_digest": campaign.campaign_digest,
+        "question_digest": digest_document(
+            {"question": " ".join(source["question"].split())}
+        ),
+        "source_commit": campaign.specification["bulletproof_source_commit"],
+        "qualification_task_id": str(qualification_task.id),
+        "card_digest": digest_document(qualification["card"]),
+        "artifact_bundle_digest": digest_document(qualification["artifact_bundle"]),
+        "producer_agent_ids": sorted({str(actor) for actor in producers}),
+        "producer_identities": identities,
+        "qualifier_identity": identities[1],
+    }
+    subject_digest = digest_document(subject)
+    review_route = db.scalar(
+        select(EvaluationRoute)
+        .where(
+            EvaluationRoute.subject_type == "alpha_strategy_qualification",
+            EvaluationRoute.subject_id == str(qualification_task.id),
+            EvaluationRoute.subject_digest == subject_digest,
+        )
+        .order_by(EvaluationRoute.created_at.desc())
+        .limit(1)
+    )
+    if review_route is None or not alpha_strategy_reviews_approved(
+        db,
+        review_route,
+        subject_digest=subject_digest,
+        producer_agent_id=qualification_task.assigned_agent_id,
+        excluded_agent_ids=producers,
+        excluded_identities=identities,
+        qualifier_identity=identities[1],
+    ):
+        campaign.phase = "independent_strategy_review"
+        campaign.next_action = "route_independent_strategy_review"
+        campaign.terminal_reason = {
+            "category": "independent_strategy_review_pending",
+            "subject": subject,
+            "subject_digest": subject_digest,
+            "route_id": str(review_route.id) if review_route else None,
+        }
+        return qualification_task
+    independence = require_independence(db, review_route)
+    qualification = deepcopy(qualification)
+    qualification["governed_review"] = {
+        "route_id": str(review_route.id),
+        "receipt_digest": independence.receipt_digest,
+        "assertion": independence.assertion,
+        "subject": subject,
+        "verdict": independence.verdict,
+    }
+    campaign.terminal_reason = {}
     execution = db.scalar(
         select(Task).where(
             Task.task_number == _stage_task_number(campaign, source, "E")
