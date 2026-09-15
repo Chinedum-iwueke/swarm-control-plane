@@ -47,7 +47,8 @@ def test_grounding_preserves_catalog_and_representation_boundaries():
     guidance = context["representation_guidance"]
     assert guidance["producer"] == "bulletproof_bt"
     assert {"5m", "1h"} <= set(guidance["reviewed_signal_timeframes"])
-    assert "10m" not in guidance["reviewed_signal_timeframes"]
+    assert {"7m", "10m", "12m", "2h"} <= set(guidance["reviewed_signal_timeframes"])
+    assert "not an allowlist" in guidance["duration_contract"]
     assert guidance["strict"] is True
     assert "planning only" in guidance["claim_boundary"]
     assert "not an exhaustive" in context["market_data_catalog"]["scope"]

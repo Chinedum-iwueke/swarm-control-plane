@@ -518,10 +518,11 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
         },
         "representation_guidance": {
             "producer": "bulletproof_bt",
-            "source_commit": "a7d8e112c21fe436ee2c5dc89e61614bcde28e10",
+            "source_commit": "6b3c068c4bb59b639d7c2f4ec3cf30643da3735d",
             "source_path": "src/bt/data/resample.py",
-            "source_sha256": "608d7460e6389e8f8e99c608b3a785cc4742a67376766d67578362b7d60cf886",
-            "reviewed_signal_timeframes": ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"],
+            "source_sha256": "890317433c979f6bb4043a77ef7c1d7c74fd8a4da323c9d1028697890c05cc12",
+            "reviewed_signal_timeframes": ["1m", "5m", "7m", "10m", "12m", "1h", "2h", "1d"],
+            "duration_contract": "Positive integer m/h/d durations within the native timestamp range; examples are not an allowlist. Seconds and fractional durations are unsupported.",
             "base_feed": "1m UTC",
             "strict": True,
             "rules": [
@@ -532,7 +533,7 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
                 "Choose representation from mechanism and horizon, not the best observed result; timeframe alternatives count toward the search budget.",
                 "Auxiliary funding, open-interest, mark and index fields need their own point-in-time transformation contract; OHLCV aggregation does not establish theirs.",
                 "Stable/volatile universe labels require registered point-in-time memberships; never infer broad admission from local files.",
-                "10m is not supported in this reviewed snapshot; request an approval-gated native extension, not silent substitution.",
+                "Odd-duration buckets use epoch-anchored UTC alignment, not a daily reset; freeze alignment and require complete constituent minutes.",
             ],
             "claim_boundary": "Reviewed native capability snapshot for planning only. Exact campaign engine version, data entitlement, resampling configuration and output audit must be qualified before execution.",
         },
