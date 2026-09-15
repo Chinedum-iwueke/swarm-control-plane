@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import Counter
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -109,6 +110,30 @@ def register_receipt(
         counts = result["dispositions"]
         if any(not isinstance(count, int) or count < 0 for count in counts.values()) or sum(counts.values()) != len(objects):
             raise QuantitativeReceiptConflict("Inventory disposition counts do not match.")
+        if any(item.get("disposition") not in ("quarantined", "cataloged_pending_quality") for item in objects):
+            raise QuantitativeReceiptConflict("Unknown inventory disposition.")
+        if counts != dict(Counter(item.get("disposition") for item in objects)):
+            raise QuantitativeReceiptConflict("Inventory classifications do not match its objects.")
+        assets = set()
+        for item in objects:
+            if "instrument" in item:
+                identity = tuple(item.get(key) for key in ("market", "venue", "instrument"))
+                if any(not isinstance(value, str) or not value for value in identity):
+                    raise QuantitativeReceiptConflict("Malformed inventory asset identity.")
+                assets.add(identity)
+            if item.get("disposition") == "cataloged_pending_quality":
+                content_digest = item.get("content_digest")
+                if (
+                    not isinstance(content_digest, str)
+                    or len(content_digest) != 64
+                    or any(char not in "0123456789abcdef" for char in content_digest)
+                    or not isinstance(item.get("output_columns"), list)
+                    or not isinstance(item.get("row_count"), int)
+                    or item["row_count"] < 0
+                ):
+                    raise QuantitativeReceiptConflict("Cataloged inventory object lacks content/schema metadata.")
+        if result["assets"] != [list(identity) for identity in sorted(assets)]:
+            raise QuantitativeReceiptConflict("Inventory asset summary does not match its objects.")
         identities = [item.get("partition_id") for item in objects]
         if any(not isinstance(key, str) or not key for key in identities):
             raise QuantitativeReceiptConflict("Inventory object identity is required.")

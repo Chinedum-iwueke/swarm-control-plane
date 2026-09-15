@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
@@ -37,12 +38,24 @@ def report_lake_inventory(payload: OperationWrite, db: Annotated[Session, Depend
         or payload.owner_type != "system"
         or payload.owner_id != "founder-operator"
         or payload.cancellable
+        or payload.input_digest is None
     ):
         raise HTTPException(422, "Report must bind the no-capital native lake inventory operation.")
-    previous = db.scalar(select(Operation).where(Operation.operation_key == payload.operation_key))
+    previous = db.scalar(select(Operation).where(Operation.operation_key == payload.operation_key).with_for_update())
     if previous is not None and previous.kind != "full_lake_inventory":
         raise HTTPException(409, "Operation key belongs to another workload.")
-    record = upsert_operation(db, payload, actor="founder-operator")
+    if previous is not None:
+        if previous.input_digest != payload.input_digest:
+            raise HTTPException(409, "Inventory run inputs are immutable.")
+        if previous.state in {"succeeded", "failed", "cancelled"}:
+            if payload.state != previous.state:
+                raise HTTPException(409, "Terminal inventory runs cannot be resumed by a heartbeat.")
+            return previous
+    try:
+        record = upsert_operation(db, payload, actor="founder-operator")
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Concurrent inventory report; retry the same run binding.") from exc
     db.refresh(record)
     return record
 

@@ -94,7 +94,9 @@ def test_registration_is_idempotent():
 def test_full_lake_inventory_is_accounting_not_admission(mutation):
     value = receipt("DATA-002", "bt.institutional.lake_inventory.full_lake_inventory_receipt")
     objects = [{"partition_id": "canonical/bybit/ETHUSDT/timeframe=1m/research_panel.parquet",
-                "execution_eligible": False, "disposition": "cataloged_pending_quality"}]
+                "execution_eligible": False, "disposition": "cataloged_pending_quality",
+                "market": "perp", "venue": "bybit", "instrument": "ETHUSDT",
+                "content_digest": "a" * 64, "output_columns": ["ts", "close"], "row_count": 2}]
     value["result"] = {"schema_version": "data002-full-lake-inventory-v1.0.0", "objects": objects, "object_count": 1,
                        "assets": [["perp", "bybit", "ETHUSDT"]], "dispositions": {"cataloged_pending_quality": 1},
                        "claim_boundary": "Accounting only, not execution admission."}
