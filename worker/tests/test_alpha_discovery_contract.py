@@ -1,8 +1,28 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
+
+
+def test_discovery_subprocess_keeps_fixed_jitless_sandbox_environment(monkeypatch):
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/untrusted.js")
+    monkeypatch.setenv("SWARM_AGENT_TOKEN", "must-not-leak")
+    executor = AlphaDiscoveryExecutor(
+        codex_home=Path("/safe/codex"),
+        codex_model="test",
+        timeout_seconds=60,
+        heartbeat_interval_seconds=5,
+    )
+    workspace = SimpleNamespace(
+        plan=SimpleNamespace(attempt_directory=Path("/safe/attempt"))
+    )
+    env = executor._environment(workspace)
+    assert env["NODE_OPTIONS"] == "--jitless"
+    assert env["HOME"] == "/safe/attempt"
+    assert env["CODEX_HOME"] == "/safe/codex"
+    assert "SWARM_AGENT_TOKEN" not in env
 
 
 def alpha_discovery_contract() -> dict:

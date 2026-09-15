@@ -34,6 +34,15 @@ class AlphaDiscoveryExecutor:
         self._heartbeat_interval = max(5.0, heartbeat_interval_seconds)
         self._effective_uid = effective_uid
 
+    def _environment(self, workspace: TaskWorkspace) -> dict[str, str]:
+        return {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": str(workspace.plan.attempt_directory),
+            "CODEX_HOME": str(self._codex_home),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "NODE_OPTIONS": "--jitless",
+        }
+
     async def execute(
         self,
         *,
@@ -79,12 +88,7 @@ class AlphaDiscoveryExecutor:
         )
         started_at = datetime.now(UTC)
         started = time.monotonic()
-        env = {
-            "PATH": "/usr/local/bin:/usr/bin:/bin",
-            "HOME": str(workspace.plan.attempt_directory),
-            "CODEX_HOME": str(self._codex_home),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
+        env = self._environment(workspace)
         with (
             prompt_path.open("rb") as stdin,
             stdout_path.open("wb") as stdout,

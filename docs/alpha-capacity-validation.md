@@ -23,3 +23,26 @@
   publication remain required before operational closure.
 
 See [activation runbook](runbooks/alpha-capacity-governed-execution.md).
+# Activation recovery correction (2026-09-15)
+
+Live slot-2 registration stopped at charter creation: its charter bytes duplicated
+slot 1 and the registry enforces global digest uniqueness. Slot 2 exists without
+a charter. Bootstrap now names the executor slot in its responsibility and
+supports explicit `--recover-registration`, validating the existing agent and
+deployment before reuse. Lost slot-2 credentials are replaced through scoped
+workload rotation, saved mode 0600, then finalized; slot 1 is untouched.
+Regression tests cover refusal of implicit recovery and successful scoped recovery.
+The deployment-list fixture now matches the API's nested `{deployment, package}`
+contract. It reproduced the live `KeyError: agent_id` before the bootstrap lookup
+was corrected to unwrap `deployment`; deployment creation remains a flat response.
+Privileged activation remains pending until the corrected script succeeds.
+
+Activation succeeded at 2026-09-15 18:52 UTC. The capacity director and both slots
+are active with zero restarts and successful authenticated idle polling. The queue
+is empty; concurrent terminal BT-009 proof remains outstanding. Recent Telegram
+failures predate activation: discovery cycles 019–021 crashed in Node/V8 with
+SIGTRAP (-5), and older founder turns failed the reasoning contract. Discovery's
+restricted subprocess environment dropped the service's jitless setting. The
+executor now supplies fixed `NODE_OPTIONS=--jitless` without inheriting secrets or
+arbitrary Node options. Existing discovery workers require restart to load this fix;
+no failed task or old approval was replayed automatically.

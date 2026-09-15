@@ -105,6 +105,7 @@ def main() -> int:
     parser.add_argument("--environment", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--package", default=DEFAULT_PACKAGE)
+    parser.add_argument("--recover-registration", action="store_true")
     args = parser.parse_args()
     package_name = args.package
     if args.state.exists() != args.environment.exists():
@@ -181,37 +182,72 @@ def main() -> int:
         if package["manifest_digest"] != manifest_digest:
             raise RuntimeError("Existing package content differs from local source.")
         agents = call(api, "GET", "/v1/agents")
-        if any(item["slug"] == package_name for item in agents):
-            raise RuntimeError("Executor identity exists; refusing implicit rotation.")
-        registration = call(
-            api,
-            "POST",
-            "/v1/agents",
-            {
-                "slug": package_name,
-                "display_name": "VM1 Alpha Research Executor",
-                "role": manifest.role,
-                "machine": "vm1-developer",
-                "hermes_profile": package_name,
-                "capabilities": manifest.required_capabilities,
-                "risk_ceiling": 0,
-            },
+        existing_agent = next(
+            (item for item in agents if item["slug"] == package_name), None
         )
-        deployment = call(
-            api,
-            "POST",
-            "/v1/packages/deployments",
-            {
-                "agent_id": registration["agent"]["id"],
-                "package_id": package["id"],
-                "deployed_by": "founder-operator",
-            },
+        if existing_agent and not args.recover_registration:
+            raise RuntimeError("Executor identity exists; refusing implicit rotation.")
+        if existing_agent:
+            if (
+                existing_agent["machine"] != "vm1-developer"
+                or existing_agent["role"] != manifest.role
+                or sorted(existing_agent["capabilities"])
+                != sorted(manifest.required_capabilities)
+                or existing_agent["risk_ceiling"] != 0
+                or not existing_agent["is_enabled"]
+            ):
+                raise RuntimeError(
+                    "Partial executor registration differs from the reviewed package."
+                )
+            registration = {"agent": existing_agent}
+        else:
+            registration = call(
+                api,
+                "POST",
+                "/v1/agents",
+                {
+                    "slug": package_name,
+                    "display_name": "VM1 Alpha Research Executor",
+                    "role": manifest.role,
+                    "machine": "vm1-developer",
+                    "hermes_profile": package_name,
+                    "capabilities": manifest.required_capabilities,
+                    "risk_ceiling": 0,
+                },
+            )
+        deployments = call(api, "GET", "/v1/packages/deployments")
+        active_deployments = [
+            item["deployment"]
+            for item in deployments
+            if item["deployment"]["agent_id"] == registration["agent"]["id"]
+            and item["deployment"]["is_active"]
+        ]
+        if active_deployments and (
+            len(active_deployments) != 1
+            or active_deployments[0]["package_id"] != package["id"]
+        ):
+            raise RuntimeError(
+                "Partial executor deployment differs from the reviewed package."
+            )
+        deployment = (
+            active_deployments[0]
+            if active_deployments
+            else call(
+                api,
+                "POST",
+                "/v1/packages/deployments",
+                {
+                    "agent_id": registration["agent"]["id"],
+                    "package_id": package["id"],
+                    "deployed_by": "founder-operator",
+                },
+            )
         )
         charter_manifest = {
             "schema_version": "agent-charter-v1.0.0",
             "role": manifest.role,
             "responsibilities": [
-                "Execute one leased no-capital question through Bulletproof only."
+                f"Execute one leased no-capital question through Bulletproof only as {package_name}."
             ],
             "capabilities": manifest.required_capabilities,
             "allowed_machines": ["vm1-developer"],
@@ -228,17 +264,35 @@ def main() -> int:
                 "self-approval",
             ],
         }
-        charter = call(
-            api,
-            "POST",
-            "/v1/agent-governance/charters",
-            {
-                "agent_id": registration["agent"]["id"],
-                "version": "1.0.0",
-                "manifest": charter_manifest,
-                "manifest_digest": digest(charter_manifest),
-                "created_by": "founder-operator",
-            },
+        charters = call(api, "GET", "/v1/agent-governance/charters")
+        matches = [
+            item
+            for item in charters
+            if item["agent_id"] == registration["agent"]["id"]
+            and item["version"] == "1.0.0"
+        ]
+        if matches and (
+            len(matches) != 1
+            or matches[0]["manifest_digest"] != digest(charter_manifest)
+        ):
+            raise RuntimeError(
+                "Partial executor charter differs from the reviewed package."
+            )
+        charter = (
+            matches[0]
+            if matches
+            else call(
+                api,
+                "POST",
+                "/v1/agent-governance/charters",
+                {
+                    "agent_id": registration["agent"]["id"],
+                    "version": "1.0.0",
+                    "manifest": charter_manifest,
+                    "manifest_digest": digest(charter_manifest),
+                    "created_by": "founder-operator",
+                },
+            )
         )
         charter = call(
             api,
@@ -285,6 +339,14 @@ def main() -> int:
         )
         state["workload_identity_id"] = identity["id"]
         state["workload_scopes"] = WORKLOAD_SCOPES
+        if existing_agent:
+            rotated = call(
+                api,
+                "POST",
+                f"/v1/workload-identities/{identity['id']}/credentials/rotate",
+                {"actor": "founder-operator", "overlap_seconds": 30},
+            )
+            registration["credential"] = {"token": rotated["token"]}
     atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
     environment = "\n".join(
         [
@@ -303,6 +365,20 @@ def main() -> int:
         ]
     )
     atomic_write(args.environment, environment)
+    if existing_agent:
+        with httpx.Client(
+            base_url=os.environ["SWARM_API_URL"].rstrip("/"),
+            headers={
+                "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
+            },
+            timeout=60,
+        ) as api:
+            call(
+                api,
+                "POST",
+                f"/v1/workload-identities/{identity['id']}/credentials/finalize",
+                {"actor": "founder-operator"},
+            )
     print(json.dumps(state, indent=2, sort_keys=True))
     return 0
 
