@@ -548,7 +548,21 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
 ):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["ETHUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={"capital": False, "orders": False,
+                            "production_promotion": False, "self_approval": False},
+    )
     source = record.specification["research_queue"][0]
+    source["discovery_candidate_id"] = str(uuid4())
+    source["discovery_candidate_digest"] = "7" * 64
+    source_document = {"predictor": "lagged displacement", "target": "next-hour return"}
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        candidate_digest="7" * 64, question=source["question"], document=source_document,
+    )
     persisted = []
     monkeypatch.setattr(
         service,
@@ -560,7 +574,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     )
 
     task = service._create_strategy_engineering_task(
-        MagicMock(),
+        db,
         record,
         source,
         {"category": "exact_strategy_unavailable"},
@@ -575,8 +589,30 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         "research/hypotheses",
         "src/bt/strategy",
         "tests",
+        "src/bt/governance/alpha_strategy_pipeline.py",
+        "scripts/run_alpha_research_assignment.py",
     ]
     assert task.input_contract["base_ref"] == COMMIT
+    import json
+    evidence = json.loads(task.input_contract["evidence_context"])
+    assert evidence["question"] == source["question"]
+    assert evidence["dataset_binding"] == record.specification["dataset_bindings"][0]
+    assert evidence["maximum_variants"] == 8
+    assert evidence["research_context"]["corpus_digest"] == "9" * 64
+    assert evidence["discovery_candidate"] == source_document
+    assert not evidence["authority"]["capital"]
+    db.get.return_value.candidate_digest = "8" * 64
+    with pytest.raises(HTTPException, match="absent or changed"):
+        service._create_strategy_engineering_task(db, record, source, {})
+    assert len(persisted) == 1
+
+    from app.schemas.proposal import ProposalEngineeringMissionContract
+    from pydantic import ValidationError
+    for bad_evidence in ("[]", "not-json", '{"x": NaN}',
+                         json.dumps({"text": "x" * 48001})):
+        document = dict(task.input_contract, evidence_context=bad_evidence)
+        with pytest.raises(ValidationError):
+            ProposalEngineeringMissionContract.model_validate(document)
 
 
 def test_registration_rejects_synthetic_label():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -548,6 +549,42 @@ def _create_strategy_engineering_task(
     requirement: dict,
 ) -> Task:
     question = " ".join(source["question"].split())
+    binding = campaign.specification["dataset_bindings"][
+        int(source.get("dataset_binding_index", 0))
+    ]
+    research_context = _research_context(db, question)
+    candidate_document = None
+    if source.get("discovery_candidate_id"):
+        candidate = db.get(AlphaDiscoveryCandidate, source["discovery_candidate_id"])
+        if (
+            candidate is None
+            or candidate.candidate_digest != source["discovery_candidate_digest"]
+            or " ".join(candidate.question.split()) != question
+        ):
+            raise HTTPException(409, "Engineering discovery evidence is absent or changed.")
+        candidate_document = candidate.document
+    evidence = {
+        "schema_version": "alpha-strategy-engineering-evidence-v1.0.0",
+        "campaign_digest": campaign.campaign_digest,
+        "question": question,
+        "question_digest": digest_document({"question": question}),
+        "source_candidate_id": source["source_candidate_id"],
+        "source_candidate_digest": source["source_candidate_digest"],
+        "discovery_candidate": candidate_document,
+        "dataset_binding": binding,
+        "instrument": source.get("instrument", campaign.specification["allowed_instruments"][0]),
+        "window": {
+            "start": campaign.specification["execution_window_start"],
+            "end": campaign.specification["execution_window_end"],
+        },
+        "maximum_variants": campaign.budget["max_variants_per_hypothesis"],
+        "tier": "Tier2B",
+        "research_context": research_context,
+        "engineering_requirement": requirement,
+        "authority": campaign.specification["authority_boundary"],
+    }
+    from app.schemas.proposal import ProposalEngineeringMissionContract
+
     contract = {
         "repository": "bulletproof_bt",
         "workflow": "engineering-mission",
@@ -558,7 +595,12 @@ def _create_strategy_engineering_task(
             "Implement a causal native Bulletproof hypothesis card, YAML contract, and "
             f"strategy for this admitted Research Intelligence question: {question}"
         ),
-        "allowed_paths": ["research/hypotheses", "src/bt/strategy", "tests"],
+        "allowed_paths": [
+            "research/hypotheses", "src/bt/strategy", "tests",
+            "src/bt/governance/alpha_strategy_pipeline.py",
+            "scripts/run_alpha_research_assignment.py",
+        ],
+        "evidence_context": json.dumps(evidence, sort_keys=True, allow_nan=False),
         "context_paths": [
             "docs/HYPOTHESIS_STRATEGY_GENERATION_PROMPT.md",
             "src/bt/governance/alpha_strategy_pipeline.py",
@@ -569,6 +611,7 @@ def _create_strategy_engineering_task(
             "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
             "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
+            "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
             "No capital, order, promotion or self-approval authority is introduced.",
         ],
         "stop_conditions": [
@@ -580,7 +623,7 @@ def _create_strategy_engineering_task(
         "max_diff_lines": 1800,
         "max_duration_seconds": 7200,
         "engineering_requirement": requirement,
-        "research_context": _research_context(db, question),
+        "research_context": research_context,
     }
     # The engineering worker contract forbids undeclared fields. Preserve the
     # diagnostic in the task evidence while keeping its executable input typed.
@@ -589,6 +632,7 @@ def _create_strategy_engineering_task(
         for key, value in contract.items()
         if key not in {"engineering_requirement", "research_context"}
     }
+    ProposalEngineeringMissionContract.model_validate(executable_contract)
     task = build_task(
         TaskCreate(
             task_number=_stage_task_number(campaign, source, "G"),

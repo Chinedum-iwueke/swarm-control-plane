@@ -111,3 +111,17 @@ before its child marker existed; the isolated test and subsequent full worker ru
 passed. The exact native inventory unit remains active across this API deployment.
 Long-running VM1 planner/researcher processes still require a controlled restart
 before the new prompt can be claimed loaded in those service processes.
+
+The next engineering handoff source pass keeps bounded scientific evidence in the
+executable engineering contract rather than only approval metadata. A validated
+JSON text field (48,000-byte limit) preserves the planner's closed output schema.
+Coder and independent reviewer receive identical untrusted evidence, bound to the
+campaign/question/candidate digests, admitted dataset, frozen window, instrument,
+tier, variant ceiling and unchanged no-capital authority. Changed or missing
+discovery evidence prevents task creation. New approval-gated task scope includes
+the existing native draft pipeline and assignment runner so generated cards can
+actually be discovered without substitution into the weekend template. Historical
+task scopes and approvals are not rewritten. Focused campaign tests passed 20,
+proposal contracts eight, worker engineering/planner tests 30; lint passed.
+This handoff source pass is not deployed and does not establish that a new native
+strategy has been generated, qualified or backtested.
