@@ -7,9 +7,21 @@ from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryError,
     AlphaDiscoveryExecutor,
     _runtime_options,
+    _schema,
 )
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
+
+
+def test_discovery_domain_identifiers_match_canonical_intake():
+    import re
+
+    properties = _schema("hypothesis")["properties"]["candidates"]["items"]["properties"]
+    for key in ("domain_key", "cluster_key"):
+        field = properties[key]
+        assert re.fullmatch(field["pattern"], "perpetual-return-predictability")
+        assert not re.fullmatch(field["pattern"], "perpetual_return_predictability")
+        assert field["maxLength"] == 100
 
 
 def test_discovery_runtime_is_private_and_separate_from_credentials(tmp_path):

@@ -90,6 +90,33 @@ def test_registration_is_idempotent():
     db.add.assert_not_called()
 
 
+@pytest.mark.parametrize("mutation", [None, "authority", "identity", "binding"])
+def test_full_lake_inventory_is_accounting_not_admission(mutation):
+    value = receipt("DATA-002", "bt.institutional.lake_inventory.full_lake_inventory_receipt")
+    objects = [{"partition_id": "canonical/bybit/ETHUSDT/timeframe=1m/research_panel.parquet",
+                "execution_eligible": False, "disposition": "cataloged_pending_quality"}]
+    value["result"] = {"schema_version": "data002-full-lake-inventory-v1.0.0", "objects": objects, "object_count": 1,
+                       "assets": [["perp", "bybit", "ETHUSDT"]], "dispositions": {"cataloged_pending_quality": 1},
+                       "claim_boundary": "Accounting only, not execution admission."}
+    value["input_digest"] = value["dataset_digest"] = digest(objects)
+    if mutation == "authority":
+        objects[0]["execution_eligible"] = True
+    elif mutation == "identity":
+        objects.append(dict(objects[0]))
+        value["result"]["object_count"] = 2
+    elif mutation == "binding":
+        value["dataset_digest"] = "f" * 64
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest({key: item for key, item in value.items() if key != "receipt_digest"})
+    db = MagicMock()
+    db.scalar.return_value = None
+    if mutation:
+        with pytest.raises(QuantitativeReceiptConflict):
+            register_receipt(db, payload(value))
+    else:
+        assert register_receipt(db, payload(value)).milestone == "DATA-002"
+
+
 def test_rejects_wrong_milestone_producer():
     value = receipt(producer="bt.institutional.risk.stress_dossier_receipt")
     core = {key: item for key, item in value.items() if key != "receipt_digest"}
@@ -114,6 +141,7 @@ def test_routes_are_orchestrator_protected():
     assert {route.path for route in router.routes} == {
         "/v1/research/quantitative-receipts",
         "/v1/research/quantitative-receipts/{receipt_id}",
+        "/v1/research/quantitative-receipts/lake-inventory",
     }
 
 

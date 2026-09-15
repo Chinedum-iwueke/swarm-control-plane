@@ -8,11 +8,16 @@ from sqlalchemy.orm import Session
 from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.operation import Operation, OperationEvent
-from app.schemas.operation import OperationEventResponse, OperationResponse
+from app.schemas.operation import (
+    OperationEventResponse,
+    OperationResponse,
+    OperationWrite,
+)
 from app.services.operations import (
     mark_stalled_operations,
     operation_summary,
     reconcile_task_operations,
+    upsert_operation,
 )
 
 router = APIRouter(
@@ -21,6 +26,25 @@ router = APIRouter(
     dependencies=[Depends(require_orchestrator)],
 )
 
+
+@router.post("/lake-inventory/report", response_model=OperationResponse)
+def report_lake_inventory(payload: OperationWrite, db: Annotated[Session, Depends(get_db)]):
+    if (
+        not payload.operation_key.startswith("lake-inventory:")
+        or payload.kind != "full_lake_inventory"
+        or payload.project != "bulletproof-bt"
+        or payload.machine != "vm1-developer"
+        or payload.owner_type != "system"
+        or payload.owner_id != "founder-operator"
+        or payload.cancellable
+    ):
+        raise HTTPException(422, "Report must bind the no-capital native lake inventory operation.")
+    previous = db.scalar(select(Operation).where(Operation.operation_key == payload.operation_key))
+    if previous is not None and previous.kind != "full_lake_inventory":
+        raise HTTPException(409, "Operation key belongs to another workload.")
+    record = upsert_operation(db, payload, actor="founder-operator")
+    db.refresh(record)
+    return record
 
 @router.get("", response_model=list[OperationResponse])
 def list_operations(

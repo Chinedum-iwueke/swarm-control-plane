@@ -32,6 +32,7 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
             "execution_window_start": "2025-05-01T00:00:00Z",
             "execution_window_end": "2026-05-01T00:00:00Z",
             "bulletproof_source_commit": COMMIT,
+            "minimum_liquidity_usd": 100_000,
         },
         budget={"maximum_variants_per_hypothesis": 8},
     )
@@ -47,6 +48,9 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
     context = _bounded_context(db, mandate)
     constraints = context["research_constraints"]
     assert constraints["maximum_variants_per_hypothesis"] == 8
+    assert constraints["minimum_liquidity_usd"] == 100_000
+    assert "quote_volume" in constraints["liquidity_measurement_fields"]
+    assert constraints["historical_group_labels_are_not_mandatory_universes"]
     assert (
         constraints["execution_window_start"]
         == mandate.specification["execution_window_start"]
