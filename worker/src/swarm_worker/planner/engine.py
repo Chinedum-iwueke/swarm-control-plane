@@ -331,6 +331,14 @@ class CodexProposalPlanner:
             '- research_memory_sync: allowed_machines ["vm1-developer"], '
             'required_capabilities ["git", "python", '
             '"research-memory-sync"].\n'
+            '- founder_hypothesis_intake: allowed_machines ["vm1-developer"], '
+            'required_capabilities ["research-intelligence", "research-proposal", "prior-art"]. '
+            "Use this route when the founder asks to queue, challenge, formulate, or test their own "
+            "research idea and an active research mandate is supplied. It queues the idea; it does "
+            "not execute a backtest directly. Bind the exact mandate ID/digest, preserve the founder's "
+            "idea, require at least 365 history days, at most 8 variants, and use "
+            "preregistered_point_in_time universe selection across stable and volatile slices. "
+            "If no active mandate is supplied, explain that a mandate must be approved; do not invent one.\n"
             "- vm2-infrastructure runbook tasks: allowed_machines "
             '["vm2-deployment"], required_capabilities '
             '["infrastructure-observation", "service-health", '
@@ -365,6 +373,10 @@ class CodexProposalPlanner:
             "requested and is sufficiently specified. Cite supplied IDs or digests in "
             "grounding_citations and never invent availability or consultation. This "
             "stage cannot create a task or approval. For clarification, provide exact "
-            "accepted formats. Return only the required schema.\n\n"
+            "accepted formats. A founder-supplied market hypothesis is executable work only at the "
+            "intake boundary: when an active mandate is supplied, choose compile_proposal so the "
+            "independent RI director and senior researcher can challenge it. Do not answer as though "
+            "the idea were already valid, and do not compile it directly as a legacy research_experiment. "
+            "Return only the required schema.\n\n"
             f"Conversation input:\n{json.dumps(request, ensure_ascii=True)}"
         )

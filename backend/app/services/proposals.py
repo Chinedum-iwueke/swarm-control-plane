@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Agent, FounderConversation, FounderProposal, Task
 from app.schemas import FounderProposalDocument, ProposedTask, TaskCreate
-from app.services.tasks import build_task, persist_new_task
+from app.services.tasks import append_task_event, build_task, persist_new_task
 
 
 def proposal_digest(document: FounderProposalDocument) -> str:
@@ -128,6 +128,49 @@ def materialize_proposal(
     task.conversation_id = source.conversation_id
     task.conversation_revision = source.conversation_revision
     persist_new_task(db, task)
+    if document.proposed_task.task_type == "founder_hypothesis_intake":
+        from app.models.alpha_discovery import AlphaResearchMandate
+        from app.schemas.alpha_discovery import AlphaFounderResearchIdeaCreate
+        from app.services.alpha_discovery import queue_founder_idea
+
+        contract = document.proposed_task.input_contract
+        mandate = db.scalar(
+            select(AlphaResearchMandate)
+            .where(AlphaResearchMandate.id == contract.mandate_id)
+            .with_for_update()
+        )
+        if mandate is None:
+            raise HTTPException(status_code=404, detail="Research mandate not found.")
+        idea = queue_founder_idea(
+            db,
+            mandate,
+            AlphaFounderResearchIdeaCreate(
+                mandate_id=contract.mandate_id,
+                expected_mandate_digest=contract.mandate_digest,
+                idea=contract.research_idea,
+                submitted_by="founder-operator",
+                conversation_id=source.conversation_id,
+                minimum_history_days=contract.minimum_history_days,
+                maximum_variants=contract.maximum_variants,
+                universe_selection_policy=contract.universe_selection_policy,
+                universe_slices=contract.universe_slices,
+            ),
+        )
+        task.status = "succeeded"
+        task.started_at = task.completed_at = created_at
+        task.result = {
+            "founder_research_idea_id": str(idea.id),
+            "idea_digest": idea.idea_digest,
+            "status": idea.status,
+            "authority": "no_capital_research",
+        }
+        append_task_event(
+            db,
+            task,
+            "founder_research_idea_queued",
+            "Research idea queued for independent RI and senior-researcher review.",
+            payload=task.result,
+        )
     proposal.status = "materialized"
     proposal.materialized_task_id = task.id
     proposal.decided_by = actor

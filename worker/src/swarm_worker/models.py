@@ -286,12 +286,28 @@ class ProposalResearchMemorySyncContract(StrictModel):
     base_ref: str = Field(min_length=1, max_length=255)
 
 
+class ProposalFounderHypothesisIntakeContract(StrictModel):
+    repository: Literal["swarm-control-plane"]
+    workflow: Literal["founder-hypothesis-intake"]
+    base_ref: Literal["main"]
+    mandate_id: UUID
+    mandate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    research_idea: str = Field(min_length=20, max_length=12000)
+    minimum_history_days: int = Field(default=365, ge=365, le=3650)
+    maximum_variants: int = Field(default=8, ge=1, le=8)
+    universe_selection_policy: Literal["preregistered_point_in_time"]
+    universe_slices: list[Literal["stable", "volatile", "all_eligible"]] = Field(
+        min_length=1, max_length=3
+    )
+
+
 ProposalInputContract = (
     ProposalCodeValidationContract
     | ProposalEngineeringMissionContract
     | ProposalInfrastructureContract
     | ProposalResearchExperimentContract
     | ProposalResearchMemorySyncContract
+    | ProposalFounderHypothesisIntakeContract
 )
 
 
@@ -313,6 +329,7 @@ class ProposedTask(StrictModel):
         "infrastructure_operation",
         "research_experiment",
         "research_memory_sync",
+        "founder_hypothesis_intake",
     ]
     title: str = Field(min_length=3, max_length=300)
     objective: str = Field(min_length=10, max_length=8000)
@@ -351,6 +368,7 @@ class ProposedTask(StrictModel):
             "infrastructure_operation": ProposalInfrastructureContract,
             "research_experiment": ProposalResearchExperimentContract,
             "research_memory_sync": ProposalResearchMemorySyncContract,
+            "founder_hypothesis_intake": ProposalFounderHypothesisIntakeContract,
         }
         if not isinstance(self.input_contract, expected[self.task_type]):
             raise TypeError("proposal task type does not match its input contract")
@@ -363,6 +381,9 @@ class ProposedTask(StrictModel):
         elif self.task_type == "research_memory_sync":
             machines = ["vm1-developer"]
             capabilities = ["git", "python", "research-memory-sync"]
+        elif self.task_type == "founder_hypothesis_intake":
+            machines = ["vm1-developer"]
+            capabilities = ["research-intelligence", "research-proposal", "prior-art"]
         elif self.input_contract.runbook == "vm2-infrastructure":
             machines = ["vm2-deployment"]
             capabilities = [

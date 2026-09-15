@@ -96,6 +96,42 @@ def test_memory_sync_proposal_has_no_path_or_command_surface() -> None:
     }
 
 
+def test_founder_hypothesis_intake_is_bounded_before_execution() -> None:
+    payload = valid_document()
+    payload["proposed_task"].update(
+        {
+            "task_type": "founder_hypothesis_intake",
+            "title": "Challenge founder funding hypothesis",
+            "objective": "Queue the idea for independent evidence and predictive review.",
+            "input_contract": {
+                "repository": "swarm-control-plane",
+                "workflow": "founder-hypothesis-intake",
+                "base_ref": "main",
+                "mandate_id": "11111111-1111-4111-8111-111111111111",
+                "mandate_digest": "a" * 64,
+                "research_idea": "Test whether elevated funding predicts subsequent perpetual returns.",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+                "universe_slices": ["stable", "volatile"],
+            },
+            "risk_level": 0,
+            "approval_policy": {"kind": "explicit", "risk": 0},
+            "required_capabilities": [
+                "research-intelligence",
+                "research-proposal",
+                "prior-art",
+            ],
+            "allowed_machines": ["vm1-developer"],
+        }
+    )
+    document = FounderProposalDocument.model_validate(payload)
+    assert document.proposed_task.input_contract.maximum_variants == 8
+    payload["proposed_task"]["input_contract"]["minimum_history_days"] = 30
+    with pytest.raises(ValidationError):
+        FounderProposalDocument.model_validate(payload)
+
+
 def test_materialization_is_exactly_once() -> None:
     proposal = SimpleNamespace(
         status="materialized",

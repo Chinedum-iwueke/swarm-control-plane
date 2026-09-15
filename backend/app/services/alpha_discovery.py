@@ -14,6 +14,7 @@ from app.models.alpha_discovery import (
     AlphaDiscoveryCandidate,
     AlphaDiscoveryCycle,
     AlphaDiscoveryEvent,
+    AlphaFounderResearchIdea,
     AlphaResearchMandate,
 )
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
@@ -25,6 +26,7 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignCreate,
 )
 from app.schemas.alpha_discovery import (
+    AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
@@ -381,9 +383,86 @@ def _task(
     return task
 
 
-def _new_cycle(db: Session, mandate: AlphaResearchMandate) -> AlphaDiscoveryCycle:
+def queue_founder_idea(
+    db: Session, mandate: AlphaResearchMandate, payload: AlphaFounderResearchIdeaCreate
+) -> AlphaFounderResearchIdea:
+    if mandate.status != "active" or not (mandate.valid_from <= now() < mandate.valid_until):
+        raise HTTPException(409, "Founder research ideas require an active weekly mandate.")
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before the idea was queued.")
+    constraints = {
+        "minimum_history_days": payload.minimum_history_days,
+        "maximum_variants": payload.maximum_variants,
+        "universe_selection_policy": payload.universe_selection_policy,
+        "universe_slices": payload.universe_slices,
+        "selection_timing": "frozen_before_outcome_evaluation",
+    }
+    idea_digest = digest_document(
+        {
+            "mandate_digest": mandate.mandate_digest,
+            "idea": payload.idea,
+            "constraints": constraints,
+            "conversation_id": str(payload.conversation_id) if payload.conversation_id else None,
+        }
+    )
+    existing = db.scalar(
+        select(AlphaFounderResearchIdea).where(
+            AlphaFounderResearchIdea.idea_digest == idea_digest
+        )
+    )
+    if existing:
+        return existing
+    idea = AlphaFounderResearchIdea(
+        mandate_id=mandate.id,
+        conversation_id=payload.conversation_id,
+        submitted_by=payload.submitted_by,
+        idea=payload.idea,
+        constraints=constraints,
+        idea_digest=idea_digest,
+        status="queued",
+    )
+    db.add(idea)
+    db.flush()
+    _event(
+        db,
+        mandate,
+        "founder_research_idea_queued",
+        {"idea_id": str(idea.id), "idea_digest": idea.idea_digest, "constraints": constraints},
+    )
+    return idea
+
+
+def _next_founder_idea(db: Session, mandate: AlphaResearchMandate) -> AlphaFounderResearchIdea | None:
+    return db.scalar(
+        select(AlphaFounderResearchIdea)
+        .where(
+            AlphaFounderResearchIdea.mandate_id == mandate.id,
+            AlphaFounderResearchIdea.status == "queued",
+        )
+        .order_by(AlphaFounderResearchIdea.created_at)
+        .with_for_update(skip_locked=True)
+        .limit(1)
+    )
+
+
+def _new_cycle(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    founder_idea: AlphaFounderResearchIdea | None = None,
+) -> AlphaDiscoveryCycle:
     ordinal = mandate.cycle_count + 1
     context = _bounded_context(db, mandate)
+    if founder_idea:
+        context["founder_research_idea"] = {
+            "id": str(founder_idea.id),
+            "idea": founder_idea.idea,
+            "idea_digest": founder_idea.idea_digest,
+            "constraints": founder_idea.constraints,
+            "instruction": (
+                "Challenge this idea first. Reject it if it is not predictive, causal-timing-safe, "
+                "novel, or testable with admitted data; otherwise formalize it as a candidate."
+            ),
+        }
     cycle_digest = digest_document(
         {
             "mandate_digest": mandate.mandate_digest,
@@ -405,6 +484,9 @@ def _new_cycle(db: Session, mandate: AlphaResearchMandate) -> AlphaDiscoveryCycl
     )
     db.add(cycle)
     db.flush()
+    if founder_idea:
+        founder_idea.status = "processing"
+        founder_idea.cycle_id = cycle.id
     task = _task(db, mandate, cycle, "intelligence", context)
     cycle.intelligence_task_id = task.id
     mandate.cycle_count = ordinal
@@ -412,7 +494,11 @@ def _new_cycle(db: Session, mandate: AlphaResearchMandate) -> AlphaDiscoveryCycl
         db,
         mandate,
         "cycle_started",
-        {"cycle_digest": cycle_digest, "task_id": str(task.id)},
+        {
+            "cycle_digest": cycle_digest,
+            "task_id": str(task.id),
+            "founder_idea_id": str(founder_idea.id) if founder_idea else None,
+        },
         cycle,
     )
     return cycle
@@ -426,6 +512,24 @@ def _candidate_reasons(
     db: Session | None = None,
 ) -> tuple[list[str], int | None]:
     reasons: list[str] = []
+    founder_constraints = cycle.context.get("founder_research_idea", {}).get(
+        "constraints", {}
+    )
+    if founder_constraints:
+        maximum_variants = int(founder_constraints.get("maximum_variants", 8))
+        minimum_history_days = int(
+            founder_constraints.get("minimum_history_days", 365)
+        )
+        if candidate.parameter_budget.maximum_variants > maximum_variants:
+            reasons.append("founder_variant_budget_exceeded")
+        if candidate.data.minimum_history_observations < minimum_history_days * 1440:
+            reasons.append("founder_minimum_history_not_requested")
+        window_start = datetime.fromisoformat(
+            mandate.specification["execution_window_start"]
+        )
+        window_end = datetime.fromisoformat(mandate.specification["execution_window_end"])
+        if (window_end - window_start).total_seconds() < minimum_history_days * 86400:
+            reasons.append("mandate_window_below_founder_minimum")
     question = " ".join(candidate.question.lower().split())
     words = set(question.replace("?", "").split())
     if question.startswith(_IMPERATIVE_PREFIXES):
@@ -748,7 +852,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         .limit(1)
     )
     if cycle is None:
-        _new_cycle(db, mandate)
+        _new_cycle(db, mandate, _next_founder_idea(db, mandate))
         return
     cycle.heartbeat_at = moment
     if cycle.campaign_id:
@@ -789,6 +893,11 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             cycle.next_action = campaign.next_action
         return
     if cycle.status in _TERMINAL_CYCLE:
+        founder_idea = db.scalar(
+            select(AlphaFounderResearchIdea).where(AlphaFounderResearchIdea.cycle_id == cycle.id)
+        )
+        if founder_idea and founder_idea.status == "processing":
+            founder_idea.status = "completed" if cycle.status == "completed" else cycle.status
         elapsed = (moment - (cycle.completed_at or cycle.created_at)).total_seconds()
         if (
             mandate.cycle_count >= mandate.budget["maximum_cycles"]
@@ -806,6 +915,8 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                     "trials": mandate.trial_count,
                 },
             )
+        elif (queued := _next_founder_idea(db, mandate)) is not None:
+            _new_cycle(db, mandate, queued)
         elif elapsed >= mandate.budget["cadence_seconds"]:
             _new_cycle(db, mandate)
         return
@@ -934,6 +1045,11 @@ def overview(db: Session) -> dict:
         .order_by(AlphaDiscoveryCycle.created_at.desc())
         .limit(100)
     ).all()
+    founder_ideas = db.scalars(
+        select(AlphaFounderResearchIdea)
+        .order_by(AlphaFounderResearchIdea.created_at.desc())
+        .limit(100)
+    ).all()
     counts = dict(
         db.execute(
             select(AlphaDiscoveryCandidate.disposition, func.count()).group_by(
@@ -999,6 +1115,19 @@ def overview(db: Session) -> dict:
                 "heartbeat_at": item.heartbeat_at,
             }
             for item in cycles
+        ],
+        "founder_ideas": [
+            {
+                "id": str(item.id),
+                "mandate_id": str(item.mandate_id),
+                "cycle_id": str(item.cycle_id) if item.cycle_id else None,
+                "idea": item.idea,
+                "idea_digest": item.idea_digest,
+                "constraints": item.constraints,
+                "status": item.status,
+                "created_at": item.created_at,
+            }
+            for item in founder_ideas
         ],
         "throughput": {
             "generated": sum(counts.values()),

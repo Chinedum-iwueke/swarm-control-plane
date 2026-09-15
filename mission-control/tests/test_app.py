@@ -219,11 +219,24 @@ def test_static_application_and_safe_status(
     assert 'id="research-panel-explore"' in page.text
     assert 'id="research-panel-library"' in page.text
     assert 'id="research-context-items"' in page.text
+    assert 'id="alpha-founder-ideas"' in page.text
+    assert "founder_ideas" in script.text
     assert settings.read_token() not in page.text
     assert page.headers["cache-control"] == "no-store"
     assert script.headers["cache-control"] == "no-store"
     assert status.json()["scope"] == "loopback-only"
     assert fake.closed is True
+
+
+def test_dashboard_refresh_preserves_research_scroll_position(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        script = client.get("/static/app.js").text
+
+    assert "function navigate(view, { resetScroll = true } = {})" in script
+    assert 'if (resetScroll) window.scrollTo({ top: 0, behavior: "smooth" });' in script
+    assert 'navigate(state.activeView, { resetScroll: false });' in script
 
 
 def test_dashboard_reports_local_mission_control_presence(

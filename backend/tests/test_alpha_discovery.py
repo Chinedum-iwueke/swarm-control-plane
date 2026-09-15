@@ -4,14 +4,13 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
 )
 from app.services.alpha_discovery import _candidate_reasons
+from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
@@ -169,6 +168,32 @@ def test_candidate_gate_accepts_predictive_available_question_and_rejects_instru
     )
     reasons, _ = _candidate_reasons(instruction, cycle, mandate, [])
     assert "imperative_or_operational_instruction" in reasons
+
+
+def test_founder_idea_enforces_one_year_and_eight_variant_boundary():
+    value, object_id = candidate()
+    cycle = SimpleNamespace(
+        context={
+            "founder_research_idea": {
+                "constraints": {"minimum_history_days": 365, "maximum_variants": 8}
+            },
+            "research_intelligence": {
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
+            },
+            "datasets": [],
+        }
+    )
+    mandate = SimpleNamespace(
+        specification={
+            "minimum_liquidity_usd": 0,
+            "execution_window_start": "2026-01-01T00:00:00+00:00",
+            "execution_window_end": "2026-02-01T00:00:00+00:00",
+        }
+    )
+    reasons, _ = _candidate_reasons(value, cycle, mandate, [])
+    assert "founder_variant_budget_exceeded" in reasons
+    assert "founder_minimum_history_not_requested" in reasons
+    assert "mandate_window_below_founder_minimum" in reasons
 
 
 def test_llm_equation_is_not_accepted_as_verified_without_receipt():

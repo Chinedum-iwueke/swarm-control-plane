@@ -82,6 +82,36 @@ class AlphaResearchMandateApproval(StrictModel):
     reason: str = Field(min_length=10, max_length=2000)
 
 
+class AlphaFounderResearchIdeaCreate(StrictModel):
+    mandate_id: uuid.UUID
+    expected_mandate_digest: str = Field(pattern=_DIGEST)
+    idea: str = Field(min_length=20, max_length=12000)
+    submitted_by: Literal["founder-operator"]
+    conversation_id: uuid.UUID | None = None
+    minimum_history_days: int = Field(default=365, ge=365, le=3650)
+    maximum_variants: int = Field(default=8, ge=1, le=8)
+    universe_selection_policy: Literal["preregistered_point_in_time"] = (
+        "preregistered_point_in_time"
+    )
+    universe_slices: list[Literal["stable", "volatile", "all_eligible"]] = Field(
+        default_factory=lambda: ["stable", "volatile"], min_length=1, max_length=3
+    )
+
+
+class AlphaFounderResearchIdeaResponse(StrictModel):
+    id: uuid.UUID
+    mandate_id: uuid.UUID
+    cycle_id: uuid.UUID | None
+    conversation_id: uuid.UUID | None
+    submitted_by: str
+    idea: str
+    constraints: dict
+    idea_digest: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class AlphaDiscoveryDataRequirement(StrictModel):
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
@@ -191,6 +221,7 @@ class AlphaDiscoveryOverview(StrictModel):
     generated_at: datetime
     mandates: list[dict]
     cycles: list[dict]
+    founder_ideas: list[dict]
     throughput: dict[str, int]
     stalls: list[dict]
     agents: list[dict]

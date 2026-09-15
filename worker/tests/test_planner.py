@@ -57,6 +57,35 @@ def test_planner_proposal_rejects_invented_worker_route() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
+def test_planner_accepts_governed_founder_hypothesis_intake() -> None:
+    payload = valid_proposal()
+    payload["proposed_task"].update(
+        {
+            "task_type": "founder_hypothesis_intake",
+            "input_contract": {
+                "repository": "swarm-control-plane",
+                "workflow": "founder-hypothesis-intake",
+                "base_ref": "main",
+                "mandate_id": "11111111-1111-4111-8111-111111111111",
+                "mandate_digest": "a" * 64,
+                "research_idea": "Does funding pressure predict subsequent perpetual returns after costs?",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+                "universe_slices": ["stable", "volatile"],
+            },
+            "approval_policy": {"kind": "explicit", "risk": 0},
+            "required_capabilities": [
+                "research-intelligence",
+                "research-proposal",
+                "prior-art",
+            ],
+        }
+    )
+    document = FounderProposalDocument.model_validate(payload)
+    assert document.proposed_task.input_contract.minimum_history_days == 365
+
+
 def test_clarification_requires_exact_field_and_format_guidance() -> None:
     payload = valid_proposal()
     payload.update(
@@ -207,6 +236,9 @@ def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
     assert "single clarification_questions entry" in prompt
     assert "Do not claim that a domain specialist was consulted" in prompt
     assert "Never ask again for a value the founder already supplied" in prompt
+    assert "founder_hypothesis_intake" in prompt
+    assert "at most 8 variants" in prompt
+    assert "preregistered_point_in_time" in prompt
 
 
 def test_conversation_prompt_receives_bounded_grounding_context() -> None:
