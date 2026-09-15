@@ -85,7 +85,7 @@ def _validate_inventory_root(db: Session, receipt: dict) -> None:
     if (result.get("shard_count") != len(shards) or not isinstance(result.get("run_id"), str)
             or not isinstance(result.get("claim_boundary"), str) or not result["claim_boundary"]):
         raise QuantitativeReceiptConflict("Malformed inventory root binding.")
-    if receipt["dataset_digest"] != _digest(shards) or receipt["input_digest"] != _digest(shards):
+    if receipt["dataset_digest"] != _digest([item.get("dataset_digest") for item in shards if isinstance(item, dict)]) or receipt["input_digest"] != _digest(shards):
         raise QuantitativeReceiptConflict("Inventory root descriptors are not content-bound.")
     counts, assets = Counter(), set()
     previous_path = None
@@ -147,18 +147,31 @@ def _validate_full_lake_quality(db: Session, receipt: dict) -> None:
             or len(objects) + sum(skipped.values()) != result["inventoried_object_count"]):
         raise QuantitativeReceiptConflict("Quality accounting does not cover its inventory.")
     requested = {}
+    checks_required = {
+        "nonempty_window", "complete_window_grid", "strict_timestamp_order",
+        "no_internal_gaps", "aligned_timestamps", "no_null_timestamps",
+        "required_fields_nonnull", "path_exchange_symbol_consistent", "valid_ohlcv",
+    }
     for item in objects:
         if not isinstance(item, dict) or not isinstance(item.get("partition_id"), str):
             raise QuantitativeReceiptConflict("Quality object identity is required.")
         if item["partition_id"] in requested or item.get("execution_eligible") is not False:
             raise QuantitativeReceiptConflict("Quality cannot duplicate objects or infer execution admission.")
+        passed = item.get("panel_quality_passed")
+        if (type(passed) is not bool
+                or item.get("disposition") != ("panel_quality_passed" if passed else "quarantined")
+                or not isinstance(item.get("reason_codes"), list)
+                or (not passed and not item["reason_codes"])):
+            raise QuantitativeReceiptConflict("Quality classification contradicts its pass status.")
         if item.get("panel_quality_passed") is True and (
-            not isinstance(item.get("checks"), dict) or not item["checks"]
+            not isinstance(item.get("checks"), dict) or set(item["checks"]) != checks_required
             or any(value is not True for value in item["checks"].values())
             or item.get("reason_codes") != []
         ):
             raise QuantitativeReceiptConflict("Passing quality contradicts its checks.")
         requested[item["partition_id"]] = item
+    if result.get("dispositions") != dict(Counter(item["disposition"] for item in objects)):
+        raise QuantitativeReceiptConflict("Quality disposition summary does not match its objects.")
 
     def source_objects():
         root = inventory.receipt["result"]
@@ -181,6 +194,7 @@ def _validate_full_lake_quality(db: Session, receipt: dict) -> None:
             continue
         item = requested[key]
         if (source.get("layer") != "canonical" or source.get("dataset") != "research_panel"
+                or source.get("disposition") != "cataloged_pending_quality"
                 or any(item.get(field) != source.get(field) for field in
                        ("content_digest", "market", "venue", "instrument", "timeframe"))):
             raise QuantitativeReceiptConflict("Quality object conflicts with its source inventory.")

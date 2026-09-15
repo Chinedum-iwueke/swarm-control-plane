@@ -20,7 +20,7 @@ def root_and_shards():
                             "receipt_digest": str(index + 2) * 64,
                             "dataset_digest": shard.dataset_digest})
     receipt = {"source_commit": "a" * 40, "input_digest": _digest(descriptors),
-               "dataset_digest": _digest(descriptors),
+               "dataset_digest": _digest([item["dataset_digest"] for item in descriptors]),
                "result": {"run_id": "run-one", "shards": descriptors, "shard_count": 2,
                           "object_count": 4, "dispositions": {"cataloged_pending_quality": 4},
                           "assets": [["perp", "bybit", "ETHUSDT"]],
