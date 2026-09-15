@@ -61,10 +61,29 @@ class AlphaResearchExecutor:
         python_path: Path = Path(
             "/home/omenka/Projects/bulletproof_bt/.venv/bin/python"
         ),
+        capacity_database: Path | None = None,
     ) -> None:
         self._heartbeat_interval = max(5.0, heartbeat_interval_seconds)
         self._effective_uid = effective_uid
         self._python = python_path
+        configured = os.environ.get("SWARM_BULLETPROOF_CAPACITY_DB")
+        self._capacity_database = capacity_database or (Path(configured) if configured else None)
+
+    def capacity_progress(self) -> dict:
+        if self._capacity_database is None:
+            return {}
+        try:
+            path = self._capacity_database.parent / "alpha-capacity-state.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            observed = datetime.fromisoformat(data["updated_at"])
+            age = (datetime.now(UTC) - observed).total_seconds()
+            return {"telemetry_current": 0 <= age <= 60,
+                    "worker_slots": data.get("worker_slots", {}),
+                    "jobs": [{"queue_id": item.get("queue_id"), "status": item.get("status"),
+                              "estimated_workers": item.get("estimated_workers")}
+                             for item in data.get("jobs", [])[:16]]}
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return {"telemetry_current": False}
 
     async def execute(
         self,
@@ -118,11 +137,23 @@ class AlphaResearchExecutor:
             "--receipt",
             str(receipt),
         )
+        if self._capacity_database is not None and contract.stage == "execute":
+            if not 1 <= contract.max_variants <= 8:
+                raise AlphaResearchExecutionError("Capacity-governed grids require 1-8 variants.")
+            command = (
+                str(self._python),
+                str(workspace.repository / "scripts/queue_alpha_capacity_assignment.py"),
+                "--db", str(self._capacity_database),
+                *command[2:],
+            )
         env = {
             "PATH": str(self._python.parent) + ":/usr/bin:/bin",
             "HOME": str(workspace.plan.attempt_directory),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": str(workspace.repository / "src"),
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
         }
         with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
             process = await asyncio.create_subprocess_exec(
@@ -157,6 +188,8 @@ class AlphaResearchExecutor:
                                 "elapsed_seconds": round(elapsed, 3),
                                 "campaign_id": contract.campaign_id,
                                 "question_digest": contract.question_digest,
+                                "capacity_governed": self._capacity_database is not None and contract.stage == "execute",
+                                "capacity": self.capacity_progress(),
                             }
                         )
                     except asyncio.CancelledError:

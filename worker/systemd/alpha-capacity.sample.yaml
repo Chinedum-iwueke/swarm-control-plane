@@ -1,0 +1,14 @@
+queue_name: approved_backtests
+default_max_workers: 8
+capacity_scheduler:
+  target_workers: 16
+  max_workers_per_job: 8
+  max_concurrent_jobs: 2
+  estimated_worker_ram_gb: 2
+  min_free_ram_gb: 8
+  pause_free_ram_gb: 6
+  resume_free_ram_gb: 12
+  poll_seconds: 5
+  log_path: /home/omenka/.local/state/invariance-swarm/alpha-capacity.log
+  state_path: /home/omenka/.local/state/invariance-swarm/alpha-capacity-state.json
+  child_log_dir: /home/omenka/.local/state/invariance-swarm/alpha-capacity-jobs

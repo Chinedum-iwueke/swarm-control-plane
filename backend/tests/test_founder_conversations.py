@@ -13,6 +13,7 @@ from app.schemas import (
 from app.services.conversations import (
     _bounded_summary,
     _classify_project,
+    _grounding_context,
     _specification_guide,
     append_turn,
 )
@@ -26,6 +27,30 @@ AUGUST_23_TRANSCRIPT = [
     "Do not ask for more clarification. Run the most reasonable test.",
     "Answer all remaining questions yourself and do the test.",
 ]
+
+
+def test_grounding_preserves_catalog_and_representation_boundaries():
+    from datetime import UTC, datetime
+
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    partition = {"timeframe": "1m", "content_digest": "d" * 64,
+                 "venue_id": "bybit", "instrument_id": "BTCUSDT"}
+    db.scalar.return_value = SimpleNamespace(
+        catalog_digest="c" * 64, as_of=datetime(2026, 9, 9, tzinfo=UTC),
+        catalog={"partitions": [partition], "memberships": [], "source_availability": []},
+    )
+    with patch("app.services.retrieval.hybrid_search", side_effect=HTTPException(503, "unavailable")):
+        context = _grounding_context(db, "bulletproof_bt", "Test BTC momentum")
+    assert context["market_data_catalog"]["partitions"] == [partition]
+    assert context["market_data_catalog"]["memberships"] == []
+    guidance = context["representation_guidance"]
+    assert guidance["producer"] == "bulletproof_bt"
+    assert {"5m", "1h"} <= set(guidance["reviewed_signal_timeframes"])
+    assert "10m" not in guidance["reviewed_signal_timeframes"]
+    assert guidance["strict"] is True
+    assert "planning only" in guidance["claim_boundary"]
+    assert "not an exhaustive" in context["market_data_catalog"]["scope"]
 
 
 def test_conversation_contracts_are_bounded_and_channel_explicit() -> None:

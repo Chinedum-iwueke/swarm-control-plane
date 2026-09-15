@@ -15,6 +15,45 @@ from swarm_worker.planner.engine import CodexProposalPlanner, PlannerError
 from swarm_worker.planner.service import FounderIntakePlannerService
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repair_valid", [True, False])
+async def test_reasoning_repairs_semantic_contract_once(tmp_path, monkeypatch, repair_valid):
+    planner = CodexProposalPlanner(
+        codex_binary=tmp_path / "codex", codex_home=tmp_path, model="test-model",
+        timeout_seconds=1, working_directory=tmp_path,
+    )
+    candidate = {
+        "schema_version": 1, "response_kind": "compile_proposal",
+        "summary": "Prepare a planning-only research intake.",
+        "interpretation": "The data and representation need downstream qualification.",
+        "grounding_citations": [], "clarification_questions": [],
+        "unresolved_fields": ["qualified representation"], "specification_format": [],
+    }
+    prompts = []
+
+    async def invoke(schema, prompt, prefix):
+        prompts.append(prompt)
+        value = dict(candidate)
+        if len(prompts) == 2 and repair_valid:
+            value["unresolved_fields"] = []
+        return value
+
+    monkeypatch.setattr(planner, "_invoke", invoke)
+    task = Task.model_construct(project="bulletproof_bt", input_contract={
+        "objective": "Plan a BTC hypothesis, do not execute it.", "grounding_context": {},
+    })
+    if repair_valid:
+        response = await planner._reason(task)
+        assert response.response_kind == "compile_proposal"
+        assert response.unresolved_fields == []
+    else:
+        with pytest.raises(PlannerError, match="after bounded repair"):
+            await planner._reason(task)
+    assert len(prompts) == 2
+    assert "No execution is authorized" in prompts[1]
+    assert "previous candidate failed validation" in prompts[1]
+
+
 def valid_proposal() -> dict:
     return {
         "schema_version": 1,

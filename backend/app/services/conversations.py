@@ -397,6 +397,7 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
     from app.models import (
         Agent,
         AlphaResearchMandate,
+        MarketDataCatalogSnapshot,
         ResearchDatasetManifest,
         ResearchHypothesis,
     )
@@ -407,6 +408,11 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
     datasets = db.scalars(
         select(ResearchDatasetManifest).order_by(ResearchDatasetManifest.registered_at.desc()).limit(12)
     ).all()
+    catalog = db.scalar(
+        select(MarketDataCatalogSnapshot)
+        .order_by(MarketDataCatalogSnapshot.registered_at.desc())
+        .limit(1)
+    )
     hypotheses = db.scalars(
         select(ResearchHypothesis).order_by(ResearchHypothesis.registered_at.desc()).limit(12)
     ).all()
@@ -453,7 +459,9 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
                     key: item.manifest[key]
                     for key in (
                         "schema_version", "dataset_id", "venue", "instrument",
-                        "timeframe", "start", "end", "availability",
+                        "timeframe", "start", "end", "availability", "provider",
+                        "instruments", "date_start", "date_end", "timezone",
+                        "output_columns", "transformations", "fallback_policy",
                     )
                     if key in item.manifest
                 },
@@ -498,6 +506,35 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
             "universe_slices": ["stable", "volatile"],
             "selection_rule": "freeze the selected universe and alternatives before outcome evaluation",
             "workflow": "founder-hypothesis-intake",
+        },
+        "market_data_catalog": {
+            "available": catalog is not None,
+            "digest": catalog.catalog_digest if catalog else None,
+            "as_of": catalog.as_of.isoformat() if catalog else None,
+            "partitions": catalog.catalog.get("partitions", [])[:100] if catalog else [],
+            "memberships": catalog.catalog.get("memberships", [])[:100] if catalog else [],
+            "source_availability": catalog.catalog.get("source_availability", [])[:100] if catalog else [],
+            "scope": "Latest registered snapshot, bounded to 100 entries per section; not an exhaustive filesystem inventory or an access grant.",
+        },
+        "representation_guidance": {
+            "producer": "bulletproof_bt",
+            "source_commit": "a7d8e112c21fe436ee2c5dc89e61614bcde28e10",
+            "source_path": "src/bt/data/resample.py",
+            "source_sha256": "608d7460e6389e8f8e99c608b3a785cc4742a67376766d67578362b7d60cf886",
+            "reviewed_signal_timeframes": ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"],
+            "base_feed": "1m UTC",
+            "strict": True,
+            "rules": [
+                "Use Bulletproof's native resampler; no Hermes aggregation engine.",
+                "Expose only complete closed buckets at rollover; no fabricated missing minutes or final partial bucket.",
+                "HTFBar.ts labels bucket start, not information availability; preserve the emission clock.",
+                "Signal cadence can differ from the 1m execution clock; freeze both before evaluating outcomes.",
+                "Choose representation from mechanism and horizon, not the best observed result; timeframe alternatives count toward the search budget.",
+                "Auxiliary funding, open-interest, mark and index fields need their own point-in-time transformation contract; OHLCV aggregation does not establish theirs.",
+                "Stable/volatile universe labels require registered point-in-time memberships; never infer broad admission from local files.",
+                "10m is not supported in this reviewed snapshot; request an approval-gated native extension, not silent substitution.",
+            ],
+            "claim_boundary": "Reviewed native capability snapshot for planning only. Exact campaign engine version, data entitlement, resampling configuration and output audit must be qualified before execution.",
         },
         "claim_boundary": "Context is advisory evidence only and grants no execution authority.",
     }
