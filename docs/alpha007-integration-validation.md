@@ -202,3 +202,27 @@ Full backend validation passed 877 tests with one optional skip and two existing
 warnings. Recovery additionally refreshes the route under a database row lock
 before checking its state, preventing competing director cycles from assigning
 the same blocked route concurrently.
+
+The bounded read-only strategy reviewer executor is now implemented as source:
+it binds the routed evaluator, immutable source commit, subject/card/artifact
+digests and review kind, runs isolated Codex without trading authority, validates
+typed approve/reject verdicts, and terminates its owned process group on lease
+loss or timeout. Full worker coverage passes 319 tests; lint passes. It is not
+registered in production workflow dispatch yet, and no genuine reviewer verdict
+is inferred from its unit fixtures. Authenticated completion, reviewer-role
+provisioning and engineering-author provenance remain open.
+
+Runtime evidence supersedes the earlier live-scan observations: VM1's previous
+boot ended at 22:15 UTC, with a new boot at 22:32 UTC. The transient unit and
+native child vanished before root/shard publication. Operation
+`1f24f55d-45c3-4eae-b3ac-6c129023f9c3` is now honestly terminal failed,
+phase inventory_interrupted, completed 2026-09-15T22:39:30.485471Z, preserving
+input digest `4911d259c0cca29a4b87161150c328a71c9db91d86e36961a5f372c1a11cc48a`
+and 1,874 partial objects. No scan success or full-root receipt is claimed.
+Recovery uses persistent user unit `alpha007-full-lake.service`, enabled with
+user lingering verified yes. New run `93a00b1f-e9ae-4dca-931c-efc6bf9dd99a`
+has supervisor PID 18776/native PID 18822 and fresh progress through 22 objects,
+bound to the same native `19d361c` and frozen quality window. Recovery was
+started only after terminal/missing-handle verification, not a polling timeout.
+Boot configuration persistence is verified; an intentional reboot drill was not
+performed. Complete inventory/quality registration remains pending.
