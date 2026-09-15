@@ -67,7 +67,9 @@ class AlphaResearchExecutor:
         self._effective_uid = effective_uid
         self._python = python_path
         configured = os.environ.get("SWARM_BULLETPROOF_CAPACITY_DB")
-        self._capacity_database = capacity_database or (Path(configured) if configured else None)
+        self._capacity_database = capacity_database or (
+            Path(configured) if configured else None
+        )
 
     def capacity_progress(self) -> dict:
         if self._capacity_database is None:
@@ -77,11 +79,18 @@ class AlphaResearchExecutor:
             data = json.loads(path.read_text(encoding="utf-8"))
             observed = datetime.fromisoformat(data["updated_at"])
             age = (datetime.now(UTC) - observed).total_seconds()
-            return {"telemetry_current": 0 <= age <= 60,
-                    "worker_slots": data.get("worker_slots", {}),
-                    "jobs": [{"queue_id": item.get("queue_id"), "status": item.get("status"),
-                              "estimated_workers": item.get("estimated_workers")}
-                             for item in data.get("jobs", [])[:16]]}
+            return {
+                "telemetry_current": 0 <= age <= 60,
+                "worker_slots": data.get("worker_slots", {}),
+                "jobs": [
+                    {
+                        "queue_id": item.get("queue_id"),
+                        "status": item.get("status"),
+                        "estimated_workers": item.get("estimated_workers"),
+                    }
+                    for item in data.get("jobs", [])[:16]
+                ],
+            }
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return {"telemetry_current": False}
 
@@ -139,11 +148,16 @@ class AlphaResearchExecutor:
         )
         if self._capacity_database is not None and contract.stage == "execute":
             if not 1 <= contract.max_variants <= 8:
-                raise AlphaResearchExecutionError("Capacity-governed grids require 1-8 variants.")
+                raise AlphaResearchExecutionError(
+                    "Capacity-governed grids require 1-8 variants."
+                )
             command = (
                 str(self._python),
-                str(workspace.repository / "scripts/queue_alpha_capacity_assignment.py"),
-                "--db", str(self._capacity_database),
+                str(
+                    workspace.repository / "scripts/queue_alpha_capacity_assignment.py"
+                ),
+                "--db",
+                str(self._capacity_database),
                 *command[2:],
             )
         env = {
@@ -188,7 +202,8 @@ class AlphaResearchExecutor:
                                 "elapsed_seconds": round(elapsed, 3),
                                 "campaign_id": contract.campaign_id,
                                 "question_digest": contract.question_digest,
-                                "capacity_governed": self._capacity_database is not None and contract.stage == "execute",
+                                "capacity_governed": self._capacity_database is not None
+                                and contract.stage == "execute",
                                 "capacity": self.capacity_progress(),
                             }
                         )
@@ -273,6 +288,19 @@ class AlphaResearchExecutor:
             summary={
                 "disposition": document["disposition"],
                 "receipt_digest": document["receipt_digest"],
+                "metrics": {
+                    key: value
+                    for key, value in (document.get("metrics") or {}).items()
+                    if key
+                    in {
+                        "oos_trades",
+                        "oos_mean_net_r",
+                        "double_cost_oos_mean_net_r",
+                        "declared_variant_count",
+                        "selected_variant_index",
+                        "selection_basis",
+                    }
+                },
                 **(
                     {"alpha_campaign_attempt": document["alpha_campaign_attempt"]}
                     if "alpha_campaign_attempt" in document

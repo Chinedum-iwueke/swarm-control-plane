@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -30,7 +31,30 @@ def main() -> int:
         ),
     )
     parser.add_argument("--minimum-liquidity-usd", type=float, default=1_000_000)
+    parser.add_argument("--mandate-key")
+    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument("--source-campaign-id")
+    parser.add_argument("--bulletproof-source-commit")
+    parser.add_argument("--window-start")
+    parser.add_argument("--window-end")
     args = parser.parse_args()
+    if bool(args.window_start) != bool(args.window_end):
+        parser.error("Supply both --window-start and --window-end.")
+    if args.window_start:
+        start = datetime.fromisoformat(args.window_start.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(args.window_end.replace("Z", "+00:00"))
+        if start.tzinfo is None or end.tzinfo is None:
+            parser.error(
+                "Window timestamps require a timezone, for example 2025-05-01T00:00:00Z."
+            )
+        if end - start < timedelta(days=365):
+            parser.error("The continuous research window must span at least 365 days.")
+    if args.bulletproof_source_commit and not re.fullmatch(
+        r"[0-9a-f]{40}", args.bulletproof_source_commit
+    ):
+        parser.error(
+            "--bulletproof-source-commit requires the exact 40-character reviewed commit."
+        )
     headers = {"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"}
     with httpx.Client(
         base_url=os.environ["SWARM_API_URL"].rstrip("/"), headers=headers, timeout=60
@@ -44,6 +68,9 @@ def main() -> int:
                 for item in campaigns
                 if item.get("specification", {}).get("dataset_bindings")
                 and item.get("specification", {}).get("execution_window_start")
+                and (
+                    not args.source_campaign_id or item["id"] == args.source_campaign_id
+                )
             ),
             None,
         )
@@ -56,14 +83,17 @@ def main() -> int:
         ]
         moment = datetime.now(UTC)
         payload = {
-            "mandate_key": f"ALPHA004-WEEK-{moment:%Y%m%d}",
-            "version": "1.0.0",
+            "mandate_key": args.mandate_key or f"ALPHA004-WEEK-{moment:%Y%m%d}",
+            "version": args.version,
             "objective": args.objective,
             "valid_from": moment.isoformat(),
             "valid_until": (moment + timedelta(days=7)).isoformat(),
-            "bulletproof_source_commit": specification["bulletproof_source_commit"],
-            "execution_window_start": specification["execution_window_start"],
-            "execution_window_end": specification["execution_window_end"],
+            "bulletproof_source_commit": args.bulletproof_source_commit
+            or specification["bulletproof_source_commit"],
+            "execution_window_start": args.window_start
+            or specification["execution_window_start"],
+            "execution_window_end": args.window_end
+            or specification["execution_window_end"],
             "dataset_bindings": bindings,
             "allowed_venues": specification["allowed_venues"],
             "allowed_instruments": specification["allowed_instruments"],

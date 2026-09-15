@@ -27,6 +27,8 @@ async def test_dashboard_uses_bearer_without_exposing_token(
         seen.append(request)
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/v1/research/alpha-campaigns/backtests/activity":
+            return httpx.Response(200, json={"items": [], "counts": {}, "total": 0})
         if request.url.path.endswith("/blocked-artifacts"):
             return httpx.Response(
                 200,
@@ -181,8 +183,25 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["intelligence_evaluation"]["status"] == "not_demonstrated"
     assert result["derived_state"]["current"] is True
     assert result["alpha_campaigns"] == []
+    assert "backtest_activity" in result
     assert result["alpha_discovery"]["mandates"] == []
     assert result["scientific_assurance"]["counts"]["verified"] == 1
+
+
+@pytest.mark.asyncio
+async def test_backtest_queue_filter_pagination_and_authentication(settings):
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/research/alpha-campaigns/backtests/activity"
+        assert dict(request.url.params) == {"category": "finished", "tier": "Tier3", "offset": "50", "limit": "50"}
+        assert request.headers["Authorization"].startswith("Bearer ")
+        return httpx.Response(200, json={"items": [], "offset": 50, "total": 50})
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.backtest_activity(category="finished", tier="Tier3", offset=50)
+        assert result["offset"] == 50
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
