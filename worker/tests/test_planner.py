@@ -96,7 +96,8 @@ def test_planner_proposal_rejects_invented_worker_route() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
-def test_planner_accepts_governed_founder_hypothesis_intake() -> None:
+@pytest.mark.parametrize("universe_slices", [["all_eligible"], ["stable", "volatile"]])
+def test_planner_accepts_governed_founder_hypothesis_intake(universe_slices) -> None:
     payload = valid_proposal()
     payload["proposed_task"].update(
         {
@@ -111,7 +112,7 @@ def test_planner_accepts_governed_founder_hypothesis_intake() -> None:
                 "minimum_history_days": 365,
                 "maximum_variants": 8,
                 "universe_selection_policy": "preregistered_point_in_time",
-                "universe_slices": ["stable", "volatile"],
+                "universe_slices": universe_slices,
             },
             "approval_policy": {"kind": "explicit", "risk": 0},
             "required_capabilities": [
@@ -123,6 +124,7 @@ def test_planner_accepts_governed_founder_hypothesis_intake() -> None:
     )
     document = FounderProposalDocument.model_validate(payload)
     assert document.proposed_task.input_contract.minimum_history_days == 365
+    assert document.proposed_task.input_contract.universe_slices == universe_slices
 
 
 def test_clarification_requires_exact_field_and_format_guidance() -> None:
@@ -278,6 +280,8 @@ def test_conversation_prompt_preserves_turns_and_governed_defaults() -> None:
     assert "founder_hypothesis_intake" in prompt
     assert "at most 8 variants" in prompt
     assert "preregistered_point_in_time" in prompt
+    assert "all_eligible hints by default" in prompt
+    assert "optional founder-selected hints" in prompt
 
 
 def test_conversation_prompt_receives_bounded_grounding_context() -> None:

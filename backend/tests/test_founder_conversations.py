@@ -42,6 +42,7 @@ def test_grounding_preserves_catalog_and_representation_boundaries():
     )
     with patch("app.services.retrieval.hybrid_search", side_effect=HTTPException(503, "unavailable")):
         context = _grounding_context(db, "bulletproof_bt", "Test BTC momentum")
+    assert context["founder_hypothesis_intake_policy"]["universe_slices"] == ["all_eligible"]
     assert context["market_data_catalog"]["partitions"] == [partition]
     assert context["market_data_catalog"]["memberships"] == []
     guidance = context["representation_guidance"]

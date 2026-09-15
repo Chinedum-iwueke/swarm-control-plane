@@ -357,6 +357,11 @@ When context contains founder_research_idea, challenge that exact idea before fo
 premise by default. Obey its frozen minimum-history, maximum-variant and preregistered universe-selection constraints.
 Universe selection must happen before outcome evaluation; retain rejected alternatives and never choose a universe
 because it produced the best result.
+The lake_catalog describes physical inventory, not execution permission or continuous coverage. Historical
+stable/volatile labels are optional hints: reason about hypothesis-specific cross-group baskets rather than
+restricting proposals to those labels or BTC. Do not invent missing catalog assets. Only datasets listed as
+admitted may satisfy an executable candidate; retain broader ideas as data/engineering gaps in the research
+brief rather than pretending an inventory receipt expands the approved mandate.
 
 MANDATE DIGEST: {contract.mandate_digest}
 STAGE: {contract.stage}

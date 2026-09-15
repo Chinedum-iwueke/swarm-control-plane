@@ -66,3 +66,39 @@ Fresh full suites: 850 backend passed (one optional database skip), 295 worker
 passed. Native inventory/quality/admission/producer suite: 32 passed; lint passed.
 The expanded shard pipeline is not yet production-replayed; the two concurrent
 native backtests and wider approved research scope remain open.
+
+Production continuation: native PR #308 and Hermes PR #269 are merged. All ten
+native and eight Hermes CI checks passed; latest worker suite passed 300 tests.
+VM2 deployed merge `2e3750da0`, with healthy running image
+`sha256:cd1863c0c660b6d2661de024ad63ab6fba458f00b108564a06b5c582ae64e0c8`.
+The bounded custody validators are installed. VM1 user systemd unit
+`alpha007-full-lake-20260915.service` supervises run
+`0767bfbe-206f-4290-9900-f9771b7a83b8`, supervisor PID 3873138 and initial native
+child PID 3873684. Ledger acknowledgement preceded native scanning. Source binds
+reviewed native `19d361ca6c09fd6bb45f2db24a22a70213661f81`; subsequent quality
+uses frozen half-open window 2025-05-01 through 2026-05-01 UTC. Restart is disabled
+to prevent accidental duplicate scans, and control-group shutdown cleans children.
+The scan is in progress: no complete root, panel quality, wider execution approval
+or overlapping scientific backtest is claimed yet.
+
+Next source pass separates researcher visibility from mandate execution scope:
+discovery reuses the inventory endpoint's receipt-backed summary as `lake_catalog`,
+while `datasets` remains the exact admitted mandate inventory. Founder universe
+hints now default to `all_eligible`; explicit stable/volatile hints remain valid.
+The supervised researcher prompt requests hypothesis-specific cross-group baskets
+and retains out-of-scope ideas as gaps, never as executable candidates. Regression
+tests prove a catalog-visible ETH asset with no admitted binding still fails
+DATA-002/003 availability. Focused backend tests passed 57 cases, including the
+new context/default tests; the final strengthened context suite passed 23 cases.
+Worker contract/prompt tests passed seven cases, and backend lint passed. This
+source pass is not deployed and does not prove adaptive basket execution.
+
+Pre-landing review caught chat grounding and planner instructions explicitly
+overriding the new API default with stable/volatile. Both now default to
+`all_eligible`, preserve explicit founder-selected group hints and retain admitted
+mandate boundaries. Regression covers chat grounding, planner instructions and
+typed proposal pass-through for both defaults and legacy hints. Full suites before
+this correction passed 852 backend tests (one optional database skip) and 301
+worker tests. Corrected planner tests passed 17 cases. The same exact inventory
+unit remains live, with progress through the canonical Binance partitions; no
+scan restart, complete inventory or concurrent scientific execution is inferred.

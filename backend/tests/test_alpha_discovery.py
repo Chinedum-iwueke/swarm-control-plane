@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
+    AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
 )
@@ -45,7 +46,25 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
     monkeypatch.setattr(
         "app.services.alpha_discovery._dataset_inventory", lambda mandate: []
     )
+    catalog = {
+        "status": "cataloged_pending_quality",
+        "assets": [["perp", "binance", "ETHUSDT"], ["perp", "bybit", "SOLUSDT"]],
+        "receipt_digest": DIGEST,
+        "execution_authority": False,
+    }
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.lake_inventory_summary", lambda db: catalog
+    )
     context = _bounded_context(db, mandate)
+    assert context["lake_catalog"] == catalog
+    assert context["datasets"] == []
+    value, _ = candidate()
+    value.data.instrument = "ETHUSDT"
+    reasons, binding = _candidate_reasons(
+        value, SimpleNamespace(context=context), mandate, []
+    )
+    assert "data002_003_availability_not_demonstrated" in reasons
+    assert binding is None
     constraints = context["research_constraints"]
     assert constraints["maximum_variants_per_hypothesis"] == 8
     assert constraints["minimum_liquidity_usd"] == 100_000
@@ -57,8 +76,21 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
     )
     assert constraints["bulletproof_source_commit"] == COMMIT
     assert constraints["new_code_requires_explicit_approval"]
+    assert constraints["catalog_visibility_is_not_execution_admission"]
     assert not constraints["capital_or_order_authority"]
     assert "verification_receipt" in context["equation_policy"]["campaign_use_requires"]
+
+
+def test_founder_universe_hints_default_to_all_eligible_without_expanding_mandate():
+    payload = AlphaFounderResearchIdeaCreate(
+        mandate_id=uuid4(), expected_mandate_digest=DIGEST,
+        idea="Does cross-asset liquidity predict future residual returns?",
+        submitted_by="founder-operator",
+    )
+    assert payload.universe_slices == ["all_eligible"]
+    assert payload.universe_selection_policy == "preregistered_point_in_time"
+    legacy = payload.model_copy(update={"universe_slices": ["stable", "volatile"]})
+    assert legacy.universe_slices == ["stable", "volatile"]
 
 
 @pytest.mark.parametrize(

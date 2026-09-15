@@ -7,6 +7,7 @@ from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryError,
     AlphaDiscoveryExecutor,
     _runtime_options,
+    _prompt,
     _schema,
 )
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
@@ -81,6 +82,21 @@ def test_alpha_discovery_contract_and_fixed_workflow():
     workflow = WorkflowLoader(Path("worker/workflows")).load(contract.workflow)
     assert workflow.task_type == "alpha_discovery"
     assert workflow.steps == []
+
+
+def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
+    document = alpha_discovery_contract()
+    document["context"]["lake_catalog"] = {
+        "receipt_digest": "b" * 64,
+        "assets": [["perp", "binance", "ETHUSDT"]],
+        "execution_authority": False,
+    }
+    prompt = _prompt(AlphaDiscoveryContract.model_validate(document))
+    assert "ETHUSDT" in prompt
+    assert "not execution permission or continuous coverage" in prompt
+    assert "hypothesis-specific cross-group baskets" in prompt
+    assert "Only datasets listed as" in prompt
+    assert "pretending an inventory receipt expands" in prompt
 
 
 def test_alpha_discovery_contract_survives_complete_policy_validation():

@@ -357,7 +357,9 @@ class CodexProposalPlanner:
             "research idea and an active research mandate is supplied. It queues the idea; it does "
             "not execute a backtest directly. Bind the exact mandate ID/digest, preserve the founder's "
             "idea, require at least 365 history days, at most 8 variants, and use "
-            "preregistered_point_in_time universe selection across stable and volatile slices. "
+            "preregistered_point_in_time universe selection with all_eligible hints by default. "
+            "Treat stable/volatile labels as optional founder-selected hints, not fixed basket boundaries. "
+            "Preregister hypothesis-specific mixed baskets within admitted mandate scope before outcomes. "
             "If no active mandate is supplied, explain that a mandate must be approved; do not invent one.\n"
             "- vm2-infrastructure runbook tasks: allowed_machines "
             '["vm2-deployment"], required_capabilities '
