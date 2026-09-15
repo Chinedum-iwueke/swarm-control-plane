@@ -66,3 +66,17 @@ Fresh full suites: 850 backend passed (one optional database skip), 295 worker
 passed. Native inventory/quality/admission/producer suite: 32 passed; lint passed.
 The expanded shard pipeline is not yet production-replayed; the two concurrent
 native backtests and wider approved research scope remain open.
+
+Production continuation: native PR #308 and Hermes PR #269 are merged. All ten
+native and eight Hermes CI checks passed; latest worker suite passed 300 tests.
+VM2 deployed merge `2e3750da0`, with healthy running image
+`sha256:cd1863c0c660b6d2661de024ad63ab6fba458f00b108564a06b5c582ae64e0c8`.
+The bounded custody validators are installed. VM1 user systemd unit
+`alpha007-full-lake-20260915.service` supervises run
+`0767bfbe-206f-4290-9900-f9771b7a83b8`, supervisor PID 3873138 and initial native
+child PID 3873684. Ledger acknowledgement preceded native scanning. Source binds
+reviewed native `19d361ca6c09fd6bb45f2db24a22a70213661f81`; subsequent quality
+uses frozen half-open window 2025-05-01 through 2026-05-01 UTC. Restart is disabled
+to prevent accidental duplicate scans, and control-group shutdown cleans children.
+The scan is in progress: no complete root, panel quality, wider execution approval
+or overlapping scientific backtest is claimed yet.
