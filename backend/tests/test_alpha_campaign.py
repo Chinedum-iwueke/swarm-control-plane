@@ -712,7 +712,11 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
         service,
         "task_producer_identity",
         lambda db, task: {
-            "agent_id": str(task.assigned_agent_id),
+            "agent_id": str(
+                draft.assigned_agent_id
+                if task is draft
+                else qualification.assigned_agent_id
+            ),
             "context_group": "compiler-test",
             "package_digest": "d" * 64,
             "machine": "vm1",

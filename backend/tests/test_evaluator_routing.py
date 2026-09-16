@@ -269,13 +269,14 @@ def test_producer_profile_is_frozen_from_authorized_package_at_lease():
 
 def test_historical_producer_identity_is_not_inferred_from_current_registration():
     db = MagicMock()
-    task = SimpleNamespace(id=uuid.uuid4(), assigned_agent_id=ONE, attempt_count=1)
+    task = SimpleNamespace(id=uuid.uuid4(), assigned_agent_id=None, attempt_count=1)
     db.scalar.return_value = None
     assert task_producer_identity(db, task) is None
     identity = _profile_identity(
         profile(ONE, "b" * 64, "producer-context", "producer_identity")
     )
     event = SimpleNamespace(
+        agent_id=ONE,
         payload={
             "producer_identity": identity,
             "producer_identity_digest": digest(identity),
@@ -284,6 +285,23 @@ def test_historical_producer_identity_is_not_inferred_from_current_registration(
     db.scalar.return_value = event
     assert task_producer_identity(db, task) == identity
     identity["context_group"] = "changed"
+    assert task_producer_identity(db, task) is None
+
+
+def test_historical_producer_identity_rejects_event_actor_mismatch():
+    db = MagicMock()
+    task = SimpleNamespace(id=uuid.uuid4(), assigned_agent_id=None, attempt_count=2)
+    identity = _profile_identity(
+        profile(ONE, "b" * 64, "producer-context", "producer_identity")
+    )
+    db.scalar.return_value = SimpleNamespace(
+        agent_id=TWO,
+        payload={
+            "producer_identity": identity,
+            "producer_identity_digest": digest(identity),
+        },
+    )
+
     assert task_producer_identity(db, task) is None
 
 

@@ -180,7 +180,6 @@ def task_producer_identity(db: Session, task: Task) -> dict | None:
         .where(
             TaskEvent.task_id == task.id,
             TaskEvent.event_type == "task_leased",
-            TaskEvent.agent_id == task.assigned_agent_id,
             TaskEvent.attempt_number == task.attempt_count,
         )
         .order_by(TaskEvent.id.desc())
@@ -191,7 +190,8 @@ def task_producer_identity(db: Session, task: Task) -> dict | None:
     identity = event.payload.get("producer_identity")
     if (
         not isinstance(identity, dict)
-        or identity.get("agent_id") != str(task.assigned_agent_id)
+        or event.agent_id is None
+        or identity.get("agent_id") != str(event.agent_id)
         or event.payload.get("producer_identity_digest") != digest(identity)
     ):
         return None
