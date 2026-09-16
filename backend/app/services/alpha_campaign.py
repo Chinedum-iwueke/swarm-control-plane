@@ -1051,17 +1051,15 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "category": "qualification_differs_from_approved_card"
         }
         return qualification_task
-    producers = [draft.assigned_agent_id, qualification_task.assigned_agent_id]
     identities = [
         task_producer_identity(db, task) for task in (draft, qualification_task)
     ]
-    if any(actor is None for actor in producers) or any(
-        identity is None for identity in identities
-    ):
+    if any(identity is None for identity in identities):
         campaign.phase = "independent_strategy_review"
         campaign.next_action = "repair_strategy_producer_provenance"
         campaign.terminal_reason = {"category": "strategy_producer_identity_missing"}
         return qualification_task
+    producers = [UUID(identity["agent_id"]) for identity in identities]
     subject = {
         "campaign_digest": campaign.campaign_digest,
         "question_digest": digest_document(
@@ -1110,7 +1108,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         db,
         review_route,
         subject_digest=subject_digest,
-        producer_agent_id=qualification_task.assigned_agent_id,
+        producer_agent_id=producers[1],
         excluded_agent_ids=producers,
         excluded_identities=identities,
         qualifier_identity=identities[1],
