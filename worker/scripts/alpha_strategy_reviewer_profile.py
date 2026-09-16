@@ -19,7 +19,7 @@ def ensure_profile(client, state, role, provider, model_family):
         "agent_id": state["agent_id"],
         "profile_version": "1.0.0",
         "review_kinds": [kind],
-        "capabilities": [f"alpha-strategy-review:{kind}"],
+        "capabilities": [f"alpha-strategy-review-{kind}"],
         "provider": provider,
         "model_family": model_family,
         "context_group": f"alpha-independent-{role}-reviewer-v1",

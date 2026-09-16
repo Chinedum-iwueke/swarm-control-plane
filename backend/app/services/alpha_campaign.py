@@ -799,7 +799,7 @@ def _materialize_strategy_review_tasks(
             title=f"Independent {assignment.review_kind} review",
             objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
             risk_level=0, created_by="alpha-campaign-director", max_attempts=2,
-            required_capabilities=[f"alpha-strategy-review:{assignment.review_kind}"],
+            required_capabilities=[f"alpha-strategy-review-{assignment.review_kind}"],
             allowed_machines=[profile.machine],
             input_contract={
                 "repository": "bulletproof_bt", "workflow": "alpha-strategy-review",
