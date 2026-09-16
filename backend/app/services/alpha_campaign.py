@@ -992,7 +992,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         campaign.phase = "strategy_qualification"
         campaign.next_action = "await_vm1_strategy_qualification"
         return qualification_task
-    qualification = qualification_task.result.get("summary", {}).get("qualification")
+    qualification = _qualification_from_result(qualification_task.result)
     if (
         not isinstance(qualification, dict)
         or qualification.get("qualified") is not True
@@ -1361,6 +1361,15 @@ def _publication_envelope_from_result(result: dict) -> dict | None:
     if publication_envelope is None and isinstance(summary, dict):
         publication_envelope = summary.get("publication_envelope")
     return publication_envelope if isinstance(publication_envelope, dict) else None
+
+
+def _qualification_from_result(result: dict) -> dict | None:
+    summary = result.get("summary", {})
+    handoff = result.get("downstream_handoff", {})
+    qualification = handoff.get("qualification") if isinstance(handoff, dict) else None
+    if qualification is None and isinstance(summary, dict):
+        qualification = summary.get("qualification")
+    return qualification if isinstance(qualification, dict) else None
 
 
 def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:

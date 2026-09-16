@@ -330,6 +330,30 @@ def test_publication_envelope_accepts_legacy_summary_result() -> None:
     assert result == legacy
 
 
+def test_qualification_prefers_bounded_downstream_handoff() -> None:
+    legacy = {"qualified": False}
+    handoff = {"qualified": True, "card_digest": "a" * 64}
+
+    result = service._qualification_from_result(
+        {
+            "summary": {"qualification": legacy},
+            "downstream_handoff": {"qualification": handoff},
+        }
+    )
+
+    assert result == handoff
+
+
+def test_qualification_accepts_legacy_summary_result() -> None:
+    legacy = {"qualified": True, "card_digest": "a" * 64}
+
+    result = service._qualification_from_result(
+        {"summary": {"qualification": legacy}}
+    )
+
+    assert result == legacy
+
+
 def test_alpha002_materializes_one_digest_bound_vm1_task(monkeypatch):
     from app.services import retrieval
 
