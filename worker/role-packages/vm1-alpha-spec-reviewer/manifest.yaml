@@ -9,7 +9,7 @@ workflows:
   file: alpha-strategy-review.yaml
   sha256: d7eec154e311de0247c1046f18f1cb31543372c10a44002460846674b5f1cf60
 required_capabilities:
-- alpha-strategy-review:strategy_spec
+- alpha-strategy-review-strategy_spec
 allowed_machines:
 - vm1-developer
 risk_ceiling: 0

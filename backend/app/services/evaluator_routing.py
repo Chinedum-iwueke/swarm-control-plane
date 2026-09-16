@@ -249,7 +249,7 @@ def _route_profiles(
                 reasons.append("capabilities")
             if (
                 payload.subject_type == "alpha_strategy_qualification"
-                and f"alpha-strategy-review:{review_kind}" not in profile.capabilities
+                and f"alpha-strategy-review-{review_kind}" not in profile.capabilities
             ):
                 reasons.append("strategy_review_executor_capability")
             selected_corr = [

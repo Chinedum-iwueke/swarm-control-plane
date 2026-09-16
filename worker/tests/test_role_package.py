@@ -60,7 +60,7 @@ def test_independent_strategy_review_packages_have_distinct_narrow_identities() 
         )
         packages.append(package)
         assert package.manifest.task_types == ["alpha_strategy_review"]
-        assert package.manifest.required_capabilities == [f"alpha-strategy-review:{kind}"]
+        assert package.manifest.required_capabilities == [f"alpha-strategy-review-{kind}"]
         assert package.manifest.risk_ceiling == 0
         assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
         assert package.manifest.repository_profile.primary_checkout_write is False

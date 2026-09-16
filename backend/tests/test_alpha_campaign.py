@@ -767,7 +767,7 @@ def test_routed_review_tasks_preserve_subject_profile_and_source_without_executi
     service._materialize_strategy_review_tasks(db, route, subject, qualification)
     payload = build.call_args.args[0]
     assert payload.task_type == "alpha_strategy_review"
-    assert payload.required_capabilities == ["alpha-strategy-review:strategy_spec"]
+    assert payload.required_capabilities == ["alpha-strategy-review-strategy_spec"]
     assert payload.input_contract["base_ref"] == COMMIT
     assert payload.input_contract["evaluator_agent_id"] == str(profile.agent_id)
     assert payload.input_contract["evaluator_package_digest"] == profile.package_digest

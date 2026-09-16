@@ -1,10 +1,14 @@
 import hashlib
 import hmac
+from pathlib import Path
 
 import pytest
+import yaml
 from app.schemas.package import RolePackageCreate, RolePackageManifest
 from app.services.packages import canonical_manifest, verify_package
 from fastapi import HTTPException
+
+ROOT = Path(__file__).parents[2]
 
 
 def manifest() -> RolePackageManifest:
@@ -59,6 +63,31 @@ def test_digest_and_signature_are_verified() -> None:
     verify_package(payload, secret)
     with pytest.raises(HTTPException):
         verify_package(payload.model_copy(update={"signature": "0" * 64}), secret)
+
+
+@pytest.mark.parametrize(
+    ("role", "capability"),
+    [
+        ("spec", "alpha-strategy-review-strategy_spec"),
+        ("causality", "alpha-strategy-review-causality_leakage"),
+    ],
+)
+def test_exact_alpha_reviewer_manifests_match_api_contract(
+    role: str, capability: str
+) -> None:
+    document = yaml.safe_load(
+        (
+            ROOT
+            / "worker"
+            / "role-packages"
+            / f"vm1-alpha-{role}-reviewer"
+            / "manifest.yaml"
+        ).read_text(encoding="utf-8")
+    )
+
+    parsed = RolePackageManifest.model_validate(document)
+
+    assert parsed.required_capabilities == [capability]
 
 
 def test_unsafe_permission_profile_is_rejected() -> None:

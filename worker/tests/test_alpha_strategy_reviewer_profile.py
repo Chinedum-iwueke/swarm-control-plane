@@ -25,7 +25,7 @@ def profile():
         "agent_id": "agent",
         "profile_version": "1.0.0",
         "review_kinds": ["strategy_spec"],
-        "capabilities": ["alpha-strategy-review:strategy_spec"],
+        "capabilities": ["alpha-strategy-review-strategy_spec"],
         "provider": "openai",
         "model_family": "codex",
         "context_group": "alpha-independent-spec-reviewer-v1",
