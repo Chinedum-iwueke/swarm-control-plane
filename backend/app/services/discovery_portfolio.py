@@ -483,6 +483,10 @@ def register_portfolio(
             "attention_used": attention,
         },
     )
+    # SessionLocal intentionally disables autoflush.  The registration contract
+    # returns a portfolio whose candidate allocation is immediately queryable by
+    # downstream campaign construction in the same transaction.
+    db.flush()
     return portfolio
 
 
