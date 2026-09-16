@@ -1743,7 +1743,7 @@ def resume_campaign(
 def cancel_campaign(
     db: Session, campaign: AlphaCampaign, payload: AlphaCampaignAction
 ) -> None:
-    if campaign.status in TERMINAL:
+    if campaign.status in TERMINAL and campaign.status != "needs_attention":
         raise HTTPException(409, "Terminal campaigns cannot be cancelled again.")
     if campaign.campaign_digest != payload.expected_campaign_digest:
         raise HTTPException(409, "Campaign digest changed before cancellation.")
