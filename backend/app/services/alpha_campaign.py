@@ -15,7 +15,11 @@ from app.models.alpha_campaign import (
     AlphaCampaignAttempt,
     AlphaCampaignEvent,
 )
-from app.models.alpha_discovery import AlphaDiscoveryCandidate, AlphaResearchMandate
+from app.models.alpha_discovery import (
+    AlphaCandidateDataAdmission,
+    AlphaDiscoveryCandidate,
+    AlphaResearchMandate,
+)
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
@@ -318,8 +322,50 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             source = db.get(AlphaDiscoveryCandidate, item.source_id)
             if source is None or source.candidate_digest != item.source_digest:
                 raise HTTPException(409, "ALPHA-004 source candidate is unavailable.")
-            entry["dataset_binding_index"] = source.document["dataset_binding_index"]
+            binding_index = source.document["dataset_binding_index"]
+            binding_indices = []
+            if binding_index is None:
+                admission = db.scalar(
+                    select(AlphaCandidateDataAdmission).where(
+                        AlphaCandidateDataAdmission.candidate_id == source.id,
+                        AlphaCandidateDataAdmission.status == "admitted",
+                    )
+                )
+                if admission is None:
+                    raise HTTPException(
+                        409, "ALPHA-004 candidate data admission is incomplete."
+                    )
+                for binding in admission.dataset_bindings:
+                    index = next(
+                        (
+                            position
+                            for position, admitted_binding in enumerate(admitted)
+                            if admitted_binding["dataset_build_id"]
+                            == binding["dataset_build_id"]
+                        ),
+                        None,
+                    )
+                    if index is None:
+                        raise HTTPException(
+                            409, "Admitted candidate dataset is absent from the campaign."
+                        )
+                    binding_indices.append(index)
+                binding_index = binding_indices[0]
+            else:
+                binding_indices = [int(binding_index)]
+            entry["dataset_binding_index"] = int(binding_index)
+            entry["dataset_binding_indices"] = binding_indices
             entry["instrument"] = source.document["data"]["instrument"]
+            entry["instruments"] = source.document["data"]["instruments"]
+            entry["research_timeframe"] = source.document["data"][
+                "research_timeframe"
+            ]
+            entry["resampling_policy"] = source.document["data"][
+                "resampling_policy"
+            ]
+            entry["reusable_strategy"] = source.document.get(
+                "reusable_strategy_capability"
+            )
             entry["discovery_candidate_id"] = str(source.id)
             entry["discovery_candidate_digest"] = source.candidate_digest
         research_queue.append(entry)
@@ -440,8 +486,8 @@ def _stage_contract(
     card_approval: dict | None = None,
     qualification: dict | None = None,
 ) -> dict:
-    binding_index = int(source.get("dataset_binding_index", 0))
-    binding = campaign.specification["dataset_bindings"][binding_index]
+    bindings = _source_bindings(campaign, source)
+    binding = bindings[0]
     question = " ".join(source["question"].split())
     return {
         "repository": "bulletproof_bt",
@@ -460,10 +506,38 @@ def _stage_contract(
         "memory_database": "/home/omenka/.local/state/invariance-swarm/alpha002-memory.sqlite",
         "bundle_root": "/home/omenka/.local/share/invariance-swarm/alpha002-bundles",
         "dataset_key": binding["dataset_key"],
+        "dataset_bindings": [
+            {
+                "dataset_build_id": item["dataset_build_id"],
+                "dataset_digest": item["dataset_digest"],
+                "dataset_path": _dataset_path(db, campaign, item),
+                "dataset_key": item["dataset_key"],
+                "instrument": item.get(
+                    "instruments",
+                    [
+                        source.get(
+                            "instrument",
+                            campaign.specification["allowed_instruments"][0],
+                        )
+                    ],
+                )[0],
+                "venue": item["venue"],
+            }
+            for item in bindings
+        ],
         "instrument": source.get(
             "instrument", campaign.specification["allowed_instruments"][0]
         ),
+        "instruments": source.get(
+            "instruments",
+            [source.get("instrument", campaign.specification["allowed_instruments"][0])],
+        ),
         "timeframe": "1m",
+        "research_timeframe": source.get("research_timeframe", "1m"),
+        "resampling_policy": source.get(
+            "resampling_policy", "right_closed_left_labeled_complete_bars"
+        ),
+        "reusable_strategy": source.get("reusable_strategy"),
         "tier": "Tier2B",
         "max_variants": campaign.budget["max_variants_per_hypothesis"],
         "research_context": _research_context(db, question),
@@ -476,6 +550,21 @@ def _stage_contract(
         **({"card_approval": card_approval} if card_approval else {}),
         **({"qualification": qualification} if qualification else {}),
     }
+
+
+def _source_bindings(campaign: AlphaCampaign, source: dict) -> list[dict]:
+    indices = source.get("dataset_binding_indices")
+    if indices is None:
+        indices = [source.get("dataset_binding_index", 0)]
+    if not isinstance(indices, list) or not indices:
+        raise HTTPException(409, "Research queue has no admitted dataset bindings.")
+    try:
+        bindings = [campaign.specification["dataset_bindings"][int(item)] for item in indices]
+    except (IndexError, TypeError, ValueError) as exc:
+        raise HTTPException(409, "Research queue dataset bindings changed.") from exc
+    if len({item["dataset_build_id"] for item in bindings}) != len(bindings):
+        raise HTTPException(409, "Research queue dataset bindings are duplicated.")
+    return bindings
 
 
 def _research_context(db: Session, question: str) -> dict:
@@ -563,9 +652,8 @@ def _create_strategy_engineering_task(
     requirement: dict,
 ) -> Task:
     question = " ".join(source["question"].split())
-    binding = campaign.specification["dataset_bindings"][
-        int(source.get("dataset_binding_index", 0))
-    ]
+    bindings = _source_bindings(campaign, source)
+    binding = bindings[0]
     research_context = _research_context(db, question)
     candidate_document = None
     if source.get("discovery_candidate_id"):
@@ -588,8 +676,17 @@ def _create_strategy_engineering_task(
         "source_candidate_digest": source["source_candidate_digest"],
         "discovery_candidate": candidate_document,
         "dataset_binding": binding,
+        "dataset_bindings": bindings,
         "instrument": source.get(
             "instrument", campaign.specification["allowed_instruments"][0]
+        ),
+        "instruments": source.get(
+            "instruments",
+            [source.get("instrument", campaign.specification["allowed_instruments"][0])],
+        ),
+        "research_timeframe": source.get("research_timeframe", "1m"),
+        "resampling_policy": source.get(
+            "resampling_policy", "right_closed_left_labeled_complete_bars"
         ),
         "window": {
             "start": campaign.specification["execution_window_start"],

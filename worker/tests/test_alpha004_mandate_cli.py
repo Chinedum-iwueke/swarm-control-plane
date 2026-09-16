@@ -52,6 +52,7 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
     old = "11111111-1111-4111-8111-111111111111"
     fresh = "22222222-2222-4222-8222-222222222222"
     posted = []
+    catalog_id = "33333333-3333-4333-8333-333333333333"
 
     def handler(request):
         if request.url.path.endswith("alpha-campaigns"):
@@ -71,6 +72,18 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
                     }
                 ],
             )
+        if request.url.path.endswith("lake-inventory"):
+            return httpx.Response(
+                200,
+                json={
+                    "status": "manifest_catalog_visible_unadmitted",
+                    "receipt_id": catalog_id,
+                    "receipt_digest": "c" * 64,
+                    "source_commit": "d" * 40,
+                    "venue_scope": ["binance", "bybit"],
+                    "execution_authority": False,
+                },
+            )
         if "quantitative-receipts" in request.url.path:
             return httpx.Response(
                 200,
@@ -82,6 +95,14 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         assert request.method == "POST"
         payload = json.loads(request.content)
         assert payload["dataset_bindings"][0]["producer_receipt_id"] == fresh
+        assert payload["discovery_catalog"] == {
+            "producer_receipt_id": catalog_id,
+            "receipt_digest": "c" * 64,
+            "source_commit": "d" * 40,
+            "allowed_venues": ["binance", "bybit"],
+            "selection_policy": "point_in_time_pre_outcome",
+            "maximum_assets_per_hypothesis": 8,
+        }
         posted.append(payload)
         return httpx.Response(201, json={"status": "awaiting_approval"})
 
@@ -93,6 +114,38 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
     )
     monkeypatch.setenv("SWARM_API_URL", "https://test.invalid")
     monkeypatch.setenv("SWARM_ORCHESTRATOR_TOKEN", "test-not-a-real-token")
+    strategy_catalog = {
+        "schema_version": "alpha-strategy-capability-catalog-v1.0.0",
+        "source_commit": "b" * 40,
+        "capabilities": [
+            {
+                "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
+                "title": "Weekend lagged-return momentum",
+                "description": "Tests whether lagged returns predict future returns.",
+                "hypothesis_family": "lagged-return-momentum",
+                "strategy": "lagged_return_momentum",
+                "input_mode": "single_instrument",
+                "maximum_instruments": 1,
+                "signal_timeframes": ["1m"],
+                "variant_count": 2,
+                "logging_requirements": ["decision_trace", "stop_price"],
+                "reuse_blockers": [],
+                "bounded_weekly_reuse_eligible": True,
+                "contract_path": "research/hypotheses/alpha_weekend_momentum.yaml",
+                "contract_digest": "e" * 64,
+            }
+        ],
+        "capital_or_order_authority": False,
+        "claim_boundary": "Native implementation inventory only; no alpha is inferred.",
+        "catalog_digest": "f" * 64,
+    }
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout=json.dumps(strategy_catalog), stderr=""
+        ),
+    )
     arguments = [str(script), "--bulletproof-source-commit", "b" * 40]
     if fresh_receipt:
         arguments.extend(["--producer-receipt-id", fresh])
@@ -100,6 +153,7 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
     if fresh_receipt:
         assert module.main() == 0
         assert len(posted) == 1
+        assert posted[0]["strategy_catalog"] == strategy_catalog
     else:
         with pytest.raises(RuntimeError, match="no mandate was written"):
             module.main()

@@ -525,6 +525,23 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     record.specification["dataset_bindings"][0].update(
         {"dataset_key": "bybit-btcusdt-perp-1m", "venue": "bybit"}
     )
+    capability = {
+        "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
+        "title": "Weekend lagged-return momentum",
+        "description": "Tests lagged weekend momentum on held-out data.",
+        "hypothesis_family": "lagged-return-momentum",
+        "strategy": "alpha_weekend_momentum",
+        "input_mode": "single_instrument",
+        "maximum_instruments": 1,
+        "signal_timeframes": ["1m"],
+        "variant_count": 8,
+        "logging_requirements": ["decision_trace", "stop_price"],
+        "reuse_blockers": [],
+        "bounded_weekly_reuse_eligible": True,
+        "contract_path": "research/hypotheses/alpha_weekend_momentum.yaml",
+        "contract_digest": "8" * 64,
+    }
+    record.specification["research_queue"][0]["reusable_strategy"] = capability
     monkeypatch.setattr(
         service,
         "_dataset_path",
@@ -542,6 +559,7 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["venue"] == "bybit"
     assert contract["window_start"] == "2026-04-01T00:00:00Z"
     assert contract["dataset_digest"] == DIGEST
+    assert contract["reusable_strategy"] == capability
 
 
 @pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])

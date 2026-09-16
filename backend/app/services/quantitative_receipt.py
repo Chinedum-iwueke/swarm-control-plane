@@ -32,22 +32,28 @@ class QuantitativeReceiptConflict(RuntimeError):
     pass
 
 
-def lake_inventory_summary(db: Session) -> dict:
+def lake_inventory_summary(
+    db: Session,
+    *,
+    receipt_id=None,
+    receipt_digest: str | None = None,
+) -> dict:
     producers = (
         "bt.institutional.lake_inventory.full_lake_inventory_receipt",
         "bt.institutional.lake_manifest.manifest_catalog_receipt",
     )
-    record = db.scalar(
-        select(QuantitativeProducerReceipt)
-        .where(
-            QuantitativeProducerReceipt.milestone == "DATA-002",
-            QuantitativeProducerReceipt.producer.in_(producers),
-        )
-        .order_by(QuantitativeProducerReceipt.registered_at.desc())
-        .limit(1)
+    query = select(QuantitativeProducerReceipt).where(
+        QuantitativeProducerReceipt.milestone == "DATA-002",
+        QuantitativeProducerReceipt.producer.in_(producers),
     )
+    if receipt_id is not None:
+        query = query.where(QuantitativeProducerReceipt.id == receipt_id)
+    query = query.order_by(QuantitativeProducerReceipt.registered_at.desc()).limit(1)
+    record = db.scalar(query)
     if record is None:
         return {"status": "not_registered", "execution_authority": False}
+    if receipt_digest is not None and record.receipt_digest != receipt_digest:
+        return {"status": "bound_receipt_mismatch", "execution_authority": False}
     result = record.receipt["result"]
     if record.producer == "bt.institutional.lake_manifest.manifest_catalog_receipt":
         return {
@@ -354,6 +360,66 @@ def _validate_full_lake_quality(db: Session, receipt: dict) -> None:
         raise QuantitativeReceiptConflict("Quality includes objects absent from the inventory.")
 
 
+def _validate_alpha_admission(receipt: dict) -> None:
+    result = receipt.get("result", {})
+    version = result.get("schema_version")
+    common = (
+        result.get("admitted") is True
+        and result.get("evidence_class") == "live_exchange_history"
+        and isinstance(result.get("venue"), str)
+        and bool(result["venue"])
+        and isinstance(result.get("instrument"), str)
+        and bool(result["instrument"])
+    )
+    if version == "alpha001-real-data-admission-v1.0.0" and common:
+        return
+    if version != "alpha001-real-data-admission-v2.0.0" or not common:
+        raise QuantitativeReceiptConflict("Malformed ALPHA-001 admission receipt.")
+    recovery = result.get("recovery_copy")
+    checks = result.get("checks")
+    quality = result.get("quality")
+    measured_quality_fields = {
+        "duplicate_timestamp_count",
+        "missing_bar_count",
+        "non_finite_value_count",
+        "non_positive_price_count",
+        "out_of_order_timestamp_count",
+        "negative_volume_count",
+        "invalid_ohlc_geometry_count",
+    }
+    required = (
+        result.get("market") == "perp",
+        result.get("timeframe") == "1m",
+        isinstance(result.get("row_count"), int) and result["row_count"] >= 2,
+        isinstance(result.get("byte_size"), int) and result["byte_size"] > 0,
+        isinstance(result.get("panel_uri"), str)
+        and result["panel_uri"].startswith("file://"),
+        isinstance(result.get("panel_sha256"), str)
+        and len(result["panel_sha256"]) == 64,
+        result.get("panel_sha256") == receipt.get("dataset_digest"),
+        isinstance(result.get("schema_digest"), str)
+        and len(result["schema_digest"]) == 64,
+        isinstance(result.get("instrument_reference"), dict),
+        isinstance(checks, dict) and bool(checks),
+        isinstance(checks, dict) and all(value is True for value in checks.values()),
+        isinstance(quality, dict),
+        isinstance(quality, dict)
+        and all(
+            isinstance(quality.get(field), int) and quality[field] >= 0
+            for field in measured_quality_fields
+        ),
+        isinstance(recovery, dict),
+        isinstance(recovery, dict) and recovery.get("integrity_verified") is True,
+        isinstance(recovery, dict)
+        and recovery.get("content_digest") == result.get("panel_sha256"),
+        isinstance(result.get("manifest_digests"), dict)
+        and set(result["manifest_digests"])
+        == {"coverage", "fetch_state", "instruments"},
+    )
+    if not all(required):
+        raise QuantitativeReceiptConflict("Malformed ALPHA-001 v2 admission receipt.")
+
+
 def register_receipt(
     db: Session, payload: QuantitativeReceiptCreate
 ) -> QuantitativeProducerReceipt:
@@ -379,6 +445,8 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Result digest does not match content.")
     if _digest(receipt) != receipt_digest:
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
+    if receipt["milestone"] == "ALPHA-001":
+        _validate_alpha_admission(receipt)
     if is_full_quality:
         _validate_full_lake_quality(db, receipt)
     if is_manifest_catalog:

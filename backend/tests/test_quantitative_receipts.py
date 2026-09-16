@@ -95,14 +95,30 @@ def test_registration_is_idempotent():
 
 @pytest.mark.parametrize("mutation", [None, "authority", "identity", "binding"])
 def test_full_lake_inventory_is_accounting_not_admission(mutation):
-    value = receipt("DATA-002", "bt.institutional.lake_inventory.full_lake_inventory_receipt")
-    objects = [{"partition_id": "canonical/bybit/ETHUSDT/timeframe=1m/research_panel.parquet",
-                "execution_eligible": False, "disposition": "cataloged_pending_quality",
-                "market": "perp", "venue": "bybit", "instrument": "ETHUSDT",
-                "content_digest": "a" * 64, "output_columns": ["ts", "close"], "row_count": 2}]
-    value["result"] = {"schema_version": "data002-full-lake-inventory-v1.0.0", "objects": objects, "object_count": 1,
-                       "assets": [["perp", "bybit", "ETHUSDT"]], "dispositions": {"cataloged_pending_quality": 1},
-                       "claim_boundary": "Accounting only, not execution admission."}
+    value = receipt(
+        "DATA-002", "bt.institutional.lake_inventory.full_lake_inventory_receipt"
+    )
+    objects = [
+        {
+            "partition_id": "canonical/bybit/ETHUSDT/timeframe=1m/research_panel.parquet",
+            "execution_eligible": False,
+            "disposition": "cataloged_pending_quality",
+            "market": "perp",
+            "venue": "bybit",
+            "instrument": "ETHUSDT",
+            "content_digest": "a" * 64,
+            "output_columns": ["ts", "close"],
+            "row_count": 2,
+        }
+    ]
+    value["result"] = {
+        "schema_version": "data002-full-lake-inventory-v1.0.0",
+        "objects": objects,
+        "object_count": 1,
+        "assets": [["perp", "bybit", "ETHUSDT"]],
+        "dispositions": {"cataloged_pending_quality": 1},
+        "claim_boundary": "Accounting only, not execution admission.",
+    }
     value["input_digest"] = value["dataset_digest"] = digest(objects)
     if mutation == "authority":
         objects[0]["execution_eligible"] = True
@@ -112,7 +128,9 @@ def test_full_lake_inventory_is_accounting_not_admission(mutation):
     elif mutation == "binding":
         value["dataset_digest"] = "f" * 64
     value["result_digest"] = digest(value["result"])
-    value["receipt_digest"] = digest({key: item for key, item in value.items() if key != "receipt_digest"})
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
     db = MagicMock()
     db.scalar.return_value = None
     if mutation:
@@ -134,19 +152,32 @@ def manifest_catalog_receipt():
             "columns": ["market", "exchange", "symbol"],
         }
         for name, character in (
-            ("coverage", "1"), ("fetch_state", "2"), ("instruments", "3")
+            ("coverage", "1"),
+            ("fetch_state", "2"),
+            ("instruments", "3"),
         )
     }
-    availability = [{
-        "market": "perp", "exchange": "bybit", "symbol": "ETHUSDT",
-        "dataset": "ohlcv", "timeframe": "1m", "actual_rows": 600_000,
-        "execution_eligible": False,
-    }]
-    candidates = [{
-        "market": "perp", "venue": "bybit", "instrument": "ETHUSDT",
-        "timeframe": "1m", "actual_rows": 600_000,
-        "execution_eligible": False,
-    }]
+    availability = [
+        {
+            "market": "perp",
+            "exchange": "bybit",
+            "symbol": "ETHUSDT",
+            "dataset": "ohlcv",
+            "timeframe": "1m",
+            "actual_rows": 600_000,
+            "execution_eligible": False,
+        }
+    ]
+    candidates = [
+        {
+            "market": "perp",
+            "venue": "bybit",
+            "instrument": "ETHUSDT",
+            "timeframe": "1m",
+            "actual_rows": 600_000,
+            "execution_eligible": False,
+        }
+    ]
     value["result"] = {
         "schema_version": "data002-manifest-catalog-v1.0.0",
         "manifests": manifests,
@@ -198,8 +229,11 @@ def test_manifest_catalog_exposes_visibility_without_execution_admission(mutatio
 def test_lake_summary_prefers_manifest_catalog_as_visibility_only():
     value = manifest_catalog_receipt()
     record = SimpleNamespace(
-        id=uuid4(), receipt=value, receipt_digest=value["receipt_digest"],
-        source_commit=value["source_commit"], producer=value["producer"],
+        id=uuid4(),
+        receipt=value,
+        receipt_digest=value["receipt_digest"],
+        source_commit=value["source_commit"],
+        producer=value["producer"],
     )
     db = MagicMock()
     db.scalar.return_value = record
@@ -207,6 +241,24 @@ def test_lake_summary_prefers_manifest_catalog_as_visibility_only():
     assert result["status"] == "manifest_catalog_visible_unadmitted"
     assert result["assets"] == [["perp", "bybit", "ETHUSDT"]]
     assert result["execution_authority"] is False
+
+
+def test_lake_summary_fails_closed_when_bound_receipt_digest_changes():
+    value = manifest_catalog_receipt()
+    record = SimpleNamespace(
+        id=uuid4(),
+        receipt=value,
+        receipt_digest=value["receipt_digest"],
+        source_commit=value["source_commit"],
+        producer=value["producer"],
+    )
+    db = MagicMock()
+    db.scalar.return_value = record
+    result = lake_inventory_summary(db, receipt_id=record.id, receipt_digest="f" * 64)
+    assert result == {
+        "status": "bound_receipt_mismatch",
+        "execution_authority": False,
+    }
 
 
 def test_rejects_wrong_milestone_producer():
@@ -250,10 +302,12 @@ def test_exec011_requires_active_registered_telemetry_schema():
     value["result_digest"] = digest(value["result"])
     core = {key: item for key, item in value.items() if key != "receipt_digest"}
     value["receipt_digest"] = digest(core)
-    db = MagicMock(); db.scalar.side_effect = [None]
+    db = MagicMock()
+    db.scalar.side_effect = [None]
     with pytest.raises(QuantitativeReceiptConflict, match="execution-telemetry schema"):
         register_receipt(db, payload(value))
-    db = MagicMock(); db.scalar.side_effect = [object(), None]
+    db = MagicMock()
+    db.scalar.side_effect = [object(), None]
     record = register_receipt(db, payload(value))
     assert record.milestone == "EXEC-011"
 

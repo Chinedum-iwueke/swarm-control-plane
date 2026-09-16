@@ -176,3 +176,39 @@ class AlphaDiscoveryEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AlphaCandidateDataAdmission(Base):
+    __tablename__ = "alpha_candidate_data_admissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("alpha_discovery_candidates.id"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id"), unique=True, nullable=False
+    )
+    catalog_receipt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("quantitative_producer_receipts.id"),
+        nullable=False,
+    )
+    catalog_receipt_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    assets: Mapped[list] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="queued", index=True
+    )
+    receipt_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    dataset_bindings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    failure: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    record_digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

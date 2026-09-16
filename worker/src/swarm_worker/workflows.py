@@ -162,6 +162,7 @@ class WorkflowDefinition(BaseModel):
         "research_memory_sync",
         "alpha_research_execution",
         "alpha_discovery",
+        "alpha_data_admission",
     ]
     timeout_seconds: int = Field(ge=1, le=21_600)
     allowed_repositories: Annotated[
@@ -194,6 +195,7 @@ class WorkflowDefinition(BaseModel):
                 "research_memory_sync",
                 "alpha_research_execution",
                 "alpha_discovery",
+                "alpha_data_admission",
                 "alpha_strategy_review",
             }
             and steps
@@ -205,6 +207,7 @@ class WorkflowDefinition(BaseModel):
                 "research_memory_sync",
                 "alpha_research_execution",
                 "alpha_discovery",
+                "alpha_data_admission",
                 "alpha_strategy_review",
             }
             and not steps

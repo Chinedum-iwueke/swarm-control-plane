@@ -1,0 +1,6 @@
+name: alpha-data-admission
+task_type: alpha_data_admission
+timeout_seconds: 21600
+allowed_repositories:
+- bulletproof_bt
+steps: []

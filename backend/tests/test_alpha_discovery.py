@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
+    AlphaDiscoveryCatalogBinding,
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
@@ -13,8 +14,10 @@ from app.schemas.alpha_discovery import (
 from app.services.alpha_discovery import (
     _bounded_context,
     _candidate_reasons,
+    _discovery_catalog,
     _discovery_corpus,
     _discovery_queries,
+    _ensure_data_admission_task,
     _recover_resumed_stage,
     recover_discovery_grounding,
 )
@@ -23,6 +26,45 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_discovery_catalog_binding_requires_exact_no_authority_receipt():
+    receipt_id = uuid4()
+    binding = AlphaDiscoveryCatalogBinding(
+        producer_receipt_id=receipt_id,
+        receipt_digest=DIGEST,
+        source_commit=COMMIT,
+        allowed_venues=["binance", "bybit"],
+        maximum_assets_per_hypothesis=8,
+    )
+    record = SimpleNamespace(
+        milestone="DATA-002",
+        producer="bt.institutional.lake_manifest.manifest_catalog_receipt",
+        receipt_digest=DIGEST,
+        source_commit=COMMIT,
+        receipt={
+            "authority": {
+                "allocation": False,
+                "capital": False,
+                "orders": False,
+                "promotion": False,
+            },
+            "result": {
+                "schema_version": "data002-manifest-catalog-v1.0.0",
+                "venue_scope": ["binance", "bybit"],
+                "one_year_coverage_candidates": [{}, {}],
+                "execution_eligible": False,
+            },
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = record
+    result = _discovery_catalog(db, SimpleNamespace(discovery_catalog=binding))
+    assert result["one_year_candidate_count"] == 2
+    assert result["execution_authority"] is False
+    record.receipt["authority"]["orders"] = True
+    with pytest.raises(HTTPException, match="no-authority manifest receipt"):
+        _discovery_catalog(db, SimpleNamespace(discovery_catalog=binding))
 
 
 def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
@@ -34,6 +76,7 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
             "execution_window_end": "2026-05-01T00:00:00Z",
             "bulletproof_source_commit": COMMIT,
             "minimum_liquidity_usd": 100_000,
+            "strategy_catalog": strategy_catalog(),
         },
         budget={"maximum_variants_per_hypothesis": 8},
     )
@@ -57,6 +100,7 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
     )
     context = _bounded_context(db, mandate)
     assert context["lake_catalog"] == catalog
+    assert context["strategy_catalog"] == mandate.specification["strategy_catalog"]
     assert context["datasets"] == []
     value, _ = candidate()
     value.data.instrument = "ETHUSDT"
@@ -83,7 +127,8 @@ def test_discovery_context_carries_frozen_execution_constraints(monkeypatch):
 
 def test_founder_universe_hints_default_to_all_eligible_without_expanding_mandate():
     payload = AlphaFounderResearchIdeaCreate(
-        mandate_id=uuid4(), expected_mandate_digest=DIGEST,
+        mandate_id=uuid4(),
+        expected_mandate_digest=DIGEST,
         idea="Does cross-asset liquidity predict future residual returns?",
         submitted_by="founder-operator",
     )
@@ -311,6 +356,38 @@ def binding():
     }
 
 
+def strategy_catalog():
+    core = {
+        "schema_version": "alpha-strategy-capability-catalog-v1.0.0",
+        "source_commit": COMMIT,
+        "capabilities": [
+            {
+                "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
+                "title": "Weekend lagged-return momentum",
+                "description": "Tests whether lagged weekend returns predict future returns.",
+                "hypothesis_family": "lagged-return-momentum",
+                "strategy": "lagged_return_momentum",
+                "input_mode": "single_instrument",
+                "maximum_instruments": 1,
+                "signal_timeframes": ["1m"],
+                "variant_count": 2,
+                "logging_requirements": ["decision_trace", "stop_price"],
+                "reuse_blockers": [],
+                "bounded_weekly_reuse_eligible": True,
+                "contract_path": "research/hypotheses/alpha_weekend_momentum.yaml",
+                "contract_digest": "c" * 64,
+            }
+        ],
+        "capital_or_order_authority": False,
+        "claim_boundary": (
+            "Catalog membership proves native implementation only, not predictive value."
+        ),
+    }
+    from app.services.graph import digest_document
+
+    return {**core, "catalog_digest": digest_document(core)}
+
+
 def candidate(**changes):
     object_id = uuid4()
     value = {
@@ -370,6 +447,7 @@ def test_weekly_mandate_cannot_exceed_seven_days():
                 "execution_window_start": moment - timedelta(days=30),
                 "execution_window_end": moment - timedelta(days=1),
                 "dataset_bindings": [binding()],
+                "strategy_catalog": strategy_catalog(),
                 "allowed_venues": ["bybit"],
                 "allowed_instruments": ["BTCUSDT"],
                 "minimum_liquidity_usd": 0,
@@ -450,6 +528,186 @@ def test_candidate_gate_accepts_predictive_available_question_and_rejects_instru
     )
     reasons, _ = _candidate_reasons(instruction, cycle, mandate, [])
     assert "imperative_or_operational_instruction" in reasons
+
+
+def test_manifest_visible_basket_waits_for_content_admission():
+    value, object_id = candidate()
+    value.data.instruments = ["BTCUSDT", "ETHUSDT"]
+    value.data.research_timeframe = "7m"
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
+            },
+            "datasets": [],
+            "lake_catalog": {
+                "discovery_authority": True,
+                "one_year_coverage_candidates": [
+                    {
+                        "venue": "bybit",
+                        "instrument": instrument,
+                        "timeframe": "1m",
+                        "fetch_status": "success",
+                        "missing_rows": 0,
+                    }
+                    for instrument in ("BTCUSDT", "ETHUSDT")
+                ],
+            },
+        }
+    )
+    mandate = SimpleNamespace(
+        specification={
+            "minimum_liquidity_usd": 0,
+            "discovery_catalog": {"maximum_assets_per_hypothesis": 8},
+        }
+    )
+    reasons, binding_index = _candidate_reasons(value, cycle, mandate, [])
+    assert reasons == ["data_admission_required"]
+    assert binding_index is None
+    assert value.data.resampling_policy == "right_closed_left_labeled_complete_bars"
+
+
+def test_primary_only_admission_cannot_satisfy_a_declared_basket():
+    value, object_id = candidate()
+    value.data.instruments = ["BTCUSDT", "ETHUSDT"]
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [
+                    {"object_id": str(object_id), "content_digest": DIGEST}
+                ]
+            },
+            "datasets": [
+                {
+                    "binding_index": 0,
+                    "venue": "bybit",
+                    "instruments": ["BTCUSDT"],
+                    "timeframe": "1m",
+                    "rows": 1_000_000,
+                    "output_columns": ["timestamp", "close", "volume"],
+                }
+            ],
+            "lake_catalog": {"discovery_authority": False},
+        }
+    )
+    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
+
+    reasons, binding_index = _candidate_reasons(value, cycle, mandate, [])
+
+    assert "data002_003_availability_not_demonstrated" in reasons
+    assert binding_index is None
+
+
+def test_single_panel_native_strategy_cannot_silently_consume_a_basket():
+    value, object_id = candidate(reusable_hypothesis_id="ALPHA-WEEKEND-MOMENTUM")
+    value.data.instruments = ["BTCUSDT", "ETHUSDT"]
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
+            },
+            "datasets": [
+                {
+                    "binding_index": 0,
+                    "venue": "bybit",
+                    "instruments": ["BTCUSDT", "ETHUSDT"],
+                    "timeframe": "1m",
+                    "rows": 1_000_000,
+                    "output_columns": ["timestamp", "close", "funding_rate", "volume"],
+                }
+            ],
+        }
+    )
+    mandate = SimpleNamespace(
+        specification={
+            "minimum_liquidity_usd": 0,
+            "strategy_catalog": strategy_catalog(),
+        }
+    )
+    reasons, _ = _candidate_reasons(value, cycle, mandate, [])
+    assert "reusable_hypothesis_input_cardinality_mismatch" in reasons
+
+
+def test_manifest_visibility_without_mandate_binding_cannot_expand_scope():
+    value, object_id = candidate()
+    value.data.instrument = "ETHUSDT"
+    value.data.instruments = ["ETHUSDT"]
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
+            },
+            "datasets": [],
+            "lake_catalog": {
+                "discovery_authority": False,
+                "one_year_coverage_candidates": [
+                    {
+                        "venue": "bybit",
+                        "instrument": "ETHUSDT",
+                        "timeframe": "1m",
+                        "fetch_status": "success",
+                        "missing_rows": 0,
+                    }
+                ],
+            },
+        }
+    )
+    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
+    reasons, _ = _candidate_reasons(value, cycle, mandate, [])
+    assert "data002_003_availability_not_demonstrated" in reasons
+    assert "data_admission_required" not in reasons
+
+
+def test_manifest_visible_basket_creates_bounded_no_approval_admission_task(
+    monkeypatch,
+):
+    task_id = uuid4()
+    task = SimpleNamespace(id=task_id)
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.build_task",
+        lambda payload: captured.setdefault("payload", payload) and task,
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.persist_new_task",
+        lambda _db, value: captured.setdefault("task", value),
+    )
+    candidate_record = SimpleNamespace(
+        id=uuid4(),
+        candidate_digest="c" * 64,
+        document={
+            "data": {
+                "venue": "bybit",
+                "instrument": "BTCUSDT",
+                "instruments": ["BTCUSDT", "ETHUSDT"],
+                "timeframe": "1m",
+                "research_timeframe": "7m",
+            }
+        },
+    )
+    catalog_id = uuid4()
+    mandate = SimpleNamespace(
+        mandate_digest=DIGEST,
+        specification={
+            "bulletproof_source_commit": COMMIT,
+            "discovery_catalog": {
+                "producer_receipt_id": str(catalog_id),
+                "receipt_digest": "d" * 64,
+            },
+        },
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    admission = _ensure_data_admission_task(db, mandate, candidate_record)
+    contract = captured["payload"].input_contract
+    assert contract["assets"] == [
+        {"venue": "bybit", "instrument": "BTCUSDT", "timeframe": "1m"},
+        {"venue": "bybit", "instrument": "ETHUSDT", "timeframe": "1m"},
+    ]
+    assert captured["payload"].approval_required is False
+    assert captured["payload"].risk_level == 0
+    assert contract["authority"] == "no_capital_data_admission"
+    assert admission.task_id == task_id
 
 
 def test_founder_idea_enforces_one_year_and_eight_variant_boundary():

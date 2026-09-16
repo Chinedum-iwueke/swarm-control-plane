@@ -13,6 +13,7 @@ from app.models.alpha_campaign import (
     AlphaCampaignEvent,
 )
 from app.models.alpha_discovery import (
+    AlphaCandidateDataAdmission,
     AlphaDiscoveryCandidate,
     AlphaDiscoveryCycle,
     AlphaDiscoveryEvent,
@@ -242,6 +243,7 @@ __all__ = [
     "AlphaCampaign",
     "AlphaCampaignAttempt",
     "AlphaCampaignEvent",
+    "AlphaCandidateDataAdmission",
     "AlphaDiscoveryCandidate",
     "AlphaDiscoveryCycle",
     "AlphaDiscoveryEvent",

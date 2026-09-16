@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.agent import Agent
 from app.models.alpha_campaign import AlphaCampaign, AlphaCampaignAttempt
 from app.models.alpha_discovery import (
+    AlphaCandidateDataAdmission,
     AlphaDiscoveryCandidate,
     AlphaDiscoveryCycle,
     AlphaDiscoveryEvent,
@@ -19,6 +20,7 @@ from app.models.alpha_discovery import (
 )
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
+from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 from app.schemas.alpha_campaign import (
@@ -44,6 +46,7 @@ from app.services.alpha_campaign import (
     register_campaign,
     validate_real_data_bindings,
 )
+from app.services.alpha_data_admission import register_selected_panel_receipt
 from app.services.discovery_portfolio import register_portfolio
 from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import digest_document
@@ -156,16 +159,62 @@ def _admitted_bindings(db: Session, payload: AlphaResearchMandateCreate) -> list
     return validate_real_data_bindings(db, compatible)
 
 
+def _discovery_catalog(db: Session, payload: AlphaResearchMandateCreate) -> dict | None:
+    binding = payload.discovery_catalog
+    if binding is None:
+        return None
+    record = db.get(QuantitativeProducerReceipt, binding.producer_receipt_id)
+    if (
+        record is None
+        or record.milestone != "DATA-002"
+        or record.producer != "bt.institutional.lake_manifest.manifest_catalog_receipt"
+        or record.receipt_digest != binding.receipt_digest
+        or record.source_commit != binding.source_commit
+        or any(record.receipt.get("authority", {}).values())
+    ):
+        raise HTTPException(
+            422,
+            "Discovery catalog binding is not an immutable no-authority manifest receipt.",
+        )
+    result = record.receipt.get("result", {})
+    if (
+        result.get("schema_version") != "data002-manifest-catalog-v1.0.0"
+        or not set(binding.allowed_venues).issubset(set(result.get("venue_scope", [])))
+        or result.get("execution_eligible") is not False
+    ):
+        raise HTTPException(
+            422, "Discovery catalog does not cover the requested venue scope."
+        )
+    return binding.model_dump(mode="json") | {
+        "one_year_candidate_count": len(result.get("one_year_coverage_candidates", [])),
+        "execution_authority": False,
+    }
+
+
 def register_mandate(
     db: Session, payload: AlphaResearchMandateCreate
 ) -> AlphaResearchMandate:
     if payload.valid_until <= now():
         raise HTTPException(422, "Research mandate must end in the future.")
+    strategy_catalog = payload.strategy_catalog
+    if (
+        strategy_catalog.source_commit != payload.bulletproof_source_commit
+        or digest_document(
+            strategy_catalog.model_dump(mode="json", exclude={"catalog_digest"})
+        )
+        != strategy_catalog.catalog_digest
+    ):
+        raise HTTPException(
+            422, "Strategy capability catalog is not bound to the reviewed source."
+        )
     admitted = _admitted_bindings(db, payload)
+    discovery_catalog = _discovery_catalog(db, payload)
     specification = payload.model_dump(
         mode="json", exclude={"budget", "created_by", "dataset_bindings"}
     )
     specification["dataset_bindings"] = admitted
+    if discovery_catalog is not None:
+        specification["discovery_catalog"] = discovery_catalog
     specification["authority_boundary"] = {
         "capital": False,
         "orders": False,
@@ -331,6 +380,17 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         .order_by(ExecutionTelemetryReplay.observed_at.desc())
         .limit(5)
     ).all()
+    catalog_binding = mandate.specification.get("discovery_catalog")
+    catalog = (
+        lake_inventory_summary(
+            db,
+            receipt_id=catalog_binding["producer_receipt_id"],
+            receipt_digest=catalog_binding["receipt_digest"],
+        )
+        if catalog_binding
+        else lake_inventory_summary(db)
+    )
+    catalog["discovery_authority"] = bool(catalog_binding)
     return {
         "schema_version": "alpha004-research-context-v1.0.0",
         "mandate_digest": mandate.mandate_digest,
@@ -357,7 +417,8 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         ],
         "portfolio_gaps": ["no_current_risk004_admitted_candidate"],
         "datasets": _dataset_inventory(mandate),
-        "lake_catalog": lake_inventory_summary(db),
+        "lake_catalog": catalog,
+        "strategy_catalog": mandate.specification["strategy_catalog"],
         "research_constraints": {
             "minimum_liquidity_usd": mandate.specification["minimum_liquidity_usd"],
             "liquidity_measurement_fields": sorted(_LIQUIDITY_FIELDS),
@@ -370,7 +431,15 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
             "bulletproof_source_commit": mandate.specification[
                 "bulletproof_source_commit"
             ],
-            "universe_selection": "preregister before outcomes; admitted instruments only",
+            "universe_selection": (
+                "preregister before outcomes; manifest-visible assets may be proposed, "
+                "but only content-admitted panels may execute"
+            ),
+            "maximum_assets_per_hypothesis": (
+                catalog_binding.get("maximum_assets_per_hypothesis", 1)
+                if catalog_binding
+                else 1
+            ),
             "catalog_visibility_is_not_execution_admission": True,
             "new_code_requires_explicit_approval": True,
             "capital_or_order_authority": False,
@@ -691,7 +760,7 @@ def _candidate_reasons(
         output_columns = set(item.get("output_columns", []))
         if (
             item["venue"] == candidate.data.venue
-            and candidate.data.instrument in item["instruments"]
+            and set(candidate.data.instruments).issubset(set(item["instruments"]))
             and item["timeframe"] == candidate.data.timeframe
             and item["rows"] >= candidate.data.minimum_history_observations
             and required_fields.issubset(output_columns)
@@ -700,12 +769,57 @@ def _candidate_reasons(
             binding_index = item["binding_index"]
             break
     if binding_index is None:
-        reasons.append("data002_003_availability_not_demonstrated")
+        catalog = cycle.context.get("lake_catalog", {})
+        visible = {
+            (
+                str(item.get("venue", "")).lower(),
+                str(item.get("instrument", "")).upper(),
+            )
+            for item in catalog.get("one_year_coverage_candidates", [])
+            if item.get("fetch_status") == "success"
+            and int(item.get("missing_rows") or 0) == 0
+            and item.get("timeframe") == candidate.data.timeframe
+        }
+        requested = {
+            (candidate.data.venue, instrument)
+            for instrument in candidate.data.instruments
+        }
+        maximum_assets = int(
+            mandate.specification.get("discovery_catalog", {}).get(
+                "maximum_assets_per_hypothesis", 1
+            )
+        )
+        if (
+            catalog.get("discovery_authority") is True
+            and requested
+            and requested.issubset(visible)
+            and len(requested) <= maximum_assets
+        ):
+            reasons.append("data_admission_required")
+        else:
+            reasons.append("data002_003_availability_not_demonstrated")
     if (
         candidate.data.liquidity_floor_usd
         < mandate.specification["minimum_liquidity_usd"]
     ):
         reasons.append("liquidity_floor_below_mandate")
+    if candidate.reusable_hypothesis_id is not None:
+        capability = next(
+            (
+                item
+                for item in mandate.specification["strategy_catalog"]["capabilities"]
+                if item["hypothesis_id"] == candidate.reusable_hypothesis_id
+            ),
+            None,
+        )
+        if capability is None:
+            reasons.append("reusable_hypothesis_not_in_frozen_catalog")
+        elif not capability["bounded_weekly_reuse_eligible"]:
+            reasons.append("reusable_hypothesis_exceeds_weekly_variant_budget")
+        elif len(candidate.data.instruments) > capability["maximum_instruments"]:
+            reasons.append("reusable_hypothesis_input_cardinality_mismatch")
+        elif candidate.data.research_timeframe not in capability["signal_timeframes"]:
+            reasons.append("reusable_hypothesis_timeframe_mismatch")
     normalized_prior = {" ".join(item.lower().split()) for item in prior_questions}
     if question in normalized_prior:
         reasons.append("duplicate_prior_question")
@@ -759,7 +873,18 @@ def _materialize_candidates(
                 candidate, cycle, mandate, prior_questions, db
             )
             document = candidate.model_dump(mode="json") | {
-                "dataset_binding_index": binding_index
+                "dataset_binding_index": binding_index,
+                "reusable_strategy_capability": next(
+                    (
+                        item
+                        for item in mandate.specification["strategy_catalog"][
+                            "capabilities"
+                        ]
+                        if item["hypothesis_id"]
+                        == candidate.reusable_hypothesis_id
+                    ),
+                    None,
+                ),
             }
         except ValidationError as exc:
             candidate = None
@@ -773,7 +898,13 @@ def _materialize_candidates(
             if candidate
             else str(raw_candidate.get("question", "invalid candidate"))[:2000]
         )
-        disposition = "accepted" if not reasons else "rejected"
+        disposition = (
+            "accepted"
+            if not reasons
+            else "awaiting_data_admission"
+            if reasons == ["data_admission_required"]
+            else "rejected"
+        )
         digest = digest_document(
             {
                 "cycle_digest": cycle.cycle_digest,
@@ -795,7 +926,113 @@ def _materialize_candidates(
         db.add(record)
         records.append(record)
     db.flush()
+    for record in records:
+        if record.disposition == "awaiting_data_admission":
+            _ensure_data_admission_task(db, mandate, record)
     return records
+
+
+def _ensure_data_admission_task(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    candidate: AlphaDiscoveryCandidate,
+) -> AlphaCandidateDataAdmission:
+    existing = db.scalar(
+        select(AlphaCandidateDataAdmission).where(
+            AlphaCandidateDataAdmission.candidate_id == candidate.id
+        )
+    )
+    if existing is not None:
+        return existing
+    catalog = mandate.specification.get("discovery_catalog")
+    if catalog is None:
+        raise HTTPException(409, "Candidate has no founder-approved discovery catalog.")
+    data = candidate.document["data"]
+    assets = [
+        {
+            "venue": data["venue"],
+            "instrument": instrument,
+            "timeframe": data["timeframe"],
+        }
+        for instrument in data["instruments"]
+    ]
+    task = build_task(
+        TaskCreate(
+            task_number=f"A7-DATA-{str(candidate.id)[:12]}",
+            project="bulletproof_bt",
+            task_type="alpha_data_admission",
+            title=f"Admit selected panels: {', '.join(data['instruments'])}",
+            objective=(
+                "Content-hash and quality-check only the preregistered manifest-visible "
+                "panels, retaining native no-authority admission receipts."
+            ),
+            priority=88,
+            risk_level=0,
+            created_by="alpha-continuous-director",
+            input_contract={
+                "repository": "bulletproof_bt",
+                "workflow": "alpha-data-admission",
+                "base_ref": mandate.specification["bulletproof_source_commit"],
+                "candidate_id": str(candidate.id),
+                "candidate_digest": candidate.candidate_digest,
+                "catalog_receipt_id": catalog["producer_receipt_id"],
+                "catalog_receipt_digest": catalog["receipt_digest"],
+                "source_commit": mandate.specification["bulletproof_source_commit"],
+                "data_root": "/home/omenka/Projects/bulletproof_bt/research_data",
+                "backup_root": "/home/omenka/.local/share/invariance-swarm/alpha-data-backups",
+                "assets": assets,
+                "authority": "no_capital_data_admission",
+            },
+            expected_outputs=[
+                "content-bound ALPHA-001 receipts for each selected panel",
+                "verified content-addressed recovery copies",
+            ],
+            acceptance_criteria=[
+                "only preregistered manifest-visible panels are read",
+                "DATA-002/003 quality checks and exact bytes are retained",
+                "no code, shadow, order, capital or promotion authority exists",
+            ],
+            approval_policy={
+                "kind": "weekly_research_mandate",
+                "mandate_digest": mandate.mandate_digest,
+                "catalog_receipt_digest": catalog["receipt_digest"],
+                "risk": 0,
+            },
+            approval_required=False,
+            required_capabilities=[
+                "alpha-data-admission",
+                "market-data-read",
+                "research-audit",
+            ],
+            allowed_machines=["vm1-developer"],
+            max_attempts=3,
+        )
+    )
+    persist_new_task(db, task)
+    document = {
+        "candidate_id": str(candidate.id),
+        "candidate_digest": candidate.candidate_digest,
+        "task_id": str(task.id),
+        "catalog_receipt_id": catalog["producer_receipt_id"],
+        "catalog_receipt_digest": catalog["receipt_digest"],
+        "assets": assets,
+        "authority": "no_capital_data_admission",
+    }
+    admission = AlphaCandidateDataAdmission(
+        candidate_id=candidate.id,
+        task_id=task.id,
+        catalog_receipt_id=catalog["producer_receipt_id"],
+        catalog_receipt_digest=catalog["receipt_digest"],
+        assets=assets,
+        status="queued",
+        receipt_ids=[],
+        dataset_bindings=[],
+        failure={},
+        record_digest=digest_document(document),
+    )
+    db.add(admission)
+    db.flush()
+    return admission
 
 
 def _portfolio_and_campaign(
@@ -858,6 +1095,26 @@ def _portfolio_and_campaign(
             DiscoveryPortfolioCandidate.selected.is_(True),
         )
     ).all()
+    campaign_bindings = [
+        {key: value for key, value in binding.items() if key in _BINDING_KEYS}
+        for binding in mandate.specification["dataset_bindings"]
+    ]
+    selected_instruments: list[str] = []
+    selected_venues: list[str] = []
+    for item in accepted:
+        admission = db.scalar(
+            select(AlphaCandidateDataAdmission).where(
+                AlphaCandidateDataAdmission.candidate_id == item.id,
+                AlphaCandidateDataAdmission.status == "admitted",
+            )
+        )
+        admitted = admission.dataset_bindings if admission is not None else []
+        for binding in admitted:
+            if binding not in campaign_bindings:
+                campaign_bindings.append(binding)
+        data = item.document.get("data", {})
+        selected_venues.append(str(data.get("venue", "")))
+        selected_instruments.extend(data.get("instruments", []))
     campaign = register_campaign(
         db,
         AlphaCampaignCreate(
@@ -866,15 +1123,16 @@ def _portfolio_and_campaign(
             project="bulletproof-bt",
             objective=mandate.objective,
             discovery_portfolio_id=portfolio.id,
-            dataset_bindings=[
-                {key: value for key, value in binding.items() if key in _BINDING_KEYS}
-                for binding in mandate.specification["dataset_bindings"]
-            ],
+            dataset_bindings=campaign_bindings,
             bulletproof_source_commit=mandate.specification[
                 "bulletproof_source_commit"
             ],
-            allowed_venues=mandate.specification["allowed_venues"],
-            allowed_instruments=mandate.specification["allowed_instruments"],
+            allowed_venues=sorted(
+                set(filter(None, [*mandate.specification["allowed_venues"], *selected_venues]))
+            ),
+            allowed_instruments=sorted(
+                {*mandate.specification["allowed_instruments"], *selected_instruments}
+            ),
             budget=AlphaCampaignBudget(
                 max_hypotheses=len(selected),
                 max_total_trials=min(
@@ -1048,6 +1306,136 @@ def _recover_resumed_stage(db: Session, mandate, cycle) -> bool:
     return True
 
 
+def _reconcile_data_admissions(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    cycle: AlphaDiscoveryCycle,
+) -> bool:
+    if cycle.status != "awaiting_data_admission":
+        return False
+    candidates = db.scalars(
+        select(AlphaDiscoveryCandidate).where(
+            AlphaDiscoveryCandidate.cycle_id == cycle.id
+        )
+    ).all()
+    pending = [
+        item for item in candidates if item.disposition == "awaiting_data_admission"
+    ]
+    if not pending:
+        cycle.status = "running"
+        _portfolio_and_campaign(
+            db,
+            mandate,
+            cycle,
+            [item for item in candidates if item.disposition == "accepted"],
+        )
+        return True
+    active = False
+    for candidate in pending:
+        admission = db.scalar(
+            select(AlphaCandidateDataAdmission).where(
+                AlphaCandidateDataAdmission.candidate_id == candidate.id
+            )
+        )
+        if admission is None:
+            raise HTTPException(409, "Candidate admission ledger is missing.")
+        if admission.status in {"admitted", "failed"}:
+            continue
+        task = db.get(Task, admission.task_id)
+        if task is None:
+            raise HTTPException(409, "Candidate admission task is missing.")
+        if task.status in {"queued", "leased", "running", "pending_approval"}:
+            admission.status = task.status
+            active = True
+            continue
+        if task.status != "succeeded":
+            admission.status = "failed"
+            admission.failure = task.failure or {"category": "admission_task_failed"}
+            admission.completed_at = now()
+            continue
+        document = (
+            task.result.get("summary", {}).get("alpha_data_admission", {})
+        )
+        catalog = mandate.specification.get("discovery_catalog", {})
+        if (
+            document.get("schema_version")
+            != "alpha007-selected-panel-admission-batch-v1.0.0"
+            or document.get("candidate_id") != str(candidate.id)
+            or document.get("candidate_digest") != candidate.candidate_digest
+            or document.get("catalog_receipt_digest") != catalog.get("receipt_digest")
+            or document.get("capital_or_order_authority") is not False
+        ):
+            raise HTTPException(409, "Selected-panel admission result changed scope.")
+        receipts = document.get("receipts")
+        if not isinstance(receipts, list) or len(receipts) != len(admission.assets):
+            raise HTTPException(409, "Selected-panel admission receipt count changed.")
+        expected = {
+            (item["venue"], item["instrument"], item["timeframe"])
+            for item in admission.assets
+        }
+        observed = {
+            (
+                item.get("result", {}).get("venue"),
+                item.get("result", {}).get("instrument"),
+                item.get("result", {}).get("timeframe"),
+            )
+            for item in receipts
+        }
+        if observed != expected:
+            raise HTTPException(409, "Selected-panel admission assets changed.")
+        bindings = [
+            register_selected_panel_receipt(
+                db,
+                receipt_document=receipt,
+                registered_at=task.completed_at or now(),
+            ).model_dump(mode="json")
+            for receipt in receipts
+        ]
+        admission.status = "admitted"
+        admission.receipt_ids = [item["producer_receipt_id"] for item in bindings]
+        admission.dataset_bindings = bindings
+        admission.completed_at = now()
+        _event(
+            db,
+            mandate,
+            "candidate_data_admitted",
+            {
+                "candidate_id": str(candidate.id),
+                "task_id": str(task.id),
+                "dataset_bindings": bindings,
+                "execution_authority": False,
+            },
+            cycle,
+        )
+    if active:
+        cycle.next_action = "await_selected_panel_admission"
+        return True
+    cycle.status = "running"
+    admitted_candidate_ids = set(
+        db.scalars(
+            select(AlphaCandidateDataAdmission.candidate_id).where(
+                AlphaCandidateDataAdmission.candidate_id.in_(
+                    [item.id for item in candidates]
+                ),
+                AlphaCandidateDataAdmission.status == "admitted",
+            )
+        ).all()
+    )
+    accepted = [
+        item
+        for item in candidates
+        if item.disposition == "accepted" or item.id in admitted_candidate_ids
+    ]
+    cycle.metrics = {
+        **cycle.metrics,
+        "accepted": len(accepted),
+        "awaiting_data_admission": 0,
+        "rejected": len(candidates) - len(accepted),
+    }
+    _portfolio_and_campaign(db, mandate, cycle, accepted)
+    return True
+
+
 def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     moment = now()
     mandate.heartbeat_at = moment
@@ -1103,6 +1491,8 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         elif campaign and campaign.status == "needs_attention":
             cycle.status = "needs_attention"
             cycle.next_action = campaign.next_action
+        return
+    if _reconcile_data_admissions(db, mandate, cycle):
         return
     _recover_resumed_stage(db, mandate, cycle)
     if cycle.status in _TERMINAL_CYCLE:
@@ -1198,10 +1588,14 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         db, mandate, cycle, raw if isinstance(raw, list) else []
     )
     accepted = [item for item in records if item.disposition == "accepted"]
+    awaiting_data = [
+        item for item in records if item.disposition == "awaiting_data_admission"
+    ]
     cycle.metrics = {
         "generated": len(records),
         "accepted": len(accepted),
-        "rejected": len(records) - len(accepted),
+        "awaiting_data_admission": len(awaiting_data),
+        "rejected": len(records) - len(accepted) - len(awaiting_data),
         "duplicated": sum(
             bool(
                 {"duplicate_prior_question", "semantic_duplicate_prior_question"}
@@ -1210,6 +1604,25 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             for item in records
         ),
     }
+    if awaiting_data:
+        cycle.status = "awaiting_data_admission"
+        cycle.phase = "data_admission"
+        cycle.next_action = "admit_selected_manifest_panels"
+        _event(
+            db,
+            mandate,
+            "candidate_data_admission_required",
+            {
+                "candidate_ids": [str(item.id) for item in awaiting_data],
+                "candidate_digests": [item.candidate_digest for item in awaiting_data],
+                "catalog_receipt_digest": mandate.specification.get(
+                    "discovery_catalog", {}
+                ).get("receipt_digest"),
+                "execution_authority": False,
+            },
+            cycle,
+        )
+        return
     _portfolio_and_campaign(db, mandate, cycle, accepted)
 
 

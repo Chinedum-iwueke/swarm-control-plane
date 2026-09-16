@@ -96,7 +96,9 @@ class EngineeringMissionContract(BaseModel):
         try:
             parsed = json.loads(value)
         except RecursionError as error:
-            raise ValueError("engineering evidence nesting exceeds safe limits") from error
+            raise ValueError(
+                "engineering evidence nesting exceeds safe limits"
+            ) from error
         if not isinstance(parsed, dict) or len(parsed) > 20:
             raise ValueError("engineering evidence must be a bounded JSON object")
         pending = [(parsed, 0)]
@@ -104,7 +106,13 @@ class EngineeringMissionContract(BaseModel):
             node, depth = pending.pop()
             if depth > 32:
                 raise ValueError("engineering evidence nesting exceeds safe limits")
-            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            children = (
+                node.values()
+                if isinstance(node, dict)
+                else node
+                if isinstance(node, list)
+                else ()
+            )
             pending.extend((child, depth + 1) for child in children)
         json.dumps(parsed, allow_nan=False)
         return value
@@ -187,6 +195,38 @@ class ResearchMemorySyncContract(BaseModel):
         return validate_base_ref(value)
 
 
+class AlphaResearchDatasetBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_build_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    dataset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dataset_path: str = Field(min_length=1, max_length=1024)
+    dataset_key: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150
+    )
+    instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    venue: Literal["bybit", "binance"]
+
+    @field_validator("dataset_path")
+    @classmethod
+    def admitted_panel_path(cls, value: str) -> str:
+        return _admitted_alpha_panel_path(value)
+
+
+def _admitted_alpha_panel_path(value: str) -> str:
+    path = Path(value).resolve(strict=False)
+    root = Path("/home/omenka/Projects/bulletproof_bt/research_data").resolve(
+        strict=False
+    )
+    if not path.is_absolute() or path.suffix != ".parquet":
+        raise ValueError("dataset_path must identify an absolute Parquet panel")
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("dataset_path is outside the read-only Bulletproof lake") from exc
+    return str(path)
+
+
 class AlphaResearchExecutionContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -208,8 +248,17 @@ class AlphaResearchExecutionContract(BaseModel):
     ]
     bundle_root: Literal["/home/omenka/.local/share/invariance-swarm/alpha002-bundles"]
     dataset_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
+    dataset_bindings: list[AlphaResearchDatasetBinding] = Field(
+        default_factory=list, max_length=20
+    )
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    instruments: list[str] = Field(default_factory=list, max_length=20)
     timeframe: Literal["1m"]
+    research_timeframe: str = Field(default="1m", pattern=r"^[1-9][0-9]*[mhd]$")
+    resampling_policy: Literal["right_closed_left_labeled_complete_bars"] = (
+        "right_closed_left_labeled_complete_bars"
+    )
+    reusable_strategy: dict[str, Any] | None = None
     tier: Literal["Tier2A", "Tier2B", "Tier3"]
     max_variants: int = Field(ge=1, le=256)
     research_context: dict[str, Any]
@@ -224,6 +273,32 @@ class AlphaResearchExecutionContract(BaseModel):
 
     @model_validator(mode="after")
     def stage_contract(self):
+        if self.reusable_strategy is not None:
+            reusable = self.reusable_strategy
+            required = {
+                "hypothesis_id",
+                "strategy",
+                "input_mode",
+                "maximum_instruments",
+                "contract_path",
+                "contract_digest",
+                "variant_count",
+                "bounded_weekly_reuse_eligible",
+            }
+            if not required.issubset(reusable):
+                raise ValueError("reusable strategy binding is incomplete")
+            if reusable["bounded_weekly_reuse_eligible"] is not True:
+                raise ValueError("reusable strategy is not weekly eligible")
+            if int(reusable["variant_count"]) > self.max_variants:
+                raise ValueError("reusable strategy exceeds assignment variant budget")
+            if len(self.instruments or [self.instrument]) > int(
+                reusable["maximum_instruments"]
+            ):
+                raise ValueError("reusable strategy input cardinality mismatch")
+            if reusable["input_mode"] == "single_instrument" and len(
+                self.instruments or [self.instrument]
+            ) != 1:
+                raise ValueError("single-instrument strategy cannot consume a basket")
         if (self.stage in {"draft", "qualify"} or self.qualification is not None) and (
             self.window_start is None or self.window_end is None or self.venue is None
         ):
@@ -240,24 +315,31 @@ class AlphaResearchExecutionContract(BaseModel):
             and self.qualification.get("qualified") is not True
         ):
             raise ValueError("execution requires a qualified strategy contract")
+        if self.dataset_bindings:
+            primary = self.dataset_bindings[0]
+            if any(
+                (
+                    self.dataset_build_id != primary.dataset_build_id,
+                    self.dataset_digest != primary.dataset_digest,
+                    self.dataset_path != primary.dataset_path,
+                    self.dataset_key != primary.dataset_key,
+                    self.instrument != primary.instrument,
+                )
+            ):
+                raise ValueError("primary dataset fields must match the first binding")
+            binding_instruments = [item.instrument for item in self.dataset_bindings]
+            if self.instruments != binding_instruments:
+                raise ValueError("instrument basket must match dataset binding order")
+            if len(binding_instruments) != len(set(binding_instruments)):
+                raise ValueError("instrument basket must be unique")
+        elif self.instruments and self.instruments != [self.instrument]:
+            raise ValueError("legacy single-panel assignment cannot declare a basket")
         return self
 
     @field_validator("dataset_path")
     @classmethod
     def admitted_panel_path(cls, value: str) -> str:
-        path = Path(value).resolve(strict=False)
-        root = Path("/home/omenka/Projects/bulletproof_bt/research_data").resolve(
-            strict=False
-        )
-        if not path.is_absolute() or path.suffix != ".parquet":
-            raise ValueError("dataset_path must identify an absolute Parquet panel")
-        try:
-            path.relative_to(root)
-        except ValueError as exc:
-            raise ValueError(
-                "dataset_path is outside the read-only Bulletproof lake"
-            ) from exc
-        return str(path)
+        return _admitted_alpha_panel_path(value)
 
 
 class AlphaDiscoveryContract(BaseModel):
@@ -279,6 +361,47 @@ class AlphaDiscoveryContract(BaseModel):
     def safe_base_ref(cls, value: str) -> str:
         return validate_base_ref(value)
 
+
+class AlphaDataAdmissionAsset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    venue: Literal["bybit", "binance"]
+    instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    timeframe: Literal["1m"] = "1m"
+
+
+class AlphaDataAdmissionContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: Literal["bulletproof_bt"]
+    workflow: Literal["alpha-data-admission"]
+    base_ref: str = Field(min_length=40, max_length=40, pattern=r"^[0-9a-f]{40}$")
+    candidate_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_receipt_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    catalog_receipt_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_commit: str = Field(min_length=40, max_length=40, pattern=r"^[0-9a-f]{40}$")
+    data_root: Literal["/home/omenka/Projects/bulletproof_bt/research_data"]
+    backup_root: Literal[
+        "/home/omenka/.local/share/invariance-swarm/alpha-data-backups"
+    ]
+    assets: list[AlphaDataAdmissionAsset] = Field(min_length=1, max_length=20)
+    authority: Literal["no_capital_data_admission"]
+
+    @model_validator(mode="after")
+    def exact_source_and_unique_assets(self):
+        if self.base_ref != self.source_commit:
+            raise ValueError(
+                "data admission source commit must equal the exact base ref"
+            )
+        identities = [
+            (item.venue, item.instrument, item.timeframe) for item in self.assets
+        ]
+        if len(identities) != len(set(identities)):
+            raise ValueError("data admission assets must be unique")
+        return self
+
+
 class ValidatedTaskPolicy(BaseModel):
     contract: (
         CodeValidationContract
@@ -287,6 +410,7 @@ class ValidatedTaskPolicy(BaseModel):
         | ResearchMemorySyncContract
         | AlphaResearchExecutionContract
         | AlphaDiscoveryContract
+        | AlphaDataAdmissionContract
         | AlphaStrategyReviewContract
     )
     workflow: WorkflowDefinition
@@ -321,6 +445,7 @@ def validate_task_policy(
         "research_memory_sync",
         "alpha_research_execution",
         "alpha_discovery",
+        "alpha_data_admission",
         "alpha_strategy_review",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
@@ -362,6 +487,7 @@ def _parse_contract(
     | ResearchMemorySyncContract
     | AlphaResearchExecutionContract
     | AlphaDiscoveryContract
+    | AlphaDataAdmissionContract
     | AlphaStrategyReviewContract
 ):
     try:
@@ -372,6 +498,7 @@ def _parse_contract(
             "research_memory_sync": ResearchMemorySyncContract,
             "alpha_research_execution": AlphaResearchExecutionContract,
             "alpha_discovery": AlphaDiscoveryContract,
+            "alpha_data_admission": AlphaDataAdmissionContract,
             "alpha_strategy_review": AlphaStrategyReviewContract,
         }
         model = models[task_type]

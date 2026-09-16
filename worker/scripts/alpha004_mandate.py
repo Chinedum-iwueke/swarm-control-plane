@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -36,9 +37,27 @@ def main() -> int:
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--source-campaign-id")
     parser.add_argument("--bulletproof-source-commit")
+    parser.add_argument(
+        "--bulletproof-repository",
+        default="/home/omenka/Projects/bulletproof_bt",
+    )
+    parser.add_argument(
+        "--bulletproof-python",
+        default="/home/omenka/Projects/bulletproof_bt/.venv/bin/python",
+    )
     parser.add_argument("--producer-receipt-id", type=UUID)
     parser.add_argument("--window-start")
     parser.add_argument("--window-end")
+    parser.add_argument(
+        "--discovery-venues",
+        nargs="+",
+        choices=("binance", "bybit"),
+        default=["binance", "bybit"],
+        help=(
+            "Founder-approved manifest visibility for pre-outcome hypothesis design; "
+            "selected panels still require content admission before execution."
+        ),
+    )
     args = parser.parse_args()
     if bool(args.window_start) != bool(args.window_end):
         parser.error("Supply both --window-start and --window-end.")
@@ -92,6 +111,21 @@ def main() -> int:
         source_commit = (
             args.bulletproof_source_commit or specification["bulletproof_source_commit"]
         )
+        strategy_catalog = json.loads(
+            subprocess.run(
+                [
+                    args.bulletproof_python,
+                    f"{args.bulletproof_repository}/scripts/build_alpha_strategy_catalog.py",
+                    "--repository",
+                    args.bulletproof_repository,
+                    "--source-commit",
+                    source_commit,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+        )
         for binding in bindings:
             receipt_response = client.get(
                 f"/v1/research/quantitative-receipts/{binding['producer_receipt_id']}"
@@ -102,6 +136,24 @@ def main() -> int:
                 raise RuntimeError(
                     "Real-data admission is bound to another engine commit. Rebuild/register the native ALPHA-001 admission receipt and supply --producer-receipt-id; no mandate was written."
                 )
+        catalog_response = client.get(
+            "/v1/research/quantitative-receipts/lake-inventory"
+        )
+        catalog_response.raise_for_status()
+        catalog = catalog_response.json()
+        if (
+            catalog.get("status") != "manifest_catalog_visible_unadmitted"
+            or not catalog.get("receipt_id")
+            or not catalog.get("receipt_digest")
+            or not catalog.get("source_commit")
+            or not set(args.discovery_venues).issubset(
+                set(catalog.get("venue_scope", []))
+            )
+            or catalog.get("execution_authority") is not False
+        ):
+            raise RuntimeError(
+                "No immutable no-authority manifest catalog covers the requested discovery venues."
+            )
         moment = datetime.now(UTC)
         payload = {
             "mandate_key": args.mandate_key or f"ALPHA004-WEEK-{moment:%Y%m%d}",
@@ -115,6 +167,15 @@ def main() -> int:
             "execution_window_end": args.window_end
             or specification["execution_window_end"],
             "dataset_bindings": bindings,
+            "discovery_catalog": {
+                "producer_receipt_id": catalog["receipt_id"],
+                "receipt_digest": catalog["receipt_digest"],
+                "source_commit": catalog["source_commit"],
+                "allowed_venues": sorted(set(args.discovery_venues)),
+                "selection_policy": "point_in_time_pre_outcome",
+                "maximum_assets_per_hypothesis": 8,
+            },
+            "strategy_catalog": strategy_catalog,
             "allowed_venues": specification["allowed_venues"],
             "allowed_instruments": specification["allowed_instruments"],
             "minimum_liquidity_usd": args.minimum_liquidity_usd,

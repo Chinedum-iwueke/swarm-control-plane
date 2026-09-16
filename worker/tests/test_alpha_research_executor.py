@@ -97,6 +97,70 @@ def test_alpha003_qualification_requires_card_and_founder_receipt() -> None:
     assert value.stage == "qualify"
 
 
+def test_alpha_contract_binds_exact_basket_and_arbitrary_safe_resample() -> None:
+    bindings = [
+        {
+            "dataset_build_id": "33333333-3333-4333-8333-333333333333",
+            "dataset_digest": "e" * 64,
+            "dataset_path": "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet",
+            "dataset_key": "bybit-btcusdt-perp-1m",
+            "instrument": "BTCUSDT",
+            "venue": "bybit",
+        },
+        {
+            "dataset_build_id": "44444444-4444-4444-8444-444444444444",
+            "dataset_digest": "f" * 64,
+            "dataset_path": "/home/omenka/Projects/bulletproof_bt/research_data/eth.parquet",
+            "dataset_key": "bybit-ethusdt-perp-1m",
+            "instrument": "ETHUSDT",
+            "venue": "bybit",
+        },
+    ]
+    value = AlphaResearchExecutionContract.model_validate(
+        contract(
+            dataset_bindings=bindings,
+            instruments=["BTCUSDT", "ETHUSDT"],
+            research_timeframe="7m",
+            resampling_policy="right_closed_left_labeled_complete_bars",
+        )
+    )
+    assert value.research_timeframe == "7m"
+    assert [item.instrument for item in value.dataset_bindings] == [
+        "BTCUSDT",
+        "ETHUSDT",
+    ]
+    with pytest.raises(ValidationError, match="basket must match"):
+        AlphaResearchExecutionContract.model_validate(
+            contract(dataset_bindings=bindings, instruments=["ETHUSDT", "BTCUSDT"])
+        )
+
+
+def test_alpha_contract_binds_frozen_reusable_native_strategy() -> None:
+    reusable = {
+        "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
+        "strategy": "alpha_weekend_momentum",
+        "input_mode": "single_instrument",
+        "maximum_instruments": 1,
+        "contract_path": "research/hypotheses/alpha_weekend_momentum.yaml",
+        "contract_digest": "f" * 64,
+        "variant_count": 8,
+        "bounded_weekly_reuse_eligible": True,
+    }
+    value = AlphaResearchExecutionContract.model_validate(
+        contract(reusable_strategy=reusable)
+    )
+    assert value.reusable_strategy == reusable
+    with pytest.raises(ValidationError, match="not weekly eligible"):
+        AlphaResearchExecutionContract.model_validate(
+            contract(
+                reusable_strategy={
+                    **reusable,
+                    "bounded_weekly_reuse_eligible": False,
+                }
+            )
+        )
+
+
 def test_qualification_handoff_retains_execution_inputs_inside_summary_limit() -> None:
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",

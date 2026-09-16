@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from swarm_worker.config import WorkerSettings
+from swarm_worker.executors.alpha_data_admission import AlphaDataAdmissionExecutor
 from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
 from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.alpha_strategy_review import AlphaStrategyReviewExecutor
@@ -52,8 +53,12 @@ class RestrictedExecutor:
             timeout_seconds=engineering_timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
+        self._alpha_data_admission = AlphaDataAdmissionExecutor(
+            heartbeat_interval_seconds=heartbeat_interval_seconds
+        )
         self._alpha_strategy_review = AlphaStrategyReviewExecutor(
-            codex_home=codex_home, codex_model=codex_model,
+            codex_home=codex_home,
+            codex_model=codex_model,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
 
@@ -72,6 +77,7 @@ class RestrictedExecutor:
             "research_memory_sync": self._memory_sync,
             "alpha_research_execution": self._alpha_research,
             "alpha_discovery": self._alpha_discovery,
+            "alpha_data_admission": self._alpha_data_admission,
             "alpha_strategy_review": self._alpha_strategy_review,
         }
         executor = executors[task.task_type]
