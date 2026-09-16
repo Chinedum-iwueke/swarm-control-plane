@@ -427,6 +427,42 @@ def test_alpha002_cancellation_propagates_to_queued_execution(monkeypatch):
     append.assert_called_once()
 
 
+def test_needs_attention_campaign_can_be_cancelled_after_failed_recovery(monkeypatch):
+    record = campaign(status="needs_attention")
+    record.terminal_reason = {"category": "governed_pipeline_task_failed"}
+    db = MagicMock()
+    db.scalar.return_value = None
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.cancel_campaign(
+        db,
+        record,
+        service.AlphaCampaignAction(
+            expected_campaign_digest=DIGEST,
+            actor="founder-operator",
+            reason="Retain the failed recovery and continue autonomous discovery.",
+        ),
+    )
+
+    assert record.status == "cancelled"
+    assert record.terminal_reason["category"] == "operator_cancelled"
+
+
+@pytest.mark.parametrize("status", ["cancelled", "completed_no_candidate", "shadow_candidate"])
+def test_completed_campaigns_cannot_be_cancelled_again(status):
+    record = campaign(status=status)
+    with pytest.raises(HTTPException, match="Terminal campaigns"):
+        service.cancel_campaign(
+            MagicMock(),
+            record,
+            service.AlphaCampaignAction(
+                expected_campaign_digest=DIGEST,
+                actor="founder-operator",
+                reason="This cancellation must remain forbidden.",
+            ),
+        )
+
+
 def attempt(record, **updates):
     question = "Does lagged BTC displacement retain net predictive value after costs?"
     value = {
