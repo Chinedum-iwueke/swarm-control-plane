@@ -66,6 +66,7 @@ def register(monkeypatch, payload, uncertainties=None):
     db = MagicMock()
     db.scalars.return_value.all.return_value = []
     record = service.register_portfolio(db, payload)
+    assert db.flush.call_count == 2
     candidates = [
         call.args[0]
         for call in db.add.call_args_list
