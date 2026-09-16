@@ -17,6 +17,8 @@ def test_reviewer_service_is_isolated_bounded_and_read_only():
     ):
         assert setting in unit
     assert "ReadWritePaths=/etc/invariance-swarm/codex-worker" not in unit
+    assert "MemoryDenyWriteExecute=true" not in unit
+    assert "Repository access remains read-only and networkless" in unit
 
 
 def test_installer_is_explicit_and_preserves_existing_credentials():

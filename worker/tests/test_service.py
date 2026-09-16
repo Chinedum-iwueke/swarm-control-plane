@@ -657,6 +657,7 @@ async def test_task_start_conflict_is_lease_lost_without_fail(
 
     assert isinstance(outcome, LeaseLostOutcome)
     assert outcome.phase == "start"
+    assert outcome.detail == "expired"
     assert events[-1] == "start"
     assert not api.requests["fail"]
     assert not api.requests["complete"]
@@ -717,6 +718,7 @@ async def test_complete_conflict_is_not_retried_or_failed(
 
     assert isinstance(outcome, LeaseLostOutcome)
     assert outcome.phase == "complete"
+    assert outcome.detail == "expired"
     assert events.count("complete") == 1
     assert events.count("fail") == 0
 
