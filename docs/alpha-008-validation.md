@@ -35,9 +35,15 @@ strategy-engineering gate. No approximate strategy substitution is allowed.
 - Registered-contract cards bind the original YAML digest and represent its internals
   by reference. They do not invent a second feature transcription. Novel questions
   cannot fall back to the weekend-momentum strategy.
+- The dedicated `invariance-swarm-alpha-data-admission.service` consumes only
+  `alpha_data_admission` leases. Its root-owned environment is bound to the
+  `vm1-alpha-data-admission` identity; the Bulletproof primary checkout and lake are
+  read-only, while task worktrees and content-addressed recovery evidence are the only
+  writable data paths. Install it only after bootstrap with
+  `worker/systemd/install-alpha-data-admission.sh`.
 
-Focused validation passes 90 backend tests, 28 worker tests and 33 native tests. The
-complete control-plane suites pass 899 backend tests with one optional skip and 333
+Focused validation passes 90 backend tests, 30 worker tests and 33 native tests. The
+complete control-plane suites pass 899 backend tests with one optional skip and 335
 worker tests. Alembic has one head, `c2a8e4f61d90`. Repository-wide native validation,
 merge, deployment, a new founder-approved mandate and two concurrent one-year BT-009
 receipts remain required operational evidence.
