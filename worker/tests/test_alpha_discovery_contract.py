@@ -17,7 +17,9 @@ from swarm_worker.workflows import WorkflowLoader
 def test_discovery_domain_identifiers_match_canonical_intake():
     import re
 
-    properties = _schema("hypothesis")["properties"]["candidates"]["items"]["properties"]
+    properties = _schema("hypothesis")["properties"]["candidates"]["items"][
+        "properties"
+    ]
     for key in ("domain_key", "cluster_key"):
         field = properties[key]
         assert re.fullmatch(field["pattern"], "perpetual-return-predictability")
@@ -93,10 +95,25 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     }
     prompt = _prompt(AlphaDiscoveryContract.model_validate(document))
     assert "ETHUSDT" in prompt
-    assert "not execution permission or continuous coverage" in prompt
+    assert "physical inventory, not execution permission" in prompt
     assert "hypothesis-specific cross-group baskets" in prompt
-    assert "Only datasets listed as" in prompt
-    assert "pretending an inventory receipt expands" in prompt
+    assert "one-year catalog candidate may be proposed" in prompt
+    assert "only datasets listed as admitted may enter execution" in prompt
+
+
+def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
+    data = _schema("hypothesis")["properties"]["candidates"]["items"]["properties"][
+        "data"
+    ]
+    assert {"instruments", "research_timeframe", "resampling_policy"}.issubset(
+        data["required"]
+    )
+    properties = data["properties"]
+    assert properties["timeframe"]["enum"] == ["1m"]
+    assert properties["instruments"]["maxItems"] == 20
+    assert properties["resampling_policy"]["enum"] == [
+        "right_closed_left_labeled_complete_bars"
+    ]
 
 
 def test_alpha_discovery_contract_survives_complete_policy_validation():

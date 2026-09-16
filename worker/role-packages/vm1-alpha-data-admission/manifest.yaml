@@ -1,0 +1,32 @@
+schema_version: 1
+name: vm1-alpha-data-admission
+version: 1.0.0
+role: Restricted VM1 selected-panel data admission worker
+task_types:
+- alpha_data_admission
+workflows:
+- name: alpha-data-admission
+  file: alpha-data-admission.yaml
+  sha256: b6f6dd2c7ffe2d94fae2e9bea8434fb275b7c5251b03593259a06cf78ce4ae76
+required_capabilities:
+- alpha-data-admission
+- market-data-read
+- research-audit
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: alpha007-selected-panel-admission
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+  - /home/omenka/.local/share/invariance-swarm/alpha-data-backups
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false

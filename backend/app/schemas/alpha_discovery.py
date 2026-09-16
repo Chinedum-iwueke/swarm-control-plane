@@ -27,6 +27,52 @@ class AlphaResearchBudget(StrictModel):
     maximum_consecutive_failures: int = Field(ge=1, le=20)
 
 
+class AlphaDiscoveryCatalogBinding(StrictModel):
+    producer_receipt_id: uuid.UUID
+    receipt_digest: str = Field(pattern=_DIGEST)
+    source_commit: str = Field(pattern=_COMMIT)
+    allowed_venues: list[Literal["bybit", "binance"]] = Field(
+        min_length=1, max_length=2
+    )
+    selection_policy: Literal["point_in_time_pre_outcome"] = "point_in_time_pre_outcome"
+    maximum_assets_per_hypothesis: int = Field(default=8, ge=1, le=20)
+
+
+class AlphaReusableStrategy(StrictModel):
+    hypothesis_id: str = Field(pattern=_KEY, max_length=180)
+    title: str = Field(min_length=3, max_length=500)
+    description: str = Field(min_length=10, max_length=4000)
+    hypothesis_family: str = Field(pattern=_KEY, max_length=180)
+    strategy: str = Field(pattern=_KEY, max_length=180)
+    input_mode: Literal["single_instrument", "aligned_basket"]
+    maximum_instruments: int = Field(ge=1, le=20)
+    signal_timeframes: list[str] = Field(min_length=1, max_length=20)
+    variant_count: int = Field(ge=1, le=1_000_000)
+    logging_requirements: list[str] = Field(max_length=200)
+    reuse_blockers: list[str] = Field(max_length=50)
+    bounded_weekly_reuse_eligible: bool
+    contract_path: str = Field(
+        pattern=r"^research/hypotheses/[A-Za-z0-9._-]+\.yaml$", max_length=300
+    )
+    contract_digest: str = Field(pattern=_DIGEST)
+
+
+class AlphaStrategyCapabilityCatalog(StrictModel):
+    schema_version: Literal["alpha-strategy-capability-catalog-v1.0.0"]
+    source_commit: str = Field(pattern=_COMMIT)
+    capabilities: list[AlphaReusableStrategy] = Field(min_length=1, max_length=200)
+    capital_or_order_authority: Literal[False]
+    claim_boundary: str = Field(min_length=20, max_length=2000)
+    catalog_digest: str = Field(pattern=_DIGEST)
+
+    @model_validator(mode="after")
+    def unique_capabilities(self):
+        identities = [item.hypothesis_id for item in self.capabilities]
+        if len(identities) != len(set(identities)):
+            raise ValueError("strategy capability identities must be unique")
+        return self
+
+
 class AlphaResearchMandateCreate(StrictModel):
     mandate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
@@ -37,6 +83,8 @@ class AlphaResearchMandateCreate(StrictModel):
     execution_window_start: datetime
     execution_window_end: datetime
     dataset_bindings: list[AlphaDatasetBinding] = Field(min_length=1, max_length=20)
+    discovery_catalog: AlphaDiscoveryCatalogBinding | None = None
+    strategy_catalog: AlphaStrategyCapabilityCatalog
     allowed_venues: list[Literal["bybit", "binance"]] = Field(
         min_length=1, max_length=2
     )
@@ -123,9 +171,32 @@ class AlphaDiscoveryDataRequirement(StrictModel):
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     timeframe: Literal["1m"]
+    instruments: list[str] = Field(default_factory=list, max_length=20)
+    research_timeframe: str = Field(
+        default="1m",
+        pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$",
+    )
+    resampling_policy: Literal["right_closed_left_labeled_complete_bars"] = (
+        "right_closed_left_labeled_complete_bars"
+    )
     required_fields: list[str] = Field(min_length=1, max_length=50)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
+
+    @model_validator(mode="after")
+    def normalized_basket(self):
+        instruments = self.instruments or [self.instrument]
+        normalized = [item.upper() for item in instruments]
+        if self.instrument not in normalized:
+            raise ValueError("primary instrument must be included in the basket")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("basket instruments must be unique")
+        if any(
+            not item.replace("-", "").replace("_", "").isalnum() for item in normalized
+        ):
+            raise ValueError("basket instruments must be exchange-safe identifiers")
+        self.instruments = normalized
+        return self
 
 
 class AlphaDiscoveryParameterBudget(StrictModel):
@@ -195,6 +266,9 @@ class AlphaPredictiveCandidate(StrictModel):
     equations: list[AlphaEquationAssertion] = Field(default_factory=list, max_length=20)
     expected_information_gain: float = Field(ge=0, le=1)
     feasibility: float = Field(ge=0, le=1)
+    reusable_hypothesis_id: str | None = Field(
+        default=None, pattern=_KEY, max_length=180
+    )
 
     @model_validator(mode="after")
     def evidence_pairs(self):

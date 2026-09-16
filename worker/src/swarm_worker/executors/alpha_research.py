@@ -122,6 +122,17 @@ class AlphaResearchExecutor:
             raise AlphaResearchExecutionError(
                 "Admitted dataset is missing or symlinked."
             )
+        for binding in contract.dataset_bindings:
+            bound_path = Path(binding.dataset_path)
+            resolved_path = bound_path.resolve(strict=True)
+            if (
+                not bound_path.is_file()
+                or bound_path.is_symlink()
+                or not resolved_path.is_relative_to(resolved_root)
+            ):
+                raise AlphaResearchExecutionError(
+                    "An admitted basket panel is missing or symlinked."
+                )
 
         started_at = datetime.now(UTC)
         started = time.monotonic()
