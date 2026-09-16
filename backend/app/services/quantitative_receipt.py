@@ -33,12 +33,15 @@ class QuantitativeReceiptConflict(RuntimeError):
 
 
 def lake_inventory_summary(db: Session) -> dict:
+    producers = (
+        "bt.institutional.lake_inventory.full_lake_inventory_receipt",
+        "bt.institutional.lake_manifest.manifest_catalog_receipt",
+    )
     record = db.scalar(
         select(QuantitativeProducerReceipt)
         .where(
             QuantitativeProducerReceipt.milestone == "DATA-002",
-            QuantitativeProducerReceipt.producer
-            == "bt.institutional.lake_inventory.full_lake_inventory_receipt",
+            QuantitativeProducerReceipt.producer.in_(producers),
         )
         .order_by(QuantitativeProducerReceipt.registered_at.desc())
         .limit(1)
@@ -46,6 +49,25 @@ def lake_inventory_summary(db: Session) -> dict:
     if record is None:
         return {"status": "not_registered", "execution_authority": False}
     result = record.receipt["result"]
+    if record.producer == "bt.institutional.lake_manifest.manifest_catalog_receipt":
+        return {
+            "status": "manifest_catalog_visible_unadmitted",
+            "receipt_id": str(record.id),
+            "receipt_digest": record.receipt_digest,
+            "source_commit": record.source_commit,
+            "object_count": result["availability_record_count"],
+            "dispositions": {
+                "manifest_visible_unadmitted": result["availability_record_count"]
+            },
+            "assets": result["assets"],
+            "one_year_coverage_candidates": result[
+                "one_year_coverage_candidates"
+            ],
+            "venue_scope": result["venue_scope"],
+            "memberships": result["memberships"],
+            "claim_boundary": result["claim_boundary"],
+            "execution_authority": False,
+        }
     return {
         "status": "cataloged_pending_quality",
         "receipt_id": str(record.id),
@@ -146,6 +168,108 @@ def _validate_inventory_root(db: Session, receipt: dict) -> None:
         raise QuantitativeReceiptConflict("Inventory group labels cannot become mandatory universes.")
 
 
+def _is_digest(value) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(
+        char in "0123456789abcdef" for char in value
+    )
+
+
+def _validate_manifest_catalog(receipt: dict) -> None:
+    result = receipt["result"]
+    manifests = result.get("manifests")
+    availability = result.get("availability")
+    assets = result.get("assets")
+    candidates = result.get("one_year_coverage_candidates")
+    memberships = result.get("memberships")
+    if (
+        result.get("schema_version") != "data002-manifest-catalog-v1.0.0"
+        or not isinstance(manifests, dict)
+        or not {"coverage", "fetch_state", "instruments"}.issubset(manifests)
+        or result.get("manifest_count") != len(manifests)
+        or not isinstance(availability, list)
+        or len(availability) > 50_000
+        or result.get("availability_record_count") != len(availability)
+        or not isinstance(assets, list)
+        or not isinstance(candidates, list)
+        or not isinstance(memberships, dict)
+        or result.get("venue_scope") != ["binance", "bybit"]
+        or result.get("group_labels_are_optional_metadata") is not True
+        or result.get("execution_eligible") is not False
+        or not isinstance(result.get("claim_boundary"), str)
+        or not result["claim_boundary"]
+    ):
+        raise QuantitativeReceiptConflict("Malformed manifest-first lake catalog.")
+    if receipt["input_digest"] != _digest(manifests) or receipt[
+        "dataset_digest"
+    ] != _digest(manifests):
+        raise QuantitativeReceiptConflict("Manifest catalog descriptors are not bound.")
+    for name, descriptor in manifests.items():
+        if (
+            not isinstance(name, str)
+            or not isinstance(descriptor, dict)
+            or not isinstance(descriptor.get("path"), str)
+            or not isinstance(descriptor.get("row_count"), int)
+            or descriptor["row_count"] < 0
+            or not isinstance(descriptor.get("columns"), list)
+            or not _is_digest(descriptor.get("content_digest"))
+        ):
+            raise QuantitativeReceiptConflict("Malformed native manifest descriptor.")
+    for name, descriptor in memberships.items():
+        if (
+            name not in {"stable_universe", "volatile_universe_membership"}
+            or not isinstance(descriptor, dict)
+            or not _is_digest(descriptor.get("content_digest"))
+            or type(descriptor.get("row_count")) is not int
+            or descriptor["row_count"] < 0
+            or not isinstance(descriptor.get("columns"), list)
+            or descriptor.get("classification") != "optional_research_metadata"
+        ):
+            raise QuantitativeReceiptConflict("Malformed optional membership descriptor.")
+    for item in availability:
+        if (
+            not isinstance(item, dict)
+            or item.get("execution_eligible") is not False
+            or not all(
+                isinstance(item.get(key), str) and item[key]
+                for key in ("market", "exchange", "symbol", "dataset", "timeframe")
+            )
+            or item["exchange"] not in {"binance", "bybit"}
+            or type(item.get("actual_rows")) is not int
+            or item["actual_rows"] < 0
+        ):
+            raise QuantitativeReceiptConflict("Malformed manifest availability row.")
+    expected_assets = [
+        list(identity)
+        for identity in sorted(
+            {
+                (item.get("market"), item.get("exchange"), item.get("symbol"))
+                for item in availability
+                if isinstance(item, dict) and int(item.get("actual_rows") or 0) > 0
+            }
+        )
+    ]
+    if assets != expected_assets:
+        raise QuantitativeReceiptConflict("Manifest catalog asset summary does not match coverage.")
+    asset_keys = {tuple(item) for item in assets}
+    for item in candidates:
+        if (
+            not isinstance(item, dict)
+            or item.get("execution_eligible") is not False
+            or not all(
+                isinstance(item.get(key), str) and item[key]
+                for key in ("market", "venue", "instrument", "timeframe")
+            )
+            or item["venue"] not in {"binance", "bybit"}
+            or type(item.get("actual_rows")) is not int
+            or item["actual_rows"] < 525_600
+            or (item["market"], item["venue"], item["instrument"])
+            not in asset_keys
+        ):
+            raise QuantitativeReceiptConflict(
+                "One-year visibility candidate escaped its manifest coverage."
+            )
+
+
 def _validate_full_lake_quality(db: Session, receipt: dict) -> None:
     result = receipt["result"]
     objects = result.get("objects")
@@ -237,10 +361,15 @@ def register_receipt(
     receipt_digest = receipt.pop("receipt_digest")
     inventory_producer = "bt.institutional.lake_inventory.full_lake_inventory_receipt"
     is_inventory = receipt["producer"] == inventory_producer
+    is_manifest_catalog = (
+        receipt["producer"]
+        == "bt.institutional.lake_manifest.manifest_catalog_receipt"
+    )
     is_inventory_shard = receipt["producer"] == "bt.institutional.lake_inventory.lake_inventory_shard_receipt"
     is_full_quality = receipt["producer"] == "bt.institutional.lake_quality.full_lake_quality_receipt"
     if PRODUCERS[receipt["milestone"]] != receipt["producer"] and not (
-        receipt["milestone"] == "DATA-002" and (is_inventory or is_inventory_shard)
+        receipt["milestone"] == "DATA-002"
+        and (is_inventory or is_inventory_shard or is_manifest_catalog)
         or receipt["milestone"] == "DATA-003" and is_full_quality
     ):
         raise QuantitativeReceiptConflict(
@@ -252,6 +381,8 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
     if is_full_quality:
         _validate_full_lake_quality(db, receipt)
+    if is_manifest_catalog:
+        _validate_manifest_catalog(receipt)
     if is_inventory and receipt["result"].get("schema_version") == "data002-full-lake-inventory-v2.0.0":
         _validate_inventory_root(db, receipt)
     elif is_inventory or is_inventory_shard:

@@ -1,12 +1,15 @@
 import hashlib
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from app.api.routes.quantitative_receipts import router
 from app.schemas.quantitative_receipt import QuantitativeReceiptCreate
 from app.services.quantitative_receipt import (
     QuantitativeReceiptConflict,
+    lake_inventory_summary,
     register_receipt,
 )
 
@@ -117,6 +120,93 @@ def test_full_lake_inventory_is_accounting_not_admission(mutation):
             register_receipt(db, payload(value))
     else:
         assert register_receipt(db, payload(value)).milestone == "DATA-002"
+
+
+def manifest_catalog_receipt():
+    value = receipt(
+        "DATA-002", "bt.institutional.lake_manifest.manifest_catalog_receipt"
+    )
+    manifests = {
+        name: {
+            "path": f"manifests/{name}.parquet",
+            "content_digest": character * 64,
+            "row_count": 1,
+            "columns": ["market", "exchange", "symbol"],
+        }
+        for name, character in (
+            ("coverage", "1"), ("fetch_state", "2"), ("instruments", "3")
+        )
+    }
+    availability = [{
+        "market": "perp", "exchange": "bybit", "symbol": "ETHUSDT",
+        "dataset": "ohlcv", "timeframe": "1m", "actual_rows": 600_000,
+        "execution_eligible": False,
+    }]
+    candidates = [{
+        "market": "perp", "venue": "bybit", "instrument": "ETHUSDT",
+        "timeframe": "1m", "actual_rows": 600_000,
+        "execution_eligible": False,
+    }]
+    value["result"] = {
+        "schema_version": "data002-manifest-catalog-v1.0.0",
+        "manifests": manifests,
+        "manifest_count": 3,
+        "availability": availability,
+        "availability_record_count": 1,
+        "assets": [["perp", "bybit", "ETHUSDT"]],
+        "one_year_coverage_candidates": candidates,
+        "venue_scope": ["binance", "bybit"],
+        "memberships": {},
+        "group_labels_are_optional_metadata": True,
+        "execution_eligible": False,
+        "claim_boundary": "Visibility only; selected panels require admission.",
+    }
+    value["input_digest"] = value["dataset_digest"] = digest(manifests)
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
+    return value
+
+
+@pytest.mark.parametrize(
+    "mutation", [None, "authority", "venue", "binding", "malformed_rows"]
+)
+def test_manifest_catalog_exposes_visibility_without_execution_admission(mutation):
+    value = manifest_catalog_receipt()
+    if mutation == "authority":
+        value["result"]["availability"][0]["execution_eligible"] = True
+    elif mutation == "venue":
+        value["result"]["venue_scope"] = ["okx"]
+    elif mutation == "binding":
+        value["dataset_digest"] = "f" * 64
+    elif mutation == "malformed_rows":
+        value["result"]["availability"][0]["actual_rows"] = "many"
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    if mutation:
+        with pytest.raises(QuantitativeReceiptConflict):
+            register_receipt(db, payload(value))
+    else:
+        assert register_receipt(db, payload(value)).milestone == "DATA-002"
+
+
+def test_lake_summary_prefers_manifest_catalog_as_visibility_only():
+    value = manifest_catalog_receipt()
+    record = SimpleNamespace(
+        id=uuid4(), receipt=value, receipt_digest=value["receipt_digest"],
+        source_commit=value["source_commit"], producer=value["producer"],
+    )
+    db = MagicMock()
+    db.scalar.return_value = record
+    result = lake_inventory_summary(db)
+    assert result["status"] == "manifest_catalog_visible_unadmitted"
+    assert result["assets"] == [["perp", "bybit", "ETHUSDT"]]
+    assert result["execution_authority"] is False
 
 
 def test_rejects_wrong_milestone_producer():
