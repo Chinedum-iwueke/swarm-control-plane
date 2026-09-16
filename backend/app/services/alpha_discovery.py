@@ -889,7 +889,13 @@ def _materialize_candidates(
         except ValidationError as exc:
             candidate = None
             reasons = ["candidate_schema_invalid"]
-            document = {"raw": raw_candidate, "validation_error": type(exc).__name__}
+            document = {
+                "raw": raw_candidate,
+                "validation_error": {
+                    "type": type(exc).__name__,
+                    "errors": exc.errors(include_url=False, include_input=False),
+                },
+            }
         key = (
             candidate.candidate_key if candidate else f"invalid-{len(records) + 1:03d}"
         )
@@ -1491,6 +1497,23 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         elif campaign and campaign.status == "needs_attention":
             cycle.status = "needs_attention"
             cycle.next_action = campaign.next_action
+        elif campaign and campaign.status == "cancelled":
+            cycle.status = "rejected"
+            cycle.phase = "complete"
+            cycle.next_action = "schedule_next_discovery_cycle"
+            cycle.completed_at = moment
+            _event(
+                db,
+                mandate,
+                "campaign_cancelled_without_candidate",
+                {
+                    "campaign_id": str(campaign.id),
+                    "terminal_reason": campaign.terminal_reason,
+                    "hypotheses": campaign.hypothesis_count,
+                    "trials": campaign.trial_count,
+                },
+                cycle,
+            )
         return
     if _reconcile_data_admissions(db, mandate, cycle):
         return
