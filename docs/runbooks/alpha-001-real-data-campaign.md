@@ -28,6 +28,7 @@ PYTHONPATH=src .venv/bin/python scripts/build_alpha_data_admission.py \
   --instrument BTCUSDT \
   --timeframe 1m \
   --source-commit "$(git rev-parse HEAD)" \
+  --backup-root "$HOME/.local/share/invariance-swarm/alpha-data-backups" \
   --output "$HOME/.local/state/alpha001/bybit-btcusdt-1m-admission.json"
 ```
 
@@ -35,6 +36,8 @@ Admission fails for a path outside the canonical root, identity mismatch, absent
 required columns, unordered or duplicate timestamps, absent acquisition manifests or
 non-successful fetch records. The receipt's claim is deliberately narrower than
 exchange attestation: it proves the locally retained bytes and their declared lineage.
+The backup is content-addressed recovery evidence for the selected panel, not a
+second mutable data lake.
 
 ## 2. Deploy Hermes on VM2
 
