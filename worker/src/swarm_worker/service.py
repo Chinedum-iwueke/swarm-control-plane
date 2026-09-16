@@ -117,6 +117,7 @@ class LeaseLostOutcome(ResultModel):
     task_number: str
     phase: str
     workspace: Path | None = None
+    detail: str | None = None
 
 
 RunOnceOutcome = (
@@ -424,8 +425,8 @@ class WorkerService:
                         message="Restricted worker started task execution.",
                     ),
                 )
-            except (AuthenticationError, ConflictError):
-                return self._lease_lost(task, "start", workspace)
+            except (AuthenticationError, ConflictError) as exc:
+                return self._lease_lost(task, "start", workspace, str(exc))
             started = True
 
             async def send_task_heartbeat(
@@ -527,8 +528,8 @@ class WorkerService:
                         result=execution_result.model_dump(mode="json"),
                     ),
                 )
-            except (AuthenticationError, ConflictError):
-                return self._lease_lost(task, "complete", workspace)
+            except (AuthenticationError, ConflictError) as exc:
+                return self._lease_lost(task, "complete", workspace, str(exc))
 
             return SucceededOutcome(
                 task_id=task.id,
@@ -579,6 +580,7 @@ class WorkerService:
         task: Task,
         phase: str,
         workspace: TaskWorkspace | None,
+        detail: str | None = None,
     ) -> LeaseLostOutcome:
         return LeaseLostOutcome(
             task_id=task.id,
@@ -587,6 +589,7 @@ class WorkerService:
             workspace=(
                 workspace.plan.attempt_directory if workspace is not None else None
             ),
+            detail=detail,
         )
 
     async def _release_or_lease_lost(

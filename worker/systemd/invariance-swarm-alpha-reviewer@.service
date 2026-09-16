@@ -38,7 +38,8 @@ ProtectControlGroups=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# Codex's isolated code-mode host requires executable memory even with
+# NODE_OPTIONS=--jitless. Repository access remains read-only and networkless.
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt

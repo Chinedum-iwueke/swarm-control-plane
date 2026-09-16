@@ -12,6 +12,7 @@ from swarm_worker.api_client import (
     ServerError,
 )
 from swarm_worker.service import (
+    LeaseLostOutcome,
     NoWorkOutcome,
     PausedOutcome,
     WorkerConfigurationError,
@@ -132,10 +133,12 @@ class WorkerDaemon:
                 return EXIT_RUNTIME_ERROR
 
             consecutive_failures = 0
-            self._logger.info(
-                "worker_cycle_complete",
-                extra={"outcome": outcome.status},
-            )
+            completion = {"outcome": outcome.status}
+            if isinstance(outcome, LeaseLostOutcome):
+                completion.update(
+                    {"phase": outcome.phase, "detail": outcome.detail}
+                )
+            self._logger.info("worker_cycle_complete", extra=completion)
             if isinstance(
                 outcome,
                 (NoWorkOutcome, PausedOutcome),
