@@ -32,6 +32,33 @@ def identity() -> dict:
     }
 
 
+def test_api_error_reports_route_and_detail_without_request_payload() -> None:
+    secret = "signed-package-secret-that-must-not-be-printed"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert secret.encode() in request.content
+        return httpx.Response(
+            422,
+            json={"detail": "capability name does not match the safe-name contract"},
+        )
+
+    with httpx.Client(
+        base_url="http://control-plane.test",
+        transport=httpx.MockTransport(handler),
+    ) as client, pytest.raises(RuntimeError) as failure:
+        MODULE.call(
+            client,
+            "POST",
+            "/v1/packages",
+            {"signature": secret},
+        )
+
+    message = str(failure.value)
+    assert "POST /v1/packages failed (422)" in message
+    assert "safe-name contract" in message
+    assert secret not in message
+
+
 def test_missing_workload_identity_is_created_and_credential_is_bound() -> None:
     requests = []
 

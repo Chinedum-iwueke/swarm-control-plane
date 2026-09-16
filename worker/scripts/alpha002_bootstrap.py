@@ -34,7 +34,10 @@ def digest(value: object) -> str:
 
 def call(client: httpx.Client, method: str, path: str, payload: dict | None = None):
     response = client.request(method, path, json=payload)
-    response.raise_for_status()
+    if response.is_error:
+        raise RuntimeError(
+            f"{method} {path} failed ({response.status_code}): {response.text}"
+        )
     return response.json()
 
 
