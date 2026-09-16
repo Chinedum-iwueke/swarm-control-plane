@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -19,6 +21,11 @@ from app.models.discovery_portfolio import (
     DiscoveryPortfolio,
     DiscoveryPortfolioCandidate,
 )
+from app.models.evaluator_routing import (
+    EvaluationRoute,
+    EvaluatorAssignment,
+    EvaluatorProfile,
+)
 from app.models.governance import FounderNotification, TaskApproval
 from app.models.lake_operations import LakeGovernanceSnapshot
 from app.models.market_data_catalog import MarketDataCatalogSnapshot
@@ -31,7 +38,15 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
 )
+from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity
 from app.schemas.task import TaskCreate
+from app.services.evaluator_routing import (
+    alpha_strategy_reviews_approved,
+    create_route,
+    require_independence,
+    retry_blocked_route,
+    task_producer_identity,
+)
 from app.services.governance import consume_task_approval
 from app.services.graph import digest_document
 from app.services.tasks import append_task_event, build_task, persist_new_task
@@ -548,6 +563,46 @@ def _create_strategy_engineering_task(
     requirement: dict,
 ) -> Task:
     question = " ".join(source["question"].split())
+    binding = campaign.specification["dataset_bindings"][
+        int(source.get("dataset_binding_index", 0))
+    ]
+    research_context = _research_context(db, question)
+    candidate_document = None
+    if source.get("discovery_candidate_id"):
+        candidate = db.get(AlphaDiscoveryCandidate, source["discovery_candidate_id"])
+        if (
+            candidate is None
+            or candidate.candidate_digest != source["discovery_candidate_digest"]
+            or " ".join(candidate.question.split()) != question
+        ):
+            raise HTTPException(
+                409, "Engineering discovery evidence is absent or changed."
+            )
+        candidate_document = candidate.document
+    evidence = {
+        "schema_version": "alpha-strategy-engineering-evidence-v1.0.0",
+        "campaign_digest": campaign.campaign_digest,
+        "question": question,
+        "question_digest": digest_document({"question": question}),
+        "source_candidate_id": source["source_candidate_id"],
+        "source_candidate_digest": source["source_candidate_digest"],
+        "discovery_candidate": candidate_document,
+        "dataset_binding": binding,
+        "instrument": source.get(
+            "instrument", campaign.specification["allowed_instruments"][0]
+        ),
+        "window": {
+            "start": campaign.specification["execution_window_start"],
+            "end": campaign.specification["execution_window_end"],
+        },
+        "maximum_variants": campaign.budget["max_variants_per_hypothesis"],
+        "tier": "Tier2B",
+        "research_context": research_context,
+        "engineering_requirement": requirement,
+        "authority": campaign.specification["authority_boundary"],
+    }
+    from app.schemas.proposal import ProposalEngineeringMissionContract
+
     contract = {
         "repository": "bulletproof_bt",
         "workflow": "engineering-mission",
@@ -558,7 +613,14 @@ def _create_strategy_engineering_task(
             "Implement a causal native Bulletproof hypothesis card, YAML contract, and "
             f"strategy for this admitted Research Intelligence question: {question}"
         ),
-        "allowed_paths": ["research/hypotheses", "src/bt/strategy", "tests"],
+        "allowed_paths": [
+            "research/hypotheses",
+            "src/bt/strategy",
+            "tests",
+            "src/bt/governance/alpha_strategy_pipeline.py",
+            "scripts/run_alpha_research_assignment.py",
+        ],
+        "evidence_context": json.dumps(evidence, sort_keys=True, allow_nan=False),
         "context_paths": [
             "docs/HYPOTHESIS_STRATEGY_GENERATION_PROMPT.md",
             "src/bt/governance/alpha_strategy_pipeline.py",
@@ -569,6 +631,7 @@ def _create_strategy_engineering_task(
             "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
             "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
+            "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
             "No capital, order, promotion or self-approval authority is introduced.",
         ],
         "stop_conditions": [
@@ -580,7 +643,7 @@ def _create_strategy_engineering_task(
         "max_diff_lines": 1800,
         "max_duration_seconds": 7200,
         "engineering_requirement": requirement,
-        "research_context": _research_context(db, question),
+        "research_context": research_context,
     }
     # The engineering worker contract forbids undeclared fields. Preserve the
     # diagnostic in the task evidence while keeping its executable input typed.
@@ -589,6 +652,7 @@ def _create_strategy_engineering_task(
         for key, value in contract.items()
         if key not in {"engineering_requirement", "research_context"}
     }
+    ProposalEngineeringMissionContract.model_validate(executable_contract)
     task = build_task(
         TaskCreate(
             task_number=_stage_task_number(campaign, source, "G"),
@@ -616,6 +680,44 @@ def _create_strategy_engineering_task(
     )
     persist_new_task(db, task)
     return task
+
+
+def _materialize_strategy_review_tasks(
+    db: Session, route: EvaluationRoute, subject: dict, qualification: dict,
+) -> None:
+    if route.status != "assigned":
+        return
+    assignments = db.scalars(select(EvaluatorAssignment).where(
+        EvaluatorAssignment.route_id == route.id, EvaluatorAssignment.status == "assigned",
+    )).all()
+    for assignment in assignments:
+        profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+        if profile is None:
+            raise HTTPException(409, "Routed strategy reviewer profile is missing.")
+        number = f"AR-{assignment.id}"
+        if db.scalar(select(Task).where(Task.task_number == number)) is not None:
+            continue
+        task = build_task(TaskCreate(
+            task_number=number, project="bulletproof-bt", task_type="alpha_strategy_review",
+            title=f"Independent {assignment.review_kind} review",
+            objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
+            risk_level=0, created_by="alpha-campaign-director", max_attempts=2,
+            required_capabilities=[f"alpha-strategy-review:{assignment.review_kind}"],
+            allowed_machines=[profile.machine],
+            input_contract={
+                "repository": "bulletproof_bt", "workflow": "alpha-strategy-review",
+                "base_ref": subject["source_commit"], "route_id": str(route.id),
+                "assignment_id": str(assignment.id), "evaluator_agent_id": str(profile.agent_id),
+                "evaluator_profile_digest": profile.profile_digest,
+                "evaluator_package_digest": profile.package_digest,
+                "review_kind": assignment.review_kind, "subject_digest": route.subject_digest,
+                "subject": deepcopy(subject), "qualification": deepcopy(qualification),
+                "max_duration_seconds": 900, "authority": "review_only_no_execution",
+            },
+            expected_outputs=["typed strategy review verdict", "retained review logs"],
+            acceptance_criteria=["Exact subject/source binding", "No producer self-review", "No execution authority"],
+        ))
+        persist_new_task(db, task)
 
 
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
@@ -797,6 +899,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     if (
         not isinstance(qualification, dict)
         or qualification.get("qualified") is not True
+        or not isinstance(qualification.get("card"), dict)
+        or not isinstance(qualification.get("artifact_bundle"), dict)
     ):
         campaign.status = "needs_attention"
         campaign.phase = "strategy_engineering"
@@ -806,6 +910,135 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "qualification": qualification,
         }
         return qualification_task
+    expected_card = deepcopy(card)
+    expected_card.update(
+        {
+            "status": "confirmed",
+            "confirmed_by": approval_receipt["actor"],
+            "confirmed_at": approval_receipt["approved_at"],
+        }
+    )
+    for field in ("claim", "entry", "exit"):
+        if field in expected_card.get("field_provenance", {}):
+            expected_card["field_provenance"][field]["state"] = "confirmed"
+    frozen = qualification_task.input_contract
+    expected_dataset = {
+        key: frozen.get(key)
+        for key in (
+            "dataset_build_id",
+            "dataset_digest",
+            "venue",
+            "instrument",
+            "timeframe",
+        )
+    }
+    expected_window = {
+        "start": frozen.get("window_start"),
+        "end": frozen.get("window_end"),
+    }
+    if (
+        qualification["card"] != expected_card
+        or qualification.get("card_digest") != digest_document(expected_card)
+        or expected_card.get("research_question")
+        != " ".join(source["question"].split())
+        or expected_card.get("dataset_binding") != expected_dataset
+        or expected_card.get("execution_window") != expected_window
+        or qualification.get("dataset") != expected_dataset
+        or qualification.get("window") != expected_window
+        or qualification.get("parameter_grid") != expected_card.get("parameters")
+    ):
+        campaign.status = "needs_attention"
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "repair_qualification_approval_binding"
+        campaign.terminal_reason = {
+            "category": "qualification_differs_from_approved_card"
+        }
+        return qualification_task
+    producers = [draft.assigned_agent_id, qualification_task.assigned_agent_id]
+    identities = [
+        task_producer_identity(db, task) for task in (draft, qualification_task)
+    ]
+    if any(actor is None for actor in producers) or any(
+        identity is None for identity in identities
+    ):
+        campaign.phase = "independent_strategy_review"
+        campaign.next_action = "repair_strategy_producer_provenance"
+        campaign.terminal_reason = {"category": "strategy_producer_identity_missing"}
+        return qualification_task
+    subject = {
+        "campaign_digest": campaign.campaign_digest,
+        "question_digest": digest_document(
+            {"question": " ".join(source["question"].split())}
+        ),
+        "source_commit": campaign.specification["bulletproof_source_commit"],
+        "qualification_task_id": str(qualification_task.id),
+        "card_digest": digest_document(qualification["card"]),
+        "artifact_bundle_digest": digest_document(qualification["artifact_bundle"]),
+        "producer_agent_ids": sorted({str(actor) for actor in producers}),
+        "producer_identities": identities,
+        "qualifier_identity": identities[1],
+    }
+    subject_digest = digest_document(subject)
+    review_route = db.scalar(
+        select(EvaluationRoute)
+        .where(
+            EvaluationRoute.subject_type == "alpha_strategy_qualification",
+            EvaluationRoute.subject_id == str(qualification_task.id),
+            EvaluationRoute.subject_digest == subject_digest,
+        )
+        .order_by(EvaluationRoute.created_at.desc())
+        .limit(1)
+    )
+    if review_route is None:
+        routed_producers = [
+            ProducerIdentity(actor=identity["agent_id"], **identity)
+            for identity in identities
+        ]
+        review_route = create_route(
+            db,
+            EvaluationRouteCreate(
+                subject_type="alpha_strategy_qualification",
+                subject_id=str(qualification_task.id),
+                subject_digest=subject_digest,
+                producer=routed_producers[1],
+                excluded_producers=routed_producers,
+                required_review_kinds=["strategy_spec", "causality_leakage"],
+                requested_by="alpha-campaign-director",
+            ),
+        )
+    elif review_route.status == "blocked":
+        review_route = retry_blocked_route(db, review_route)
+    _materialize_strategy_review_tasks(db, review_route, subject, qualification)
+    if not alpha_strategy_reviews_approved(
+        db,
+        review_route,
+        subject_digest=subject_digest,
+        producer_agent_id=qualification_task.assigned_agent_id,
+        excluded_agent_ids=producers,
+        excluded_identities=identities,
+        qualifier_identity=identities[1],
+    ):
+        campaign.phase = "independent_strategy_review"
+        campaign.next_action = "route_independent_strategy_review"
+        campaign.terminal_reason = {
+            "category": "independent_strategy_review_pending",
+            "subject": subject,
+            "subject_digest": subject_digest,
+            "route_id": str(review_route.id) if review_route else None,
+            "route_status": review_route.status,
+            "routing_blockers": review_route.blocked_reason,
+        }
+        return qualification_task
+    independence = require_independence(db, review_route)
+    qualification = deepcopy(qualification)
+    qualification["governed_review"] = {
+        "route_id": str(review_route.id),
+        "receipt_digest": independence.receipt_digest,
+        "assertion": independence.assertion,
+        "subject": subject,
+        "verdict": independence.verdict,
+    }
+    campaign.terminal_reason = {}
     execution = db.scalar(
         select(Task).where(
             Task.task_number == _stage_task_number(campaign, source, "E")

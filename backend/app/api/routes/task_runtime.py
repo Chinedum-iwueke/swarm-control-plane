@@ -27,6 +27,7 @@ from app.schemas import (
 )
 from app.services.broker_tickets import issue_broker_ticket
 from app.services.controls import matching_control_scopes
+from app.services.evaluator_routing import complete_strategy_review_task
 from app.services.governance import rearm_task_approval
 from app.services.missions import refresh_mission
 from app.services.tasks import (
@@ -299,6 +300,7 @@ def complete_task(
             detail="Task graph cancellation is pending; completion is no longer accepted.",
         )
 
+    complete_strategy_review_task(db, task, agent, payload.result)
     task.status = "succeeded"
     task.result = payload.result
     task.failure = {}

@@ -203,11 +203,33 @@ class ProposalEngineeringMissionContract(StrictModel):
     objective: str = Field(min_length=10, max_length=4000)
     allowed_paths: list[str] = Field(min_length=1, max_length=50)
     context_paths: list[str] = Field(default_factory=list, max_length=50)
+    evidence_context: str = Field(default="{}", max_length=48000)
     acceptance_criteria: list[str] = Field(min_length=1, max_length=50)
     stop_conditions: list[str] = Field(min_length=1, max_length=20)
     max_files_changed: int = Field(ge=1, le=100)
     max_diff_lines: int = Field(ge=1, le=10000)
     max_duration_seconds: int = Field(ge=60, le=86400)
+
+    @field_validator("evidence_context")
+    @classmethod
+    def bounded_evidence(cls, value):
+        if len(value.encode()) > 48000:
+            raise ValueError("engineering evidence exceeds 48000 bytes")
+        try:
+            parsed = json.loads(value)
+        except RecursionError as error:
+            raise ValueError("engineering evidence nesting exceeds safe limits") from error
+        if not isinstance(parsed, dict) or len(parsed) > 20:
+            raise ValueError("engineering evidence must be a bounded JSON object")
+        pending = [(parsed, 0)]
+        while pending:
+            node, depth = pending.pop()
+            if depth > 32:
+                raise ValueError("engineering evidence nesting exceeds safe limits")
+            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            pending.extend((child, depth + 1) for child in children)
+        json.dumps(parsed, allow_nan=False)
+        return value
 
 
 class ProposalInfrastructureParameters(StrictModel):

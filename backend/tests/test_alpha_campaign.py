@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -543,12 +544,188 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["dataset_digest"] == DIGEST
 
 
+@pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
+def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
+    record = campaign()
+    frozen = {
+        "dataset_build_id": str(uuid4()),
+        "dataset_digest": DIGEST,
+        "venue": "bybit",
+        "instrument": "BTCUSDT",
+        "timeframe": "1m",
+        "window_start": "2025-01-01T00:00:00Z",
+        "window_end": "2026-01-01T00:00:00Z",
+    }
+    dataset = {
+        key: frozen[key]
+        for key in (
+            "dataset_build_id",
+            "dataset_digest",
+            "venue",
+            "instrument",
+            "timeframe",
+        )
+    }
+    window = {"start": frozen["window_start"], "end": frozen["window_end"]}
+    card = {
+        "status": "draft",
+        "research_question": record.specification["research_queue"][0]["question"],
+        "dataset_binding": dataset,
+        "execution_window": window,
+        "parameters": {"lookback": [60]},
+    }
+    draft = SimpleNamespace(
+        assigned_agent_id=uuid4(),
+        status="succeeded",
+        result={"summary": {"hypothesis_card": card}},
+    )
+    confirmation = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "approved_by": "founder-operator",
+                "approved_at": datetime.now(UTC).isoformat(),
+                "plan_digest": DIGEST,
+            }
+        },
+    )
+    confirmed = deepcopy(card)
+    confirmed.update(
+        {
+            "status": "confirmed",
+            "confirmed_by": "founder-operator",
+            "confirmed_at": confirmation.result["summary"]["approved_at"],
+        }
+    )
+    qualification = SimpleNamespace(
+        id=uuid4(),
+        assigned_agent_id=uuid4(),
+        status="succeeded",
+        input_contract=frozen,
+        result={
+            "summary": {
+                "qualification": {
+                    "qualified": True,
+                    "card": confirmed,
+                    "card_digest": service.digest_document(confirmed),
+                    "dataset": dataset,
+                    "window": window,
+                    "parameter_grid": card["parameters"],
+                    "artifact_bundle": {"technical": "ready"},
+                    "review": {"independent_of_drafter": True},
+                }
+            }
+        },
+    )
+    db = MagicMock()
+    result = qualification.result["summary"]["qualification"]
+    if mutation == "claim":
+        result["card"]["claim"] = "A substituted hypothesis"
+    elif mutation == "dataset":
+        result["card"]["dataset_binding"]["dataset_digest"] = "c" * 64
+    elif mutation == "window":
+        result["card"]["execution_window"]["end"] = "2027-01-01T00:00:00Z"
+    elif mutation == "digest":
+        result["card_digest"] = "c" * 64
+    db.scalar.side_effect = [draft, confirmation, qualification, None]
+    create = MagicMock()
+    monkeypatch.setattr(service, "_create_stage_task", create)
+    monkeypatch.setattr(
+        service,
+        "task_producer_identity",
+        lambda db, task: {
+            "agent_id": str(task.assigned_agent_id),
+            "context_group": "compiler-test",
+            "package_digest": "d" * 64,
+            "machine": "vm1",
+            "provider": "deterministic",
+            "model_family": "none",
+            "runtime": "python",
+        },
+    )
+    route_create = MagicMock(side_effect=lambda db, payload: SimpleNamespace(
+        id=uuid4(), subject_type=payload.subject_type,
+        subject_digest=payload.subject_digest, status="blocked",
+        blocked_reason={"category": "independent_evaluator_unavailable"},
+    ))
+    monkeypatch.setattr(service, "create_route", route_create)
+    assert service._advance_governed_pipeline(db, record) is qualification
+    if mutation:
+        assert record.status == "needs_attention"
+        assert record.next_action == "repair_qualification_approval_binding"
+        create.assert_not_called()
+        route_create.assert_not_called()
+        return
+    assert record.phase == "independent_strategy_review"
+    assert record.next_action == "route_independent_strategy_review"
+    assert record.terminal_reason["subject"]["source_commit"] == COMMIT
+    assert len(record.terminal_reason["subject_digest"]) == 64
+    route_create.assert_called_once()
+    routing = route_create.call_args.args[1]
+    assert len(routing.excluded_producers) == 2
+    assert routing.producer.agent_id == qualification.assigned_agent_id
+    assert record.terminal_reason["route_status"] == "blocked"
+    create.assert_not_called()
+
+
+def test_routed_review_tasks_preserve_subject_profile_and_source_without_execution(monkeypatch):
+    assignment = SimpleNamespace(id=uuid4(), evaluator_profile_id=uuid4(), review_kind="strategy_spec")
+    profile = SimpleNamespace(agent_id=uuid4(), machine="vm1-developer", profile_digest="b" * 64, package_digest="c" * 64)
+    route = SimpleNamespace(id=uuid4(), status="assigned", subject_digest=DIGEST)
+    subject = {"source_commit": COMMIT, "card_digest": "d" * 64}
+    qualification = {"card": {"status": "confirmed"}, "artifact_bundle": {"strategy_spec": "exact"}}
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [assignment]
+    db.get.return_value = profile
+    db.scalar.return_value = None
+    build = MagicMock(return_value=SimpleNamespace(id=uuid4()))
+    persist = MagicMock()
+    monkeypatch.setattr(service, "build_task", build)
+    monkeypatch.setattr(service, "persist_new_task", persist)
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    payload = build.call_args.args[0]
+    assert payload.task_type == "alpha_strategy_review"
+    assert payload.required_capabilities == ["alpha-strategy-review:strategy_spec"]
+    assert payload.input_contract["base_ref"] == COMMIT
+    assert payload.input_contract["evaluator_agent_id"] == str(profile.agent_id)
+    assert payload.input_contract["evaluator_package_digest"] == profile.package_digest
+    assert payload.input_contract["qualification"] == qualification
+    assert payload.input_contract["authority"] == "review_only_no_execution"
+    persist.assert_called_once()
+    db.scalar.return_value = SimpleNamespace(id=uuid4())
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    assert persist.call_count == 1
+    route.status = "blocked"
+    service._materialize_strategy_review_tasks(db, route, subject, qualification)
+    assert persist.call_count == 1
+
+
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
 ):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["ETHUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
     source = record.specification["research_queue"][0]
+    source["discovery_candidate_id"] = str(uuid4())
+    source["discovery_candidate_digest"] = "7" * 64
+    source_document = {"predictor": "lagged displacement", "target": "next-hour return"}
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        candidate_digest="7" * 64,
+        question=source["question"],
+        document=source_document,
+    )
     persisted = []
     monkeypatch.setattr(
         service,
@@ -560,7 +737,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     )
 
     task = service._create_strategy_engineering_task(
-        MagicMock(),
+        db,
         record,
         source,
         {"category": "exact_strategy_unavailable"},
@@ -575,8 +752,41 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         "research/hypotheses",
         "src/bt/strategy",
         "tests",
+        "src/bt/governance/alpha_strategy_pipeline.py",
+        "scripts/run_alpha_research_assignment.py",
     ]
     assert task.input_contract["base_ref"] == COMMIT
+    import json
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    assert evidence["question"] == source["question"]
+    assert evidence["dataset_binding"] == record.specification["dataset_bindings"][0]
+    assert evidence["maximum_variants"] == 8
+    assert evidence["research_context"]["corpus_digest"] == "9" * 64
+    assert evidence["discovery_candidate"] == source_document
+    assert not evidence["authority"]["capital"]
+    db.get.return_value.candidate_digest = "8" * 64
+    with pytest.raises(HTTPException, match="absent or changed"):
+        service._create_strategy_engineering_task(db, record, source, {})
+    db.get.return_value.candidate_digest = "7" * 64
+    db.get.return_value.question = "Does a different signal predict a different target?"
+    with pytest.raises(HTTPException, match="absent or changed"):
+        service._create_strategy_engineering_task(db, record, source, {})
+    assert len(persisted) == 1
+
+    from app.schemas.proposal import ProposalEngineeringMissionContract
+    from pydantic import ValidationError
+
+    for bad_evidence in (
+        "[]",
+        "not-json",
+        '{"x": NaN}',
+        '{"x":' + "[" * 1500 + "0" + "]" * 1500 + "}",
+        json.dumps({"text": "x" * 48001}),
+    ):
+        document = dict(task.input_contract, evidence_context=bad_evidence)
+        with pytest.raises(ValidationError):
+            ProposalEngineeringMissionContract.model_validate(document)
 
 
 def test_registration_rejects_synthetic_label():

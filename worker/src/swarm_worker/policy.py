@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +13,7 @@ from pydantic import (
 )
 
 from swarm_worker.models import AgentIdentity, Task
+from swarm_worker.strategy_review_contract import AlphaStrategyReviewContract
 from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
 
 _SAFE_REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -79,11 +81,33 @@ class EngineeringMissionContract(BaseModel):
     objective: str = Field(min_length=10, max_length=4000)
     allowed_paths: list[str] = Field(min_length=1, max_length=50)
     context_paths: list[str] = Field(default_factory=list, max_length=50)
+    evidence_context: str = Field(default="{}", max_length=48000)
     acceptance_criteria: list[str] = Field(min_length=1, max_length=50)
     stop_conditions: list[str] = Field(min_length=1, max_length=20)
     max_files_changed: int = Field(ge=1, le=100)
     max_diff_lines: int = Field(ge=1, le=10000)
     max_duration_seconds: int = Field(ge=60, le=86400)
+
+    @field_validator("evidence_context")
+    @classmethod
+    def bounded_evidence(cls, value):
+        if len(value.encode()) > 48000:
+            raise ValueError("engineering evidence exceeds 48000 bytes")
+        try:
+            parsed = json.loads(value)
+        except RecursionError as error:
+            raise ValueError("engineering evidence nesting exceeds safe limits") from error
+        if not isinstance(parsed, dict) or len(parsed) > 20:
+            raise ValueError("engineering evidence must be a bounded JSON object")
+        pending = [(parsed, 0)]
+        while pending:
+            node, depth = pending.pop()
+            if depth > 32:
+                raise ValueError("engineering evidence nesting exceeds safe limits")
+            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            pending.extend((child, depth + 1) for child in children)
+        json.dumps(parsed, allow_nan=False)
+        return value
 
     @field_validator("base_ref")
     @classmethod
@@ -263,6 +287,7 @@ class ValidatedTaskPolicy(BaseModel):
         | ResearchMemorySyncContract
         | AlphaResearchExecutionContract
         | AlphaDiscoveryContract
+        | AlphaStrategyReviewContract
     )
     workflow: WorkflowDefinition
 
@@ -296,6 +321,7 @@ def validate_task_policy(
         "research_memory_sync",
         "alpha_research_execution",
         "alpha_discovery",
+        "alpha_strategy_review",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -336,6 +362,7 @@ def _parse_contract(
     | ResearchMemorySyncContract
     | AlphaResearchExecutionContract
     | AlphaDiscoveryContract
+    | AlphaStrategyReviewContract
 ):
     try:
         models = {
@@ -345,6 +372,7 @@ def _parse_contract(
             "research_memory_sync": ResearchMemorySyncContract,
             "alpha_research_execution": AlphaResearchExecutionContract,
             "alpha_discovery": AlphaDiscoveryContract,
+            "alpha_strategy_review": AlphaStrategyReviewContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)

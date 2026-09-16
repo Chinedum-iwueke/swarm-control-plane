@@ -27,6 +27,8 @@ from app.models import (
 from app.schemas.agent_governance import EffectiveAuthorityRequest
 from app.schemas.task import TaskCreate
 from app.services.agent_governance import resolve as resolve_agent_authority
+from app.services.evaluator_routing import digest as evaluator_digest
+from app.services.evaluator_routing import producer_identity_for_lease
 from app.services.governance import (
     consume_task_approval,
     create_approval,
@@ -304,7 +306,10 @@ def lease_next_task(
                 TaskGraphNode.id == Task.task_graph_node_id,
                 TaskGraph.status == "active",
                 select(func.count(active_graph_tasks.id))
-                .join(active_graph_nodes, active_graph_tasks.task_graph_node_id == active_graph_nodes.id)
+                .join(
+                    active_graph_nodes,
+                    active_graph_tasks.task_graph_node_id == active_graph_nodes.id,
+                )
                 .where(
                     active_graph_nodes.graph_id == TaskGraph.id,
                     active_graph_tasks.status.in_(ACTIVE_LEASE_STATUSES),
@@ -324,6 +329,10 @@ def lease_next_task(
             Task.required_capabilities.contained_by(agent.capabilities),
             valid_approval,
             graph_parallelism_available,
+            or_(
+                Task.task_type != "alpha_strategy_review",
+                Task.input_contract["evaluator_agent_id"].astext == str(agent.id),
+            ),
             or_(
                 Task.mission_id.is_(None),
                 exists(
@@ -351,9 +360,7 @@ def lease_next_task(
     task = None
     for candidate in candidates:
         authority_snapshots = resolve_task_authority(db, candidate, agent, now)
-        if authority_snapshots and all(
-            item["allowed"] for item in authority_snapshots
-        ):
+        if authority_snapshots and all(item["allowed"] for item in authority_snapshots):
             task = candidate
             break
         reasons = sorted(
@@ -399,6 +406,16 @@ def lease_next_task(
     task.last_execution_heartbeat_at = now
     task.failure = {}
 
+    producer_identity = None
+    if task.operation_type == "alpha_strategy_review" or (task.operation_type == "alpha_research_execution" and task.input_contract.get(
+        "stage"
+    ) in {"draft", "qualify"}):
+        producer_identity = producer_identity_for_lease(
+            db,
+            agent,
+            [snapshot["package_digest"] for snapshot in authority_snapshots],
+        )
+
     event = append_task_event(
         db,
         task,
@@ -408,6 +425,14 @@ def lease_next_task(
         payload={
             "lease_expires_at": (task.lease_expires_at.isoformat()),
             "lease_seconds": lease_seconds,
+            **(
+                {
+                    "producer_identity": producer_identity,
+                    "producer_identity_digest": evaluator_digest(producer_identity),
+                }
+                if producer_identity
+                else {}
+            ),
             "effective_authority": [
                 {
                     "capability": capability,

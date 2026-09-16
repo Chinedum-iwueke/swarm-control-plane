@@ -102,3 +102,145 @@ this correction passed 852 backend tests (one optional database skip) and 301
 worker tests. Corrected planner tests passed 17 cases. The same exact inventory
 unit remains live, with progress through the canonical Binance partitions; no
 scan restart, complete inventory or concurrent scientific execution is inferred.
+
+PR #270 merged and deployed on VM2 at `40ca4c759`; the running container confirms
+the `all_eligible` intake default. All eight CI gates passed. Final backend suite
+passed 852 tests with one optional skip; final worker suite passed 302. An earlier
+concurrent worker/backend run hit an unchanged two-second child-start timeout test
+before its child marker existed; the isolated test and subsequent full worker run
+passed. The exact native inventory unit remains active across this API deployment.
+Long-running VM1 planner/researcher processes still require a controlled restart
+before the new prompt can be claimed loaded in those service processes.
+
+The next engineering handoff source pass keeps bounded scientific evidence in the
+executable engineering contract rather than only approval metadata. A validated
+JSON text field (48,000-byte limit) preserves the planner's closed output schema.
+Coder and independent reviewer receive identical untrusted evidence, bound to the
+campaign/question/candidate digests, admitted dataset, frozen window, instrument,
+tier, variant ceiling and unchanged no-capital authority. Changed or missing
+discovery evidence prevents task creation. New approval-gated task scope includes
+the existing native draft pipeline and assignment runner so generated cards can
+actually be discovered without substitution into the weekend template. Historical
+task scopes and approvals are not rewritten. Focused campaign tests passed 20,
+proposal contracts eight, worker engineering/planner tests 30; lint passed.
+This handoff source pass is not deployed and does not establish that a new native
+strategy has been generated, qualified or backtested.
+
+Independent review found excessive JSON nesting could escape normal contract
+validation as RecursionError. All three consumers now reject decoding recursion
+and depth beyond 32 with controlled validation errors before re-encoding. Changed
+question and deep-JSON regressions pass: focused engineering/planner suite 32,
+strengthened backend engineering handoff one. The full backend suite before this
+review correction passed 852 with one optional skip. A repeated unchanged
+process-group test failed before child startup under concurrent test load; its
+test-only startup budget is now five seconds while still asserting actual timeout
+and child termination. No production timeout or safety threshold was changed.
+
+The corrected source pass is pushed as PR #271; independent review confirms the
+recursion and question-mismatch findings closed. Fresh full suites passed 852
+backend tests (one optional skip) and 309 worker tests. All eight PR #271 CI checks passed; deployment remains pending.
+API ledger readback independently confirmed operation
+`1f24f55d-45c3-4eae-b3ac-6c129023f9c3`, run
+`0767bfbe-206f-4290-9900-f9771b7a83b8`, state running/phase inventory, heartbeat
+2026-09-15T21:39:47.392352Z and 652 processed files. Process inspection confirms
+the same supervisor/native child, not a restarted scan. Native template discovery
+and evaluator receipt binding remain next engineering work; no scientific
+independence is inferred solely from a hardcoded qualification gate.
+
+Native generated-card discovery is now implemented in the source worktree. It
+uses a normalized exact-question digest and source-reviewed JSON under
+`research/hypotheses/cards`, reuses the existing hypothesis-card validator, and
+rejects changed dataset/window bindings, self-confirmation, symlinks and excessive
+parameter budgets. Unrelated/non-BTC questions cannot fall back to the BTC
+template. Qualification variant counts are calculated from the real grid rather
+than reported as a constant. Twenty combined native assignment/card/capacity-grid
+tests passed in 64.89 seconds and lint passed. This source-only pass does
+not establish semantic correctness, independent review, deployment or execution.
+
+The next source pass replaces compiler self-attestation with explicit immutable
+strategy-specification and causality/leakage reviews. Producer package/context
+identities are frozen from authorized registry profiles at task lease, never
+guessed retrospectively. Both drafter and qualifier identities are excluded from
+review, including same-agent package rollovers; an explicit qualifier identity
+binds the route primary. Qualification must replay the exact founder-approved
+card, dataset, window and parameter grid before a new execution task is created.
+Native execution checks the governed review before output allocation or compute;
+missing review is retained as a zero-trial independent-evaluation failure, not
+scientific falsification. Receipt hashes are replayed within authenticated
+control-plane assignments, not treated as offline authority.
+
+Native focused regression coverage passes 31 tests after the package-rollover
+correction; the full backend suite passes 874 tests with one optional skip and
+two existing deprecation warnings. Production reviewer registration/execution and engineering-author
+provenance remain open; this source pass is not deployed and no genuine reviewer
+receipt or concurrent scientific run is inferred from unit fixtures. The same
+live inventory supervisor remains active, with progress reaching 1,600 objects;
+complete-root registration and quality admission are still pending.
+
+Automatic strategy review routing now creates an immutable route after exact
+approval binding, using the actual qualifier as primary and every historical
+producer as an exclusion. The existing router checks excluded producer
+agent/package/context conflicts and disclosed correlation ceilings before
+assignment. Missing reviewer capacity is retained as a blocked route with its
+reason in campaign planning state. Focused routing/campaign tests pass 49; the
+full backend suite passes 875 with one optional skip and two existing warnings.
+Lint passes. Actual supervised reviewer execution and blocked-route recovery
+after profile registration remain subsequent integration work, not demonstrated
+by this source-only routing pass. The original inventory child is verified live
+after 47 minutes, with no restart.
+
+Blocked strategy review routes now reconcile when the active evaluator catalog
+changes. Retry uses the same frozen subject, producer and exclusion policy,
+appends an audit event and creates assignments only after all required kinds
+are available. Unchanged catalogs emit no repeated retry events; assigned routes
+are not replaced. Fifty-one focused routing/campaign tests pass and lint passes.
+This closes source-level recovery, not actual reviewer provisioning/execution or
+production deployment. The original inventory supervisor remains active and has
+progressed to 1,730 objects.
+
+Full backend validation passed 877 tests with one optional skip and two existing
+warnings. Recovery additionally refreshes the route under a database row lock
+before checking its state, preventing competing director cycles from assigning
+the same blocked route concurrently.
+
+The bounded read-only strategy reviewer executor is now implemented as source:
+it binds the routed evaluator, immutable source commit, subject/card/artifact
+digests and review kind, runs isolated Codex without trading authority, validates
+typed approve/reject verdicts, and terminates its owned process group on lease
+loss or timeout. Full worker coverage passes 319 tests; lint passes. It is not
+registered in production workflow dispatch yet, and no genuine reviewer verdict
+is inferred from its unit fixtures. Authenticated completion, reviewer-role
+provisioning and engineering-author provenance remain open.
+
+Runtime evidence supersedes the earlier live-scan observations: VM1's previous
+boot ended at 22:15 UTC, with a new boot at 22:32 UTC. The transient unit and
+native child vanished before root/shard publication. Operation
+`1f24f55d-45c3-4eae-b3ac-6c129023f9c3` is now honestly terminal failed,
+phase inventory_interrupted, completed 2026-09-15T22:39:30.485471Z, preserving
+input digest `4911d259c0cca29a4b87161150c328a71c9db91d86e36961a5f372c1a11cc48a`
+and 1,874 partial objects. No scan success or full-root receipt is claimed.
+Recovery uses persistent user unit `alpha007-full-lake.service`, enabled with
+user lingering verified yes. New run `93a00b1f-e9ae-4dca-931c-efc6bf9dd99a`
+has supervisor PID 18776/native PID 18822 and fresh progress through 22 objects,
+bound to the same native `19d361c` and frozen quality window. Recovery was
+started only after terminal/missing-handle verification, not a polling timeout.
+Boot configuration persistence is verified; an intentional reboot drill was not
+performed. Complete inventory/quality registration remains pending.
+
+Reviewer integration now uses the existing workflow loader, policy validation and
+restricted dispatcher with a closed shared contract and pinned native repository.
+Assigned evaluator routes materialize ordinary governed tasks; blocked routes
+materialize none. SQL lease selection binds the exact evaluator agent, while
+normal grant/capability/source access resolution remains required. Completion
+runs only after authenticated running-lease verification, locks route/assignment,
+replays the routed subject and compares actual lease-time profile/package identity
+before recording the immutable typed verdict. Changed actors, packages, subjects,
+review kinds, missing lease provenance and malformed results are rejected.
+Required review-executor capabilities are checked during route selection so
+profiles without an executable role do not produce invisible unleaseable work.
+Full suites pass 885 backend tests (one optional skip, two existing warnings) and
+320 worker tests; lint and diff checks pass. This source is not deployed. Actual
+reviewer role/profile/grant provisioning, engineering-author provenance and a
+genuine routed review receipt remain open. Replacement scan run
+`93a00b1f-e9ae-4dca-931c-efc6bf9dd99a` remains live under supervisor 18776 and
+has reached 1,221 objects; no complete-root or quality receipt is claimed.

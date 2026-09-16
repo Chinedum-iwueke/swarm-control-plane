@@ -35,6 +35,11 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
     assert "task_approvals.expires_at >" in sql
     assert "tasks.approval_required IS false" in sql
     assert "FOR UPDATE SKIP LOCKED" in sql
+    assert "tasks.task_type !=" in sql
+    assert "tasks.input_contract ->>" in sql
+    params = statement.compile(dialect=postgresql.dialect()).params
+    assert "alpha_strategy_review" in params.values()
+    assert "evaluator_agent_id" in params.values()
 
 
 def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
@@ -52,6 +57,8 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
     denied = SimpleNamespace(id="denied", required_capabilities=["founder-intake"])
     allowed = SimpleNamespace(
         id="allowed",
+        operation_type="founder_intake_plan",
+        input_contract={},
         required_capabilities=["founder-intake"],
         approval_required=False,
         status="queued",

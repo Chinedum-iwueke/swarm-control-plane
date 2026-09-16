@@ -32,6 +32,7 @@ class EvaluationRouteCreate(BaseModel):
     subject_id: str = Field(min_length=1, max_length=150)
     subject_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     producer: ProducerIdentity
+    excluded_producers: list[ProducerIdentity] = Field(default_factory=list, max_length=10)
     required_review_kinds: list[str] = Field(min_length=1, max_length=10)
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
     max_pairwise_shared_dimensions: int = Field(default=4, ge=0, le=4)
@@ -44,10 +45,27 @@ class EvaluationRouteCreate(BaseModel):
         return self
 
 
+class AlphaStrategyReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    verdict: Literal["approve", "reject"]
+    rationale: str = Field(min_length=20, max_length=4000)
+    checks: list[str] = Field(min_length=1, max_length=30)
+    blockers: list[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def consistent_verdict(self):
+        if self.verdict == "approve" and self.blockers:
+            raise ValueError("Approved reviews cannot contain unresolved blockers")
+        return self
+
+
 class EvaluatorAssignmentComplete(BaseModel):
     evaluator_agent_id: uuid.UUID
     review_id: str = Field(min_length=1, max_length=150)
     review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    alpha_strategy_review: AlphaStrategyReview | None = None
 
 
 class EvaluatorProfileResponse(BaseModel):
