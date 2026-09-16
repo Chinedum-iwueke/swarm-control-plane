@@ -1,16 +1,15 @@
 """Supervise a read-only native inventory through the existing operator session."""
 
 import argparse
-from datetime import datetime
 import hashlib
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 import time
+from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
-
 
 REMOTE = '''set -a
 source "$HOME/Library/Application Support/Hermes Mission Control/mission-control.env"
@@ -85,6 +84,8 @@ def main():
     parser.add_argument("--timeout-seconds", type=int, default=21600)
     parser.add_argument("--quality-window-start")
     parser.add_argument("--quality-window-end")
+    parser.add_argument("--checkpoint-path", type=Path,
+                        help="Native private inventory cache; never execution authority")
     args = parser.parse_args()
     if bool(args.quality_window_start) != bool(args.quality_window_end):
         parser.error("quality requires both frozen window clocks")
@@ -112,6 +113,8 @@ def main():
     if args.quality_window_start:
         binding.update(quality_window_start=args.quality_window_start,
                        quality_window_end=args.quality_window_end)
+    if args.checkpoint_path:
+        binding["checkpoint_path"] = str(args.checkpoint_path.resolve())
     operation = {
         "operation_key": "lake-inventory:" + run_id,
         "kind": "full_lake_inventory", "title": "Full Binance/Bybit lake inventory",
@@ -160,6 +163,7 @@ def main():
                 str(args.python), str(repo / "scripts/inventory_full_lake.py"),
                 "--data-root", str(args.data_root), "--source-commit", commit,
                 "--run-id", run_id, "--output", str(output),
+                *(["--checkpoint", str(args.checkpoint_path)] if args.checkpoint_path else []),
             ], stdout=log, stderr=subprocess.STDOUT, env=environment)
             started = time.monotonic()
             operation["detail"]["pid"] = process.pid
@@ -225,8 +229,10 @@ def main():
                          error_summary=f"{type(error).__name__}: {error}"[:4000])
         try:
             publish(args.operator_host, "/v1/operations/lake-inventory/report", operation)
-        except Exception:
-            pass
+        except (subprocess.SubprocessError, OSError, ValueError) as publication_error:
+            print(json.dumps({"event": "lake_inventory_failure_report_unavailable",
+                              "run_id": run_id,
+                              "error_type": type(publication_error).__name__}), flush=True)
         raise
     finally:
         signal.signal(signal.SIGTERM, previous_handler)
