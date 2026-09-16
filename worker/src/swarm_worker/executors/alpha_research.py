@@ -281,6 +281,23 @@ class AlphaResearchExecutor:
                 "campaign_digest": document["campaign_digest"],
                 "source_commit": document["source_commit"],
             }
+        qualification_handoff = (
+            _qualification_handoff(document["qualification"])
+            if "qualification" in document
+            else None
+        )
+        downstream_handoff = {
+            **(
+                {"publication_envelope": publication_envelope}
+                if publication_envelope is not None
+                else {}
+            ),
+            **(
+                {"qualification": qualification_handoff}
+                if qualification_handoff is not None
+                else {}
+            ),
+        }
         return WorkflowExecutionResult(
             workflow=workflow.name,
             repository=contract.repository,
@@ -295,7 +312,7 @@ class AlphaResearchExecutor:
                 receipt.relative_to(workspace.plan.attempt_directory).as_posix(),
             ],
             retryable=False,
-            downstream_handoff={"publication_envelope": publication_envelope},
+            downstream_handoff=downstream_handoff,
             summary={
                 "disposition": document["disposition"],
                 "receipt_digest": document["receipt_digest"],
@@ -323,8 +340,15 @@ class AlphaResearchExecutor:
                     else {}
                 ),
                 **(
-                    {"qualification": _qualification_handoff(document["qualification"])}
-                    if "qualification" in document
+                    {
+                        "qualification_receipt": {
+                            "qualified": qualification_handoff.get("qualified"),
+                            "card_digest": qualification_handoff.get("card_digest"),
+                            "tier": qualification_handoff.get("tier"),
+                            "variant_count": qualification_handoff.get("variant_count"),
+                        }
+                    }
+                    if qualification_handoff is not None
                     else {}
                 ),
                 **(

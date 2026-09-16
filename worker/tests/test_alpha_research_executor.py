@@ -161,11 +161,11 @@ def test_alpha_contract_binds_frozen_reusable_native_strategy() -> None:
         )
 
 
-def test_qualification_handoff_retains_execution_inputs_inside_summary_limit() -> None:
+def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> None:
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",
         "qualified": True,
-        "card": {"title": "Weekend momentum", "claim": "x" * 2_000},
+        "card": {"title": "Weekend momentum", "claim": "x" * 5_500},
         "card_digest": "a" * 64,
         "review": {"gates": {"independent_review_complete": True}},
         "variant_count": 8,
@@ -184,7 +184,7 @@ def test_qualification_handoff_retains_execution_inputs_inside_summary_limit() -
         "engine_hypothesis_yaml",
         "strategy_spec",
     }
-    WorkflowExecutionResult(
+    result = WorkflowExecutionResult(
         workflow="alpha-research-execution",
         repository="bulletproof_bt",
         base_commit="a" * 40,
@@ -192,8 +192,16 @@ def test_qualification_handoff_retains_execution_inputs_inside_summary_limit() -
         total_duration_seconds=1,
         steps=[],
         success=True,
-        summary={"qualification": handoff},
+        summary={
+            "qualification_receipt": {
+                "qualified": handoff["qualified"],
+                "card_digest": handoff["card_digest"],
+                "variant_count": handoff["variant_count"],
+            }
+        },
+        downstream_handoff={"qualification": handoff},
     )
+    assert result.downstream_handoff["qualification"] == handoff
 
 
 def test_qualification_handoff_fails_closed_without_execution_artifact() -> None:
