@@ -19,6 +19,7 @@ from app.services.alpha_discovery import (
     _discovery_queries,
     _ensure_data_admission_task,
     _recover_resumed_stage,
+    reconcile_mandate,
     recover_discovery_grounding,
 )
 from fastapi import HTTPException
@@ -341,6 +342,45 @@ def test_stage_recovery_requires_later_bound_operator_resume(monkeypatch, condit
     else:
         assert cycle.status == "needs_attention"
         event.assert_not_called()
+
+
+def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_until=moment + timedelta(days=1),
+        heartbeat_at=None,
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        campaign_id=uuid4(),
+        status="needs_attention",
+        phase="campaign",
+        next_action="operator_review",
+        completed_at=None,
+        heartbeat_at=None,
+    )
+    campaign = SimpleNamespace(
+        id=cycle.campaign_id,
+        status="cancelled",
+        terminal_reason={"category": "operator_cancelled"},
+        hypothesis_count=0,
+        trial_count=0,
+    )
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    db.get.return_value = campaign
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+
+    reconcile_mandate(db, mandate)
+
+    assert cycle.status == "rejected"
+    assert cycle.phase == "complete"
+    assert cycle.next_action == "schedule_next_discovery_cycle"
+    assert cycle.completed_at is not None
+    assert event.call_args.args[2] == "campaign_cancelled_without_candidate"
 
 
 def binding():
