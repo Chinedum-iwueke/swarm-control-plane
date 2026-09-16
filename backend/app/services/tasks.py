@@ -407,7 +407,7 @@ def lease_next_task(
     task.failure = {}
 
     producer_identity = None
-    if task.operation_type == "alpha_strategy_review" or (task.operation_type == "alpha_research_execution" and task.input_contract.get(
+    if task.task_type == "alpha_strategy_review" or (task.task_type == "alpha_research_execution" and task.input_contract.get(
         "stage"
     ) in {"draft", "qualify"}):
         producer_identity = producer_identity_for_lease(

@@ -52,6 +52,23 @@ def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
     assert package.manifest.repository_profile.remote_write is False
 
 
+def test_independent_strategy_review_packages_have_distinct_narrow_identities() -> None:
+    packages = []
+    for role, kind in (("spec", "strategy_spec"), ("causality", "causality_leakage")):
+        package = load_role_package(
+            ROOT / f"role-packages/vm1-alpha-{role}-reviewer/manifest.yaml", WORKFLOWS
+        )
+        packages.append(package)
+        assert package.manifest.task_types == ["alpha_strategy_review"]
+        assert package.manifest.required_capabilities == [f"alpha-strategy-review:{kind}"]
+        assert package.manifest.risk_ceiling == 0
+        assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
+        assert package.manifest.repository_profile.primary_checkout_write is False
+        assert package.manifest.repository_profile.remote_write is False
+        assert package.manifest.permission_profile.privileged_operations is False
+    assert packages[0].manifest_digest != packages[1].manifest_digest
+
+
 def test_memory_steward_is_read_only_and_single_purpose() -> None:
     package = load_role_package(MEMORY_MANIFEST, WORKFLOWS)
     assert package.manifest.task_types == ["research_memory_sync"]

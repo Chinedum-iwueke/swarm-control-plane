@@ -6,8 +6,8 @@ import pytest
 from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryError,
     AlphaDiscoveryExecutor,
-    _runtime_options,
     _prompt,
+    _runtime_options,
     _schema,
 )
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy

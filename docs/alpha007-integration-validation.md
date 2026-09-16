@@ -244,3 +244,22 @@ reviewer role/profile/grant provisioning, engineering-author provenance and a
 genuine routed review receipt remain open. Replacement scan run
 `93a00b1f-e9ae-4dca-931c-efc6bf9dd99a` remains live under supervisor 18776 and
 has reached 1,221 objects; no complete-root or quality receipt is claimed.
+
+## September 16 Rollout And Interruption Correction
+
+PRs 271 (Hermes), 309 (Bulletproof) and 136 (Bible) merged after all their
+CI checks passed. VM2 now runs merged Hermes commit `723029a1d`; migration
+head remains `b1e7f9a03c62`. The recreated API is healthy and its image matches
+the built image `sha256:45ec3459eb2e126d98b21f07921627ff4e52ab8b84446d13933ec2f1e3f725a4`.
+Docker commands in SSH heredocs must disable stdin (`-T` and `/dev/null`) so
+one-off containers cannot consume later rollout commands.
+
+The previous live-scan observation is superseded: VM1 rebooted again at
+23:01 UTC. Run `93a00b1f-e9ae-4dca-931c-efc6bf9dd99a` stopped at 1,753
+objects without a full-root receipt. Its startup replacement failed at the
+operator-host SSH preflight, before native scanning. The user unit is failed
+with MainPID zero; no scan was restarted during crash investigation or rollout.
+Guest logs show no recorded OOM kill or kernel panic, but do not establish the
+hypervisor interruption cause. The Mac software update began after the freezes
+and must not be cited as their cause. Full inventory, reviewer provisioning,
+genuine review receipts and two concurrent terminal backtests remain outstanding.

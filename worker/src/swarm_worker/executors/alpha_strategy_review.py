@@ -77,6 +77,8 @@ class AlphaStrategyReviewExecutor:
                 cwd=workspace.repository, stdin=stdin, stdout=stdout, stderr=stderr,
                 environment_overrides={"CODEX_HOME": str(self._home), "NODE_OPTIONS": "--jitless"},
             )
+            wait_task = (asyncio.create_task(running.process.wait())
+                         if running.process.returncode is None else None)
             try:
                 deadline = started + min(contract.max_duration_seconds, workflow.timeout_seconds)
                 while running.process.returncode is None:
@@ -85,14 +87,20 @@ class AlphaStrategyReviewExecutor:
                         timed_out = True
                         break
                     try:
-                        await asyncio.wait_for(asyncio.shield(running.process.wait()),
+                        await asyncio.wait_for(asyncio.shield(wait_task),
                                                timeout=min(self._interval, remaining))
                     except TimeoutError:
                         await heartbeat({"phase": "independent_strategy_review",
                                          "route_id": str(contract.route_id), "review_kind": contract.review_kind})
             finally:
-                if running.process.returncode is None:
-                    await self._runner.terminate(running, grace_seconds=5)
+                try:
+                    if running.process.returncode is None:
+                        await self._runner.terminate(running, grace_seconds=5)
+                finally:
+                    if wait_task is not None:
+                        if not wait_task.done():
+                            wait_task.cancel()
+                        await asyncio.gather(wait_task, return_exceptions=True)
         result = None
         if not timed_out and running.process.returncode == 0 and output.is_file():
             if output.is_symlink() or output.stat().st_size > 15_000:

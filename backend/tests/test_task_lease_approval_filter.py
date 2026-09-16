@@ -57,7 +57,7 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
     denied = SimpleNamespace(id="denied", required_capabilities=["founder-intake"])
     allowed = SimpleNamespace(
         id="allowed",
-        operation_type="founder_intake_plan",
+        task_type="founder_intake_plan",
         input_contract={},
         required_capabilities=["founder-intake"],
         approval_required=False,

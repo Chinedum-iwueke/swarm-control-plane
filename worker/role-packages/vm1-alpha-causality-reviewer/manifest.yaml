@@ -1,0 +1,29 @@
+schema_version: 1
+name: vm1-alpha-causality-reviewer
+version: 1.0.0
+role: Independent VM1 causality strategy reviewer
+task_types:
+- alpha_strategy_review
+workflows:
+- name: alpha-strategy-review
+  file: alpha-strategy-review.yaml
+  sha256: d7eec154e311de0247c1046f18f1cb31543372c10a44002460846674b5f1cf60
+required_capabilities:
+- alpha-strategy-review:causality_leakage
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: alpha-independent-causality-review-only
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false

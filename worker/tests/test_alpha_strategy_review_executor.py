@@ -119,15 +119,21 @@ async def test_lease_loss_terminates_the_owned_reviewer_process(tmp_path):
 
     class Process:
         returncode = None
+        wait_cancelled = False
 
         async def wait(self):
-            await asyncio.sleep(10)
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                self.wait_cancelled = True
+                raise
 
     class Runner:
         terminated = False
 
         async def start(self, *args, **kwargs):
-            return SimpleNamespace(process=Process())
+            self.process = Process()
+            return SimpleNamespace(process=self.process)
 
         async def terminate(self, running, *, grace_seconds):
             self.terminated = True
@@ -145,3 +151,4 @@ async def test_lease_loss_terminates_the_owned_reviewer_process(tmp_path):
         await executor.execute(task=task, workflow=SimpleNamespace(name=payload["workflow"], steps=[], timeout_seconds=60),
                                workspace=workspace, heartbeat=lost)
     assert runner.terminated
+    assert runner.process.wait_cancelled
