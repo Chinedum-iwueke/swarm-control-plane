@@ -1498,23 +1498,25 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             cycle.status = "needs_attention"
             cycle.next_action = campaign.next_action
         elif campaign and campaign.status == "cancelled":
-            cycle.status = "rejected"
-            cycle.phase = "complete"
-            cycle.next_action = "schedule_next_discovery_cycle"
-            cycle.completed_at = moment
-            _event(
-                db,
-                mandate,
-                "campaign_cancelled_without_candidate",
-                {
-                    "campaign_id": str(campaign.id),
-                    "terminal_reason": campaign.terminal_reason,
-                    "hypotheses": campaign.hypothesis_count,
-                    "trials": campaign.trial_count,
-                },
-                cycle,
-            )
-        return
+            if cycle.status != "rejected":
+                cycle.status = "rejected"
+                cycle.phase = "complete"
+                cycle.next_action = "schedule_next_discovery_cycle"
+                cycle.completed_at = moment
+                _event(
+                    db,
+                    mandate,
+                    "campaign_cancelled_without_candidate",
+                    {
+                        "campaign_id": str(campaign.id),
+                        "terminal_reason": campaign.terminal_reason,
+                        "hypotheses": campaign.hypothesis_count,
+                        "trials": campaign.trial_count,
+                    },
+                    cycle,
+                )
+        if campaign is None or campaign.status != "cancelled":
+            return
     if _reconcile_data_admissions(db, mandate, cycle):
         return
     _recover_resumed_stage(db, mandate, cycle)

@@ -351,6 +351,14 @@ def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
         status="active",
         valid_until=moment + timedelta(days=1),
         heartbeat_at=None,
+        cycle_count=1,
+        hypothesis_count=0,
+        trial_count=0,
+        budget={
+            "maximum_cycles": 10,
+            "maximum_hypotheses": 10,
+            "maximum_total_trials": 80,
+        },
     )
     cycle = SimpleNamespace(
         id=uuid4(),
@@ -372,7 +380,20 @@ def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
     db.scalar.return_value = cycle
     db.get.return_value = campaign
     event = MagicMock()
+    queued = SimpleNamespace(id=uuid4())
+    new_cycle = MagicMock()
     monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._reconcile_data_admissions",
+        lambda *_: False,
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._recover_resumed_stage", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._next_founder_idea", lambda *_: queued
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
 
     reconcile_mandate(db, mandate)
 
@@ -381,6 +402,7 @@ def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
     assert cycle.next_action == "schedule_next_discovery_cycle"
     assert cycle.completed_at is not None
     assert event.call_args.args[2] == "campaign_cancelled_without_candidate"
+    new_cycle.assert_called_once_with(db, mandate, queued)
 
 
 def binding():
