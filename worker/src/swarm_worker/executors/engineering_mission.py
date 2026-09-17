@@ -270,7 +270,7 @@ class EngineeringMissionExecutor:
 
     def _changed_paths(self, workspace: TaskWorkspace) -> list[str]:
         result = self._git.run(
-            ["git", "status", "--porcelain", "-z"],
+            ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
             cwd=workspace.repository,
             check=True,
         )
@@ -306,16 +306,54 @@ class EngineeringMissionExecutor:
                 for allowed in contract.allowed_paths
             ):
                 raise ExecutionPolicyError(f"Changed path {path!r} is outside scope.")
-        self._git.run(
-            ["git", "add", "--intent-to-add", "--", *changed],
-            cwd=workspace.repository,
-        )
-        diff = self._git.run(
-            ["git", "diff", "--no-ext-diff", "--binary", "HEAD", "--"],
-            cwd=workspace.repository,
-        ).stdout
+        diff = self._build_patch(changed, workspace)
         if len(diff.splitlines()) > contract.max_diff_lines:
             raise ExecutionPolicyError("Diff-line budget exceeded.")
+
+    def _build_patch(
+        self,
+        changed: list[str],
+        workspace: TaskWorkspace,
+    ) -> str:
+        """Build a complete patch without mutating the shared Git object database."""
+        tracked: list[str] = []
+        untracked: list[str] = []
+        for path in changed:
+            probe = self._git.run(
+                ["git", "ls-files", "--error-unmatch", "--", path],
+                cwd=workspace.repository,
+                check=False,
+            )
+            (tracked if probe.return_code == 0 else untracked).append(path)
+
+        parts: list[str] = []
+        if tracked:
+            parts.append(
+                self._git.run(
+                    [
+                        "git",
+                        "diff",
+                        "--no-ext-diff",
+                        "--binary",
+                        "HEAD",
+                        "--",
+                        *tracked,
+                    ],
+                    cwd=workspace.repository,
+                ).stdout
+            )
+        for path in untracked:
+            result = self._git.run(
+                ["git", "diff", "--no-index", "--binary", "--", "/dev/null", path],
+                cwd=workspace.repository,
+                check=False,
+            )
+            if result.return_code not in {0, 1}:
+                raise ExecutionPolicyError(
+                    f"Unable to construct patch for untracked path {path!r}."
+                )
+            parts.append(result.stdout)
+        return "".join(parts)
 
     def _create_bundle(
         self,
@@ -325,10 +363,7 @@ class EngineeringMissionExecutor:
     ) -> StepExecutionResult:
         started = datetime.now(timezone.utc)
         monotonic = time.monotonic()
-        patch = self._git.run(
-            ["git", "diff", "--no-ext-diff", "--binary", "HEAD", "--"],
-            cwd=workspace.repository,
-        ).stdout
+        patch = self._build_patch(changed, workspace)
         patch_path = workspace.artifacts / "changes.patch"
         patch_path.write_text(patch, encoding="utf-8")
         patch_path.chmod(0o600)
