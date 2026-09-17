@@ -1809,6 +1809,7 @@ def record_attempt(
     campaign.hypothesis_count += 1
     campaign.trial_count += payload.trial_count
     campaign.heartbeat_at = now()
+    campaign.terminal_reason = {}
     if payload.outcome == "candidate":
         campaign.status = "shadow_candidate"
         campaign.phase = "complete"

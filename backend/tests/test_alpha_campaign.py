@@ -1085,6 +1085,7 @@ def test_registration_rejects_nonadmitted_bulletproof_receipt():
 
 def test_negative_attempt_is_retained_and_loop_continues(monkeypatch):
     record = campaign()
+    record.terminal_reason = {"category": "prior_stage_pending"}
     db = MagicMock()
     db.scalar.return_value = None
     monkeypatch.setattr(service, "_append_event", MagicMock())
@@ -1094,6 +1095,7 @@ def test_negative_attempt_is_retained_and_loop_continues(monkeypatch):
     assert record.trial_count == 4
     assert record.status == "running"
     assert record.next_action == "compile_evidence_grounded_hypothesis"
+    assert record.terminal_reason == {}
 
 
 def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch):
