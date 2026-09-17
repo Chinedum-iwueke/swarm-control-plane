@@ -1,6 +1,6 @@
 schema_version: 1
 name: vm1-alpha-strategy-engineer
-version: 1.0.0
+version: 1.0.1
 role: Restricted VM1 native alpha strategy engineer
 task_types:
 - engineering_mission

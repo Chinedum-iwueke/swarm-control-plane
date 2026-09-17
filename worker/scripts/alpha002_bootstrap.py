@@ -109,6 +109,7 @@ def main() -> int:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--package", default=DEFAULT_PACKAGE)
     parser.add_argument("--recover-registration", action="store_true")
+    parser.add_argument("--rotate-package", action="store_true")
     args = parser.parse_args()
     package_name = args.package
     if args.state.exists() != args.environment.exists():
@@ -123,35 +124,40 @@ def main() -> int:
     ).manifest
     canonical = canonical_manifest(manifest)
     manifest_digest = hashlib.sha256(canonical).hexdigest()
+    rotate_existing_package = False
     if args.state.exists():
         state = json.loads(args.state.read_text(encoding="utf-8"))
-        if (
-            state.get("slug") != package_name
-            or state.get("manifest_digest") != manifest_digest
+        package_changed = (
+            state.get("manifest_digest") != manifest_digest
             or state.get("source_commit") != args.source_commit
-        ):
+        )
+        if state.get("slug") != package_name:
+            raise RuntimeError("Existing executor state belongs to another package.")
+        if package_changed and not args.rotate_package:
             raise RuntimeError(
                 "Existing executor state differs; use an explicit package/credential rotation."
             )
         if args.state.stat().st_mode & 0o077 or args.environment.stat().st_mode & 0o077:
             raise RuntimeError("Existing executor state files are not mode 0600.")
-        with httpx.Client(
-            base_url=os.environ["SWARM_API_URL"].rstrip("/"),
-            headers={
-                "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
-            },
-            timeout=60,
-        ) as api:
-            identity = ensure_workload_identity(
-                api,
-                state,
-                expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
-            )
-        state["workload_identity_id"] = identity["id"]
-        state["workload_scopes"] = WORKLOAD_SCOPES
-        atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
-        print(json.dumps(state, indent=2, sort_keys=True))
-        return 0
+        if not package_changed:
+            with httpx.Client(
+                base_url=os.environ["SWARM_API_URL"].rstrip("/"),
+                headers={
+                    "Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"
+                },
+                timeout=60,
+            ) as api:
+                identity = ensure_workload_identity(
+                    api,
+                    state,
+                    expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
+                )
+            state["workload_identity_id"] = identity["id"]
+            state["workload_scopes"] = WORKLOAD_SCOPES
+            atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
+            print(json.dumps(state, indent=2, sort_keys=True))
+            return 0
+        rotate_existing_package = True
     with httpx.Client(
         base_url=os.environ["SWARM_API_URL"].rstrip("/"),
         headers={"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
@@ -188,7 +194,9 @@ def main() -> int:
         existing_agent = next(
             (item for item in agents if item["slug"] == package_name), None
         )
-        if existing_agent and not args.recover_registration:
+        if existing_agent and not (
+            args.recover_registration or rotate_existing_package
+        ):
             raise RuntimeError("Executor identity exists; refusing implicit rotation.")
         if existing_agent:
             if (
@@ -225,16 +233,18 @@ def main() -> int:
             if item["deployment"]["agent_id"] == registration["agent"]["id"]
             and item["deployment"]["is_active"]
         ]
-        if active_deployments and (
-            len(active_deployments) != 1
-            or active_deployments[0]["package_id"] != package["id"]
-        ):
+        matching_deployments = [
+            item for item in active_deployments if item["package_id"] == package["id"]
+        ]
+        if len(matching_deployments) > 1:
+            raise RuntimeError("Multiple active deployments match the reviewed package.")
+        if active_deployments and not matching_deployments and not rotate_existing_package:
             raise RuntimeError(
                 "Partial executor deployment differs from the reviewed package."
             )
         deployment = (
-            active_deployments[0]
-            if active_deployments
+            matching_deployments[0]
+            if matching_deployments
             else call(
                 api,
                 "POST",
@@ -246,6 +256,14 @@ def main() -> int:
                 },
             )
         )
+        if rotate_existing_package:
+            for prior in active_deployments:
+                if prior["id"] != deployment["id"]:
+                    call(
+                        api,
+                        "POST",
+                        f"/v1/packages/deployments/{prior['id']}/revoke",
+                    )
         charter_manifest = {
             "schema_version": "agent-charter-v1.0.0",
             "role": manifest.role,
