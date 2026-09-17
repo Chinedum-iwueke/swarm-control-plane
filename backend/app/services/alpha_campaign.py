@@ -74,7 +74,8 @@ CLAIM_BOUNDARY = (
     "producer; candidate status permits prospective shadow review, never orders, "
     "capital allocation, production promotion or self-approval."
 )
-STRATEGY_ENGINEERING_STAGE = "G2"
+STRATEGY_ENGINEERING_STAGE = "G3"
+OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
     "docs/backtest_truth_certification.md",
@@ -786,7 +787,12 @@ def _create_strategy_engineering_task(
                 "research_context": contract["research_context"],
             },
             approval_required=True,
-            required_capabilities=["git", "python", "testing"],
+            required_capabilities=[
+                "alpha-strategy-engineering",
+                "git",
+                "python",
+                "testing",
+            ],
             allowed_machines=["vm1-developer"],
             max_attempts=2,
         )
@@ -798,45 +804,47 @@ def _create_strategy_engineering_task(
 def _legacy_strategy_engineering_task(
     db: Session, campaign: AlphaCampaign, source: dict
 ) -> Task | None:
-    legacy = db.scalar(
-        select(Task).where(
-            Task.task_number == _stage_task_number(campaign, source, "G")
+    for stage in OBSOLETE_STRATEGY_ENGINEERING_STAGES:
+        legacy = db.scalar(
+            select(Task).where(
+                Task.task_number == _stage_task_number(campaign, source, stage)
+            )
         )
-    )
-    if legacy is None or legacy.status in {"cancelled", "failed"}:
-        return None
-    if legacy.status == "succeeded":
-        return legacy
-    if legacy.status != "pending_approval":
-        raise HTTPException(
-            409,
-            "Obsolete strategy-engineering task is already active; cancel it before "
-            "creating the corrected contract.",
+        if legacy is None or legacy.status in {"cancelled", "failed"}:
+            continue
+        if legacy.status == "succeeded":
+            return legacy
+        if legacy.status != "pending_approval":
+            raise HTTPException(
+                409,
+                "Obsolete strategy-engineering task is already active; cancel it "
+                "before creating the corrected contract.",
+            )
+        approval = db.scalar(
+            select(TaskApproval).where(TaskApproval.task_id == legacy.id)
         )
-    approval = db.scalar(
-        select(TaskApproval).where(TaskApproval.task_id == legacy.id)
-    )
-    if approval is None or approval.status != "pending":
-        raise HTTPException(
-            409, "Obsolete strategy-engineering approval cannot be superseded safely."
+        if approval is None or approval.status != "pending":
+            raise HTTPException(
+                409,
+                "Obsolete strategy-engineering approval cannot be superseded safely.",
+            )
+        decide_task(
+            db,
+            approval,
+            actor="alpha-campaign-director",
+            reason=(
+                "Superseded by the production-rehearsed strategy-engineering contract "
+                "with exclusive worker routing."
+            ),
+            action="reject",
         )
-    decide_task(
-        db,
-        approval,
-        actor="alpha-campaign-director",
-        reason=(
-            "Superseded because the task referenced a nonexistent generation prompt "
-            "and omitted the canonical backtest-truth contract."
-        ),
-        action="reject",
-    )
-    append_task_event(
-        db,
-        legacy,
-        "task_contract_superseded",
-        "The immutable engineering contract was replaced by its corrected G2 revision.",
-        payload={"successor_stage": STRATEGY_ENGINEERING_STAGE},
-    )
+        append_task_event(
+            db,
+            legacy,
+            "task_contract_superseded",
+            "The immutable engineering contract was replaced by its rehearsed G3 revision.",
+            payload={"successor_stage": STRATEGY_ENGINEERING_STAGE},
+        )
     return None
 
 
