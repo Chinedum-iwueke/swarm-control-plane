@@ -23,6 +23,7 @@ from app.services.evaluator_routing import (
     require_independence,
     retry_blocked_route,
     task_producer_identity,
+    validated_alpha_strategy_reviews,
 )
 from fastapi import HTTPException
 
@@ -278,6 +279,27 @@ def test_alpha_review_requires_real_approving_content():
     assert alpha_strategy_reviews_approved(
         db, record, subject_digest=DIGEST, producer_agent_id=ONE
     )
+
+
+def test_validated_alpha_review_preserves_rejection_content():
+    db, record, receipt, assignments, events = alpha_review_fixture()
+    review = events[0].payload["alpha_strategy_review"]
+    review["verdict"] = "reject"
+    review["blockers"] = ["semantic mismatch"]
+    assignments[0].review_digest = digest(review)
+    events[0].payload["review_digest"] = assignments[0].review_digest
+    receipt.assertion["assignments"][0]["review_digest"] = assignments[0].review_digest
+    receipt.assertion["assignments"][0]["alpha_strategy_review"] = review
+    receipt.receipt_digest = digest(receipt.assertion)
+
+    reviews = validated_alpha_strategy_reviews(
+        db, record, subject_digest=DIGEST, producer_agent_id=ONE
+    )
+
+    assert reviews is not None
+    assert [item.verdict for item in reviews] == ["reject", "approve"]
+    assert reviews[0].blockers == ["semantic mismatch"]
+    assert not all(item.verdict == "approve" for item in reviews)
 
 
 def test_original_drafter_cannot_review_on_another_executor_slot():
