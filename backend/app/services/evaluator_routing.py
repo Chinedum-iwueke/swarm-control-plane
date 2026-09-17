@@ -660,7 +660,7 @@ def require_independence(
     return receipt
 
 
-def alpha_strategy_reviews_approved(
+def validated_alpha_strategy_reviews(
     db: Session,
     route: EvaluationRoute,
     *,
@@ -669,8 +669,8 @@ def alpha_strategy_reviews_approved(
     excluded_agent_ids=(),
     excluded_identities=(),
     qualifier_identity=None,
-) -> bool:
-    """Require both routed independence and immutable approving review content."""
+) -> list[AlphaStrategyReview] | None:
+    """Return immutable review content only when the routed evidence is valid."""
     if (
         route.subject_type != "alpha_strategy_qualification"
         or route.subject_digest != subject_digest
@@ -681,7 +681,7 @@ def alpha_strategy_reviews_approved(
             set(route.policy.get("required_review_kinds", []))
         )
     ):
-        return False
+        return None
     if qualifier_identity is not None and (
         qualifier_identity not in excluded_identities or any(
             qualifier_identity.get(key) != route.producer.get(key)
@@ -696,7 +696,7 @@ def alpha_strategy_reviews_approved(
             )
         )
     ):
-        return False
+        return None
     receipt = db.scalar(
         select(EvaluationIndependenceReceipt).where(
             EvaluationIndependenceReceipt.route_id == route.id
@@ -712,7 +712,7 @@ def alpha_strategy_reviews_approved(
         or receipt.assertion.get("producer") != route.producer
         or receipt.assertion.get("policy") != route.policy
     ):
-        return False
+        return None
     assignments = list(
         db.scalars(
             select(EvaluatorAssignment).where(EvaluatorAssignment.route_id == route.id)
@@ -728,11 +728,12 @@ def alpha_strategy_reviews_approved(
     )
     required = set(route.policy["required_review_kinds"])
     if {item.review_kind for item in assignments} != required:
-        return False
+        return None
     asserted = receipt.assertion.get("assignments")
     if not isinstance(asserted, list) or len(asserted) != len(assignments):
-        return False
+        return None
     reviewed_identities = []
+    reviews = []
     for assignment in assignments:
         profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
         matching = [
@@ -752,28 +753,27 @@ def alpha_strategy_reviews_approved(
             in {str(producer_agent_id), *(str(actor) for actor in excluded_agent_ids)}
             or len(matching) != 1
         ):
-            return False
+            return None
         identity = _profile_identity(profile)
         for other in (route.producer, *excluded_identities, *reviewed_identities):
             if _hard_conflicts(identity, other):
-                return False
+                return None
             if _correlation(identity, other)[
                 "shared_dimension_count"
             ] > route.policy.get("max_pairwise_shared_dimensions", 4):
-                return False
+                return None
         reviewed_identities.append(identity)
         try:
             review = AlphaStrategyReview.model_validate(
                 matching[0].payload.get("alpha_strategy_review")
             )
         except ValueError:
-            return False
+            return None
         if (
             review.subject_digest != subject_digest
-            or review.verdict != "approve"
             or digest(review.model_dump(mode="json")) != assignment.review_digest
         ):
-            return False
+            return None
         attested = [
             item
             for item in asserted
@@ -786,8 +786,32 @@ def alpha_strategy_reviews_approved(
             )
         ]
         if len(attested) != 1:
-            return False
-    return bool(assignments)
+            return None
+        reviews.append(review)
+    return reviews or None
+
+
+def alpha_strategy_reviews_approved(
+    db: Session,
+    route: EvaluationRoute,
+    *,
+    subject_digest: str,
+    producer_agent_id,
+    excluded_agent_ids=(),
+    excluded_identities=(),
+    qualifier_identity=None,
+) -> bool:
+    """Require both routed independence and immutable approving review content."""
+    reviews = validated_alpha_strategy_reviews(
+        db,
+        route,
+        subject_digest=subject_digest,
+        producer_agent_id=producer_agent_id,
+        excluded_agent_ids=excluded_agent_ids,
+        excluded_identities=excluded_identities,
+        qualifier_identity=qualifier_identity,
+    )
+    return reviews is not None and all(item.verdict == "approve" for item in reviews)
 
 
 def serialize_route(db: Session, route: EvaluationRoute) -> dict:

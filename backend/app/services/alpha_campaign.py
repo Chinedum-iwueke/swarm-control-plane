@@ -51,6 +51,7 @@ from app.services.evaluator_routing import (
     require_independence,
     retry_blocked_route,
     task_producer_identity,
+    validated_alpha_strategy_reviews,
 )
 from app.services.evaluator_routing import append_event as append_evaluation_event
 from app.services.governance import consume_task_approval
@@ -929,6 +930,79 @@ def _supersede_stale_strategy_review_route(
     )
 
 
+def _retain_strategy_review_rejection(
+    db: Session,
+    campaign: AlphaCampaign,
+    source: dict,
+    qualification: dict,
+    route: EvaluationRoute,
+    reviews: list,
+) -> None:
+    """Retain a pre-execution invalid result and advance the bounded campaign."""
+    hypothesis = qualification["artifact_bundle"].get("hypothesis_spec")
+    if not isinstance(hypothesis, dict) or not hypothesis.get("hypothesis_id"):
+        raise HTTPException(
+            409, "Rejected strategy evidence lacks its immutable hypothesis contract."
+        )
+    binding = _source_bindings(campaign, source)[0]
+    independence = require_independence(db, route)
+    assignments = list(
+        db.scalars(
+            select(EvaluatorAssignment).where(EvaluatorAssignment.route_id == route.id)
+        ).all()
+    )
+    evidence_digests = sorted(
+        {
+            route.route_digest,
+            independence.receipt_digest,
+            *(item.review_digest for item in assignments if item.review_digest),
+        }
+    )
+    blockers = sorted(
+        {
+            blocker
+            for review in reviews
+            for blocker in review.blockers
+        }
+    )
+    record_attempt(
+        db,
+        campaign,
+        AlphaCampaignAttemptCreate(
+            attempt_key=f"strategy-review-rejected-{route.id}",
+            expected_campaign_digest=campaign.campaign_digest,
+            question=" ".join(source["question"].split()),
+            question_digest=digest_document(
+                {"question": " ".join(source["question"].split())}
+            ),
+            source_candidate_id=source["source_candidate_id"],
+            source_candidate_digest=source["source_candidate_digest"],
+            hypothesis_id=hypothesis["hypothesis_id"],
+            hypothesis_digest=digest_document(hypothesis),
+            dataset_build_id=binding["dataset_build_id"],
+            dataset_digest=binding["dataset_digest"],
+            trial_count=0,
+            outcome="invalid",
+            gate_report={
+                "truth_certified": False,
+                "point_in_time_valid": False,
+                "reproducible": False,
+                "out_of_sample_evaluated": False,
+                "cost_stress_evaluated": False,
+                "selection_bias_audited": False,
+                "independent_review_complete": True,
+                "shadow_eligible": False,
+                "production_eligible": False,
+                "capital_authority": False,
+                "failed_gates": blockers[:50] or ["independent_strategy_review"],
+            },
+            evidence_digests=evidence_digests,
+            produced_by="bulletproof_bt",
+            source_commit=campaign.specification["bulletproof_source_commit"],
+        ),
+    )
+
+
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
     delegated = (
         campaign.specification.get("execution_protocol") == "alpha004-delegated-v1"
@@ -1220,15 +1294,33 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     elif review_route.status == "blocked":
         review_route = retry_blocked_route(db, review_route)
     _materialize_strategy_review_tasks(db, review_route, subject, qualification)
-    if not alpha_strategy_reviews_approved(
+    review_arguments = {
+        "subject_digest": subject_digest,
+        "producer_agent_id": producers[1],
+        "excluded_agent_ids": producers,
+        "excluded_identities": identities,
+        "qualifier_identity": identities[1],
+    }
+    reviews = validated_alpha_strategy_reviews(
         db,
         review_route,
-        subject_digest=subject_digest,
-        producer_agent_id=producers[1],
-        excluded_agent_ids=producers,
-        excluded_identities=identities,
-        qualifier_identity=identities[1],
-    ):
+        **review_arguments,
+    )
+    if review_route.status == "completed" and reviews is None:
+        campaign.status = "needs_attention"
+        campaign.phase = "complete"
+        campaign.next_action = "operator_review"
+        campaign.terminal_reason = {
+            "category": "independent_strategy_review_invalid",
+            "route_id": str(review_route.id),
+        }
+        return qualification_task
+    if reviews is not None and any(item.verdict == "reject" for item in reviews):
+        _retain_strategy_review_rejection(
+            db, campaign, source, qualification, review_route, reviews
+        )
+        return None
+    if not alpha_strategy_reviews_approved(db, review_route, **review_arguments):
         campaign.phase = "independent_strategy_review"
         campaign.next_action = "route_independent_strategy_review"
         campaign.terminal_reason = {

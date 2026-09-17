@@ -875,6 +875,61 @@ def test_stale_reviewer_route_is_retained_and_superseded(monkeypatch):
     assert payload.supersedes_route_id == route.id
 
 
+def test_strategy_review_rejection_is_retained_as_invalid_without_trials(monkeypatch):
+    source = {
+        "source_candidate_id": str(uuid4()),
+        "source_candidate_digest": "1" * 64,
+        "question": "Does the exact causal signal predict the next return?",
+    }
+    campaign = SimpleNamespace(
+        campaign_digest="2" * 64,
+        specification={
+            "bulletproof_source_commit": COMMIT,
+            "dataset_bindings": [
+                {
+                    "dataset_build_id": str(uuid4()),
+                    "dataset_digest": "3" * 64,
+                }
+            ],
+        },
+    )
+    qualification = {
+        "artifact_bundle": {
+            "hypothesis_spec": {
+                "hypothesis_id": "CAUSAL-H1",
+                "claim": source["question"],
+            }
+        }
+    }
+    route = SimpleNamespace(id=uuid4(), route_digest="4" * 64)
+    reviews = [
+        SimpleNamespace(
+            blockers=["60-minute target differs from a 240-minute hold"]
+        )
+    ]
+    assignments = [SimpleNamespace(review_digest="5" * 64)]
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = assignments
+    monkeypatch.setattr(
+        service,
+        "require_independence",
+        lambda db, route: SimpleNamespace(receipt_digest="6" * 64),
+    )
+    retained = MagicMock()
+    monkeypatch.setattr(service, "record_attempt", retained)
+
+    service._retain_strategy_review_rejection(
+        db, campaign, source, qualification, route, reviews
+    )
+
+    payload = retained.call_args.args[2]
+    assert payload.outcome == "invalid"
+    assert payload.trial_count == 0
+    assert payload.gate_report.independent_review_complete is True
+    assert payload.gate_report.shadow_eligible is False
+    assert payload.evidence_digests == ["4" * 64, "5" * 64, "6" * 64]
+
+
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
 ):
