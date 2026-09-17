@@ -88,6 +88,24 @@ def test_prompt_forbids_push_merge_and_deploy() -> None:
     assert "Allowed paths" in prompt
 
 
+def test_codex_subprocess_uses_fixed_jitless_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/untrusted.js")
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path / "codex-home",
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        effective_uid=lambda: 1000,
+    )
+
+    assert executor._codex_environment() == {
+        "CODEX_HOME": str(tmp_path / "codex-home"),
+        "NODE_OPTIONS": "--jitless",
+    }
+
+
 def test_scientific_evidence_reaches_coder_and_independent_reviewer():
     document = contract().model_dump()
     document["evidence_context"] = json.dumps({

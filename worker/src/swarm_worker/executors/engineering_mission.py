@@ -24,6 +24,8 @@ from swarm_worker.workspace import SubprocessRunner, TaskWorkspace
 
 
 class EngineeringMissionExecutor:
+    _CODEX_NODE_OPTIONS = "--jitless"
+
     def __init__(
         self,
         *,
@@ -212,7 +214,7 @@ class EngineeringMissionExecutor:
                 stdin=stdin_file,
                 stdout=stdout_file,
                 stderr=stderr_file,
-                environment_overrides={"CODEX_HOME": str(self._codex_home)},
+                environment_overrides=self._codex_environment(),
             )
             deadline = monotonic + timeout_seconds
             while running.process.returncode is None:
@@ -259,6 +261,12 @@ class EngineeringMissionExecutor:
                 )
             )
         return result
+
+    def _codex_environment(self) -> dict[str, str]:
+        return {
+            "CODEX_HOME": str(self._codex_home),
+            "NODE_OPTIONS": self._CODEX_NODE_OPTIONS,
+        }
 
     def _changed_paths(self, workspace: TaskWorkspace) -> list[str]:
         result = self._git.run(
