@@ -939,10 +939,41 @@ def _retain_strategy_review_rejection(
     reviews: list,
 ) -> None:
     """Retain a pre-execution invalid result and advance the bounded campaign."""
-    hypothesis = qualification["artifact_bundle"].get("hypothesis_spec")
-    if not isinstance(hypothesis, dict) or not hypothesis.get("hypothesis_id"):
+    artifact_bundle = qualification["artifact_bundle"]
+    bounded_contract = qualification.get("hypothesis_contract")
+    hypothesis = bounded_contract
+    if not isinstance(bounded_contract, dict):
+        hypothesis = artifact_bundle.get("hypothesis_spec")
+        if not isinstance(hypothesis, dict):
+            hypothesis = artifact_bundle.get("engine_hypothesis_yaml")
+    hypothesis_id = (
+        hypothesis.get("hypothesis_id") if isinstance(hypothesis, dict) else None
+    )
+    source_card_hash = None
+    if isinstance(hypothesis, dict):
+        source_card_hash = hypothesis.get("source_card_hash")
+        provenance = hypothesis.get("generation_provenance")
+        if source_card_hash is None and isinstance(provenance, dict):
+            source_card_hash = provenance.get("source_card_hash")
+    if (
+        not isinstance(hypothesis_id, str)
+        or not hypothesis_id.strip()
+        or source_card_hash != qualification.get("card_digest")
+    ):
         raise HTTPException(
             409, "Rejected strategy evidence lacks its immutable hypothesis contract."
+        )
+    hypothesis_digest = (
+        bounded_contract.get("hypothesis_digest")
+        if isinstance(bounded_contract, dict)
+        else digest_document(hypothesis)
+    )
+    if (
+        not isinstance(hypothesis_digest, str)
+        or len(hypothesis_digest) != 64
+    ):
+        raise HTTPException(
+            409, "Rejected strategy evidence has an invalid hypothesis digest."
         )
     binding = _source_bindings(campaign, source)[0]
     independence = require_independence(db, route)
@@ -977,8 +1008,8 @@ def _retain_strategy_review_rejection(
             ),
             source_candidate_id=source["source_candidate_id"],
             source_candidate_digest=source["source_candidate_digest"],
-            hypothesis_id=hypothesis["hypothesis_id"],
-            hypothesis_digest=digest_document(hypothesis),
+            hypothesis_id=hypothesis_id,
+            hypothesis_digest=hypothesis_digest,
             dataset_build_id=binding["dataset_build_id"],
             dataset_digest=binding["dataset_digest"],
             trial_count=0,

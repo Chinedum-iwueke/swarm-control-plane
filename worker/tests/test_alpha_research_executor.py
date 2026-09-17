@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -171,7 +173,11 @@ def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit(
         "variant_count": 8,
         "artifact_bundle": {
             "card": {"duplicated": "x" * 20_000},
-            "hypothesis_spec": {"duplicated": "x" * 20_000},
+            "hypothesis_spec": {
+                "hypothesis_id": "h1",
+                "source_card_hash": "a" * 64,
+                "duplicated": "x" * 20_000,
+            },
             "normalized_ir": {"duplicated": "x" * 20_000},
             "engine_hypothesis_yaml": {"metadata": {"hypothesis_id": "h1"}},
             "strategy_spec": {"strategy": {"name": "alpha_weekend_momentum"}},
@@ -183,6 +189,16 @@ def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit(
     assert set(handoff["artifact_bundle"]) == {
         "engine_hypothesis_yaml",
         "strategy_spec",
+    }
+    encoded_hypothesis = json.dumps(
+        qualification["artifact_bundle"]["hypothesis_spec"],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    assert handoff["hypothesis_contract"] == {
+        "hypothesis_id": "h1",
+        "source_card_hash": "a" * 64,
+        "hypothesis_digest": hashlib.sha256(encoded_hypothesis).hexdigest(),
     }
     result = WorkflowExecutionResult(
         workflow="alpha-research-execution",
