@@ -26,6 +26,11 @@ capacity is classified as retryable and distinguished from coding, validation, o
 independent-review rejection; the installer still refuses activation in every
 failure case.
 
+The systemd boundary gives Codex a private writable runtime under `/var/lib` while
+bind-mounting only the canonical `auth.json` read-only. The protected canonical
+Codex home remains read-only; configuration, durable credentials and repository
+permissions cannot be rewritten by the agent.
+
 The final G3 isolated rehearsal was recorded on 2026-09-17 with report digest
 `bb12968cb950bb32ff09ec100b4479d3bde2f81c95b62dc9dc6806c537407f04`.
 It followed 15 declared states through mock publication and replenishment after real
