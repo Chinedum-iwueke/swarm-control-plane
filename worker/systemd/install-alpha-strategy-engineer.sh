@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$(id -u)" -eq 0 || {
+  echo "Run with sudo bash." >&2
+  exit 1
+}
+
+source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+environment=/etc/invariance-swarm/alpha-strategy-engineer.env
+test -f "$environment" || {
+  echo "Register the alpha strategy engineer first: $environment" >&2
+  exit 1
+}
+test "$(stat -c '%u:%a' "$environment")" = 0:600 || {
+  echo "Require root-owned mode 600: $environment" >&2
+  exit 1
+}
+test "$(sed -n 's/^SWARM_AGENT_SLUG=//p' "$environment")" = \
+  vm1-alpha-strategy-engineer
+
+install -d -o omenka -g omenka -m 0700 \
+  /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal \
+  /home/omenka/Projects/swarm-agent-workspaces
+
+probe_unit="invariance-swarm-alpha-loop-rehearsal-$(date +%s)"
+systemd-run \
+  --unit="$probe_unit" \
+  --collect \
+  --wait \
+  --pipe \
+  --property=User=omenka \
+  --property=Group=omenka \
+  --property=WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker \
+  --property=NoNewPrivileges=yes \
+  --property=ProtectSystem=strict \
+  --property=ProtectHome=read-only \
+  --property=PrivateTmp=yes \
+  --property=PrivateDevices=yes \
+  --property=ProtectKernelTunables=yes \
+  --property=ProtectKernelModules=yes \
+  --property=ProtectKernelLogs=yes \
+  --property=ProtectControlGroups=yes \
+  --property=RestrictRealtime=yes \
+  --property=RestrictSUIDSGID=yes \
+  --property=LockPersonality=yes \
+  --property=CapabilityBoundingSet= \
+  --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+  --property=ReadOnlyPaths=/etc/invariance-swarm/codex-worker \
+  --property=ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces \
+  --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
+  --setenv=PYTHONDONTWRITEBYTECODE=1 \
+  --setenv=NODE_OPTIONS=--jitless \
+  --setenv=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin \
+  --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \
+  /home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python \
+  /home/omenka/Projects/swarm-control-plane/worker/scripts/alpha_loop_rehearsal.py \
+  --output /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal/production-parity.json
+
+jq -e '
+  .success == true and
+  .production_state_mutated == false and
+  .capital_or_order_authority == false and
+  .lease_routing.generic_coder_eligible == false and
+  .lease_routing.dedicated_engineer_eligible == true and
+  (.lifecycle.checks | all(.[]; . == true)) and
+  .lifecycle.production_api_calls == 0 and
+  .lifecycle.orders_submitted == 0 and
+  .lifecycle.next_queue_depth == 1 and
+  .terminal_receipt.declared_variant_count == 8 and
+  .terminal_receipt.window_days == 365
+' /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal/production-parity.json \
+  >/dev/null
+
+install -o root -g root -m 0644 \
+  "$source_dir/invariance-swarm-alpha-strategy-engineer.service" \
+  /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now invariance-swarm-alpha-strategy-engineer.service
+echo "Production-parity rehearsal passed; dedicated alpha strategy engineer installed."

@@ -1039,7 +1039,15 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     assert task.project == "bulletproof_bt"
     assert task.task_type == "engineering_mission"
     assert task.approval_required is True
-    assert task.required_capabilities == ["git", "python", "testing"]
+    assert task.required_capabilities == [
+        "alpha-strategy-engineering",
+        "git",
+        "python",
+        "testing",
+    ]
+    assert not set(task.required_capabilities).issubset(
+        {"git", "python", "testing"}
+    )
     assert task.input_contract["allowed_paths"] == [
         "research/hypotheses",
         "src/bt/strategy",
@@ -1048,7 +1056,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         "src/bt/governance/alpha_strategy_pipeline.py",
         "scripts/run_alpha_research_assignment.py",
     ]
-    assert task.task_number.endswith("-G2")
+    assert task.task_number.endswith("-G3")
     assert task.input_contract["context_paths"] == [
         "docs/hypothesis_strategy_generation_prompt_instructions.md",
         "docs/backtest_truth_certification.md",
@@ -1096,7 +1104,7 @@ def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypat
     legacy = SimpleNamespace(id=uuid4(), status="pending_approval")
     approval = SimpleNamespace(status="pending")
     db = MagicMock()
-    db.scalar.side_effect = [legacy, approval]
+    db.scalar.side_effect = [legacy, approval, None]
     decided = MagicMock()
     event = MagicMock()
     monkeypatch.setattr(service, "decide_task", decided)
@@ -1108,13 +1116,24 @@ def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypat
         approval,
         actor="alpha-campaign-director",
         reason=(
-            "Superseded because the task referenced a nonexistent generation prompt "
-            "and omitted the canonical backtest-truth contract."
+            "Superseded by the production-rehearsed strategy-engineering contract "
+            "with exclusive worker routing."
         ),
         action="reject",
     )
     assert legacy.status == "pending_approval"
     event.assert_called_once()
+
+
+def test_failed_g2_is_retained_before_creating_g3(monkeypatch):
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    failed_g2 = SimpleNamespace(id=uuid4(), status="failed")
+    db = MagicMock()
+    db.scalar.side_effect = [failed_g2, None]
+
+    assert service._legacy_strategy_engineering_task(db, record, source) is None
+    assert db.scalar.call_count == 2
 
 
 def test_registration_rejects_synthetic_label():

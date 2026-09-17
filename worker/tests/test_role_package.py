@@ -11,6 +11,9 @@ MANIFEST = ROOT / "role-packages/vm1-engineering-worker/manifest.yaml"
 WORKFLOWS = ROOT / "workflows"
 RESEARCH_MANIFEST = ROOT / "role-packages/vm1-research-runner/manifest.yaml"
 ALPHA_MANIFEST = ROOT / "role-packages/vm1-alpha-research-executor/manifest.yaml"
+ALPHA_ENGINEER_MANIFEST = (
+    ROOT / "role-packages/vm1-alpha-strategy-engineer/manifest.yaml"
+)
 MEMORY_MANIFEST = ROOT / "role-packages/vm1-research-memory-steward/manifest.yaml"
 DEPLOYMENT_MANIFEST = ROOT / "role-packages/vm2-deployment-architect/manifest.yaml"
 OPERATIONAL_MEMORY_MANIFEST = (
@@ -49,6 +52,21 @@ def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
     assert package.manifest.risk_ceiling == 0
     assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.repository_profile.primary_checkout_write is False
+    assert package.manifest.repository_profile.remote_write is False
+
+
+def test_alpha_strategy_engineer_has_exclusive_engineering_capability() -> None:
+    package = load_role_package(ALPHA_ENGINEER_MANIFEST, WORKFLOWS)
+    assert package.manifest.task_types == ["engineering_mission"]
+    assert package.manifest.required_capabilities == [
+        "alpha-strategy-engineering",
+        "git",
+        "python",
+        "testing",
+    ]
+    generic = load_role_package(MANIFEST, WORKFLOWS)
+    assert "alpha-strategy-engineering" not in generic.manifest.required_capabilities
+    assert package.manifest.repository_profile.repositories == ["bulletproof_bt"]
     assert package.manifest.repository_profile.remote_write is False
 
 

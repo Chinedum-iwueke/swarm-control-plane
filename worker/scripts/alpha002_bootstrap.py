@@ -196,7 +196,7 @@ def main() -> int:
                 or existing_agent["role"] != manifest.role
                 or sorted(existing_agent["capabilities"])
                 != sorted(manifest.required_capabilities)
-                or existing_agent["risk_ceiling"] != 0
+                or existing_agent["risk_ceiling"] != manifest.risk_ceiling
                 or not existing_agent["is_enabled"]
             ):
                 raise RuntimeError(
@@ -215,7 +215,7 @@ def main() -> int:
                     "machine": "vm1-developer",
                     "hermes_profile": package_name,
                     "capabilities": manifest.required_capabilities,
-                    "risk_ceiling": 0,
+                    "risk_ceiling": manifest.risk_ceiling,
                 },
             )
         deployments = call(api, "GET", "/v1/packages/deployments")
@@ -256,7 +256,7 @@ def main() -> int:
             "allowed_machines": ["vm1-developer"],
             "allowed_task_types": manifest.task_types,
             "allowed_repositories": ["bulletproof_bt"],
-            "risk_ceiling": 0,
+            "risk_ceiling": manifest.risk_ceiling,
             "accountable_owner": "senior-quantitative-research",
             "conflicts": [],
             "forbidden_actions": [
@@ -317,7 +317,7 @@ def main() -> int:
                     "machine": "vm1-developer",
                     "task_types": manifest.task_types,
                     "repositories": ["bulletproof_bt"],
-                    "risk_ceiling": 0,
+                    "risk_ceiling": manifest.risk_ceiling,
                     "accountable_owner": "senior-quantitative-research",
                     "granted_by": "founder-operator",
                     "reason": "ALPHA-002 continuous no-capital scientific execution",

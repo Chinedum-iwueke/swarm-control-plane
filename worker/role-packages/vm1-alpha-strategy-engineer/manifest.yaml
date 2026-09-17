@@ -1,0 +1,32 @@
+schema_version: 1
+name: vm1-alpha-strategy-engineer
+version: 1.0.0
+role: Restricted VM1 native alpha strategy engineer
+task_types:
+- engineering_mission
+workflows:
+- name: engineering-mission
+  file: engineering-mission.yaml
+  sha256: dc606407a405948e8e261bf7cffd942f1aed9a559f3ad5514470eaa90d47cd9d
+required_capabilities:
+- alpha-strategy-engineering
+- git
+- python
+- testing
+allowed_machines:
+- vm1-developer
+risk_ceiling: 1
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: alpha-strategy-engineering
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false
