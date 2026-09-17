@@ -31,11 +31,15 @@ bind-mounting only the canonical `auth.json` read-only. The protected canonical
 Codex home remains read-only; configuration, durable credentials and repository
 permissions cannot be rewritten by the agent.
 
-The final G3 isolated rehearsal was recorded on 2026-09-17 with report digest
+The outer unit permits `AF_NETLINK` because Codex's inner Bubblewrap sandbox uses a
+netlink route socket to configure its isolated loopback device. This does not grant
+an external route: the Codex workspace sandbox still runs with network access false,
+and the outer unit retains its address-family and capability restrictions.
+
+An in-process G3 fixture run was recorded on 2026-09-17 with report digest
 `bb12968cb950bb32ff09ec100b4479d3bde2f81c95b62dc9dc6806c537407f04`.
 It followed 15 declared states through mock publication and replenishment after real
-coding, validation and structured review. A preceding run that reached review but
-encountered provider capacity remains retained as a failed rehearsal rather than
-being presented as scientific failure. This evidence proves the isolated workflow
-only. A fresh sandboxed rehearsal is required by the installer before the production
-service may start.
+coding, validation and structured review. This fixture evidence does not qualify the
+outer systemd boundary. A fresh production-parity systemd rehearsal is required by
+the installer before the production service may start, and every failed attempt is
+retained rather than being presented as scientific failure or success.
