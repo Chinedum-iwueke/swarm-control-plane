@@ -1043,7 +1043,16 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     assert task.input_contract["allowed_paths"] == [
         "research/hypotheses",
         "src/bt/strategy",
+        "docs/hypotheses",
         "tests",
+        "src/bt/governance/alpha_strategy_pipeline.py",
+        "scripts/run_alpha_research_assignment.py",
+    ]
+    assert task.task_number.endswith("-G2")
+    assert task.input_contract["context_paths"] == [
+        "docs/hypothesis_strategy_generation_prompt_instructions.md",
+        "docs/backtest_truth_certification.md",
+        "docs/timeframe_resampler.md",
         "src/bt/governance/alpha_strategy_pipeline.py",
         "scripts/run_alpha_research_assignment.py",
     ]
@@ -1079,6 +1088,33 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         document = dict(task.input_contract, evidence_context=bad_evidence)
         with pytest.raises(ValidationError):
             ProposalEngineeringMissionContract.model_validate(document)
+
+
+def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypatch):
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    legacy = SimpleNamespace(id=uuid4(), status="pending_approval")
+    approval = SimpleNamespace(status="pending")
+    db = MagicMock()
+    db.scalar.side_effect = [legacy, approval]
+    decided = MagicMock()
+    event = MagicMock()
+    monkeypatch.setattr(service, "decide_task", decided)
+    monkeypatch.setattr(service, "append_task_event", event)
+
+    assert service._legacy_strategy_engineering_task(db, record, source) is None
+    decided.assert_called_once_with(
+        db,
+        approval,
+        actor="alpha-campaign-director",
+        reason=(
+            "Superseded because the task referenced a nonexistent generation prompt "
+            "and omitted the canonical backtest-truth contract."
+        ),
+        action="reject",
+    )
+    assert legacy.status == "pending_approval"
+    event.assert_called_once()
 
 
 def test_registration_rejects_synthetic_label():
