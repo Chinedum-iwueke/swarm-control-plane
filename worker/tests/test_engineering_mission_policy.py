@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from swarm_worker.executors.code_validation import (
     RootExecutionError,
 )
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
+from swarm_worker.models import StepExecutionResult
 from swarm_worker.policy import EngineeringMissionContract
 from swarm_worker.workspace import CommandResult
 
@@ -161,6 +163,26 @@ def test_clean_structured_review_is_approved(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert EngineeringMissionExecutor._review_approved(review) is True
+
+
+def test_semantic_review_rejection_marks_successful_process_step_failed() -> None:
+    step = StepExecutionResult(
+        name="independent-review",
+        success=True,
+        return_code=0,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        duration_seconds=0.1,
+        timed_out=False,
+        stdout_log="logs/review.stdout.log",
+        stderr_log="logs/review.stderr.log",
+    )
+
+    rejected = EngineeringMissionExecutor._semantic_review_step(step, False)
+
+    assert rejected.success is False
+    assert rejected.return_code == 0
+    assert EngineeringMissionExecutor._semantic_review_step(step, True) is step
 
 
 def test_evidence_permissions_are_forced_private(tmp_path: Path) -> None:

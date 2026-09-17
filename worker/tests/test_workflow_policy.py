@@ -140,6 +140,20 @@ def test_valid_code_validation_workflow_loads(
     assert workflow.steps[1].command == ["pytest", "-q"]
 
 
+def test_relocation_safe_python_module_pytest_is_allowed(
+    workflow_directory: Path,
+) -> None:
+    document = {**WORKFLOW_DOCUMENT}
+    document["steps"] = [
+        {"name": "run-tests", "command": ["python", "-m", "pytest", "-q"]}
+    ]
+    write_workflow(workflow_directory, document)
+
+    workflow = WorkflowLoader(workflow_directory).load("code-validation")
+
+    assert workflow.steps[0].command == ["python", "-m", "pytest", "-q"]
+
+
 def test_unknown_workflow_and_path_traversal_are_rejected(
     loader: WorkflowLoader,
 ) -> None:
@@ -192,6 +206,7 @@ def test_arbitrary_command_in_task_contract_is_rejected(
         ["bash", "-c", "pytest -q"],
         ["git", "push", "origin", "main"],
         ["git", "worktree", "remove", "another-worktree"],
+        ["python", "-m", "pip", "install", "anything"],
     ],
 )
 def test_unsafe_commands_are_rejected(

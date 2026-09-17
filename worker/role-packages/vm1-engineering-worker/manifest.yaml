@@ -11,7 +11,7 @@ workflows:
   sha256: dd36f1a9a10f89bd0a9d55a9ec3a9c145c740615d1b4f28cd446dc73e1be96c3
 - name: engineering-mission
   file: engineering-mission.yaml
-  sha256: dc606407a405948e8e261bf7cffd942f1aed9a559f3ad5514470eaa90d47cd9d
+  sha256: 607dea642736f7148a04efe5927e0d9b0455c8a0446712ae0bdd0c56805961cd
 required_capabilities:
 - git
 - python

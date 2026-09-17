@@ -174,9 +174,9 @@ class EngineeringMissionExecutor:
             timeout_seconds=remaining,
         )
         steps.append(review)
-        if not review.success or not self._review_approved(
-            workspace.artifacts / "review.json"
-        ):
+        review_approved = self._review_approved(workspace.artifacts / "review.json")
+        if not review.success or not review_approved:
+            steps[-1] = self._semantic_review_step(review, review_approved)
             return self._result(task, workflow, workspace, started, steps, False)
         bundle = self._create_bundle(contract, changed, workspace)
         steps.append(bundle)
@@ -365,6 +365,14 @@ class EngineeringMissionExecutor:
             stdout_log="logs/pr-bundle.stdout.log",
             stderr_log="logs/pr-bundle.stderr.log",
         )
+
+    @staticmethod
+    def _semantic_review_step(
+        review: StepExecutionResult, approved: bool
+    ) -> StepExecutionResult:
+        if approved or not review.success:
+            return review
+        return review.model_copy(update={"success": False})
 
     @staticmethod
     def _coding_prompt(contract: EngineeringMissionContract) -> str:

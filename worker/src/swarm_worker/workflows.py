@@ -274,8 +274,11 @@ def _validation_summary(exc: ValidationError) -> str:
 
 
 def _validate_python(command: list[str]) -> None:
+    if len(command) >= 3 and command[1:3] == ["-m", "pytest"]:
+        _validate_pytest(["pytest", *command[3:]])
+        return
     if len(command) < 3 or command[1:3] != ["-m", "compileall"]:
-        raise ValueError("python is restricted to the compileall module")
+        raise ValueError("python is restricted to the compileall and pytest modules")
     if any(
         argument.startswith("-") and argument not in _ALLOWED_PYTHON_FLAGS
         for argument in command[3:]

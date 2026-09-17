@@ -15,5 +15,7 @@ steps:
   - .
 - name: run-tests
   command:
+  - python
+  - -m
   - pytest
   - -q

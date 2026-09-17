@@ -83,10 +83,23 @@ def classify_engineering_failure(result: object, workspace: TaskWorkspace) -> di
         if stderr.is_file():
             detail = stderr.read_text(encoding="utf-8", errors="replace")[-4000:]
     lowered = detail.lower()
+    review_path = workspace.plan.attempt_directory / "artifacts/review.json"
+    review_rejected = False
+    if review_path.is_file():
+        try:
+            review_rejected = json.loads(
+                review_path.read_text(encoding="utf-8")
+            ).get("approved") is False
+        except (json.JSONDecodeError, OSError):
+            review_rejected = False
     if "model is at capacity" in lowered:
         category = "provider_capacity"
         retryable = True
-    elif "approved" in lowered or getattr(failed, "name", "") == "independent-review":
+    elif (
+        review_rejected
+        or "approved" in lowered
+        or getattr(failed, "name", "") == "independent-review"
+    ):
         category = "independent_review_failed"
         retryable = False
     else:
@@ -145,6 +158,8 @@ def build_source(root: Path) -> tuple[Path, str]:
         encoding="utf-8",
     )
     (source / "tests/test_strategy.py").write_text(
+        "from pathlib import Path\n\n"
+        "import yaml\n\n"
         "from mock_alpha.strategy import signal\n\n"
         "def test_extreme_positive_illiquid_move_fades():\n"
         "    assert signal(0.10, 100.0) == -1\n\n"
@@ -153,7 +168,12 @@ def build_source(root: Path) -> tuple[Path, str]:
         "def test_non_extreme_move_abstains():\n"
         "    assert signal(0.001, 100000.0) == 0\n\n"
         "def test_invalid_liquidity_abstains():\n"
-        "    assert signal(0.10, 0.0) == 0\n",
+        "    assert signal(0.10, 0.0) == 0\n\n"
+        "def test_contract_declares_exactly_eight_variants():\n"
+        "    contract = yaml.safe_load(\n"
+        "        Path('research/hypotheses/mock-alpha.yaml').read_text()\n"
+        "    )\n"
+        "    assert contract['declared_variant_count'] == 8\n",
         encoding="utf-8",
     )
     (source / "pyproject.toml").write_text(
@@ -182,7 +202,7 @@ def build_task(base_commit: str) -> Task:
         ),
         "dataset": "synthetic-no-market-data",
         "window_days": 365,
-        "maximum_variants": 8,
+        "declared_variant_count": 8,
         "authority": {"capital": False, "orders": False, "promotion": False},
     }
     contract = {
@@ -196,8 +216,9 @@ def build_task(base_commit: str) -> Task:
             "When abs(signed_return) / quote_volume is at least 0.001, return the "
             "opposite direction (-1 for positive, +1 for negative); otherwise return 0. "
             "Non-positive quote volume must return 0. Replace the "
-            "hypothesis placeholder with a YAML contract declaring a 365-day window, "
-            "eight variants, next-bar timing, and no capital authority."
+            "hypothesis placeholder with a YAML contract containing the exact field "
+            "`declared_variant_count: 8`, a 365-day window, next-bar timing, and no "
+            "capital authority."
         ),
         "allowed_paths": [
             "src/mock_alpha/strategy.py",
