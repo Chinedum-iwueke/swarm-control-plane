@@ -54,7 +54,7 @@ from app.services.evaluator_routing import (
     validated_alpha_strategy_reviews,
 )
 from app.services.evaluator_routing import append_event as append_evaluation_event
-from app.services.governance import consume_task_approval
+from app.services.governance import consume_task_approval, decide_task
 from app.services.graph import digest_document
 from app.services.tasks import (
     append_task_event,
@@ -74,6 +74,14 @@ CLAIM_BOUNDARY = (
     "producer; candidate status permits prospective shadow review, never orders, "
     "capital allocation, production promotion or self-approval."
 )
+STRATEGY_ENGINEERING_STAGE = "G2"
+STRATEGY_ENGINEERING_CONTEXT_PATHS = [
+    "docs/hypothesis_strategy_generation_prompt_instructions.md",
+    "docs/backtest_truth_certification.md",
+    "docs/timeframe_resampler.md",
+    "src/bt/governance/alpha_strategy_pipeline.py",
+    "scripts/run_alpha_research_assignment.py",
+]
 
 
 def now() -> datetime:
@@ -721,18 +729,16 @@ def _create_strategy_engineering_task(
         "allowed_paths": [
             "research/hypotheses",
             "src/bt/strategy",
+            "docs/hypotheses",
             "tests",
             "src/bt/governance/alpha_strategy_pipeline.py",
             "scripts/run_alpha_research_assignment.py",
         ],
         "evidence_context": json.dumps(evidence, sort_keys=True, allow_nan=False),
-        "context_paths": [
-            "docs/HYPOTHESIS_STRATEGY_GENERATION_PROMPT.md",
-            "src/bt/governance/alpha_strategy_pipeline.py",
-            "scripts/run_alpha_research_assignment.py",
-        ],
+        "context_paths": STRATEGY_ENGINEERING_CONTEXT_PATHS,
         "acceptance_criteria": [
             "The exact Research Intelligence question is represented without proxy substitution.",
+            "The implementation follows the canonical hypothesis/strategy generation and backtest-truth instructions in full.",
             "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
             "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
@@ -760,7 +766,9 @@ def _create_strategy_engineering_task(
     ProposalEngineeringMissionContract.model_validate(executable_contract)
     task = build_task(
         TaskCreate(
-            task_number=_stage_task_number(campaign, source, "G"),
+            task_number=_stage_task_number(
+                campaign, source, STRATEGY_ENGINEERING_STAGE
+            ),
             project="bulletproof_bt",
             task_type="engineering_mission",
             title=f"Engineer native strategy: {question[:120]}",
@@ -785,6 +793,51 @@ def _create_strategy_engineering_task(
     )
     persist_new_task(db, task)
     return task
+
+
+def _legacy_strategy_engineering_task(
+    db: Session, campaign: AlphaCampaign, source: dict
+) -> Task | None:
+    legacy = db.scalar(
+        select(Task).where(
+            Task.task_number == _stage_task_number(campaign, source, "G")
+        )
+    )
+    if legacy is None or legacy.status in {"cancelled", "failed"}:
+        return None
+    if legacy.status == "succeeded":
+        return legacy
+    if legacy.status != "pending_approval":
+        raise HTTPException(
+            409,
+            "Obsolete strategy-engineering task is already active; cancel it before "
+            "creating the corrected contract.",
+        )
+    approval = db.scalar(
+        select(TaskApproval).where(TaskApproval.task_id == legacy.id)
+    )
+    if approval is None or approval.status != "pending":
+        raise HTTPException(
+            409, "Obsolete strategy-engineering approval cannot be superseded safely."
+        )
+    decide_task(
+        db,
+        approval,
+        actor="alpha-campaign-director",
+        reason=(
+            "Superseded because the task referenced a nonexistent generation prompt "
+            "and omitted the canonical backtest-truth contract."
+        ),
+        action="reject",
+    )
+    append_task_event(
+        db,
+        legacy,
+        "task_contract_superseded",
+        "The immutable engineering contract was replaced by its corrected G2 revision.",
+        payload={"successor_stage": STRATEGY_ENGINEERING_STAGE},
+    )
+    return None
 
 
 def _materialize_strategy_review_tasks(
@@ -1087,9 +1140,14 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         )
         engineering = db.scalar(
             select(Task).where(
-                Task.task_number == _stage_task_number(campaign, source, "G")
+                Task.task_number
+                == _stage_task_number(
+                    campaign, source, STRATEGY_ENGINEERING_STAGE
+                )
             )
         )
+        if engineering is None:
+            engineering = _legacy_strategy_engineering_task(db, campaign, source)
         if engineering is None:
             engineering = _create_strategy_engineering_task(
                 db, campaign, source, requirement
