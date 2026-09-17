@@ -127,6 +127,7 @@ class WorkerDaemon:
                     "worker_cycle_failed",
                     extra={
                         "error_category": type(exc).__name__,
+                        "detail": str(exc),
                         "exit_code": EXIT_RUNTIME_ERROR,
                     },
                 )

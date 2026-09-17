@@ -68,7 +68,7 @@ def test_changed_paths_must_remain_in_scope(tmp_path: Path) -> None:
         executor._enforce_scope(contract(), ["backend/secret.py"], workspace)
 
 
-def test_scope_check_uses_git_argument_arrays(tmp_path: Path) -> None:
+def test_scope_check_does_not_stage_workspace_changes(tmp_path: Path) -> None:
     git = FakeGit()
     executor = EngineeringMissionExecutor(
         codex_home=tmp_path,
@@ -80,8 +80,56 @@ def test_scope_check_uses_git_argument_arrays(tmp_path: Path) -> None:
     )
     workspace = type("Workspace", (), {"repository": tmp_path})()
     executor._enforce_scope(contract(), ["docs/pilot.md"], workspace)
-    assert git.commands[0][:4] == ("git", "add", "--intent-to-add", "--")
+    assert not any(command[:2] == ("git", "add") for command in git.commands)
+    assert any(command[:3] == ("git", "ls-files", "--error-unmatch") for command in git.commands)
     assert all(isinstance(command, tuple) for command in git.commands)
+
+
+def test_patch_includes_untracked_files_without_writing_git_objects(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "worker@example.invalid"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Worker Test"],
+        cwd=repository,
+        check=True,
+    )
+    docs = repository / "docs"
+    docs.mkdir()
+    (docs / "existing.md").write_text("before\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repository, check=True)
+    (docs / "existing.md").write_text("after\n", encoding="utf-8")
+    (docs / "new.md").write_text("new evidence\n", encoding="utf-8")
+
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        effective_uid=lambda: 1000,
+    )
+    workspace = type("Workspace", (), {"repository": repository})()
+    changed = executor._changed_paths(workspace)
+    executor._enforce_scope(contract(), changed, workspace)
+    patch = executor._build_patch(changed, workspace)
+
+    assert changed == ["docs/existing.md", "docs/new.md"]
+    assert "-before" in patch
+    assert "+after" in patch
+    assert "+new evidence" in patch
+    assert subprocess.run(
+        ["git", "diff", "--cached", "--quiet"], cwd=repository, check=False
+    ).returncode == 0
 
 
 def test_prompt_forbids_push_merge_and_deploy() -> None:
