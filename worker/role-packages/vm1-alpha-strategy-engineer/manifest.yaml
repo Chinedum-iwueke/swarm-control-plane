@@ -7,7 +7,7 @@ task_types:
 workflows:
 - name: engineering-mission
   file: engineering-mission.yaml
-  sha256: dc606407a405948e8e261bf7cffd942f1aed9a559f3ad5514470eaa90d47cd9d
+  sha256: 607dea642736f7148a04efe5927e0d9b0455c8a0446712ae0bdd0c56805961cd
 required_capabilities:
 - alpha-strategy-engineering
 - git

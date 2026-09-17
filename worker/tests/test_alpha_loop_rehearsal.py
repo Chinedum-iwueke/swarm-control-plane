@@ -120,6 +120,42 @@ def test_provider_capacity_failure_is_structured_and_retryable(tmp_path):
     }
 
 
+def test_semantic_review_rejection_is_classified_without_process_failure(tmp_path):
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "review.json").write_text(
+        json.dumps(
+            {
+                "approved": False,
+                "summary": "Exact variant count is missing.",
+                "findings": [],
+            }
+        )
+    )
+    successful_review = type(
+        "Step",
+        (),
+        {
+            "success": True,
+            "name": "independent-review",
+            "stderr_log": "logs/independent-review.stderr.log",
+        },
+    )()
+    result = type(
+        "Result",
+        (),
+        {"steps": [successful_review], "termination_reason": "step_failed"},
+    )()
+    plan = type("Plan", (), {"attempt_directory": tmp_path})()
+    workspace = type("Workspace", (), {"plan": plan})()
+
+    failure = MODULE.classify_engineering_failure(result, workspace)
+
+    assert failure["category"] == "independent_review_failed"
+    assert failure["failed_step"] is None
+    assert failure["retryable"] is False
+
+
 def test_netlink_sandbox_denial_is_structured(tmp_path):
     logs = tmp_path / "logs"
     logs.mkdir()
@@ -146,6 +182,11 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     ).manifest
     assert package.risk_ceiling == 1
     assert package.required_capabilities == sorted(MODULE.REQUIRED_CAPABILITIES)
+
+    workflow = (ROOT / "workflows/engineering-mission.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "- python\n  - -m\n  - pytest\n" in workflow
 
     unit = (
         ROOT / "systemd/invariance-swarm-alpha-strategy-engineer.service"
