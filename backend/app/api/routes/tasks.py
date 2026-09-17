@@ -125,10 +125,13 @@ def rearm_expired_task_approval(
     task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
-    if task.status != "pending_approval" or not task.approval_required:
+    if task.status not in {"pending_approval", "queued"} or not task.approval_required:
         raise HTTPException(
             status_code=409,
-            detail="Only an approval-gated task pending approval can be rearmed.",
+            detail=(
+                "Only an approval-gated task pending approval or stranded queued "
+                "work can be rearmed."
+            ),
         )
     rearm_task_approval(db, task, payload.reason)
     event = append_task_event(
