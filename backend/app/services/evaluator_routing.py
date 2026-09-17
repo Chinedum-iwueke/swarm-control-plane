@@ -93,6 +93,12 @@ def register_profile(db: Session, payload: EvaluatorProfileCreate) -> EvaluatorP
     runtime = (
         "/".join(filter(None, [agent.runtime, agent.runtime_version])) or "unknown"
     )
+    if runtime == "unknown":
+        raise HTTPException(
+            409,
+            "Evaluator runtime is not attested; start the worker heartbeat before "
+            "registering its profile.",
+        )
     document = {
         **payload.model_dump(mode="json"),
         "machine": agent.machine,
@@ -294,6 +300,34 @@ def _route_profiles(
 
 
 def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute:
+    if payload.supersedes_route_id is not None:
+        predecessor = db.get(EvaluationRoute, payload.supersedes_route_id)
+        expected_policy = {
+            "required_review_kinds": payload.required_review_kinds,
+            "required_capabilities": payload.required_capabilities,
+            "excluded_producers": [
+                item.model_dump(mode="json") for item in payload.excluded_producers
+            ],
+            "max_pairwise_shared_dimensions": payload.max_pairwise_shared_dimensions,
+        }
+        if (
+            predecessor is None
+            or predecessor.status != "superseded"
+            or predecessor.subject_type != payload.subject_type
+            or predecessor.subject_id != payload.subject_id
+            or predecessor.subject_digest != payload.subject_digest
+            or predecessor.producer != payload.producer.model_dump(mode="json")
+            or predecessor.requested_by != payload.requested_by
+            or any(
+                predecessor.policy.get(key) != value
+                for key, value in expected_policy.items()
+            )
+            or payload.routing_revision
+            <= int(predecessor.policy.get("routing_revision", 1))
+        ):
+            raise HTTPException(
+                409, "Evaluator route predecessor is not a compatible superseded route."
+            )
     document = payload.model_dump(mode="json")
     route = EvaluationRoute(
         subject_type=payload.subject_type,
@@ -309,6 +343,12 @@ def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute
             "max_pairwise_shared_dimensions": payload.max_pairwise_shared_dimensions,
             "hard_separation": ["agent_id", "package_digest", "context_group"],
             "disclosed_correlation": list(CORRELATION_DIMENSIONS),
+            "routing_revision": payload.routing_revision,
+            "supersedes_route_id": (
+                str(payload.supersedes_route_id)
+                if payload.supersedes_route_id is not None
+                else None
+            ),
         },
         status="routing",
         route_digest=digest(document),
@@ -328,13 +368,24 @@ def create_route(db: Session, payload: EvaluationRouteCreate) -> EvaluationRoute
 
 
 def _active_profiles(db: Session) -> list[EvaluatorProfile]:
-    return list(
-        db.scalars(
-            select(EvaluatorProfile)
+    rows = db.execute(
+        select(EvaluatorProfile, Agent)
+            .join(Agent, Agent.id == EvaluatorProfile.agent_id)
             .where(EvaluatorProfile.status == "active")
             .order_by(EvaluatorProfile.profile_digest)
-        ).all()
-    )
+    ).all()
+    current = []
+    for profile, agent in rows:
+        runtime = (
+            "/".join(filter(None, [agent.runtime, agent.runtime_version]))
+        )
+        if (
+            agent.is_enabled
+            and profile.machine == agent.machine
+            and profile.runtime == runtime
+        ):
+            current.append(profile)
+    return current
 
 
 def _catalog_digest(profiles: list[EvaluatorProfile]) -> str:
@@ -360,6 +411,12 @@ def retry_blocked_route(db: Session, route: EvaluationRoute) -> EvaluationRoute:
         required_capabilities=route.policy.get("required_capabilities", []),
         max_pairwise_shared_dimensions=route.policy["max_pairwise_shared_dimensions"],
         requested_by=route.requested_by,
+        routing_revision=int(route.policy.get("routing_revision", 1)),
+        supersedes_route_id=(
+            UUID(route.policy["supersedes_route_id"])
+            if route.policy.get("supersedes_route_id")
+            else None
+        ),
     )
     append_event(db, route, "routing_retried", "evaluator-router", {
         "route_digest": route.route_digest,

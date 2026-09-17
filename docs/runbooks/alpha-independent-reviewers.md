@@ -6,7 +6,7 @@ capability, risk-zero strategy-review tasks, and read-only Bulletproof access.
 Profiles use separate agent, package and context identities. Shared provider/model
 dimensions remain explicitly declared; this is not proof of independent reasoning.
 
-After the reviewed source is merged and installed, provision from VM1 using the
+After the reviewed source is merged, provision identities from VM1 using the
 protected operator environment. No existing executor credentials are rotated.
 
 ```bash
@@ -24,19 +24,38 @@ for role in spec causality; do
     --state "$state" \
     --environment "/etc/invariance-swarm/alpha-${role}-reviewer.env" \
     --source-commit "$commit"
+done
+ROOT
+```
+
+Install and start the services before creating evaluator profiles so the agent
+registry contains a concrete runtime heartbeat:
+
+```bash
+sudo bash worker/systemd/install-alpha-reviewers.sh --start
+
+sudo bash <<'ROOT'
+set -euo pipefail
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+cd /home/omenka/Projects/swarm-control-plane
+for role in spec causality; do
   worker/.venv/bin/python worker/scripts/alpha_strategy_reviewer_profile.py \
-    --state "$state" --role "$role" --provider openai --model-family codex
+    --state "/etc/invariance-swarm/alpha-${role}-reviewer-state.json" \
+    --role "$role" \
+    --provider openai \
+    --model-family codex
 done
 ROOT
 ```
 
 Provider/model declarations must match the configured reviewer runtime. Profile
-registration fails on different package, capability, context or inactive identity.
-This command alone does not install/start supervised services, approve strategy
+registration refuses an unattested runtime and fails on a different package,
+capability, context or inactive identity. These commands do not approve strategy
 code, admit data, execute backtests or issue an independent-review receipt. Actual
 closure requires authenticated leased tasks, immutable typed verdicts and receipt
-replay through the deployed control plane. Service installation, producer-profile
-provisioning and engineering-author provenance remain required follow-up work.
+replay through the deployed control plane.
 
 ## Inventory Recovery Boundary
 
@@ -49,7 +68,7 @@ including additions and deletions. Routine discovery should consult the catalog;
 selected-window admission remains distinct from inventory metadata.
 ## Supervised Service Installation
 
-After both identities and exact profiles are provisioned, install the template:
+After both identities are provisioned, install the template:
 
 ```bash
 sudo bash worker/systemd/install-alpha-reviewers.sh
