@@ -37,11 +37,17 @@ class EvaluationRouteCreate(BaseModel):
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
     max_pairwise_shared_dimensions: int = Field(default=4, ge=0, le=4)
     requested_by: str = Field(min_length=1, max_length=150)
+    routing_revision: int = Field(default=1, ge=1)
+    supersedes_route_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def unique_review_kinds(self):
         if len(set(self.required_review_kinds)) != len(self.required_review_kinds):
             raise ValueError("required_review_kinds must be unique")
+        if (self.supersedes_route_id is None) != (self.routing_revision == 1):
+            raise ValueError(
+                "Only revision one may omit a superseded evaluator route."
+            )
         return self
 
 

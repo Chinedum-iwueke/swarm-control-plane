@@ -23,7 +23,7 @@ def profile():
     return {
         "id": "profile",
         "agent_id": "agent",
-        "profile_version": "1.0.0",
+        "profile_version": "1.0.1",
         "review_kinds": ["strategy_spec"],
         "capabilities": ["alpha-strategy-review-strategy_spec"],
         "provider": "openai",
@@ -46,7 +46,9 @@ def test_registers_or_reuses_exact_profile_without_review_completion(existing):
         if request.method == "GET":
             return httpx.Response(200, json=[profile()] if existing else [])
         assert request.url.path == "/v1/evaluator-routing/profiles"
-        assert json.loads(request.content)["review_kinds"] == ["strategy_spec"]
+        payload = json.loads(request.content)
+        assert payload["review_kinds"] == ["strategy_spec"]
+        assert payload["profile_version"] == "1.0.1"
         return httpx.Response(201, json=profile())
 
     with httpx.Client(

@@ -782,6 +782,99 @@ def test_routed_review_tasks_preserve_subject_profile_and_source_without_executi
     assert persist.call_count == 1
 
 
+def test_stale_reviewer_route_is_retained_and_superseded(monkeypatch):
+    assignment = SimpleNamespace(
+        id=uuid4(),
+        evaluator_profile_id=uuid4(),
+        review_kind="strategy_spec",
+        status="assigned",
+        completed_at=None,
+    )
+    profile = SimpleNamespace(
+        agent_id=uuid4(),
+        status="active",
+        machine="vm1-developer",
+        runtime="unknown",
+    )
+    agent = SimpleNamespace(
+        is_enabled=True,
+        machine="vm1-developer",
+        runtime="hermes",
+        runtime_version="0.3.2",
+    )
+    route = SimpleNamespace(
+        id=uuid4(),
+        status="assigned",
+        subject_type="alpha_strategy_qualification",
+        subject_id=str(uuid4()),
+        subject_digest=DIGEST,
+        requested_by="alpha-campaign-director",
+        completed_at=None,
+        blocked_reason={},
+        policy={
+            "required_review_kinds": ["strategy_spec"],
+            "required_capabilities": [],
+            "max_pairwise_shared_dimensions": 4,
+            "routing_revision": 1,
+        },
+    )
+    task = SimpleNamespace(
+        status="running",
+        failure={},
+        completed_at=None,
+        assigned_agent_id=profile.agent_id,
+    )
+    identities = [
+        {
+            "agent_id": str(uuid4()),
+            "machine": "vm1-developer",
+            "provider": "openai",
+            "model_family": "codex",
+            "runtime": "hermes/0.3.2",
+            "context_group": f"producer-{position}",
+            "package_digest": str(position) * 64,
+            "profile_digest": str(position + 2) * 64,
+        }
+        for position in (1, 2)
+    ]
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [assignment]
+
+    def get(_model, identifier):
+        if identifier == assignment.evaluator_profile_id:
+            return profile
+        if identifier == profile.agent_id:
+            return agent
+        return None
+
+    db.get.side_effect = get
+    db.scalar.return_value = task
+    successor = SimpleNamespace(id=uuid4(), status="blocked")
+    create = MagicMock(return_value=successor)
+    event = MagicMock()
+    task_event = MagicMock()
+    clear = MagicMock()
+    monkeypatch.setattr(service, "create_route", create)
+    monkeypatch.setattr(service, "append_evaluation_event", event)
+    monkeypatch.setattr(service, "append_task_event", task_event)
+    monkeypatch.setattr(service, "clear_lease", clear)
+
+    result = service._supersede_stale_strategy_review_route(
+        db, route, {"producer_identities": identities}
+    )
+
+    assert result is successor
+    assert route.status == "superseded"
+    assert route.blocked_reason["category"] == "stale_evaluator_profile"
+    assert assignment.status == "superseded"
+    assert task.status == "failed"
+    assert task.failure["category"] == "stale_evaluator_profile"
+    clear.assert_called_once_with(task)
+    payload = create.call_args.args[1]
+    assert payload.routing_revision == 2
+    assert payload.supersedes_route_id == route.id
+
+
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
 ):

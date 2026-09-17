@@ -58,6 +58,8 @@ class RedactingJSONFormatter(logging.Formatter):
             "error_category",
             "exit_code",
             "outcome",
+            "phase",
+            "detail",
             "retry_delay_seconds",
         ):
             value = getattr(record, key, None)

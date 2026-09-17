@@ -255,3 +255,23 @@ def test_structured_logging_redacts_credentials() -> None:
     assert agent_token not in output
     assert lease_token not in output
     assert "Authorization: [REDACTED]" in output
+
+
+def test_structured_logging_includes_redacted_lease_loss_diagnostics() -> None:
+    stream = io.StringIO()
+    secret = "swarm_lt_abcdef_other-secret"
+    logger = configure_logging("INFO", stream=stream)
+
+    logger.info(
+        "worker_cycle_complete",
+        extra={
+            "outcome": "lease_lost",
+            "phase": "complete",
+            "detail": f"Control plane rejected {secret}",
+        },
+    )
+
+    document = json.loads(stream.getvalue())
+    assert document["phase"] == "complete"
+    assert document["detail"] == "Control plane rejected [REDACTED]"
+    assert secret not in stream.getvalue()

@@ -11,13 +11,15 @@ import httpx
 ROLES = {"spec": "strategy_spec", "causality": "causality_leakage"}
 
 
-def ensure_profile(client, state, role, provider, model_family):
+def ensure_profile(
+    client, state, role, provider, model_family, profile_version="1.0.1"
+):
     kind = ROLES[role]
     if state["slug"] != f"vm1-alpha-{role}-reviewer":
         raise ValueError("Worker state does not match the selected reviewer role")
     payload = {
         "agent_id": state["agent_id"],
-        "profile_version": "1.0.0",
+        "profile_version": profile_version,
         "review_kinds": [kind],
         "capabilities": [f"alpha-strategy-review-{kind}"],
         "provider": provider,
@@ -68,6 +70,7 @@ def main():
     parser.add_argument("--role", choices=ROLES, required=True)
     parser.add_argument("--provider", required=True)
     parser.add_argument("--model-family", required=True)
+    parser.add_argument("--profile-version", default="1.0.1")
     args = parser.parse_args()
     if args.state.stat().st_mode & 0o077:
         raise RuntimeError("Reviewer state must not be group/world accessible")
@@ -79,7 +82,12 @@ def main():
         headers={"Authorization": f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
     ) as client:
         profile = ensure_profile(
-            client, state, args.role, args.provider, args.model_family
+            client,
+            state,
+            args.role,
+            args.provider,
+            args.model_family,
+            args.profile_version,
         )
     print(
         json.dumps(

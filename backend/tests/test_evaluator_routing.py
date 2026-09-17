@@ -7,8 +7,10 @@ from app.schemas.evaluator_routing import (
     AlphaStrategyReview,
     EvaluationRouteCreate,
     EvaluatorAssignmentComplete,
+    EvaluatorProfileCreate,
 )
 from app.services.evaluator_routing import (
+    _active_profiles,
     _correlation,
     _profile_identity,
     _route_profiles,
@@ -17,6 +19,7 @@ from app.services.evaluator_routing import (
     complete_strategy_review_task,
     digest,
     producer_identity_for_lease,
+    register_profile,
     require_independence,
     retry_blocked_route,
     task_producer_identity,
@@ -27,6 +30,65 @@ ONE = uuid.UUID("10000000-0000-4000-8000-000000000001")
 TWO = uuid.UUID("20000000-0000-4000-8000-000000000002")
 THREE = uuid.UUID("30000000-0000-4000-8000-000000000003")
 DIGEST = "a" * 64
+
+
+def test_profile_registration_requires_attested_runtime() -> None:
+    db = MagicMock()
+    agent = SimpleNamespace(
+        id=ONE,
+        is_enabled=True,
+        capabilities=["independent-review"],
+        machine="vm1-developer",
+        runtime=None,
+        runtime_version=None,
+    )
+    deployment = SimpleNamespace(id=uuid.uuid4())
+    package = SimpleNamespace(
+        id=uuid.uuid4(), manifest_digest="b" * 64, source_repository="repo",
+        source_commit="c" * 40,
+    )
+    db.get.return_value = agent
+    db.execute.return_value.first.return_value = (deployment, package)
+    payload = EvaluatorProfileCreate(
+        agent_id=ONE,
+        profile_version="1.0.1",
+        review_kinds=["statistical"],
+        capabilities=["independent-review"],
+        provider="openai",
+        model_family="codex",
+        context_group="reviewer-v1",
+        registered_by="founder-operator",
+    )
+
+    with pytest.raises(HTTPException, match="runtime is not attested"):
+        register_profile(db, payload)
+
+
+def test_active_profiles_excludes_runtime_drift() -> None:
+    current = profile(TWO, "b" * 64, "current", "statistical")
+    stale = profile(THREE, "c" * 64, "stale", "adversarial")
+    stale.runtime = "unknown"
+    db = MagicMock()
+    agents = {
+        TWO: SimpleNamespace(
+            is_enabled=True,
+            machine=current.machine,
+            runtime="codex-cli",
+            runtime_version="pinned",
+        ),
+        THREE: SimpleNamespace(
+            is_enabled=True,
+            machine=stale.machine,
+            runtime="hermes",
+            runtime_version="0.3.2",
+        ),
+    }
+    db.execute.return_value.all.return_value = [
+        (current, agents[TWO]),
+        (stale, agents[THREE]),
+    ]
+
+    assert _active_profiles(db) == [current]
 
 
 @pytest.mark.parametrize("mutation", [None, "actor", "subject", "kind", "result", "package", "lease"])
@@ -420,6 +482,13 @@ def route(**overrides) -> EvaluationRouteCreate:
     }
     value.update(overrides)
     return EvaluationRouteCreate.model_validate(value)
+
+
+def test_route_revision_requires_explicit_predecessor() -> None:
+    with pytest.raises(ValueError, match="revision one"):
+        route(routing_revision=2)
+    with pytest.raises(ValueError, match="revision one"):
+        route(supersedes_route_id=uuid.uuid4())
 
 
 def test_correlation_separates_hard_conflicts_from_disclosed_runtime_risk() -> None:

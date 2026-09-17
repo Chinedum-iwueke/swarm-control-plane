@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models import Agent
 from app.models.alpha_campaign import (
     AlphaCampaign,
     AlphaCampaignAttempt,
@@ -51,9 +52,15 @@ from app.services.evaluator_routing import (
     retry_blocked_route,
     task_producer_identity,
 )
+from app.services.evaluator_routing import append_event as append_evaluation_event
 from app.services.governance import consume_task_approval
 from app.services.graph import digest_document
-from app.services.tasks import append_task_event, build_task, persist_new_task
+from app.services.tasks import (
+    append_task_event,
+    build_task,
+    clear_lease,
+    persist_new_task,
+)
 
 TERMINAL = {
     "shadow_candidate",
@@ -817,6 +824,111 @@ def _materialize_strategy_review_tasks(
         persist_new_task(db, task)
 
 
+def _current_agent_runtime(agent: Agent | None) -> str:
+    if agent is None:
+        return ""
+    return "/".join(filter(None, [agent.runtime, agent.runtime_version]))
+
+
+def _supersede_stale_strategy_review_route(
+    db: Session,
+    route: EvaluationRoute,
+    subject: dict,
+) -> EvaluationRoute:
+    """Retain an invalid routed identity and issue a digest-distinct successor."""
+    if route.status != "assigned":
+        return route
+    assignments = list(
+        db.scalars(
+            select(EvaluatorAssignment).where(EvaluatorAssignment.route_id == route.id)
+        ).all()
+    )
+    stale = []
+    for assignment in assignments:
+        profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+        agent = db.get(Agent, profile.agent_id) if profile is not None else None
+        if (
+            profile is None
+            or profile.status != "active"
+            or agent is None
+            or not agent.is_enabled
+            or profile.machine != agent.machine
+            or profile.runtime != _current_agent_runtime(agent)
+        ):
+            stale.append(assignment)
+    if not stale:
+        return route
+
+    stamp = now()
+    stale_ids = {assignment.id for assignment in stale}
+    for assignment in assignments:
+        if assignment.status == "assigned":
+            assignment.status = "superseded"
+            assignment.completed_at = stamp
+        task = db.scalar(
+            select(Task).where(Task.task_number == f"AR-{assignment.id}")
+        )
+        if task is not None and task.status not in {
+            "succeeded",
+            "failed",
+            "cancelled",
+        }:
+            task.status = "failed"
+            task.failure = {
+                "category": "stale_evaluator_profile",
+                "route_id": str(route.id),
+                "assignment_id": str(assignment.id),
+                "profile_stale": assignment.id in stale_ids,
+            }
+            task.completed_at = stamp
+            append_task_event(
+                db,
+                task,
+                "task_failed",
+                "Review task retained after its routed evaluator identity became stale.",
+                agent_id=task.assigned_agent_id,
+                payload=task.failure,
+            )
+            clear_lease(task)
+
+    revision = int(route.policy.get("routing_revision", 1))
+    route.status = "superseded"
+    route.completed_at = stamp
+    route.blocked_reason = {
+        "category": "stale_evaluator_profile",
+        "assignment_ids": sorted(str(item.id) for item in stale),
+    }
+    append_evaluation_event(
+        db,
+        route,
+        "route_superseded",
+        "alpha-campaign-director",
+        route.blocked_reason,
+    )
+    routed_producers = [
+        ProducerIdentity(actor=identity["agent_id"], **identity)
+        for identity in subject["producer_identities"]
+    ]
+    return create_route(
+        db,
+        EvaluationRouteCreate(
+            subject_type=route.subject_type,
+            subject_id=route.subject_id,
+            subject_digest=route.subject_digest,
+            producer=routed_producers[1],
+            excluded_producers=routed_producers,
+            required_review_kinds=route.policy["required_review_kinds"],
+            required_capabilities=route.policy.get("required_capabilities", []),
+            max_pairwise_shared_dimensions=route.policy[
+                "max_pairwise_shared_dimensions"
+            ],
+            requested_by=route.requested_by,
+            routing_revision=revision + 1,
+            supersedes_route_id=route.id,
+        ),
+    )
+
+
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
     delegated = (
         campaign.specification.get("execution_protocol") == "alpha004-delegated-v1"
@@ -1100,6 +1212,10 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 required_review_kinds=["strategy_spec", "causality_leakage"],
                 requested_by="alpha-campaign-director",
             ),
+        )
+    elif review_route.status == "assigned":
+        review_route = _supersede_stale_strategy_review_route(
+            db, review_route, subject
         )
     elif review_route.status == "blocked":
         review_route = retry_blocked_route(db, review_route)
