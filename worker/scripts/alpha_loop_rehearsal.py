@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from swarm_worker.executors.code_validation import ExecutionPolicyError
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
 from swarm_worker.models import Task
 from swarm_worker.workflows import WorkflowLoader
@@ -92,6 +93,33 @@ def classify_engineering_failure(result: object, workspace: TaskWorkspace) -> di
         "failed_step": getattr(failed, "name", None),
         "termination_reason": getattr(result, "termination_reason", None),
         "stderr_log": getattr(failed, "stderr_log", None),
+    }
+
+
+def classify_policy_exception(
+    exc: ExecutionPolicyError, workspace: TaskWorkspace
+) -> dict:
+    coding_stderr = workspace.logs / "coding-agent.stderr.log"
+    detail = (
+        coding_stderr.read_text(encoding="utf-8", errors="replace")[-4000:]
+        if coding_stderr.is_file()
+        else ""
+    )
+    if "NETLINK_ROUTE" in detail and "Address family not supported" in detail:
+        category = "sandbox_address_family_denied"
+    elif "produced no changes" in str(exc):
+        category = "engineering_no_changes"
+    else:
+        category = "engineering_policy_error"
+    return {
+        "category": category,
+        "retryable": False,
+        "failed_step": "coding-agent",
+        "exception": type(exc).__name__,
+        "detail": str(exc),
+        "stderr_log": (
+            "logs/coding-agent.stderr.log" if coding_stderr.is_file() else None
+        ),
     }
 
 
@@ -350,15 +378,34 @@ def main() -> int:
     )
     if not isinstance(workspace, TaskWorkspace):
         raise TypeError("Rehearsal workspace was not materialized.")
-    result = asyncio.run(
-        execute(
-            task,
-            workspace,
-            codex_home=args.codex_home,
-            model=args.model,
-            workflow_directory=Path(__file__).resolve().parents[1] / "workflows",
+    try:
+        result = asyncio.run(
+            execute(
+                task,
+                workspace,
+                codex_home=args.codex_home,
+                model=args.model,
+                workflow_directory=Path(__file__).resolve().parents[1] / "workflows",
+            )
         )
-    )
+    except ExecutionPolicyError as exc:
+        report = {
+            "schema_version": "alpha-loop-production-rehearsal-v1.0.0",
+            "run_id": str(run_id),
+            "success": False,
+            "production_state_mutated": False,
+            "market_data_used": False,
+            "capital_or_order_authority": False,
+            "failure": classify_policy_exception(exc, workspace),
+            "lease_routing": {
+                "required_capabilities": sorted(REQUIRED_CAPABILITIES),
+                "generic_coder_eligible": generic_eligible,
+                "dedicated_engineer_eligible": dedicated_eligible,
+            },
+            "workspace": str(workspace.plan.attempt_directory),
+        }
+        write_report(args.output, report)
+        return 1
     if not result.success:
         report = {
             "schema_version": "alpha-loop-production-rehearsal-v1.0.0",

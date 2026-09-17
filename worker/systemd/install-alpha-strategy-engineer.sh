@@ -54,7 +54,7 @@ systemd-run \
   --property=RestrictSUIDSGID=yes \
   --property=LockPersonality=yes \
   --property=CapabilityBoundingSet= \
-  --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+  --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
   --property=ReadOnlyPaths=/etc/invariance-swarm/codex-worker \
   --property=BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json \
   --property=ReadWritePaths=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime \

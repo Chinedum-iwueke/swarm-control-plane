@@ -120,6 +120,25 @@ def test_provider_capacity_failure_is_structured_and_retryable(tmp_path):
     }
 
 
+def test_netlink_sandbox_denial_is_structured(tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "coding-agent.stderr.log").write_text(
+        "bwrap: loopback: Failed to create NETLINK_ROUTE socket: "
+        "Address family not supported by protocol"
+    )
+    workspace = type("Workspace", (), {"logs": logs})()
+    from swarm_worker.executors.code_validation import ExecutionPolicyError
+
+    failure = MODULE.classify_policy_exception(
+        ExecutionPolicyError("Coding agent produced no changes."), workspace
+    )
+
+    assert failure["category"] == "sandbox_address_family_denied"
+    assert failure["retryable"] is False
+    assert failure["failed_step"] == "coding-agent"
+
+
 def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     package = load_role_package(
         ROOT / "role-packages/vm1-alpha-strategy-engineer/manifest.yaml",
@@ -142,6 +161,7 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         in unit
     )
     assert "MemoryDenyWriteExecute=true" not in unit
+    assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" in unit
 
     installer = (
         ROOT / "systemd/install-alpha-strategy-engineer.sh"
@@ -158,3 +178,4 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         "--codex-home /var/lib/invariance-swarm/"
         "codex-alpha-strategy-engineer-runtime" in installer
     )
+    assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
