@@ -1057,6 +1057,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     if campaign.hypothesis_count >= len(queue):
         return None
     source = queue[campaign.hypothesis_count]
+    campaign.terminal_reason = {}
     draft = db.scalar(
         select(Task).where(
             Task.task_number == _stage_task_number(campaign, source, "D")

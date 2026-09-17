@@ -622,6 +622,28 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["reusable_strategy"] == capability
 
 
+def test_governed_pipeline_clears_prior_stage_reason(monkeypatch):
+    record = campaign()
+    record.specification.update(
+        {
+            "execution_protocol": "alpha003-governed-v1",
+            "allowed_instruments": ["BTCUSDT"],
+            "execution_window_start": "2026-04-01T00:00:00Z",
+            "execution_window_end": "2026-05-01T00:00:00Z",
+        }
+    )
+    record.terminal_reason = {"category": "independent_strategy_review_pending"}
+    task = SimpleNamespace(status="queued")
+    db = MagicMock()
+    db.scalar.return_value = None
+    monkeypatch.setattr(service, "_stage_contract", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(service, "_create_stage_task", lambda *_args, **_kwargs: task)
+
+    assert service._advance_governed_pipeline(db, record) is task
+    assert record.phase == "hypothesis_draft"
+    assert record.terminal_reason == {}
+
+
 @pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
