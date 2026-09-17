@@ -18,6 +18,15 @@ test "$(stat -c '%u:%a' "$environment")" = 0:600 || {
 }
 test "$(sed -n 's/^SWARM_AGENT_SLUG=//p' "$environment")" = \
   vm1-alpha-strategy-engineer
+test -f /etc/invariance-swarm/codex-worker/auth.json
+
+runtime=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime
+test ! -L "$runtime"
+install -d -o omenka -g omenka -m 0700 "$runtime"
+test ! -L "$runtime/auth.json"
+if [[ ! -e "$runtime/auth.json" ]]; then
+  install -o root -g root -m 0600 /dev/null "$runtime/auth.json"
+fi
 
 install -d -o omenka -g omenka -m 0700 \
   /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal \
@@ -47,6 +56,8 @@ systemd-run \
   --property=CapabilityBoundingSet= \
   --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
   --property=ReadOnlyPaths=/etc/invariance-swarm/codex-worker \
+  --property=BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json \
+  --property=ReadWritePaths=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime \
   --property=ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
@@ -55,6 +66,7 @@ systemd-run \
   --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \
   /home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python \
   /home/omenka/Projects/swarm-control-plane/worker/scripts/alpha_loop_rehearsal.py \
+  --codex-home /var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime \
   --output /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal/production-parity.json
 
 jq -e '

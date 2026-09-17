@@ -132,6 +132,15 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         ROOT / "systemd/invariance-swarm-alpha-strategy-engineer.service"
     ).read_text(encoding="utf-8")
     assert "Environment=NODE_OPTIONS=--jitless" in unit
+    assert (
+        "Environment=SWARM_CODEX_HOME=/var/lib/invariance-swarm/"
+        "codex-alpha-strategy-engineer-runtime" in unit
+    )
+    assert (
+        "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:"
+        "/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json"
+        in unit
+    )
     assert "MemoryDenyWriteExecute=true" not in unit
 
     installer = (
@@ -144,3 +153,8 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     assert rehearsal < activation
     assert "generic_coder_eligible == false" in installer
     assert ".lifecycle.checks | all(.[]; . == true)" in installer
+    assert 'test ! -L "$runtime/auth.json"' in installer
+    assert (
+        "--codex-home /var/lib/invariance-swarm/"
+        "codex-alpha-strategy-engineer-runtime" in installer
+    )
