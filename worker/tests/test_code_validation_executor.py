@@ -138,6 +138,40 @@ def executor(**changes: Any) -> CodeValidationExecutor:
 
 
 @pytest.mark.asyncio
+async def test_process_runner_uses_configured_execution_virtualenv(
+    tmp_path: Path,
+) -> None:
+    virtualenv = tmp_path / "bulletproof-venv"
+    bin_directory = virtualenv / "bin"
+    bin_directory.mkdir(parents=True)
+    python = bin_directory / "python"
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o700)
+    runner = AsyncProcessRunner(
+        environment={"PATH": "/usr/bin:/bin"},
+        virtualenv=virtualenv,
+    )
+    stdout_path = tmp_path / "stdout.log"
+    stderr_path = tmp_path / "stderr.log"
+    with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+        running = await runner.start(
+            ["/usr/bin/env"],
+            cwd=tmp_path,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        await running.process.wait()
+
+    environment = dict(
+        line.split("=", 1)
+        for line in stdout_path.read_text().splitlines()
+        if "=" in line
+    )
+    assert environment["VIRTUAL_ENV"] == str(virtualenv)
+    assert environment["PATH"].split(os.pathsep)[0] == str(bin_directory)
+
+
+@pytest.mark.asyncio
 async def test_successful_compile_and_test_workflow(
     tmp_path: Path,
 ) -> None:

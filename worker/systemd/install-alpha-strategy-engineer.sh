@@ -20,6 +20,33 @@ test "$(sed -n 's/^SWARM_AGENT_SLUG=//p' "$environment")" = \
   vm1-alpha-strategy-engineer
 test -f /etc/invariance-swarm/codex-worker/auth.json
 
+bulletproof_repo=/home/omenka/Projects/bulletproof_bt
+bulletproof_venv="$bulletproof_repo/.venv"
+bulletproof_lock="$bulletproof_repo/requirements/dev-py311.lock"
+command -v python3.11 >/dev/null || {
+  echo "Python 3.11 is required for the pinned Bulletproof runtime." >&2
+  exit 1
+}
+test -f "$bulletproof_lock" || {
+  echo "Missing pinned Bulletproof validation lock: $bulletproof_lock" >&2
+  exit 1
+}
+if [[ ! -x "$bulletproof_venv/bin/python" ]]; then
+  runuser -u omenka -- python3.11 -m venv "$bulletproof_venv"
+fi
+runuser -u omenka -- "$bulletproof_venv/bin/python" -m pip install \
+  --requirement "$bulletproof_lock"
+runuser -u omenka -- "$bulletproof_venv/bin/python" - <<'PY'
+import jsonschema
+import numpy
+import pandas
+import pyarrow
+import pytest
+import yaml
+
+print("bulletproof-validation-runtime=ready")
+PY
+
 runtime=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime
 test ! -L "$runtime"
 install -d -o omenka -g omenka -m 0700 "$runtime"
@@ -62,6 +89,7 @@ systemd-run \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
   --setenv=NODE_OPTIONS=--jitless \
+  --setenv=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv \
   --setenv=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin \
   --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \
   /home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python \

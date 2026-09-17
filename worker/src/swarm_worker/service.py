@@ -483,6 +483,7 @@ class WorkerService:
                     stdout_log=None,
                     stderr_log=None,
                     retryable=False,
+                    detail=str(exc),
                 )
 
             if not execution_result.success:
@@ -638,6 +639,7 @@ class WorkerService:
         stdout_log: str | None,
         stderr_log: str | None,
         retryable: bool,
+        detail: str | None = None,
     ) -> FailedOutcome | LeaseLostOutcome:
         failure: dict[str, object] = {
             "error_category": category[:100],
@@ -648,6 +650,8 @@ class WorkerService:
             "retryable": retryable,
             "worker_version": __version__,
         }
+        if detail:
+            failure["detail"] = detail[:2000]
         try:
             await api.fail_task(
                 task.id,

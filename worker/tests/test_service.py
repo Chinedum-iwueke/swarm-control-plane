@@ -519,6 +519,29 @@ async def test_failure_path_exact_order_and_fail_once(
 
 
 @pytest.mark.asyncio
+async def test_executor_exception_detail_is_retained_in_failure_evidence(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    api = FakeAPI(events)
+    service = make_service(
+        tmp_path,
+        api,
+        events,
+        executor_error=RuntimeError("git failed: retained diagnostic"),
+    )
+
+    outcome = await service.run_once()
+
+    assert isinstance(outcome, FailedOutcome)
+    assert outcome.failure["error_category"] == "executor_RuntimeError"
+    assert outcome.failure["detail"] == "git failed: retained diagnostic"
+    assert api.requests["fail"][0].failure["detail"] == (
+        "git failed: retained diagnostic"
+    )
+
+
+@pytest.mark.asyncio
 async def test_policy_rejection_releases_before_start(
     tmp_path: Path,
 ) -> None:

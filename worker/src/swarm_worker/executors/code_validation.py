@@ -72,8 +72,10 @@ class AsyncProcessRunner:
         self,
         *,
         environment: Mapping[str, str] | None = None,
+        virtualenv: Path | None = None,
     ) -> None:
         self._environment = dict(SubprocessRunner(environment=environment).environment)
+        self._virtualenv_bin = virtualenv / "bin" if virtualenv is not None else None
 
     @property
     def environment(self) -> Mapping[str, str]:
@@ -95,7 +97,11 @@ class AsyncProcessRunner:
         environment = dict(self._environment)
         # Keep the invoked virtualenv path. Resolving its Python symlink points at
         # /usr/bin and silently selects host tools instead of the pinned environment.
-        virtualenv_bin = Path(sys.executable).parent
+        virtualenv_bin = self._virtualenv_bin or Path(sys.executable).parent
+        if not (virtualenv_bin / "python").is_file():
+            raise ExecutionPolicyError(
+                f"Execution virtualenv is incomplete: {virtualenv_bin.parent}"
+            )
         existing_path = environment.get("PATH", "")
         environment["PATH"] = os.pathsep.join(
             part for part in (str(virtualenv_bin), existing_path) if part

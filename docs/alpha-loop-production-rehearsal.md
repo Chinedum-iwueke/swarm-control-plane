@@ -31,6 +31,14 @@ bind-mounting only the canonical `auth.json` read-only. The protected canonical
 Codex home remains read-only; configuration, durable credentials and repository
 permissions cannot be rewritten by the agent.
 
+The worker daemon continues to run from its narrow control-plane virtualenv. Codex
+commands and all engineering validation commands run with Bulletproof's pinned
+Python 3.11 environment at `/home/omenka/Projects/bulletproof_bt/.venv`, installed
+from `requirements/dev-py311.lock`. This supplies the same NumPy, pandas, PyArrow,
+pytest and scientific dependencies used for operator-run Bulletproof experiments.
+The canonical repository and market-data lake remain read-only; each task receives
+a disposable Git worktree under `/home/omenka/Projects/swarm-agent-workspaces`.
+
 The outer unit permits `AF_NETLINK` because Codex's inner Bubblewrap sandbox uses a
 netlink route socket to configure its isolated loopback device. This does not grant
 an external route: the Codex workspace sandbox still runs with network access false,

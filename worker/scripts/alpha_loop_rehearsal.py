@@ -5,12 +5,17 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from swarm_worker.executors.code_validation import ExecutionPolicyError
+from swarm_worker.executors.code_validation import (
+    AsyncProcessRunner,
+    CodeValidationExecutor,
+    ExecutionPolicyError,
+)
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
 from swarm_worker.models import Task
 from swarm_worker.workflows import WorkflowLoader
@@ -259,11 +264,20 @@ async def execute(
     workflow = workflow.model_copy(
         update={"allowed_repositories": ["alpha_loop_rehearsal"]}
     )
+    configured_virtualenv = os.environ.get("SWARM_ENGINEERING_VIRTUALENV")
+    process_runner = AsyncProcessRunner(
+        virtualenv=(Path(configured_virtualenv) if configured_virtualenv else None)
+    )
     executor = EngineeringMissionExecutor(
         codex_home=codex_home,
         codex_model=model,
         timeout_seconds=900,
         heartbeat_interval_seconds=15,
+        process_runner=process_runner,
+        validation_executor=CodeValidationExecutor(
+            heartbeat_interval_seconds=15,
+            process_runner=process_runner,
+        ),
     )
 
     async def heartbeat(_: dict[str, object]) -> None:

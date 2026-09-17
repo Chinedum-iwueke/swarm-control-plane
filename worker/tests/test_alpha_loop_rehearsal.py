@@ -156,6 +156,10 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         "codex-alpha-strategy-engineer-runtime" in unit
     )
     assert (
+        "Environment=SWARM_ENGINEERING_VIRTUALENV="
+        "/home/omenka/Projects/bulletproof_bt/.venv" in unit
+    )
+    assert (
         "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:"
         "/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json"
         in unit
@@ -179,3 +183,15 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         "codex-alpha-strategy-engineer-runtime" in installer
     )
     assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
+    assert "requirements/dev-py311.lock" in installer
+    assert "bulletproof-validation-runtime=ready" in installer
+    assert (
+        "--setenv=SWARM_ENGINEERING_VIRTUALENV="
+        "/home/omenka/Projects/bulletproof_bt/.venv" in installer
+    )
+
+    rehearsal_source = (ROOT / "scripts/alpha_loop_rehearsal.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'os.environ.get("SWARM_ENGINEERING_VIRTUALENV")' in rehearsal_source
+    assert "virtualenv=" in rehearsal_source

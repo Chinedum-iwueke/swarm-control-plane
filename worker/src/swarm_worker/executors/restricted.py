@@ -6,6 +6,7 @@ from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
 from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.alpha_strategy_review import AlphaStrategyReviewExecutor
 from swarm_worker.executors.code_validation import (
+    AsyncProcessRunner,
     CodeValidationExecutor,
     HeartbeatCallback,
 )
@@ -30,12 +31,24 @@ class RestrictedExecutor:
         self._validation = CodeValidationExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds
         )
+        engineering_runner = AsyncProcessRunner(
+            virtualenv=(
+                settings.swarm_engineering_virtualenv
+                if settings is not None
+                else None
+            )
+        )
+        engineering_validation = CodeValidationExecutor(
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+            process_runner=engineering_runner,
+        )
         self._engineering = EngineeringMissionExecutor(
             codex_home=codex_home,
             codex_model=codex_model,
             timeout_seconds=engineering_timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
-            validation_executor=self._validation,
+            process_runner=engineering_runner,
+            validation_executor=engineering_validation,
         )
         self._research = ResearchExperimentExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds,
