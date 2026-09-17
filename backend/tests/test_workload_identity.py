@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -10,6 +10,7 @@ from app.schemas.workload_identity import (
 )
 from app.services.workload_identity import authorize, required_scope, scopes_for_package
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 
 
 def test_scope_derivation_and_route_authorization_are_explicit():
@@ -102,3 +103,21 @@ def test_unknown_identity_does_not_create_orphan_receipt():
         authorize(db, payload)
     assert exc.value.status_code == 404
     db.add.assert_not_called()
+
+
+def test_duplicate_identity_version_returns_conflict_instead_of_server_error():
+    from app.api.routes.workload_identities import create
+
+    db = MagicMock()
+    payload = MagicMock()
+    collision = IntegrityError("insert", {}, RuntimeError("duplicate"))
+
+    with patch(
+        "app.api.routes.workload_identities.create_identity",
+        side_effect=collision,
+    ), pytest.raises(HTTPException) as exc:
+        create(payload, db)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "Workload identity agent/version is already registered."
+    db.rollback.assert_called_once_with()
