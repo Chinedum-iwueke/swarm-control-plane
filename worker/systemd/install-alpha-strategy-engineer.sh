@@ -116,5 +116,7 @@ install -o root -g root -m 0644 \
   "$source_dir/invariance-swarm-alpha-strategy-engineer.service" \
   /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now invariance-swarm-alpha-strategy-engineer.service
+systemctl enable invariance-swarm-alpha-strategy-engineer.service
+systemctl restart invariance-swarm-alpha-strategy-engineer.service
+systemctl is-active --quiet invariance-swarm-alpha-strategy-engineer.service
 echo "Production-parity rehearsal passed; dedicated alpha strategy engineer installed."
