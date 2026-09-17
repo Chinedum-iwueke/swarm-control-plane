@@ -375,15 +375,26 @@ def fail_task(
     )
     supervised = mission is not None and mission.supervision_enabled
     if payload.retryable and task.attempt_count < task.max_attempts and not supervised:
-        task.status = "queued"
+        if task.approval_required:
+            rearm_task_approval(
+                db,
+                task,
+                "Retryable execution failure requires renewed approval.",
+            )
+        else:
+            task.status = "queued"
 
         append_task_event(
             db,
             task,
             "task_requeued",
-            "Task requeued after retryable failure.",
+            (
+                "Task returned for renewed approval after retryable failure."
+                if task.approval_required
+                else "Task requeued after retryable failure."
+            ),
             agent_id=previous_agent_id,
-            payload={},
+            payload={"approval_required": task.approval_required},
         )
     else:
         task.status = "failed"
