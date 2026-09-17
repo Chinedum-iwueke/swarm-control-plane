@@ -894,10 +894,11 @@ def test_strategy_review_rejection_is_retained_as_invalid_without_trials(monkeyp
         },
     )
     qualification = {
+        "card_digest": "7" * 64,
         "artifact_bundle": {
-            "hypothesis_spec": {
+            "engine_hypothesis_yaml": {
                 "hypothesis_id": "CAUSAL-H1",
-                "claim": source["question"],
+                "generation_provenance": {"source_card_hash": "7" * 64},
             }
         }
     }
@@ -928,6 +929,45 @@ def test_strategy_review_rejection_is_retained_as_invalid_without_trials(monkeyp
     assert payload.gate_report.independent_review_complete is True
     assert payload.gate_report.shadow_eligible is False
     assert payload.evidence_digests == ["4" * 64, "5" * 64, "6" * 64]
+
+
+def test_rejected_strategy_requires_hypothesis_bound_to_approved_card():
+    source = {
+        "source_candidate_id": str(uuid4()),
+        "source_candidate_digest": "1" * 64,
+        "question": "Does the exact causal signal predict the next return?",
+    }
+    campaign = SimpleNamespace(
+        campaign_digest="2" * 64,
+        specification={
+            "bulletproof_source_commit": COMMIT,
+            "dataset_bindings": [
+                {
+                    "dataset_build_id": str(uuid4()),
+                    "dataset_digest": "3" * 64,
+                }
+            ],
+        },
+    )
+    qualification = {
+        "card_digest": "7" * 64,
+        "artifact_bundle": {
+            "engine_hypothesis_yaml": {
+                "hypothesis_id": "CAUSAL-H1",
+                "generation_provenance": {"source_card_hash": "8" * 64},
+            }
+        },
+    }
+
+    with pytest.raises(HTTPException, match="immutable hypothesis contract"):
+        service._retain_strategy_review_rejection(
+            MagicMock(),
+            campaign,
+            source,
+            qualification,
+            SimpleNamespace(id=uuid4(), route_digest="4" * 64),
+            [SimpleNamespace(blockers=["semantic mismatch"])],
+        )
 
 
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(

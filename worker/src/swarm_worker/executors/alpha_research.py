@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -29,6 +30,15 @@ def _qualification_handoff(qualification: dict) -> dict:
         raise AlphaResearchExecutionError(
             "Qualified strategy is missing a required execution artifact."
         )
+    hypothesis_spec = artifact_bundle.get("hypothesis_spec")
+    if (
+        not isinstance(hypothesis_spec, dict)
+        or not isinstance(hypothesis_spec.get("hypothesis_id"), str)
+        or not isinstance(hypothesis_spec.get("source_card_hash"), str)
+    ):
+        raise AlphaResearchExecutionError(
+            "Qualified strategy is missing its immutable hypothesis contract."
+        )
     retained = {
         key: qualification[key]
         for key in (
@@ -48,6 +58,14 @@ def _qualification_handoff(qualification: dict) -> dict:
     }
     retained["artifact_bundle"] = {
         name: artifact_bundle[name] for name in required_artifacts
+    }
+    encoded_hypothesis = json.dumps(
+        hypothesis_spec, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    retained["hypothesis_contract"] = {
+        "hypothesis_id": hypothesis_spec["hypothesis_id"],
+        "source_card_hash": hypothesis_spec["source_card_hash"],
+        "hypothesis_digest": hashlib.sha256(encoded_hypothesis).hexdigest(),
     }
     return retained
 
