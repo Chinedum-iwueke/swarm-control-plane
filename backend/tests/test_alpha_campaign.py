@@ -292,7 +292,11 @@ def test_campaign_resume_rejects_task_that_is_still_failed() -> None:
         },
     )
     db = MagicMock()
-    db.get.return_value = SimpleNamespace(id=task_id, status="failed")
+    db.get.return_value = SimpleNamespace(
+        id=task_id,
+        status="failed",
+        task_number="A3-campaign-002-Q",
+    )
 
     with pytest.raises(HTTPException, match="Resume the recorded pipeline task"):
         service.resume_campaign(
@@ -302,6 +306,91 @@ def test_campaign_resume_rejects_task_that_is_still_failed() -> None:
                 expected_campaign_digest=DIGEST,
                 actor="founder-operator",
                 reason="Try to resume before task recovery.",
+            ),
+        )
+
+
+def test_campaign_resume_migrates_superseded_cancelled_engineering_task(monkeypatch):
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="complete",
+        next_action="operator_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={
+            "category": "governed_pipeline_task_cancelled",
+            "task_id": str(task_id),
+            "task_number": "A3-campaign-002-G",
+        },
+    )
+    task = SimpleNamespace(
+        id=task_id,
+        status="cancelled",
+        task_number="A3-campaign-002-G",
+    )
+    supersession = SimpleNamespace(
+        payload={"successor_stage": "G2"},
+    )
+    db = MagicMock()
+    db.get.return_value = task
+    db.scalar.return_value = supersession
+    events = []
+    reconciled = []
+    monkeypatch.setattr(
+        service,
+        "_append_event",
+        lambda _db, _campaign, kind, actor, payload: events.append(
+            (kind, actor, payload)
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "reconcile_campaign",
+        lambda _db, value: reconciled.append(value),
+    )
+
+    service.resume_campaign(
+        db,
+        record,
+        AlphaCampaignAction(
+            expected_campaign_digest=DIGEST,
+            actor="founder-operator",
+            reason="Migrate the retained obsolete engineering contract to G3.",
+        ),
+    )
+
+    assert record.status == "running"
+    assert record.completed_at is None
+    assert events[0][2]["obsolete_task_retained"] is True
+    assert events[0][2]["recovered_task_status"] == "cancelled"
+    assert reconciled == [record]
+
+
+def test_campaign_resume_rejects_cancelled_engineering_without_supersession() -> None:
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        terminal_reason={
+            "category": "governed_pipeline_task_cancelled",
+            "task_id": str(task_id),
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        id=task_id,
+        status="cancelled",
+        task_number="A3-campaign-002-G",
+    )
+    db.scalar.return_value = None
+
+    with pytest.raises(HTTPException, match="Resume the recorded pipeline task"):
+        service.resume_campaign(
+            db,
+            record,
+            AlphaCampaignAction(
+                expected_campaign_digest=DIGEST,
+                actor="founder-operator",
+                reason="Unsafe cancellation must remain terminal.",
             ),
         )
 

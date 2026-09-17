@@ -37,6 +37,7 @@ from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.research_bridge import GovernedResearchBridge
 from app.models.task import Task
+from app.models.task_event import TaskEvent
 from app.schemas.alpha_campaign import (
     AlphaCampaignAction,
     AlphaCampaignActivation,
@@ -2027,7 +2028,30 @@ def resume_campaign(
     task = db.get(Task, task_id) if task_id else None
     if task is None:
         raise HTTPException(409, "Recorded pipeline task is unavailable.")
-    if task.status in {"failed", "cancelled"}:
+    recorded_task_number = terminal.get("task_number")
+    if recorded_task_number and recorded_task_number != task.task_number:
+        raise HTTPException(409, "Recorded pipeline task no longer matches its campaign.")
+    superseded_obsolete_engineering = False
+    if (
+        task.status in {"failed", "cancelled"}
+        and task.task_number.rsplit("-", 1)[-1]
+        in OBSOLETE_STRATEGY_ENGINEERING_STAGES
+    ):
+        supersession = db.scalar(
+            select(TaskEvent)
+            .where(
+                TaskEvent.task_id == task.id,
+                TaskEvent.event_type == "task_contract_superseded",
+            )
+            .order_by(TaskEvent.id.desc())
+            .limit(1)
+        )
+        superseded_obsolete_engineering = bool(
+            supersession
+            and supersession.payload.get("successor_stage")
+            in {"G2", STRATEGY_ENGINEERING_STAGE}
+        )
+    if task.status in {"failed", "cancelled"} and not superseded_obsolete_engineering:
         raise HTTPException(
             409, "Resume the recorded pipeline task before resuming its campaign."
         )
@@ -2048,6 +2072,7 @@ def resume_campaign(
             "reason": payload.reason,
             "recovered_task_id": str(task.id),
             "recovered_task_status": task.status,
+            "obsolete_task_retained": superseded_obsolete_engineering,
             "prior_terminal_reason": prior_reason,
         },
     )
