@@ -57,6 +57,7 @@ def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
 
 def test_alpha_strategy_engineer_has_exclusive_engineering_capability() -> None:
     package = load_role_package(ALPHA_ENGINEER_MANIFEST, WORKFLOWS)
+    assert package.manifest.version == "1.0.1"
     assert package.manifest.task_types == ["engineering_mission"]
     assert package.manifest.required_capabilities == [
         "alpha-strategy-engineering",

@@ -228,3 +228,158 @@ def test_partial_registration_requires_explicit_scoped_recovery(
     assert ("POST", "/v1/agents") not in requests
     assert ("POST", "/v1/packages/deployments") not in requests
     assert requests[-1][1].endswith("/credentials/finalize")
+
+
+def test_existing_state_requires_explicit_package_rotation(
+    tmp_path, monkeypatch
+) -> None:
+    package_name = "vm1-alpha-strategy-engineer"
+    manifest = MODULE.load_role_package(
+        MODULE.ROOT / "role-packages" / package_name / "manifest.yaml",
+        MODULE.ROOT / "workflows",
+    ).manifest
+    manifest_digest = MODULE.hashlib.sha256(
+        MODULE.canonical_manifest(manifest)
+    ).hexdigest()
+    agent = {
+        "id": state()["agent_id"],
+        "slug": package_name,
+        "machine": "vm1-developer",
+        "role": manifest.role,
+        "capabilities": manifest.required_capabilities,
+        "risk_ceiling": manifest.risk_ceiling,
+        "is_enabled": True,
+    }
+    old_package_id = "55555555-5555-4555-8555-555555555555"
+    new_package_id = "66666666-6666-4666-8666-666666666666"
+    old_deployment_id = "77777777-7777-4777-8777-777777777777"
+    new_deployment_id = "88888888-8888-4888-8888-888888888888"
+    requests = []
+
+    def handler(request):
+        path = request.url.path
+        requests.append((request.method, path))
+        if request.method == "GET":
+            values = {
+                "/v1/packages": [
+                    {
+                        "id": old_package_id,
+                        "name": package_name,
+                        "version": "1.0.0",
+                        "manifest_digest": "0" * 64,
+                    }
+                ],
+                "/v1/agents": [agent],
+                "/v1/packages/deployments": [
+                    {
+                        "deployment": {
+                            "id": old_deployment_id,
+                            "agent_id": agent["id"],
+                            "package_id": old_package_id,
+                            "is_active": True,
+                        },
+                        "package": {"id": old_package_id},
+                    }
+                ],
+                "/v1/agent-governance/charters": [],
+                "/v1/workload-identities": [],
+            }
+            return httpx.Response(200, json=values[path])
+        payload = json.loads(request.content or b"{}")
+        if path == "/v1/packages":
+            return httpx.Response(
+                201,
+                json={
+                    "id": new_package_id,
+                    "name": package_name,
+                    "version": manifest.version,
+                    "manifest_digest": manifest_digest,
+                },
+            )
+        if path == "/v1/packages/deployments":
+            assert payload["package_id"] == new_package_id
+            return httpx.Response(
+                201,
+                json={
+                    "id": new_deployment_id,
+                    "agent_id": agent["id"],
+                    "package_id": new_package_id,
+                    "is_active": True,
+                },
+            )
+        if path == f"/v1/packages/deployments/{old_deployment_id}/revoke":
+            return httpx.Response(200, json={"id": old_deployment_id})
+        if path == "/v1/agent-governance/charters":
+            return httpx.Response(201, json={"id": state()["charter_id"]})
+        if path.endswith("/activate"):
+            return httpx.Response(200, json={"id": state()["charter_id"]})
+        if path == "/v1/agent-governance/grants":
+            return httpx.Response(201, json={"id": payload["capability"]})
+        if path == "/v1/workload-identities":
+            created = identity() | {"package_id": new_package_id}
+            return httpx.Response(201, json=created)
+        if path.endswith(("/bind-credentials", "/credentials/finalize")):
+            return httpx.Response(200, json={"status": "ok"})
+        if path.endswith("/credentials/rotate"):
+            return httpx.Response(201, json={"token": "rotated-secret"})
+        raise AssertionError(path)
+
+    client_type = httpx.Client
+    monkeypatch.setattr(
+        MODULE.httpx,
+        "Client",
+        lambda **kwargs: client_type(**kwargs, transport=httpx.MockTransport(handler)),
+    )
+    monkeypatch.setenv("SWARM_API_URL", "http://control-plane.test")
+    monkeypatch.setenv("SWARM_ORCHESTRATOR_TOKEN", "operator")
+    monkeypatch.setenv("SWARM_PACKAGE_SIGNING_SECRET", "signing")
+    state_file, env_file = tmp_path / "state.json", tmp_path / "executor.env"
+    state_file.write_text(
+        json.dumps(
+            {
+                **state(),
+                "slug": package_name,
+                "package_id": old_package_id,
+                "deployment_id": old_deployment_id,
+                "manifest_digest": "0" * 64,
+                "source_commit": "a" * 40,
+            }
+        )
+    )
+    env_file.write_text("SWARM_AGENT_TOKEN=old-secret\n")
+    state_file.chmod(0o600)
+    env_file.chmod(0o600)
+    base_argv = [
+        "bootstrap",
+        "--package",
+        package_name,
+        "--state",
+        str(state_file),
+        "--environment",
+        str(env_file),
+        "--source-commit",
+        "b" * 40,
+    ]
+    monkeypatch.setattr(sys, "argv", base_argv)
+    with pytest.raises(RuntimeError, match="explicit package/credential rotation"):
+        MODULE.main()
+    assert requests == []
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [*base_argv, "--rotate-package"],
+    )
+
+    assert MODULE.main() == 0
+    rotated = json.loads(state_file.read_text())
+    assert rotated["package_id"] == new_package_id
+    assert rotated["deployment_id"] == new_deployment_id
+    assert rotated["manifest_digest"] == manifest_digest
+    assert rotated["source_commit"] == "b" * 40
+    assert "SWARM_AGENT_TOKEN=rotated-secret" in env_file.read_text()
+    deploy_index = requests.index(("POST", "/v1/packages/deployments"))
+    revoke_index = requests.index(
+        ("POST", f"/v1/packages/deployments/{old_deployment_id}/revoke")
+    )
+    assert deploy_index < revoke_index
