@@ -33,7 +33,8 @@ ProtectControlGroups=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# Codex's isolated Node host still changes executable-memory permissions with
+# NODE_OPTIONS=--jitless. Keep the filesystem and capability sandbox instead.
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
