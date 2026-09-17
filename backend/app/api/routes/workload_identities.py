@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_orchestrator
@@ -53,8 +54,15 @@ router = APIRouter(
     "", response_model=WorkloadIdentityResponse, status_code=status.HTTP_201_CREATED
 )
 def create(payload: WorkloadIdentityCreate, db: Annotated[Session, Depends(get_db)]):
-    identity = create_identity(db, payload)
-    db.commit()
+    try:
+        identity = create_identity(db, payload)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Workload identity agent/version is already registered.",
+        ) from exc
     db.refresh(identity)
     return identity
 

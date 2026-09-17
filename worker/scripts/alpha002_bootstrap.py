@@ -57,6 +57,7 @@ def ensure_workload_identity(
     state: dict,
     *,
     expires_at: str,
+    version: str = "1.0.0",
 ) -> dict:
     identities = call(api, "GET", "/v1/workload-identities")
     matches = [
@@ -83,7 +84,7 @@ def ensure_workload_identity(
                 "agent_id": state["agent_id"],
                 "charter_id": state["charter_id"],
                 "package_id": state["package_id"],
-                "version": "1.0.0",
+                "version": version,
                 "audience": "invariance-control-plane",
                 "scopes": WORKLOAD_SCOPES,
                 "accountable_owner": "senior-quantitative-research",
@@ -151,8 +152,10 @@ def main() -> int:
                     api,
                     state,
                     expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
+                    version=manifest.version,
                 )
             state["workload_identity_id"] = identity["id"]
+            state["workload_identity_version"] = manifest.version
             state["workload_scopes"] = WORKLOAD_SCOPES
             atomic_write(args.state, json.dumps(state, indent=2, sort_keys=True) + "\n")
             print(json.dumps(state, indent=2, sort_keys=True))
@@ -321,26 +324,48 @@ def main() -> int:
             f"/v1/agent-governance/charters/{charter['id']}/activate",
             {"activated_by": "founder-operator"},
         )
+        grants = call(api, "GET", "/v1/agent-governance/grants")
         grant_ids = []
         for capability in manifest.required_capabilities:
-            grant = call(
-                api,
-                "POST",
-                "/v1/agent-governance/grants",
-                {
-                    "agent_id": registration["agent"]["id"],
-                    "charter_id": charter["id"],
-                    "package_id": package["id"],
-                    "capability": capability,
-                    "machine": "vm1-developer",
-                    "task_types": manifest.task_types,
-                    "repositories": ["bulletproof_bt"],
-                    "risk_ceiling": manifest.risk_ceiling,
-                    "accountable_owner": "senior-quantitative-research",
-                    "granted_by": "founder-operator",
-                    "reason": "ALPHA-002 continuous no-capital scientific execution",
-                    "expires_at": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
-                },
+            matches = [
+                item
+                for item in grants
+                if item["agent_id"] == registration["agent"]["id"]
+                and item["charter_id"] == charter["id"]
+                and item["package_id"] == package["id"]
+                and item["capability"] == capability
+                and item["status"] == "active"
+            ]
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"Multiple active exact-package grants exist for {capability}."
+                )
+            grant = (
+                matches[0]
+                if matches
+                else call(
+                    api,
+                    "POST",
+                    "/v1/agent-governance/grants",
+                    {
+                        "agent_id": registration["agent"]["id"],
+                        "charter_id": charter["id"],
+                        "package_id": package["id"],
+                        "capability": capability,
+                        "machine": "vm1-developer",
+                        "task_types": manifest.task_types,
+                        "repositories": ["bulletproof_bt"],
+                        "risk_ceiling": manifest.risk_ceiling,
+                        "accountable_owner": "senior-quantitative-research",
+                        "granted_by": "founder-operator",
+                        "reason": (
+                            "ALPHA-002 continuous no-capital scientific execution"
+                        ),
+                        "expires_at": (
+                            datetime.now(UTC) + timedelta(days=365)
+                        ).isoformat(),
+                    },
+                )
             )
             grant_ids.append(grant["id"])
         state = {
@@ -357,8 +382,10 @@ def main() -> int:
             api,
             state,
             expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
+            version=manifest.version,
         )
         state["workload_identity_id"] = identity["id"]
+        state["workload_identity_version"] = manifest.version
         state["workload_scopes"] = WORKLOAD_SCOPES
         if existing_agent:
             rotated = call(
