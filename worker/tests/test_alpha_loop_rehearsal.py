@@ -172,7 +172,7 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     ).read_text(encoding="utf-8")
     rehearsal = installer.index("alpha_loop_rehearsal.py")
     activation = installer.index(
-        "systemctl enable --now invariance-swarm-alpha-strategy-engineer.service"
+        "systemctl restart invariance-swarm-alpha-strategy-engineer.service"
     )
     assert rehearsal < activation
     assert "generic_coder_eligible == false" in installer
@@ -183,6 +183,9 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         "codex-alpha-strategy-engineer-runtime" in installer
     )
     assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
+    assert "systemctl enable invariance-swarm-alpha-strategy-engineer.service" in installer
+    assert "systemctl restart invariance-swarm-alpha-strategy-engineer.service" in installer
+    assert "systemctl is-active --quiet" in installer
     assert "requirements/dev-py311.lock" in installer
     assert "bulletproof-validation-runtime=ready" in installer
     assert (
