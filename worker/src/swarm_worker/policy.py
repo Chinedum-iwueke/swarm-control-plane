@@ -20,6 +20,8 @@ from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
 _SAFE_REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SAFE_WORKFLOW = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SAFE_BASE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_RESAMPLING_POLICY = "left_closed_left_labeled_complete_bars"
+_LEGACY_RESAMPLING_POLICY = "right_closed_left_labeled_complete_bars"
 
 
 class WorkerPolicyError(Exception):
@@ -256,8 +258,8 @@ class AlphaResearchExecutionContract(BaseModel):
     instruments: list[str] = Field(default_factory=list, max_length=20)
     timeframe: Literal["1m"]
     research_timeframe: str = Field(default="1m", pattern=r"^[1-9][0-9]*[mhd]$")
-    resampling_policy: Literal["right_closed_left_labeled_complete_bars"] = (
-        "right_closed_left_labeled_complete_bars"
+    resampling_policy: Literal["left_closed_left_labeled_complete_bars"] = (
+        _RESAMPLING_POLICY
     )
     reusable_strategy: dict[str, Any] | None = None
     tier: Literal["Tier2A", "Tier2B", "Tier3"]
@@ -272,6 +274,11 @@ class AlphaResearchExecutionContract(BaseModel):
     card_approval: dict[str, Any] | None = None
     qualification: dict[str, Any] | None = None
     execution_class: Literal["qualification", "commissioning"] = "qualification"
+
+    @field_validator("resampling_policy", mode="before")
+    @classmethod
+    def normalize_resampling_policy(cls, value):
+        return _RESAMPLING_POLICY if value == _LEGACY_RESAMPLING_POLICY else value
 
     @model_validator(mode="after")
     def stage_contract(self):

@@ -4,13 +4,15 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.alpha_campaign import AlphaDatasetBinding
 
 _DIGEST = r"^[0-9a-f]{64}$"
 _COMMIT = r"^[0-9a-f]{40,64}$"
 _KEY = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+_RESAMPLING_POLICY = "left_closed_left_labeled_complete_bars"
+_LEGACY_RESAMPLING_POLICY = "right_closed_left_labeled_complete_bars"
 
 
 class StrictModel(BaseModel):
@@ -176,12 +178,17 @@ class AlphaDiscoveryDataRequirement(StrictModel):
         default="1m",
         pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$",
     )
-    resampling_policy: Literal["right_closed_left_labeled_complete_bars"] = (
-        "right_closed_left_labeled_complete_bars"
+    resampling_policy: Literal["left_closed_left_labeled_complete_bars"] = (
+        _RESAMPLING_POLICY
     )
     required_fields: list[str] = Field(min_length=1, max_length=50)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
+
+    @field_validator("resampling_policy", mode="before")
+    @classmethod
+    def normalize_resampling_policy(cls, value):
+        return _RESAMPLING_POLICY if value == _LEGACY_RESAMPLING_POLICY else value
 
     @model_validator(mode="after")
     def normalized_basket(self):
@@ -222,12 +229,17 @@ class AlphaRepresentationPlan(StrictModel):
     research_timeframe: str = Field(
         pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$"
     )
-    resampling_policy: Literal["right_closed_left_labeled_complete_bars"]
+    resampling_policy: Literal["left_closed_left_labeled_complete_bars"]
     required_fields: list[str] = Field(min_length=1, max_length=50)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
     transformation_rationale: str = Field(min_length=20, max_length=4000)
     rejected_alternatives: list[str] = Field(min_length=1, max_length=20)
+
+    @field_validator("resampling_policy", mode="before")
+    @classmethod
+    def normalize_resampling_policy(cls, value):
+        return _RESAMPLING_POLICY if value == _LEGACY_RESAMPLING_POLICY else value
 
     @model_validator(mode="after")
     def normalized_basket(self):
