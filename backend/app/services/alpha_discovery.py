@@ -952,6 +952,43 @@ def _candidate_enters_novelty_memory(item: AlphaDiscoveryCandidate) -> bool:
     )
 
 
+def _normalize_candidate_input(
+    raw_candidate: dict,
+    cycle: AlphaDiscoveryCycle,
+) -> tuple[dict, list[str]]:
+    normalized = deepcopy(raw_candidate)
+    changes: list[str] = []
+    allowed_pairs = {
+        (str(item["object_id"]), item["content_digest"])
+        for item in cycle.context.get("research_intelligence", {}).get(
+            "citations", []
+        )
+    }
+    object_ids = normalized.get("evidence_object_ids")
+    digests = normalized.get("evidence_digests")
+    if isinstance(object_ids, list) and isinstance(digests, list):
+        supplied = list(zip(object_ids, digests, strict=False))
+        replayable = [pair for pair in supplied if pair in allowed_pairs]
+        if replayable != supplied:
+            normalized["evidence_object_ids"] = [item[0] for item in replayable]
+            normalized["evidence_digests"] = [item[1] for item in replayable]
+            changes.append("discarded_non_replayable_evidence_pairs")
+    constraints = cycle.context.get("founder_research_idea", {}).get(
+        "constraints", {}
+    )
+    minimum = int(constraints.get("minimum_history_days", 0)) * 1440
+    data = normalized.get("data")
+    if (
+        minimum
+        and isinstance(data, dict)
+        and isinstance(data.get("minimum_history_observations"), int)
+        and data["minimum_history_observations"] < minimum
+    ):
+        data["minimum_history_observations"] = minimum
+        changes.append("raised_history_to_founder_minimum")
+    return normalized, changes
+
+
 def _materialize_candidates(
     db: Session,
     mandate: AlphaResearchMandate,
@@ -969,7 +1006,10 @@ def _materialize_candidates(
     records = []
     for raw_candidate in raw[: mandate.budget["maximum_candidates_per_cycle"]]:
         try:
-            candidate = AlphaPredictiveCandidate.model_validate(raw_candidate)
+            normalized_candidate, deterministic_normalizations = (
+                _normalize_candidate_input(raw_candidate, cycle)
+            )
+            candidate = AlphaPredictiveCandidate.model_validate(normalized_candidate)
             assured_equations = []
             for equation in candidate.equations:
                 if equation.verification == "source_replayed":
@@ -997,6 +1037,7 @@ def _materialize_candidates(
             )
             document = candidate.model_dump(mode="json") | {
                 "dataset_binding_index": binding_index,
+                "deterministic_normalizations": deterministic_normalizations,
                 "reusable_strategy_capability": next(
                     (
                         item
