@@ -21,6 +21,7 @@ from app.services.alpha_discovery import (
     _discovery_corpus,
     _discovery_queries,
     _ensure_data_admission_task,
+    _focus_founder_context,
     _recover_resumed_stage,
     _task,
     reconcile_mandate,
@@ -31,6 +32,74 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_founder_context_focus_keeps_named_asset_and_strategy_only():
+    context = {
+        "lake_catalog": {
+            "assets": [
+                ["perp", "bybit", "BTCUSDT"],
+                ["perp", "bybit", "ETHUSDT"],
+                ["perp", "binance", "SOLUSDT"],
+            ],
+            "one_year_coverage_candidates": [
+                {"venue": "bybit", "instrument": "BTCUSDT"},
+                {"venue": "bybit", "instrument": "ETHUSDT"},
+                {"venue": "binance", "instrument": "SOLUSDT"},
+            ],
+            "receipt_digest": DIGEST,
+        },
+        "strategy_catalog": {
+            "catalog_digest": DIGEST,
+            "capabilities": [
+                {
+                    "hypothesis_id": "L2-H3",
+                    "contract_digest": "c" * 64,
+                    "research_contract_digest": "d" * 64,
+                },
+                {
+                    "hypothesis_id": "L2-H5",
+                    "contract_digest": "e" * 64,
+                    "research_contract_digest": "f" * 64,
+                },
+            ],
+        },
+        "research_intelligence": {"citations": [{"object_id": "kept"}]},
+    }
+
+    focused = _focus_founder_context(
+        context,
+        "Challenge exact L2-H3 on Bybit ETHUSDT using digest " + "d" * 64,
+    )
+
+    assert focused["lake_catalog"]["assets"] == [["perp", "bybit", "ETHUSDT"]]
+    assert focused["lake_catalog"]["one_year_coverage_candidates"] == [
+        {"venue": "bybit", "instrument": "ETHUSDT"}
+    ]
+    assert [
+        item["hypothesis_id"] for item in focused["strategy_catalog"]["capabilities"]
+    ] == ["L2-H3"]
+    assert focused["research_intelligence"] == context["research_intelligence"]
+    assert focused["founder_context_focus"]["server_side_validation_unchanged"]
+    assert len(context["lake_catalog"]["assets"]) == 3
+    assert len(context["strategy_catalog"]["capabilities"]) == 2
+
+
+def test_founder_context_focus_does_not_narrow_open_ended_idea():
+    context = {
+        "lake_catalog": {"assets": [["perp", "bybit", "BTCUSDT"]]},
+        "strategy_catalog": {"capabilities": [{"hypothesis_id": "L2-H3"}]},
+    }
+
+    focused = _focus_founder_context(
+        context, "Find a novel cross-market predictive relationship."
+    )
+
+    assert focused["lake_catalog"]["assets"] == context["lake_catalog"]["assets"]
+    assert (
+        focused["strategy_catalog"]["capabilities"]
+        == context["strategy_catalog"]["capabilities"]
+    )
 
 
 def test_discovery_catalog_binding_requires_exact_no_authority_receipt():
@@ -730,9 +799,7 @@ def test_primary_only_admission_cannot_satisfy_a_declared_basket():
     cycle = SimpleNamespace(
         context={
             "research_intelligence": {
-                "citations": [
-                    {"object_id": str(object_id), "content_digest": DIGEST}
-                ]
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
             },
             "datasets": [
                 {
