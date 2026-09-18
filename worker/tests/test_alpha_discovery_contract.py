@@ -126,6 +126,15 @@ def test_alpha_discovery_contract_and_fixed_workflow():
     assert workflow.steps == []
 
 
+def test_alpha_data_admission_fixed_workflow_is_allowlisted():
+    workflow = WorkflowLoader(Path("worker/workflows")).load(
+        "alpha-data-admission"
+    )
+
+    assert workflow.task_type == "alpha_data_admission"
+    assert workflow.steps == []
+
+
 def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     document = alpha_discovery_contract()
     document["context"]["lake_catalog"] = {
