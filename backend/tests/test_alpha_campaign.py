@@ -677,6 +677,50 @@ def test_candidate_requires_complete_no_capital_gates():
         )
 
 
+def test_positive_scientific_result_is_retained_without_shadow_admission():
+    record = campaign()
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "required_trade_logging_complete": True,
+            "execution_class": "qualification",
+            "qualification_authority": True,
+            "failed_gates": [],
+        }
+    )
+    payload = attempt(record, outcome="positive", gate_report=gate_report)
+
+    assert payload.outcome == "positive"
+    assert payload.gate_report.shadow_eligible is False
+
+
+def test_positive_scientific_result_rejects_failed_or_commissioning_gates():
+    record = campaign()
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "required_trade_logging_complete": True,
+            "execution_class": "qualification",
+            "qualification_authority": True,
+            "failed_gates": [],
+        }
+    )
+    for update in (
+        {"truth_certified": False},
+        {"cost_stress_evaluated": False},
+        {"required_trade_logging_complete": False},
+        {"failed_gates": ["scientific_gate"]},
+        {"shadow_eligible": True},
+        {"execution_class": "commissioning", "qualification_authority": False},
+    ):
+        with pytest.raises(ValidationError, match="positive scientific outcomes"):
+            attempt(
+                record,
+                outcome="positive",
+                gate_report=gate_report | update,
+            )
+
+
 def test_registration_admits_real_exchange_lineage():
     payload = request()
     record = service.register_campaign(database(payload), payload)
@@ -1589,6 +1633,80 @@ def test_negative_attempt_is_retained_and_loop_continues(monkeypatch):
     assert record.status == "running"
     assert record.next_action == "compile_evidence_grounded_hypothesis"
     assert record.terminal_reason == {}
+
+
+def test_positive_attempt_is_retained_without_shadow_admission(monkeypatch):
+    record = campaign()
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "required_trade_logging_complete": True,
+            "execution_class": "qualification",
+            "qualification_authority": True,
+            "failed_gates": [],
+        }
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    result = service.record_attempt(
+        db,
+        record,
+        attempt(record, outcome="positive", gate_report=gate_report),
+    )
+
+    assert result.outcome == "positive"
+    assert record.status == "running"
+    assert record.candidate_attempt_id is None
+    assert record.next_action == "compile_evidence_grounded_hypothesis"
+
+
+def test_completed_positive_publication_remains_non_shadow(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha004-delegated-v1"
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "required_trade_logging_complete": True,
+            "execution_class": "qualification",
+            "qualification_authority": True,
+            "failed_gates": [],
+            "shadow_eligible": False,
+        }
+    )
+    raw_attempt = attempt(
+        record, outcome="positive", gate_report=gate_report
+    ).model_dump(mode="json")
+    task = SimpleNamespace(
+        id=uuid4(),
+        status="succeeded",
+        result={
+            "summary": {
+                "alpha_campaign_attempt": raw_attempt,
+                "publication_envelope": {"schema_version": "test-envelope"},
+            }
+        },
+    )
+    db = MagicMock()
+    tasks = iter([task])
+    db.scalar.side_effect = lambda *_: next(tasks, None)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+    monkeypatch.setattr(service, "reconcile_campaign", MagicMock())
+    monkeypatch.setattr(
+        "app.services.alpha_publication.publish_execution",
+        lambda *_: {
+            "bridge_id": str(uuid4()),
+            "outcome": "positive",
+            "gate_report": gate_report,
+            "evidence_digests": ["1" * 64, "2" * 64, "3" * 64],
+        },
+    )
+
+    assert service._consume_execution_task(db, record) is True
+    assert record.status == "running"
+    assert record.candidate_attempt_id is None
+    assert record.next_action == "compile_evidence_grounded_hypothesis"
 
 
 def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch):

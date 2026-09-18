@@ -6,6 +6,7 @@ import pytest
 from app.services.alpha_publication import (
     _evidence,
     _has_founder_execution_authority,
+    _publication_disposition,
     _require_current_projections,
     _result_metrics,
 )
@@ -135,6 +136,17 @@ def test_alpha_publication_separates_measurements_from_search_metadata() -> None
         "optional_measurement": None,
     }
     assert trial["metrics"]["selection_basis"] == "validation_mean_net_r"
+
+
+def test_scientific_positive_publication_never_becomes_shadow_candidate() -> None:
+    outcome, shadow_eligible = _publication_disposition(
+        {"hypothesis_evaluation": {"outcome": "positive"}},
+        {"shadow_eligible": True},
+        passed=True,
+    )
+
+    assert outcome == "positive"
+    assert shadow_eligible is False
 
 
 def test_alpha_publication_rejects_missing_scientific_measurements() -> None:

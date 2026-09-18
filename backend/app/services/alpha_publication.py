@@ -85,6 +85,27 @@ def _existing(db: Session, model, **filters):
     return db.scalar(select(model).filter_by(**filters))
 
 
+def _publication_disposition(
+    trial_data: dict[str, Any], producer_gates: dict[str, Any], *, passed: bool
+) -> tuple[str, bool]:
+    evaluation = trial_data.get("hypothesis_evaluation")
+    scientific_positive = bool(
+        passed
+        and isinstance(evaluation, dict)
+        and evaluation.get("outcome") == "positive"
+    )
+    shadow_eligible = bool(
+        passed
+        and producer_gates.get("shadow_eligible", False)
+        and not scientific_positive
+    )
+    if scientific_positive:
+        return "positive", False
+    if shadow_eligible:
+        return "candidate", True
+    return "negative", False
+
+
 def _source(db: Session, envelope: dict[str, Any]) -> ResearchSource:
     dataset = envelope["bridge_proposal"]["dataset"]
     key = f"ALPHA002-SOURCE-{dataset['dataset_digest'][:20]}"
@@ -638,6 +659,9 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
         ).all()
     )
     passed = not envelope["producer_gate_report"]["failed_gates"]
+    publication_outcome, shadow_eligible = _publication_disposition(
+        trial_data, envelope["producer_gate_report"], passed=passed
+    )
     for kind, reviewer, summary in (
         (
             "independent_review",
@@ -677,9 +701,12 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
                 result_digest=result.record_digest,
                 decision="replicate" if passed else "retain",
                 rationale=(
-                    "Retain as a prospective shadow candidate for separate founder review; "
-                    "this decision grants no capital or order authority."
-                    if passed
+                    "Retain the scientifically positive answer for replication and further "
+                    "research; it grants no shadow, capital, or order authority."
+                    if publication_outcome == "positive"
+                    else "Retain as a prospective shadow candidate for separate founder "
+                    "review; this decision grants no capital or order authority."
+                    if publication_outcome == "candidate"
                     else "Retain the negative real-data answer and its complete evidence."
                 ),
                 decided_by="alpha-campaign-policy",
@@ -698,7 +725,13 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
                         "alpha002-adversarial-evaluator",
                     ],
                     "decision_id": str(decision.id),
-                    "verdict": "candidate_reviewed" if passed else "retain_negative",
+                    "verdict": (
+                        "scientific_positive_reviewed"
+                        if publication_outcome == "positive"
+                        else "candidate_reviewed"
+                        if publication_outcome == "candidate"
+                        else "retain_negative"
+                    ),
                 },
             ),
         )
@@ -778,7 +811,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
     final_gate_report = {
         **envelope["producer_gate_report"],
         "independent_review_complete": True,
-        "shadow_eligible": passed,
+        "shadow_eligible": shadow_eligible,
     }
     return {
         "bridge_id": str(bridge.id),
@@ -786,7 +819,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
         "publication_id": str(publication.id),
         "publication_state": publication.state,
         "result_id": str(result.id),
-        "outcome": "candidate" if passed else "negative",
+        "outcome": publication_outcome,
         "gate_report": final_gate_report,
         "evidence_digests": [
             trial_data["bundle_digest"],
