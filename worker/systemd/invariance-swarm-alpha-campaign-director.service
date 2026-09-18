@@ -9,7 +9,10 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
-ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.workers.alpha_campaign --continuous --poll-seconds 15
+ExecStartPre=-/usr/bin/docker rm -f invariance-swarm-alpha-campaign-director-runtime
+ExecStart=/usr/bin/docker compose run --rm --name invariance-swarm-alpha-campaign-director-runtime --no-deps api python -m app.workers.alpha_campaign --continuous --poll-seconds 15
+ExecStop=-/usr/bin/docker stop -t 90 invariance-swarm-alpha-campaign-director-runtime
+ExecStopPost=-/usr/bin/docker rm -f invariance-swarm-alpha-campaign-director-runtime
 Restart=on-failure
 RestartSec=15s
 TimeoutStopSec=90s
