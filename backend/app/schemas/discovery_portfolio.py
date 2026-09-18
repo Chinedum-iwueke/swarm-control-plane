@@ -59,7 +59,7 @@ class DiscoveryPortfolioCreate(BaseModel):
     objective: str = Field(min_length=10, max_length=2000)
     source_epoch: datetime
     policy: DiscoveryAttentionPolicy
-    candidates: list[DiscoveryAttentionCandidate] = Field(min_length=2, max_length=200)
+    candidates: list[DiscoveryAttentionCandidate] = Field(min_length=1, max_length=200)
     created_by: str = Field(min_length=1, max_length=150)
 
     @model_validator(mode="after")
