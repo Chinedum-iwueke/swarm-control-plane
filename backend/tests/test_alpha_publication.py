@@ -1,4 +1,6 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from app.services.alpha_publication import (
@@ -29,8 +31,88 @@ def test_alpha_publication_accepts_authorized_founder_channel_alias() -> None:
 
 def test_alpha_publication_rejects_non_founder_authority() -> None:
     approval = SimpleNamespace(id="approval-id", decided_by="research-reviewer")
-    decision = SimpleNamespace(effective_roles=["research"])
+    decision = SimpleNamespace(effective_roles=["research"], delegation_id=None)
     db = SimpleNamespace(scalar=lambda _: decision)
+
+    assert _has_founder_execution_authority(db, approval) is False
+
+
+def test_alpha_publication_accepts_valid_founder_granted_delegation() -> None:
+    decided_at = datetime.now(UTC)
+    approval = SimpleNamespace(id="approval-id", decided_by="bounded-operator")
+    decision = SimpleNamespace(
+        effective_roles=[],
+        delegation_id="delegation-id",
+        policy_id="policy-id",
+        actor="bounded-operator",
+        risk_level=1,
+        created_at=decided_at,
+    )
+    delegation = SimpleNamespace(
+        policy_id="policy-id",
+        grantor_actor="founder-operator",
+        grantee_actor="bounded-operator",
+        decision_types=["task-approval"],
+        max_risk=1,
+        created_at=decided_at - timedelta(minutes=1),
+        expires_at=decided_at + timedelta(hours=1),
+        revoked_at=decided_at + timedelta(minutes=1),
+    )
+    policy = SimpleNamespace(
+        manifest={
+            "schema_version": "authority-policy-v1.0.0",
+            "policy_key": "test-authority",
+            "version": "1.0.0",
+            "roles": [
+                {"role": "founder", "actors": ["founder-operator"]},
+                {"role": "operator", "actors": ["bounded-operator"]},
+            ],
+            "decisions": [
+                {
+                    "decision_type": "task-approval",
+                    "actions": ["approve"],
+                    "accountable_roles": ["founder"],
+                    "maximum_risk": 1,
+                    "delegable": True,
+                }
+            ],
+            "constitutional_boundaries": ["no-self-approval"],
+        }
+    )
+    db = MagicMock()
+    db.scalar.return_value = decision
+    db.get.side_effect = lambda model, identity: {
+        "delegation-id": delegation,
+        "policy-id": policy,
+    }.get(identity)
+
+    assert _has_founder_execution_authority(db, approval) is True
+
+
+def test_alpha_publication_rejects_delegation_revoked_before_decision() -> None:
+    decided_at = datetime.now(UTC)
+    approval = SimpleNamespace(id="approval-id", decided_by="bounded-operator")
+    decision = SimpleNamespace(
+        effective_roles=[],
+        delegation_id="delegation-id",
+        policy_id="policy-id",
+        actor="bounded-operator",
+        risk_level=1,
+        created_at=decided_at,
+    )
+    delegation = SimpleNamespace(
+        policy_id="policy-id",
+        grantor_actor="founder-operator",
+        grantee_actor="bounded-operator",
+        decision_types=["task-approval"],
+        max_risk=1,
+        created_at=decided_at - timedelta(minutes=2),
+        expires_at=decided_at + timedelta(hours=1),
+        revoked_at=decided_at - timedelta(minutes=1),
+    )
+    db = MagicMock()
+    db.scalar.return_value = decision
+    db.get.side_effect = lambda model, identity: delegation
 
     assert _has_founder_execution_authority(db, approval) is False
 

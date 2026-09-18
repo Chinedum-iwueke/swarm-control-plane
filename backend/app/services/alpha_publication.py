@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AuthorityDecisionRecord,
+    AuthorityDelegation,
+    AuthorityPolicySnapshot,
     CanonicalEvidenceObject,
     EvidenceCorpusFreshness,
     EvidenceGraphProjectionState,
@@ -24,6 +26,7 @@ from app.models import (
     Task,
     TaskApproval,
 )
+from app.schemas.authority import AuthorityPolicyManifest
 from app.schemas.evidence import EvidenceObjectCreate
 from app.schemas.laboratory import (
     LaboratoryPublicationCreate,
@@ -50,6 +53,7 @@ from app.schemas.research_bridge import (
     GovernedResearchAdvance,
     GovernedResearchProposal,
 )
+from app.services.authority import roles_for
 from app.services.evidence import (
     ORCHESTRATOR_ACCESS,
     canonical_payload_digest,
@@ -415,7 +419,29 @@ def _has_founder_execution_authority(
         )
         .order_by(AuthorityDecisionRecord.created_at.desc())
     )
-    return decision is not None and "founder" in decision.effective_roles
+    if decision is None:
+        return False
+    if "founder" in decision.effective_roles:
+        return True
+    if decision.delegation_id is None:
+        return False
+    delegation = db.get(AuthorityDelegation, decision.delegation_id)
+    policy = db.get(AuthorityPolicySnapshot, decision.policy_id)
+    if delegation is None or policy is None:
+        return False
+    decided_at = decision.created_at
+    delegation_was_valid = (
+        delegation.policy_id == decision.policy_id
+        and delegation.grantee_actor == decision.actor
+        and "task-approval" in delegation.decision_types
+        and decision.risk_level <= delegation.max_risk
+        and delegation.created_at <= decided_at < delegation.expires_at
+        and (delegation.revoked_at is None or decided_at < delegation.revoked_at)
+    )
+    if not delegation_was_valid:
+        return False
+    manifest = AuthorityPolicyManifest.model_validate(policy.manifest)
+    return "founder" in roles_for(manifest, delegation.grantor_actor)
 
 
 def _result_metrics(trial_data: dict[str, Any]) -> dict[str, float | int | bool | None]:
