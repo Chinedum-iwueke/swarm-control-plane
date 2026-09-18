@@ -553,7 +553,7 @@ def _stage_contract(
         "timeframe": "1m",
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": source.get(
-            "resampling_policy", "right_closed_left_labeled_complete_bars"
+            "resampling_policy", "left_closed_left_labeled_complete_bars"
         ),
         "reusable_strategy": source.get("reusable_strategy"),
         "tier": "Tier2B",
@@ -704,7 +704,7 @@ def _create_strategy_engineering_task(
         ),
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": source.get(
-            "resampling_policy", "right_closed_left_labeled_complete_bars"
+            "resampling_policy", "left_closed_left_labeled_complete_bars"
         ),
         "window": {
             "start": campaign.specification["execution_window_start"],

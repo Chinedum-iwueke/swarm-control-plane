@@ -127,6 +127,7 @@ def test_alpha_contract_binds_exact_basket_and_arbitrary_safe_resample() -> None
         )
     )
     assert value.research_timeframe == "7m"
+    assert value.resampling_policy == "left_closed_left_labeled_complete_bars"
     assert [item.instrument for item in value.dataset_bindings] == [
         "BTCUSDT",
         "ETHUSDT",

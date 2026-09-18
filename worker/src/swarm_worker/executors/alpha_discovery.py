@@ -271,7 +271,7 @@ def _schema(stage: str) -> dict:
                             },
                             "resampling_policy": {
                                 "type": "string",
-                                "enum": ["right_closed_left_labeled_complete_bars"],
+                                "enum": ["left_closed_left_labeled_complete_bars"],
                             },
                             "required_fields": string_array,
                             "minimum_history_observations": {"type": "integer"},
@@ -379,7 +379,7 @@ def _schema(stage: str) -> dict:
                 },
                 "resampling_policy": {
                     "type": "string",
-                    "enum": ["right_closed_left_labeled_complete_bars"],
+                    "enum": ["left_closed_left_labeled_complete_bars"],
                 },
                 "required_fields": string_array,
                 "minimum_history_observations": {"type": "integer"},

@@ -693,7 +693,7 @@ def test_manifest_visible_basket_waits_for_content_admission():
     reasons, binding_index = _candidate_reasons(value, cycle, mandate, [])
     assert reasons == ["data_admission_required"]
     assert binding_index is None
-    assert value.data.resampling_policy == "right_closed_left_labeled_complete_bars"
+    assert value.data.resampling_policy == "left_closed_left_labeled_complete_bars"
 
 
 def test_primary_only_admission_cannot_satisfy_a_declared_basket():

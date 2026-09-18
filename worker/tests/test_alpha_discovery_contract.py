@@ -112,7 +112,7 @@ def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
     assert properties["timeframe"]["enum"] == ["1m"]
     assert properties["instruments"]["maxItems"] == 20
     assert properties["resampling_policy"]["enum"] == [
-        "right_closed_left_labeled_complete_bars"
+        "left_closed_left_labeled_complete_bars"
     ]
 
 
