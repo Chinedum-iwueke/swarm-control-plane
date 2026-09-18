@@ -102,13 +102,13 @@ def test_commissioning_terminal_receipt_projects_native_evidence_without_promoti
                     "market_model_bundle_digest": "e" * 64,
                     "search_plan_digest": "f" * 64,
                 },
-            },
-            "producer_gate_report": {
-                "failed_gates": ["positive_oos_net_edge"],
-                "reproducible": True,
-                "truth_certified": True,
-                "qualification_authority": False,
-                "shadow_eligible": False,
+                "producer_gate_report": {
+                    "failed_gates": ["positive_oos_net_edge"],
+                    "reproducible": True,
+                    "truth_certified": True,
+                    "qualification_authority": False,
+                    "shadow_eligible": False,
+                },
             },
         },
     }

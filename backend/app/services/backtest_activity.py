@@ -17,7 +17,11 @@ def serialize_backtest(
     handoff = result.get("downstream_handoff") or {}
     publication = handoff.get("publication_envelope") or {}
     trial = publication.get("trial") or {}
-    producer_gates = handoff.get("producer_gate_report") or {}
+    producer_gates = (
+        publication.get("producer_gate_report")
+        or handoff.get("producer_gate_report")
+        or {}
+    )
     gates = attempt.get("gate_report") or producer_gates
     has_native_receipt = bool(
         attempt
