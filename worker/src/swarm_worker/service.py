@@ -518,6 +518,14 @@ class WorkerService:
                         "step_timeout",
                         "workflow_timeout",
                     },
+                    execution_evidence=(
+                        {
+                            "summary": execution_result.summary,
+                            "artifacts": execution_result.artifacts,
+                        }
+                        if execution_result.summary or execution_result.artifacts
+                        else None
+                    ),
                 )
 
             try:
@@ -640,6 +648,7 @@ class WorkerService:
         stderr_log: str | None,
         retryable: bool,
         detail: str | None = None,
+        execution_evidence: dict[str, object] | None = None,
     ) -> FailedOutcome | LeaseLostOutcome:
         failure: dict[str, object] = {
             "error_category": category[:100],
@@ -652,6 +661,8 @@ class WorkerService:
         }
         if detail:
             failure["detail"] = detail[:2000]
+        if execution_evidence:
+            failure["execution_evidence"] = execution_evidence
         try:
             await api.fail_task(
                 task.id,

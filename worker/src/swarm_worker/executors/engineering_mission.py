@@ -181,7 +181,16 @@ class EngineeringMissionExecutor:
         review_approved = self._review_approved(workspace.artifacts / "review.json")
         if not review.success or not review_approved:
             steps[-1] = self._semantic_review_step(review, review_approved)
-            return self._result(task, workflow, workspace, started, steps, False)
+            self._write_patch(changed, workspace)
+            return self._result(
+                task,
+                workflow,
+                workspace,
+                started,
+                steps,
+                False,
+                "independent_review_rejected" if review.success else None,
+            )
         bundle = self._create_bundle(contract, changed, workspace)
         steps.append(bundle)
         return self._result(task, workflow, workspace, started, steps, True)
@@ -367,10 +376,7 @@ class EngineeringMissionExecutor:
     ) -> StepExecutionResult:
         started = datetime.now(timezone.utc)
         monotonic = time.monotonic()
-        patch = self._build_patch(changed, workspace)
-        patch_path = workspace.artifacts / "changes.patch"
-        patch_path.write_text(patch, encoding="utf-8")
-        patch_path.chmod(0o600)
+        self._write_patch(changed, workspace)
         bundle = {
             "milestone_id": contract.milestone_id,
             "work_item_id": contract.work_item_id,
@@ -404,6 +410,11 @@ class EngineeringMissionExecutor:
             stdout_log="logs/pr-bundle.stdout.log",
             stderr_log="logs/pr-bundle.stderr.log",
         )
+
+    def _write_patch(self, changed: list[str], workspace: TaskWorkspace) -> None:
+        patch_path = workspace.artifacts / "changes.patch"
+        patch_path.write_text(self._build_patch(changed, workspace), encoding="utf-8")
+        patch_path.chmod(0o600)
 
     @staticmethod
     def _semantic_review_step(
@@ -452,6 +463,26 @@ class EngineeringMissionExecutor:
         success: bool,
         reason: str | None = None,
     ) -> WorkflowExecutionResult:
+        artifact_candidates = (
+            "artifacts/coder-summary.md",
+            "artifacts/review.json",
+            "artifacts/changes.patch",
+            "artifacts/pr-bundle.json",
+        )
+        artifacts = [
+            relative
+            for relative in artifact_candidates
+            if (workspace.plan.attempt_directory / relative).is_file()
+        ]
+        summary: dict[str, object] = {}
+        review_path = workspace.artifacts / "review.json"
+        if review_path.is_file():
+            try:
+                review = json.loads(review_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                review = None
+            if isinstance(review, dict):
+                summary["independent_review"] = review
         return WorkflowExecutionResult(
             workflow=workflow.name if workflow else "engineering-mission",
             repository=workspace.metadata.repository,
@@ -461,15 +492,12 @@ class EngineeringMissionExecutor:
             steps=steps,
             success=success,
             termination_reason=reason if reason else (None if success else "step_failed"),
-            artifacts=[
-                "artifacts/coder-summary.md",
-                "artifacts/review.json",
-                "artifacts/changes.patch",
-                "artifacts/pr-bundle.json",
-            ]
-            if success
-            else [],
-            retryable=not success and reason != "lease_lost",
+            artifacts=artifacts,
+            retryable=(
+                not success
+                and reason not in {"lease_lost", "independent_review_rejected"}
+            ),
+            summary=summary,
         )
 
     @staticmethod

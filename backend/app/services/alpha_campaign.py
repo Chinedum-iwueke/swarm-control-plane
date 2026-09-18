@@ -76,6 +76,7 @@ CLAIM_BOUNDARY = (
     "capital allocation, production promotion or self-approval."
 )
 STRATEGY_ENGINEERING_STAGE = "G3"
+STRATEGY_CORRECTION_STAGE = "G4"
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
@@ -679,6 +680,10 @@ def _create_strategy_engineering_task(
     campaign: AlphaCampaign,
     source: dict,
     requirement: dict,
+    *,
+    stage: str = STRATEGY_ENGINEERING_STAGE,
+    correction_feedback: dict | None = None,
+    parent_task_id: UUID | None = None,
 ) -> Task:
     question = " ".join(source["question"].split())
     bindings = _source_bindings(campaign, source)
@@ -725,6 +730,8 @@ def _create_strategy_engineering_task(
         "engineering_requirement": requirement,
         "authority": campaign.specification["authority_boundary"],
     }
+    if correction_feedback is not None:
+        evidence["independent_review_correction"] = correction_feedback
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
     contract = {
@@ -734,9 +741,18 @@ def _create_strategy_engineering_task(
         "milestone_id": "ALPHA-003",
         "work_item_id": f"strategy-{source['source_candidate_id'][:12]}",
         "objective": (
-            "Implement a causal native Bulletproof hypothesis card, YAML contract, and "
-            f"strategy for this admitted Research Intelligence question: {question}"
-        ),
+            (
+                "Correct the independently rejected native Bulletproof implementation "
+                "and resolve every retained finding for this admitted Research "
+                "Intelligence question: "
+            )
+            if correction_feedback is not None
+            else (
+                "Implement a causal native Bulletproof hypothesis card, YAML contract, "
+                "and strategy for this admitted Research Intelligence question: "
+            )
+        )
+        + question,
         "allowed_paths": [
             "research/hypotheses",
             "src/bt/strategy",
@@ -767,6 +783,11 @@ def _create_strategy_engineering_task(
         "engineering_requirement": requirement,
         "research_context": research_context,
     }
+    if correction_feedback is not None:
+        contract["acceptance_criteria"].insert(
+            0,
+            "Every retained independent-review finding is explicitly resolved and regression tested.",
+        )
     # The engineering worker contract forbids undeclared fields. Preserve the
     # diagnostic in the task evidence while keeping its executable input typed.
     executable_contract = {
@@ -778,7 +799,7 @@ def _create_strategy_engineering_task(
     task = build_task(
         TaskCreate(
             task_number=_stage_task_number(
-                campaign, source, STRATEGY_ENGINEERING_STAGE
+                campaign, source, stage
             ),
             project="bulletproof_bt",
             task_type="engineering_mission",
@@ -786,6 +807,7 @@ def _create_strategy_engineering_task(
             objective=executable_contract["objective"],
             priority=88,
             risk_level=1,
+            parent_task_id=parent_task_id,
             created_by="alpha-campaign-director",
             input_contract=executable_contract,
             expected_outputs=["patch", "validation", "review", "pr_bundle"],
@@ -795,6 +817,7 @@ def _create_strategy_engineering_task(
                 "campaign_digest": campaign.campaign_digest,
                 "engineering_requirement": requirement,
                 "research_context": contract["research_context"],
+                "correction_feedback": correction_feedback,
             },
             approval_required=True,
             required_capabilities=[
@@ -809,6 +832,40 @@ def _create_strategy_engineering_task(
     )
     persist_new_task(db, task)
     return task
+
+
+def _independent_review_correction(task: Task) -> dict | None:
+    if task.status != "failed" or task.failure.get("error_category") != (
+        "independent_review_rejected"
+    ):
+        return None
+    evidence = task.failure.get("execution_evidence")
+    if not isinstance(evidence, dict):
+        return None
+    summary = evidence.get("summary")
+    review = summary.get("independent_review") if isinstance(summary, dict) else None
+    if not isinstance(review, dict) or review.get("approved") is not False:
+        return None
+    findings = review.get("findings")
+    if not isinstance(findings, list) or not findings:
+        return None
+    normalized = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            return None
+        severity = finding.get("severity")
+        message = finding.get("message")
+        if severity not in {"low", "medium", "high"} or not isinstance(message, str):
+            return None
+        normalized.append({"severity": severity, "message": message})
+    return {
+        "rejected_task_id": str(task.id),
+        "rejected_plan_digest": task.plan_digest,
+        "review_summary": str(review.get("summary", ""))[:2000],
+        "findings": normalized,
+        "artifact_paths": evidence.get("artifacts", []),
+        "disposition": "correct_without_weakening_scientific_gates",
+    }
 
 
 def _legacy_strategy_engineering_task(
@@ -1160,15 +1217,50 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             select(Task).where(
                 Task.task_number
                 == _stage_task_number(
+                    campaign, source, STRATEGY_CORRECTION_STAGE
+                )
+            )
+        )
+        original_engineering = db.scalar(
+            select(Task).where(
+                Task.task_number
+                == _stage_task_number(
                     campaign, source, STRATEGY_ENGINEERING_STAGE
                 )
             )
         )
         if engineering is None:
+            engineering = original_engineering
+        if engineering is None:
             engineering = _legacy_strategy_engineering_task(db, campaign, source)
         if engineering is None:
             engineering = _create_strategy_engineering_task(
                 db, campaign, source, requirement
+            )
+        elif (
+            engineering is original_engineering
+            and (correction := _independent_review_correction(engineering))
+            is not None
+        ):
+            engineering = _create_strategy_engineering_task(
+                db,
+                campaign,
+                source,
+                requirement,
+                stage=STRATEGY_CORRECTION_STAGE,
+                correction_feedback=correction,
+                parent_task_id=original_engineering.id,
+            )
+            _append_event(
+                db,
+                campaign,
+                "strategy_correction_created",
+                "alpha-campaign-director",
+                {
+                    "rejected_task_id": str(original_engineering.id),
+                    "correction_task_id": str(engineering.id),
+                    "correction_plan_digest": engineering.plan_digest,
+                },
             )
         campaign.phase = "strategy_engineering"
         if engineering.status == "pending_approval":

@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -244,6 +245,56 @@ def test_semantic_review_rejection_marks_successful_process_step_failed() -> Non
     assert rejected.success is False
     assert rejected.return_code == 0
     assert EngineeringMissionExecutor._semantic_review_step(step, True) is step
+
+
+def test_rejected_review_retains_patch_and_structured_findings(tmp_path: Path) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    artifacts.mkdir()
+    logs.mkdir()
+    (artifacts / "coder-summary.md").write_text("implemented", encoding="utf-8")
+    (artifacts / "review.json").write_text(
+        json.dumps(
+            {
+                "approved": False,
+                "summary": "causal contract mismatch",
+                "findings": [
+                    {"severity": "high", "message": "matched controls are absent"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (artifacts / "changes.patch").write_text("diff --git a/x b/x\n", encoding="utf-8")
+    workspace = SimpleNamespace(
+        artifacts=artifacts,
+        plan=SimpleNamespace(attempt_directory=tmp_path),
+        metadata=SimpleNamespace(
+            repository="bulletproof_bt",
+            resolved_base_commit="a" * 40,
+            attempt_number=1,
+        ),
+    )
+    task = SimpleNamespace(attempt_count=1)
+    workflow = SimpleNamespace(name="engineering-mission")
+
+    result = EngineeringMissionExecutor._result(
+        task,
+        workflow,
+        workspace,
+        0.0,
+        [],
+        False,
+        "independent_review_rejected",
+    )
+
+    assert result.retryable is False
+    assert result.artifacts == [
+        "artifacts/coder-summary.md",
+        "artifacts/review.json",
+        "artifacts/changes.patch",
+    ]
+    assert result.summary["independent_review"]["approved"] is False
 
 
 def test_evidence_permissions_are_forced_private(tmp_path: Path) -> None:
