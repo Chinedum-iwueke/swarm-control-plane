@@ -20,6 +20,7 @@ WORKFLOW_FILES = {
     "research-memory-sync": "research-memory-sync.yaml",
     "alpha-research-execution": "alpha-research-execution.yaml",
     "alpha-discovery": "alpha-discovery.yaml",
+    "alpha-data-admission": "alpha-data-admission.yaml",
     "alpha-strategy-review": "alpha-strategy-review.yaml",
 }
 
