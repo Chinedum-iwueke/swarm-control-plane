@@ -4,7 +4,7 @@ capacity_scheduler:
   target_workers: 16
   max_workers_per_job: 8
   max_concurrent_jobs: 2
-  estimated_worker_ram_gb: 2
+  estimated_worker_ram_gb: 4.5
   min_free_ram_gb: 8
   pause_free_ram_gb: 6
   resume_free_ram_gb: 12
