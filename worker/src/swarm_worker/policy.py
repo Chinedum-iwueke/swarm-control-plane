@@ -348,7 +348,7 @@ class AlphaDiscoveryContract(BaseModel):
     repository: Literal["swarm-control-plane"]
     workflow: Literal["alpha-discovery"]
     base_ref: str = Field(min_length=1, max_length=255)
-    stage: Literal["intelligence", "hypothesis"]
+    stage: Literal["intelligence", "hypothesis", "representation"]
     mandate_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
     mandate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     cycle_id: str = Field(pattern=r"^[0-9a-f-]{36}$")

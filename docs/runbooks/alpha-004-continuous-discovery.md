@@ -6,9 +6,11 @@ ALPHA-004 keeps the no-capital research loop supplied with real, predictive,
 falsifiable questions. A VM2 director schedules immutable cycles. A read-only
 Research Intelligence agent synthesizes cited evidence, failures, market
 observations and portfolio gaps. A separately chartered senior researcher turns
-that brief into typed candidate questions. The controller validates evidence,
-mathematics and DATA-002/003 bindings before allocating DISC-009 attention and
-creating an ALPHA campaign.
+that brief into typed candidate questions. A third, separately chartered data
+representation scientist selects an outcome-blind basket, causal timeframe, required
+fields and safe transformation while retaining rejected alternatives. The controller
+validates exact candidate coverage, evidence, mathematics and DATA-002/003 bindings
+before allocating DISC-009 attention and creating an ALPHA campaign.
 
 ## Authority
 
@@ -44,17 +46,19 @@ invented, weaker or source-mismatched receipts are rejected from the campaign.
    `/v1/research/alpha-discovery/mandates` and
    `/v1/research/scientific-fidelity/assurance/overview` exist in OpenAPI first.
 2. Install `invariance-swarm-alpha-discovery-director.service` on VM2.
-3. Bootstrap the `intelligence` and `researcher` profiles on VM1, then install
-   their two systemd services.
+3. Bootstrap the `intelligence`, `researcher` and `representation` profiles on VM1,
+   then install their three systemd services. The representation identity must expose
+   only `data-representation` and `market-data-read` capabilities.
 4. Run `worker/scripts/alpha004_mandate.py` on VM1. Inspect the exact dataset,
    window, universe and budget in Mission Control, then approve the mandate.
-5. Confirm all three ALPHA-004 services are active and Mission Control reports
-   fresh heartbeats, a running cycle and no unexplained stall.
+5. Confirm the VM2 director and all three VM1 ALPHA-004 agents are active. Mission
+   Control must report fresh heartbeats, `representation_selection` as a visible phase,
+   the representation task ID/count, a running cycle and no unexplained stall.
 
 ## Failure and rollback
 
 The director retains failed stages and stops a cycle at `needs_attention`.
 Expired or changed mandates fail closed. Campaign failures feed subsequent cycle
-context and novelty scoring. Rollback disables the three ALPHA-004 services and
+context and novelty scoring. Rollback disables the four ALPHA-004 services and
 stops creating new work; immutable mandates, candidates, campaigns, attempts and
 event chains remain evidence.

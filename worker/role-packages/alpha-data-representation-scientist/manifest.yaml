@@ -1,0 +1,24 @@
+schema_version: 1
+name: alpha-data-representation-scientist
+version: 1.0.0
+role: Outcome-blind market data representation scientist
+task_types: [alpha_discovery]
+workflows:
+- name: alpha-discovery
+  file: alpha-discovery.yaml
+  sha256: b7f26a7fc38b6dcb7f79cb23f402d4dda8fc4114c8ed0dfc2d31b0b5d446aef1
+required_capabilities: [data-representation, market-data-read]
+allowed_machines: [vm1-developer]
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: alpha-data-representation-read-only
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots: []
+repository_profile:
+  repositories: [swarm-control-plane]
+  primary_checkout_write: false
+  remote_write: false

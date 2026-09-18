@@ -73,9 +73,13 @@ class AsyncProcessRunner:
         *,
         environment: Mapping[str, str] | None = None,
         virtualenv: Path | None = None,
+        child_umask: int = 0o077,
     ) -> None:
+        if child_umask < 0 or child_umask > 0o777:
+            raise ValueError("child umask must be between 0000 and 0777")
         self._environment = dict(SubprocessRunner(environment=environment).environment)
         self._virtualenv_bin = virtualenv / "bin" if virtualenv is not None else None
+        self._child_umask = child_umask
 
     @property
     def environment(self) -> Mapping[str, str]:
@@ -133,6 +137,7 @@ class AsyncProcessRunner:
             stderr=stderr,
             stdin=stdin,
             start_new_session=True,
+            umask=self._child_umask,
         )
         return RunningProcess(process=process, args=command)
 
@@ -188,7 +193,10 @@ class CodeValidationExecutor:
             or termination_grace_seconds <= 0
         ):
             raise ValueError("Executor timeouts must be positive.")
-        self._runner = process_runner or AsyncProcessRunner()
+        # Validation must be reproducible under hardened service managers. Some test
+        # suites deliberately create non-private fixtures and assert their rejection;
+        # inheriting the service's 0077 umask changes those fixtures before validation.
+        self._runner = process_runner or AsyncProcessRunner(child_umask=0o022)
         self._step_timeout_seconds = step_timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._heartbeat_timeout_seconds = heartbeat_timeout_seconds

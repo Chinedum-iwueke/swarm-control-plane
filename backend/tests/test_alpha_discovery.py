@@ -12,6 +12,7 @@ from app.schemas.alpha_discovery import (
     AlphaResearchMandateCreate,
 )
 from app.services.alpha_discovery import (
+    _apply_representation_plans,
     _bounded_context,
     _candidate_reasons,
     _discovery_catalog,
@@ -19,6 +20,7 @@ from app.services.alpha_discovery import (
     _discovery_queries,
     _ensure_data_admission_task,
     _recover_resumed_stage,
+    _task,
     reconcile_mandate,
     recover_discovery_grounding,
 )
@@ -167,6 +169,7 @@ def test_grounding_recovery_preserves_old_cycle_and_approval(monkeypatch, condit
         context={"research_intelligence": {"citations": []}},
         intelligence_task_id=None,
         hypothesis_task_id=None,
+        representation_task_id=None,
         cycle_digest="d" * 64,
     )
     payload = SimpleNamespace(
@@ -235,6 +238,70 @@ def test_discovery_query_plan_is_bounded_data_aware_and_rotates():
     assert all("funding" not in q for q in first)
     mandate.cycle_count = 3
     assert _discovery_queries(mandate) != first
+
+
+def test_representation_plan_changes_only_data_shape_and_retains_audit():
+    value, _ = candidate()
+    raw = value.model_dump(mode="json")
+    original_question = raw["question"]
+    represented, audit = _apply_representation_plans(
+        [raw],
+        [
+            {
+                "candidate_key": raw["candidate_key"],
+                "venue": "bybit",
+                "instrument": "BTCUSDT",
+                "instruments": ["BTCUSDT", "ETHUSDT"],
+                "source_timeframe": "1m",
+                "research_timeframe": "7m",
+                "resampling_policy": "right_closed_left_labeled_complete_bars",
+                "required_fields": ["ts", "close", "quote_volume"],
+                "minimum_history_observations": 525600,
+                "liquidity_floor_usd": 1000000,
+                "transformation_rationale": (
+                    "Seven-minute complete bars align the predictor with its causal horizon."
+                ),
+                "rejected_alternatives": [
+                    "One-minute bars amplify microstructure noise without adding timing evidence."
+                ],
+            }
+        ],
+    )
+    assert represented[0]["question"] == original_question
+    assert represented[0]["data"]["research_timeframe"] == "7m"
+    assert represented[0]["data"]["instruments"] == ["BTCUSDT", "ETHUSDT"]
+    assert audit[raw["candidate_key"]]["outcome_data_consulted"] is False
+
+
+def test_representation_plan_requires_exact_candidate_coverage():
+    value, _ = candidate()
+    with pytest.raises(ValueError, match="cover exactly"):
+        _apply_representation_plans([value.model_dump(mode="json")], [])
+
+
+def test_representation_task_routes_only_to_dedicated_capability(monkeypatch):
+    captured = {}
+    built = SimpleNamespace(id=uuid4())
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.build_task",
+        lambda payload: captured.setdefault("payload", payload) and built,
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.persist_new_task", lambda *_: None
+    )
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        mandate_digest=DIGEST,
+        budget={"maximum_candidates_per_cycle": 5},
+    )
+    cycle = SimpleNamespace(id=uuid4(), ordinal=3)
+    assert _task(MagicMock(), mandate, cycle, "representation", {}).id == built.id
+    task = captured["payload"]
+    assert task.task_number.endswith("-R")
+    assert task.required_capabilities == ["data-representation", "market-data-read"]
+    assert task.risk_level == 0
+    assert task.approval_required is False
+    assert task.input_contract["stage"] == "representation"
 
 
 def test_discovery_grounding_keeps_provenance_and_deduplicates(monkeypatch):

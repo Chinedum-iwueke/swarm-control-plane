@@ -36,6 +36,13 @@ PROFILES = {
         "environment": "/etc/invariance-swarm/alpha004-researcher.env",
         "state": "/etc/invariance-swarm/alpha004-researcher-state.json",
     },
+    "representation": {
+        "package": "alpha-data-representation-scientist",
+        "slug": "vm1-alpha-data-representation-scientist",
+        "display": "VM1 Alpha Data Representation Scientist",
+        "environment": "/etc/invariance-swarm/alpha004-representation.env",
+        "state": "/etc/invariance-swarm/alpha004-representation-state.json",
+    },
 }
 
 
