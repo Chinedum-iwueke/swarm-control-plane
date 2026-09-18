@@ -642,6 +642,9 @@ def test_registration_admits_real_exchange_lineage():
     assert record.specification["dataset_bindings"][0]["venue"] == "bybit"
     assert record.specification["authority_boundary"]["capital"] is False
     assert "execution_protocol" not in record.specification
+    assert record.specification["research_queue"][0]["resampling_policy"] == (
+        "left_closed_left_labeled_complete_bars"
+    )
 
 
 def test_alpha002_opt_in_is_immutable_and_explicit():
