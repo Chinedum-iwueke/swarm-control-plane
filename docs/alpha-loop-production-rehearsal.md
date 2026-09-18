@@ -51,3 +51,14 @@ coding, validation and structured review. This fixture evidence does not qualify
 outer systemd boundary. A fresh production-parity systemd rehearsal is required by
 the installer before the production service may start, and every failed attempt is
 retained rather than being presented as scientific failure or success.
+
+## Real-data commissioning
+
+Synthetic rehearsal cannot prove the native market-data, resampling, classic-engine,
+truth, bundle, memory and publication-envelope boundaries. The first execution after
+strategy qualification therefore uses the explicit `commissioning` execution class on
+a maximum 31-day slice contained inside the independently reviewed one-year window.
+It runs the exact reviewed code and exhaustive grid, but its receipt always states
+`qualification_authority: false`; it cannot become a campaign answer, candidate,
+shadow admission or capital input. After its artifacts and handoffs are verified, the
+unchanged one-year contract runs under the separate `qualification` class.

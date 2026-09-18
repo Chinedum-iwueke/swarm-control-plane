@@ -163,6 +163,50 @@ def test_alpha_contract_binds_frozen_reusable_native_strategy() -> None:
         )
 
 
+def test_commissioning_contract_is_short_bounded_and_review_contained() -> None:
+    qualification = {
+        "qualified": True,
+        "window": {
+            "start": "2023-01-01T00:00:00Z",
+            "end": "2024-01-01T00:00:00Z",
+        },
+    }
+    value = AlphaResearchExecutionContract.model_validate(
+        contract(
+            stage="execute",
+            execution_class="commissioning",
+            venue="bybit",
+            window_start="2023-01-01T00:00:00Z",
+            window_end="2023-02-01T00:00:00Z",
+            qualification=qualification,
+        )
+    )
+    assert value.execution_class == "commissioning"
+
+    with pytest.raises(ValidationError, match="at most 31 days"):
+        AlphaResearchExecutionContract.model_validate(
+            contract(
+                stage="execute",
+                execution_class="commissioning",
+                venue="bybit",
+                window_start="2023-01-01T00:00:00Z",
+                window_end="2023-03-01T00:00:00Z",
+                qualification=qualification,
+            )
+        )
+    with pytest.raises(ValidationError, match="contained"):
+        AlphaResearchExecutionContract.model_validate(
+            contract(
+                stage="execute",
+                execution_class="commissioning",
+                venue="bybit",
+                window_start="2022-12-15T00:00:00Z",
+                window_end="2023-01-15T00:00:00Z",
+                qualification=qualification,
+            )
+        )
+
+
 def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> None:
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",
@@ -250,6 +294,39 @@ def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
     )
 
     assert result.downstream_handoff["publication_envelope"] == publication_envelope
+
+
+def test_commissioning_summary_retains_bounded_proof_fields() -> None:
+    receipt = {
+        "record_digest": "f" * 64,
+        "variant_count": 8,
+        "selected_variant_index": 3,
+        "window": {
+            "start": "2023-01-01T00:00:00+00:00",
+            "end": "2023-02-01T00:00:00+00:00",
+        },
+        "large_truth_report": "x" * 40_000,
+    }
+    bounded = {
+        key: receipt[key]
+        for key in (
+            "record_digest",
+            "variant_count",
+            "selected_variant_index",
+            "window",
+        )
+    }
+    result = WorkflowExecutionResult(
+        workflow="alpha-research-execution",
+        repository="bulletproof_bt",
+        base_commit="a" * 40,
+        task_attempt=1,
+        total_duration_seconds=1,
+        steps=[],
+        success=True,
+        summary={"commissioning_receipt": bounded},
+    )
+    assert result.summary["commissioning_receipt"] == bounded
 
 
 def test_downstream_handoff_remains_bounded() -> None:
