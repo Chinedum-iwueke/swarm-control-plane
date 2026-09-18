@@ -84,10 +84,21 @@ STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "src/bt/governance/alpha_strategy_pipeline.py",
     "scripts/run_alpha_research_assignment.py",
 ]
+CANONICAL_RESAMPLING_POLICY = "left_closed_left_labeled_complete_bars"
+LEGACY_RESAMPLING_POLICY = "right_closed_left_labeled_complete_bars"
 
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def _canonical_resampling_policy(source: dict) -> str:
+    policy = source.get("resampling_policy", CANONICAL_RESAMPLING_POLICY)
+    if policy == LEGACY_RESAMPLING_POLICY:
+        return CANONICAL_RESAMPLING_POLICY
+    if policy != CANONICAL_RESAMPLING_POLICY:
+        raise HTTPException(409, f"Unsupported research resampling policy: {policy}")
+    return policy
 
 
 def _append_event(
@@ -552,9 +563,7 @@ def _stage_contract(
         ),
         "timeframe": "1m",
         "research_timeframe": source.get("research_timeframe", "1m"),
-        "resampling_policy": source.get(
-            "resampling_policy", "left_closed_left_labeled_complete_bars"
-        ),
+        "resampling_policy": _canonical_resampling_policy(source),
         "reusable_strategy": source.get("reusable_strategy"),
         "tier": "Tier2B",
         "max_variants": campaign.budget["max_variants_per_hypothesis"],
@@ -703,9 +712,7 @@ def _create_strategy_engineering_task(
             [source.get("instrument", campaign.specification["allowed_instruments"][0])],
         ),
         "research_timeframe": source.get("research_timeframe", "1m"),
-        "resampling_policy": source.get(
-            "resampling_policy", "left_closed_left_labeled_complete_bars"
-        ),
+        "resampling_policy": _canonical_resampling_policy(source),
         "window": {
             "start": campaign.specification["execution_window_start"],
             "end": campaign.specification["execution_window_end"],

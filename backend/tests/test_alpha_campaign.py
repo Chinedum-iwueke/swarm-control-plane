@@ -711,6 +711,35 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["reusable_strategy"] == capability
 
 
+def test_stage_contract_canonicalizes_legacy_resampling_policy(monkeypatch):
+    record = campaign()
+    record.specification.update(
+        {
+            "execution_protocol": "alpha003-governed-v1",
+            "allowed_instruments": ["BTCUSDT"],
+            "execution_window_start": "2026-04-01T00:00:00Z",
+            "execution_window_end": "2026-05-01T00:00:00Z",
+        }
+    )
+    source = record.specification["research_queue"][0]
+    source["resampling_policy"] = "right_closed_left_labeled_complete_bars"
+    monkeypatch.setattr(service, "_dataset_path", lambda *_: "/tmp/panel.parquet")
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "abstained": False, "citations": []},
+    )
+
+    contract = service._stage_contract(MagicMock(), record, source, stage="draft")
+
+    assert contract["resampling_policy"] == "left_closed_left_labeled_complete_bars"
+
+
+def test_unknown_resampling_policy_is_rejected_before_task_creation():
+    with pytest.raises(HTTPException, match="Unsupported research resampling policy"):
+        service._canonical_resampling_policy({"resampling_policy": "ambiguous-bars"})
+
+
 def test_governed_pipeline_clears_prior_stage_reason(monkeypatch):
     record = campaign()
     record.specification.update(
