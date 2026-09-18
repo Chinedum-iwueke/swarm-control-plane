@@ -53,3 +53,10 @@ def test_discovery_director_has_single_named_runtime_lifecycle() -> None:
     assert f"--name {runtime_name} api python -m app.workers.alpha_discovery" in unit
     assert f"ExecStop=-/usr/bin/docker stop --timeout 30 {runtime_name}" in unit
     assert f"ExecStopPost=-/usr/bin/docker rm -f {runtime_name}" in unit
+
+    installer = (
+        ROOT / "systemd/install-alpha-discovery-director.sh"
+    ).read_text(encoding="utf-8")
+    assert 'index($0, "app.workers.alpha_discovery")' in installer
+    assert 'docker rm -f "${legacy_directors[@]}"' in installer
+    assert "grep -c 'app.workers.alpha_discovery'" in installer
