@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from copy import deepcopy
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -616,6 +618,7 @@ def _new_cycle(
         else _bounded_context(db, mandate)
     )
     if founder_idea:
+        context = _focus_founder_context(context, founder_idea.idea)
         context["founder_research_idea"] = {
             "id": str(founder_idea.id),
             "idea": founder_idea.idea,
@@ -665,6 +668,57 @@ def _new_cycle(
         cycle,
     )
     return cycle
+
+
+def _focus_founder_context(context: dict, idea: str) -> dict:
+    """Keep explicit founder challenges inside the model's useful context window."""
+    focused = deepcopy(context)
+    normalized_idea = idea.upper()
+    idea_tokens = set(re.findall(r"[A-Z0-9]+(?:[-_][A-Z0-9]+)*", normalized_idea))
+
+    lake_catalog = focused.get("lake_catalog", {})
+    assets = lake_catalog.get("assets", [])
+    named_instruments = {
+        str(item[-1]).upper()
+        for item in assets
+        if item and str(item[-1]).upper() in idea_tokens
+    }
+    if named_instruments:
+        lake_catalog["assets"] = [
+            item
+            for item in assets
+            if item and str(item[-1]).upper() in named_instruments
+        ]
+        candidates = lake_catalog.get("one_year_coverage_candidates", [])
+        lake_catalog["one_year_coverage_candidates"] = [
+            item
+            for item in candidates
+            if str(item.get("instrument") or item.get("symbol") or "").upper()
+            in named_instruments
+        ]
+
+    strategy_catalog = focused.get("strategy_catalog", {})
+    capabilities = strategy_catalog.get("capabilities", [])
+    selected_capabilities = [
+        capability
+        for capability in capabilities
+        if str(capability.get("hypothesis_id", "")).upper() in idea_tokens
+        or str(capability.get("contract_digest", "")).upper() in normalized_idea
+        or str(capability.get("research_contract_digest", "")).upper()
+        in normalized_idea
+    ]
+    if selected_capabilities:
+        strategy_catalog["capabilities"] = selected_capabilities
+
+    focused["founder_context_focus"] = {
+        "named_instruments": sorted(named_instruments),
+        "strategy_hypothesis_ids": [
+            item["hypothesis_id"] for item in selected_capabilities
+        ],
+        "selection_basis": "explicit_founder_idea_references",
+        "server_side_validation_unchanged": True,
+    }
+    return focused
 
 
 def _candidate_reasons(
@@ -858,7 +912,9 @@ def _apply_representation_plans(
             raise ValueError("representation plans must have unique candidate keys")
         plans[plan.candidate_key] = plan
     if set(plans) != set(candidates):
-        raise ValueError("representation plans must cover exactly the frozen candidates")
+        raise ValueError(
+            "representation plans must cover exactly the frozen candidates"
+        )
     bound = []
     audit = {}
     for key, candidate in candidates.items():
@@ -942,8 +998,7 @@ def _materialize_candidates(
                         for item in mandate.specification["strategy_catalog"][
                             "capabilities"
                         ]
-                        if item["hypothesis_id"]
-                        == candidate.reusable_hypothesis_id
+                        if item["hypothesis_id"] == candidate.reusable_hypothesis_id
                     ),
                     None,
                 ),
@@ -1196,7 +1251,12 @@ def _portfolio_and_campaign(
                 "bulletproof_source_commit"
             ],
             allowed_venues=sorted(
-                set(filter(None, [*mandate.specification["allowed_venues"], *selected_venues]))
+                set(
+                    filter(
+                        None,
+                        [*mandate.specification["allowed_venues"], *selected_venues],
+                    )
+                )
             ),
             allowed_instruments=sorted(
                 {*mandate.specification["allowed_instruments"], *selected_instruments}
@@ -1426,9 +1486,7 @@ def _reconcile_data_admissions(
             admission.failure = task.failure or {"category": "admission_task_failed"}
             admission.completed_at = now()
             continue
-        document = (
-            task.result.get("summary", {}).get("alpha_data_admission", {})
-        )
+        document = task.result.get("summary", {}).get("alpha_data_admission", {})
         catalog = mandate.specification.get("discovery_catalog", {})
         if (
             document.get("schema_version")
@@ -1743,9 +1801,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         )
         return
     cycle.representation_brief = representation_brief
-    records = _materialize_candidates(
-        db, mandate, cycle, represented
-    )
+    records = _materialize_candidates(db, mandate, cycle, represented)
     accepted = [item for item in records if item.disposition == "accepted"]
     awaiting_data = [
         item for item in records if item.disposition == "awaiting_data_admission"
