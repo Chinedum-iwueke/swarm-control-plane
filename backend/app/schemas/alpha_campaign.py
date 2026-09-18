@@ -155,7 +155,7 @@ class AlphaCampaignAttemptCreate(StrictModel):
     dataset_digest: str = Field(pattern=_DIGEST)
     governed_bridge_id: uuid.UUID | None = None
     trial_count: int = Field(ge=0, le=10_000)
-    outcome: Literal["candidate", "negative", "invalid", "failed"]
+    outcome: Literal["candidate", "positive", "negative", "invalid", "failed"]
     failure_stage: (
         Literal[
             "data_admission",
@@ -181,6 +181,24 @@ class AlphaCampaignAttemptCreate(StrictModel):
                 )
             if self.failure_stage is not None:
                 raise ValueError("candidate cannot declare a failure stage")
+        elif self.outcome == "positive":
+            scientific_gates = (
+                self.gate_report.truth_certified,
+                self.gate_report.point_in_time_valid,
+                self.gate_report.reproducible,
+                self.gate_report.out_of_sample_evaluated,
+                self.gate_report.cost_stress_evaluated,
+                self.gate_report.selection_bias_audited,
+                self.gate_report.independent_review_complete,
+                self.gate_report.required_trade_logging_complete is True,
+                self.gate_report.execution_class == "qualification",
+                self.gate_report.qualification_authority is True,
+                self.gate_report.shadow_eligible is False,
+            )
+            if not all(scientific_gates) or self.gate_report.failed_gates:
+                raise ValueError(
+                    "positive scientific outcomes require every qualification gate"
+                )
         elif self.gate_report.shadow_eligible:
             raise ValueError("non-candidates cannot be shadow eligible")
         if self.outcome == "failed" and self.failure_stage is None:
