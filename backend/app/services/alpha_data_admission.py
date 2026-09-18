@@ -118,7 +118,8 @@ def register_selected_panel_receipt(
         )
     )
     existing = (existing_build, existing_catalog, existing_governance)
-    if all(isinstance(record.id, UUID) for record in existing if record is not None):
+    present = [record for record in existing if record is not None]
+    if present and all(isinstance(record.id, UUID) for record in present):
         if any(record is None for record in existing):
             raise AlphaDataAdmissionConflict(
                 "Selected panel has an incomplete existing DATA binding."
@@ -164,6 +165,7 @@ def register_selected_panel_receipt(
             "available_at": last,
             "revision_id": f"{kind}-{key_suffix}",
         }
+
     snapshot = PointInTimeReferenceSnapshot.model_validate(
         {
             "schema_version": 1,
