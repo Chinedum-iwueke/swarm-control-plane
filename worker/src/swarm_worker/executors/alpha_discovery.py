@@ -190,6 +190,14 @@ class AlphaDiscoveryExecutor:
 
 def _schema(stage: str) -> dict:
     string_array = {"type": "array", "items": {"type": "string"}}
+    uuid_string = {
+        "type": "string",
+        "pattern": (
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+            "[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        ),
+    }
+    sha256_string = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
     if stage == "intelligence":
         return {
             "type": "object",
@@ -220,8 +228,8 @@ def _schema(stage: str) -> dict:
                                 "additionalProperties": False,
                                 "required": ["object_id", "content_digest"],
                                 "properties": {
-                                    "object_id": {"type": "string"},
-                                    "content_digest": {"type": "string"},
+                                    "object_id": uuid_string,
+                                    "content_digest": sha256_string,
                                 },
                             },
                         },
@@ -298,8 +306,8 @@ def _schema(stage: str) -> dict:
         "properties": {
             "expression": {"type": "string"},
             "meaning": {"type": "string"},
-            "source_object_id": {"type": "string"},
-            "source_content_digest": {"type": "string"},
+            "source_object_id": uuid_string,
+            "source_content_digest": sha256_string,
             "source_excerpt": {"type": "string"},
             "verification": {
                 "type": "string",
@@ -435,12 +443,14 @@ def _schema(stage: str) -> dict:
             },
         },
         "evidence_object_ids": {
-            **string_array,
+            "type": "array",
+            "items": uuid_string,
             "minItems": 1,
             "maxItems": 20,
         },
         "evidence_digests": {
-            **string_array,
+            "type": "array",
+            "items": sha256_string,
             "minItems": 1,
             "maxItems": 20,
         },
@@ -512,6 +522,8 @@ horizon, state its predictor, causal timing, null, finite parameter budget, mech
 and cite exact supplied object ID/digest pairs. Equations are
 optional. Never invent or repair an equation. A source_replayed equation must occur verbatim apart from whitespace
 in its supplied source excerpt; otherwise mark it pending_independent_verification so the controller rejects it.
+Evidence object IDs are UUIDs and content digests are 64-character lowercase SHA-256 values. Never place a digest
+in an object-ID field or an object ID in a digest field; omit unsupported evidence rather than swapping identifiers.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
 Domain and cluster keys must use lowercase letters, digits and hyphens, never underscores.
 Read research_constraints before choosing data requirements. Include the actual liquidity measurement
