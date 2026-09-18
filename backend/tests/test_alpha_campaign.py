@@ -6,9 +6,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.api.routes.alpha_campaign import router
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.discovery_portfolio import (
@@ -24,6 +21,8 @@ from app.schemas.alpha_campaign import (
 )
 from app.schemas.proposal import ProposalEngineeringMissionContract
 from app.services import alpha_campaign as service
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
@@ -1180,6 +1179,58 @@ def test_stale_reviewer_route_is_retained_and_superseded(monkeypatch):
     clear.assert_called_once_with(task)
     payload = create.call_args.args[1]
     assert payload.routing_revision == 2
+    assert payload.supersedes_route_id == route.id
+
+
+def test_failed_strategy_review_task_supersedes_route_without_a_verdict(monkeypatch):
+    assignment = SimpleNamespace(
+        id=uuid4(), status="assigned", review_id=None, completed_at=None
+    )
+    route = SimpleNamespace(
+        id=uuid4(), status="assigned", subject_type="alpha_strategy_qualification",
+        subject_id=str(uuid4()), subject_digest="a" * 64,
+        requested_by="alpha-campaign-director", completed_at=None, blocked_reason={},
+        policy={
+            "required_review_kinds": ["strategy_spec", "causality_leakage"],
+            "required_capabilities": [],
+            "max_pairwise_shared_dimensions": 4,
+            "routing_revision": 2,
+        },
+    )
+    task = SimpleNamespace(
+        id=uuid4(), status="failed", failure={"retryable": True},
+    )
+    identities = [
+        {
+            "agent_id": str(uuid4()), "machine": "vm1-developer",
+            "provider": "openai", "model_family": "codex",
+            "runtime": "hermes/0.3.2", "context_group": f"producer-{position}",
+            "package_digest": str(position) * 64,
+            "profile_digest": str(position + 2) * 64,
+        }
+        for position in (1, 2)
+    ]
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [assignment]
+    db.scalar.return_value = task
+    successor = SimpleNamespace(id=uuid4(), status="assigned")
+    create = MagicMock(return_value=successor)
+    event = MagicMock()
+    monkeypatch.setattr(service, "create_route", create)
+    monkeypatch.setattr(service, "append_evaluation_event", event)
+
+    result = service._supersede_failed_strategy_review_route(
+        db, route, {"producer_identities": identities}
+    )
+
+    assert result is successor
+    assert route.status == "superseded"
+    assert route.blocked_reason["category"] == (
+        "reviewer_task_exhausted_without_verdict"
+    )
+    assert assignment.status == "superseded"
+    payload = create.call_args.args[1]
+    assert payload.routing_revision == 3
     assert payload.supersedes_route_id == route.id
 
 
