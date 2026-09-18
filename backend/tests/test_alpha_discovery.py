@@ -22,6 +22,7 @@ from app.services.alpha_discovery import (
     _discovery_queries,
     _ensure_data_admission_task,
     _focus_founder_context,
+    _normalize_candidate_input,
     _recover_resumed_stage,
     _task,
     reconcile_mandate,
@@ -100,6 +101,41 @@ def test_founder_context_focus_does_not_narrow_open_ended_idea():
         focused["strategy_catalog"]["capabilities"]
         == context["strategy_catalog"]["capabilities"]
     )
+
+
+def test_candidate_normalization_is_outcome_blind_and_constraint_only():
+    evidence_id = uuid4()
+    founder_id = uuid4()
+    raw = {
+        "question": "Does this point-in-time predictor forecast a future return?",
+        "evidence_object_ids": [str(founder_id), str(evidence_id)],
+        "evidence_digests": ["b" * 64, DIGEST],
+        "data": {"minimum_history_observations": 500_000},
+    }
+    cycle = SimpleNamespace(
+        context={
+            "research_intelligence": {
+                "citations": [
+                    {"object_id": str(evidence_id), "content_digest": DIGEST}
+                ]
+            },
+            "founder_research_idea": {
+                "constraints": {"minimum_history_days": 365}
+            },
+        }
+    )
+
+    normalized, changes = _normalize_candidate_input(raw, cycle)
+
+    assert normalized["evidence_object_ids"] == [str(evidence_id)]
+    assert normalized["evidence_digests"] == [DIGEST]
+    assert normalized["data"]["minimum_history_observations"] == 525_600
+    assert changes == [
+        "discarded_non_replayable_evidence_pairs",
+        "raised_history_to_founder_minimum",
+    ]
+    assert raw["evidence_object_ids"] == [str(founder_id), str(evidence_id)]
+    assert raw["data"]["minimum_history_observations"] == 500_000
 
 
 def test_discovery_catalog_binding_requires_exact_no_authority_receipt():
