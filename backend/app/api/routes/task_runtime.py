@@ -35,6 +35,7 @@ from app.services.tasks import (
     clear_lease,
     lease_next_task,
     lock_task,
+    reap_expired_leases,
     serialize_task,
     verify_task_lease,
 )
@@ -161,6 +162,9 @@ def lease_task(
                 scope.reason or "Paused by operator." for scope in paused_scopes
             ],
         )
+    # A restarted worker cannot release its old lease. Reconcile those leases
+    # before selecting work so recovery does not depend on an operator call.
+    reap_expired_leases(db)
     task, raw_token, _ = lease_next_task(
         db,
         agent,

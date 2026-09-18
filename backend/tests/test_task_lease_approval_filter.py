@@ -116,6 +116,7 @@ def test_no_work_lease_commits_approval_expiry_reconciliation() -> None:
     db = MagicMock()
     agent = MagicMock()
     with (
+        patch("app.api.routes.task_runtime.reap_expired_leases") as reap,
         patch("app.api.routes.task_runtime.matching_control_scopes", return_value=[]),
         patch(
             "app.api.routes.task_runtime.lease_next_task",
@@ -125,5 +126,6 @@ def test_no_work_lease_commits_approval_expiry_reconciliation() -> None:
         response = lease_task(TaskLeaseRequest(), agent, db)
 
     assert response.task is None
+    reap.assert_called_once_with(db)
     db.commit.assert_called_once_with()
     db.rollback.assert_not_called()
