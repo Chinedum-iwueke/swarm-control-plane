@@ -25,6 +25,7 @@ fi
 install -o root -g root -m 0644 "$root/worker/systemd/$unit" "/etc/systemd/system/$unit"
 systemd-analyze verify "/etc/systemd/system/$unit"
 systemctl daemon-reload
-systemctl enable --now "$unit"
+systemctl enable "$unit"
+systemctl restart "$unit"
 test "$(docker ps --format '{{.Command}}' | grep -c 'app.workers.alpha_discovery')" -eq 1
 printf 'ALPHA-004 discovery director installed and started.\n'

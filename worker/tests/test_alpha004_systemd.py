@@ -60,3 +60,5 @@ def test_discovery_director_has_single_named_runtime_lifecycle() -> None:
     assert 'index($0, "app.workers.alpha_discovery")' in installer
     assert 'docker rm -f "${legacy_directors[@]}"' in installer
     assert "grep -c 'app.workers.alpha_discovery'" in installer
+    assert 'systemctl restart "$unit"' in installer
+    assert 'systemctl enable --now "$unit"' not in installer
