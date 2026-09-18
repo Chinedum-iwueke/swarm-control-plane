@@ -9,7 +9,10 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
-ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.workers.alpha_discovery --continuous --poll-seconds 15
+ExecStartPre=-/usr/bin/docker rm -f invariance-swarm-alpha-discovery-director-runtime
+ExecStart=/usr/bin/docker compose run --rm --no-deps --name invariance-swarm-alpha-discovery-director-runtime api python -m app.workers.alpha_discovery --continuous --poll-seconds 15
+ExecStop=-/usr/bin/docker stop --timeout 30 invariance-swarm-alpha-discovery-director-runtime
+ExecStopPost=-/usr/bin/docker rm -f invariance-swarm-alpha-discovery-director-runtime
 Restart=on-failure
 RestartSec=15s
 TimeoutStopSec=90s
