@@ -27,6 +27,29 @@ def test_discovery_domain_identifiers_match_canonical_intake():
         assert field["maxLength"] == 100
 
 
+def test_hypothesis_schema_enforces_api_candidate_bounds():
+    properties = _schema("hypothesis")["properties"]["candidates"]["items"][
+        "properties"
+    ]
+
+    assert properties["horizon"] == {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 100,
+    }
+    assert properties["question"]["maxLength"] == 2000
+    assert properties["mechanism"]["maxLength"] == 4000
+    assert (
+        properties["parameter_budget"]["properties"]["maximum_variants"]["maximum"] == 8
+    )
+    assert (
+        properties["data"]["properties"]["minimum_history_observations"]["minimum"]
+        == 500
+    )
+    assert properties["evidence_object_ids"]["maxItems"] == 20
+    assert properties["expected_information_gain"]["maximum"] == 1
+
+
 def test_discovery_runtime_is_private_and_separate_from_credentials(tmp_path):
     options = _runtime_options(tmp_path)
     runtime = tmp_path / "codex-runtime"

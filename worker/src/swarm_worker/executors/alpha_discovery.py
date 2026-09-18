@@ -309,8 +309,12 @@ def _schema(stage: str) -> dict:
         },
     }
     candidate_properties = {
-        "candidate_key": {"type": "string"},
-        "title": {"type": "string"},
+        "candidate_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$",
+            "maxLength": 180,
+        },
+        "title": {"type": "string", "minLength": 10, "maxLength": 300},
         "domain_key": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$",
@@ -321,20 +325,32 @@ def _schema(stage: str) -> dict:
             "pattern": "^[a-z][a-z0-9-]*$",
             "maxLength": 100,
         },
-        "question": {"type": "string"},
-        "predictor": {"type": "string"},
-        "target": {"type": "string"},
-        "horizon": {"type": "string"},
-        "causal_timing": {"type": "string"},
-        "null_hypothesis": {"type": "string"},
+        "question": {"type": "string", "minLength": 20, "maxLength": 2000},
+        "predictor": {"type": "string", "minLength": 3, "maxLength": 1000},
+        "target": {"type": "string", "minLength": 3, "maxLength": 300},
+        "horizon": {"type": "string", "minLength": 2, "maxLength": 100},
+        "causal_timing": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 2000,
+        },
+        "null_hypothesis": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 2000,
+        },
         "predicted_direction": {
             "type": "string",
             "enum": ["positive", "negative", "nonlinear", "conditional"],
         },
-        "mechanism": {"type": "string"},
-        "rival_explanations": string_array,
-        "falsification_criteria": string_array,
-        "features": string_array,
+        "mechanism": {"type": "string", "minLength": 20, "maxLength": 4000},
+        "rival_explanations": {**string_array, "minItems": 1, "maxItems": 10},
+        "falsification_criteria": {
+            **string_array,
+            "minItems": 1,
+            "maxItems": 20,
+        },
+        "features": {**string_array, "minItems": 1, "maxItems": 50},
         "parameter_budget": {
             "type": "object",
             "additionalProperties": False,
@@ -344,9 +360,21 @@ def _schema(stage: str) -> dict:
                 "parameter_names",
             ],
             "properties": {
-                "maximum_parameters": {"type": "integer"},
-                "maximum_variants": {"type": "integer"},
-                "parameter_names": string_array,
+                "maximum_parameters": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+                "maximum_variants": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8,
+                },
+                "parameter_names": {
+                    **string_array,
+                    "minItems": 1,
+                    "maxItems": 20,
+                },
             },
         },
         "data": {
@@ -365,13 +393,21 @@ def _schema(stage: str) -> dict:
             ],
             "properties": {
                 "venue": {"type": "string", "enum": ["bybit", "binance"]},
-                "instrument": {"type": "string"},
+                "instrument": {
+                    "type": "string",
+                    "pattern": "^[A-Z0-9_-]+$",
+                    "maxLength": 50,
+                },
                 "timeframe": {"type": "string", "enum": ["1m"]},
                 "instruments": {
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 20,
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[A-Z0-9_-]+$",
+                        "maxLength": 50,
+                    },
                 },
                 "research_timeframe": {
                     "type": "string",
@@ -381,17 +417,45 @@ def _schema(stage: str) -> dict:
                     "type": "string",
                     "enum": ["left_closed_left_labeled_complete_bars"],
                 },
-                "required_fields": string_array,
-                "minimum_history_observations": {"type": "integer"},
-                "liquidity_floor_usd": {"type": "number"},
+                "required_fields": {
+                    **string_array,
+                    "minItems": 1,
+                    "maxItems": 50,
+                },
+                "minimum_history_observations": {
+                    "type": "integer",
+                    "minimum": 500,
+                    "maximum": 100000000,
+                },
+                "liquidity_floor_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10000000000,
+                },
             },
         },
-        "evidence_object_ids": string_array,
-        "evidence_digests": string_array,
-        "equations": {"type": "array", "items": equation},
-        "expected_information_gain": {"type": "number"},
-        "feasibility": {"type": "number"},
-        "reusable_hypothesis_id": {"type": ["string", "null"]},
+        "evidence_object_ids": {
+            **string_array,
+            "minItems": 1,
+            "maxItems": 20,
+        },
+        "evidence_digests": {
+            **string_array,
+            "minItems": 1,
+            "maxItems": 20,
+        },
+        "equations": {"type": "array", "maxItems": 20, "items": equation},
+        "expected_information_gain": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+        },
+        "feasibility": {"type": "number", "minimum": 0, "maximum": 1},
+        "reusable_hypothesis_id": {
+            "type": ["string", "null"],
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "maxLength": 180,
+        },
     }
     return {
         "type": "object",

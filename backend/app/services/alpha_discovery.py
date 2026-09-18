@@ -703,9 +703,14 @@ def _focus_founder_context(context: dict, idea: str) -> dict:
         capability
         for capability in capabilities
         if str(capability.get("hypothesis_id", "")).upper() in idea_tokens
-        or str(capability.get("contract_digest", "")).upper() in normalized_idea
-        or str(capability.get("research_contract_digest", "")).upper()
-        in normalized_idea
+        or (
+            capability.get("contract_digest")
+            and str(capability["contract_digest"]).upper() in normalized_idea
+        )
+        or (
+            capability.get("research_contract_digest")
+            and str(capability["research_contract_digest"]).upper() in normalized_idea
+        )
     ]
     if selected_capabilities:
         strategy_catalog["capabilities"] = selected_capabilities
