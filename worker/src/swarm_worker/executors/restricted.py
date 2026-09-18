@@ -38,9 +38,17 @@ class RestrictedExecutor:
                 else None
             )
         )
+        engineering_validation_runner = AsyncProcessRunner(
+            virtualenv=(
+                settings.swarm_engineering_virtualenv
+                if settings is not None
+                else None
+            ),
+            child_umask=0o022,
+        )
         engineering_validation = CodeValidationExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds,
-            process_runner=engineering_runner,
+            process_runner=engineering_validation_runner,
         )
         self._engineering = EngineeringMissionExecutor(
             codex_home=codex_home,
