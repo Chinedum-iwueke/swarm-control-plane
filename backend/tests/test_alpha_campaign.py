@@ -771,6 +771,27 @@ def test_governed_pipeline_clears_prior_stage_reason(monkeypatch):
     assert record.terminal_reason == {}
 
 
+def test_running_strategy_engineering_is_not_terminalized(monkeypatch):
+    record = campaign(status="needs_attention")
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    engineering = SimpleNamespace(id=uuid4(), status="running", result={})
+    db = MagicMock()
+    db.scalar.side_effect = [draft, engineering]
+
+    assert service._advance_governed_pipeline(db, record) is engineering
+    assert record.status == "running"
+    assert record.phase == "strategy_engineering"
+    assert record.next_action == "await_bounded_strategy_engineering"
+    assert record.terminal_reason == {}
+
+
 @pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
