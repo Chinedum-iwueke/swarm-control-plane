@@ -6,9 +6,6 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas.research import (
     DataSnapshotSpecification,
     ExperimentManifest,
@@ -26,6 +23,7 @@ from app.schemas.research import (
 )
 from app.services.research import (
     add_review,
+    next_trial_number,
     record_digest,
     register_data_snapshot,
     register_decision,
@@ -34,6 +32,8 @@ from app.services.research import (
     register_source,
     register_trial,
 )
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 DIGEST = "a" * 64
 ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -204,6 +204,18 @@ def test_trial_family_budget_counts_every_attempt() -> None:
     db.scalar.side_effect = [ID, 1]
     with pytest.raises(HTTPException, match="budget is exhausted"):
         register_trial(db, ID, trial_payload())
+
+
+def test_next_trial_number_uses_existing_family_sequence() -> None:
+    experiment = SimpleNamespace(id=ID, hypothesis_id=ID)
+    hypothesis = SimpleNamespace(trial_family="momentum-daily-v1")
+    db = MagicMock()
+    db.get.side_effect = lambda model, _: (
+        experiment if model.__name__ == "ResearchExperiment" else hypothesis
+    )
+    db.scalar.return_value = 3
+
+    assert next_trial_number(db, ID) == 4
 
 
 def test_failed_and_negative_results_are_registered() -> None:
