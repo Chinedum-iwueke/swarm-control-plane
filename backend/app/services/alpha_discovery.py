@@ -1169,7 +1169,7 @@ def _portfolio_and_campaign(
     cycle: AlphaDiscoveryCycle,
     accepted: list[AlphaDiscoveryCandidate],
 ) -> None:
-    if len(accepted) < 2:
+    if not accepted:
         cycle.status = "rejected"
         cycle.phase = "complete"
         cycle.next_action = "schedule_next_discovery_cycle"
