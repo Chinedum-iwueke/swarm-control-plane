@@ -10,6 +10,9 @@ def test_derived_state_orchestrator_is_bounded_and_restartable() -> None:
 
     assert "WorkingDirectory=/srv/invariance/swarm/control-plane-runtime" in unit
     assert "python -m app.workers.derived_state --continuous" in unit
+    assert "--name invariance-swarm-derived-state-orchestrator-runtime" in unit
+    assert "docker stop -t 90 invariance-swarm-derived-state-orchestrator-runtime" in unit
+    assert "docker rm -f invariance-swarm-derived-state-orchestrator-runtime" in unit
     assert "--no-deps api" in unit
     assert "Restart=on-failure" in unit
     assert "NoNewPrivileges=true" in unit
@@ -28,3 +31,13 @@ def test_derived_state_orchestrator_installer_targets_systemd() -> None:
     assert "deployed API image does not contain RI-016" in installer
     assert "--enable" in installer
     assert "--start" in installer
+
+
+def test_alpha_campaign_director_uses_single_owned_runtime_container() -> None:
+    unit = (
+        ROOT / "worker/systemd/invariance-swarm-alpha-campaign-director.service"
+    ).read_text(encoding="utf-8")
+
+    assert "--name invariance-swarm-alpha-campaign-director-runtime" in unit
+    assert "docker stop -t 90 invariance-swarm-alpha-campaign-director-runtime" in unit
+    assert "docker rm -f invariance-swarm-alpha-campaign-director-runtime" in unit

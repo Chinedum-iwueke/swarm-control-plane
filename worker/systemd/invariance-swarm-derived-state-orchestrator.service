@@ -8,7 +8,10 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=/srv/invariance/swarm/control-plane-runtime
-ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.workers.derived_state --continuous --poll-seconds 15 --requested-by derived-state-orchestrator
+ExecStartPre=-/usr/bin/docker rm -f invariance-swarm-derived-state-orchestrator-runtime
+ExecStart=/usr/bin/docker compose run --rm --name invariance-swarm-derived-state-orchestrator-runtime --no-deps api python -m app.workers.derived_state --continuous --poll-seconds 15 --requested-by derived-state-orchestrator
+ExecStop=-/usr/bin/docker stop -t 90 invariance-swarm-derived-state-orchestrator-runtime
+ExecStopPost=-/usr/bin/docker rm -f invariance-swarm-derived-state-orchestrator-runtime
 Restart=on-failure
 RestartSec=15s
 TimeoutStopSec=90s
