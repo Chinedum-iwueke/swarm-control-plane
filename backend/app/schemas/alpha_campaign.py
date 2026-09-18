@@ -110,6 +110,9 @@ class AlphaGateReport(StrictModel):
     cost_stress_evaluated: bool
     selection_bias_audited: bool
     independent_review_complete: bool
+    required_trade_logging_complete: bool | None = None
+    execution_class: Literal["qualification", "commissioning"] | None = None
+    qualification_authority: bool | None = None
     shadow_eligible: bool
     production_eligible: Literal[False] = False
     capital_authority: Literal[False] = False
@@ -117,6 +120,10 @@ class AlphaGateReport(StrictModel):
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.execution_class == "commissioning" and self.qualification_authority is not False:
+            raise ValueError("commissioning evidence cannot have qualification authority")
+        if self.execution_class == "qualification" and self.qualification_authority is False:
+            raise ValueError("qualification evidence must retain qualification authority")
         required = (
             self.truth_certified,
             self.point_in_time_valid,
@@ -128,6 +135,10 @@ class AlphaGateReport(StrictModel):
         )
         if self.shadow_eligible and (not all(required) or self.failed_gates):
             raise ValueError("shadow eligibility requires every no-capital gate")
+        if self.shadow_eligible and self.required_trade_logging_complete is False:
+            raise ValueError("shadow eligibility requires complete trade logging")
+        if self.shadow_eligible and self.qualification_authority is False:
+            raise ValueError("shadow eligibility requires qualification authority")
         return self
 
 

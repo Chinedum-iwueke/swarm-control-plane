@@ -89,6 +89,30 @@ ROOT
 The command requests approval; it does not approve or launch research itself.
 An existing key/version is immutable: inspect conflicts, do not overwrite it.
 
+## First governed one-year execution (2026-09-18)
+
+Task `A3-01b518cd-001-E` completed a genuine native Bulletproof run over the 2023
+calendar year using 525,600 Bybit BTCUSDT one-minute rows and the immutable
+eight-variant grid. It is a valid negative research result, not an admitted alpha:
+mean held-out net R was `-0.6131292379618`, and mean held-out net R under doubled
+costs was `-0.9044721462946578`. Reproducibility, point-in-time validity, held-out
+evaluation, cost stress, selection-bias audit, independent review and logging
+gates passed; the preregistered alpha-performance gates failed.
+
+The native result bundle is retained under assignment digest
+`a647d005a43a4fc9acf2b1ed059152d87c60530c0be641f79e8589bcf4adf149`.
+Its native execution receipt digest is
+`601573aed63b08aac9d076b2a3356e3a430c647c6b47a15dc8780dc87cb0939c`.
+Publication remains contingent on current canonical retrieval and graph
+projections; an executed native result is not silently promoted while those
+projections are stale.
+
+Measured peak memory was approximately 4.1 GiB per worker. The capacity director
+now reserves 4.5 GiB per worker and serializes two eight-worker one-year jobs when
+the host cannot retain its free-memory floor. The second independently qualified
+terminal execution is still outstanding. Operational closure therefore remains
+open even though the first negative result is complete and retained.
+
 ## Deployment verification
 
 Control-plane PR #262 merged at `f22fe150f`. VM2 built/running image identities

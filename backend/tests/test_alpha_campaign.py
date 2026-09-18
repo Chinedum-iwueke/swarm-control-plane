@@ -637,6 +637,39 @@ def test_contract_has_no_capital_or_order_authority():
     )
 
 
+def test_attempt_accepts_native_execution_scope_and_logging_evidence():
+    record = campaign()
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "execution_class": "qualification",
+            "qualification_authority": True,
+            "required_trade_logging_complete": True,
+        }
+    )
+
+    payload = attempt(record, gate_report=gate_report)
+
+    assert payload.gate_report.execution_class == "qualification"
+    assert payload.gate_report.qualification_authority is True
+    assert payload.gate_report.required_trade_logging_complete is True
+
+
+def test_commissioning_attempt_cannot_claim_qualification_authority():
+    record = campaign()
+    gate_report = attempt(record).gate_report.model_dump()
+    gate_report.update(
+        {
+            "execution_class": "commissioning",
+            "qualification_authority": True,
+            "required_trade_logging_complete": True,
+        }
+    )
+
+    with pytest.raises(ValidationError, match="cannot have qualification authority"):
+        attempt(record, gate_report=gate_report)
+
+
 def test_candidate_requires_complete_no_capital_gates():
     with pytest.raises(ValidationError, match="candidate"):
         AlphaCampaignAttemptCreate.model_validate(
