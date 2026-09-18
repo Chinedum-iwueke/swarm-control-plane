@@ -82,6 +82,12 @@ class AlphaDiscoveryCycle(Base):
     hypothesis_task_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tasks.id")
     )
+    representation_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id")
+    )
+    representation_brief: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     discovery_portfolio_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("discovery_portfolios.id")
     )

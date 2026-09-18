@@ -213,6 +213,32 @@ class AlphaDiscoveryParameterBudget(StrictModel):
         return self
 
 
+class AlphaRepresentationPlan(StrictModel):
+    candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
+    venue: Literal["bybit", "binance"]
+    instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    instruments: list[str] = Field(min_length=1, max_length=20)
+    source_timeframe: Literal["1m"]
+    research_timeframe: str = Field(
+        pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$"
+    )
+    resampling_policy: Literal["right_closed_left_labeled_complete_bars"]
+    required_fields: list[str] = Field(min_length=1, max_length=50)
+    minimum_history_observations: int = Field(ge=500, le=100_000_000)
+    liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
+    transformation_rationale: str = Field(min_length=20, max_length=4000)
+    rejected_alternatives: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def normalized_basket(self):
+        self.instruments = [item.upper() for item in self.instruments]
+        if self.instrument not in self.instruments:
+            raise ValueError("primary instrument must be included in the basket")
+        if len(self.instruments) != len(set(self.instruments)):
+            raise ValueError("basket instruments must be unique")
+        return self
+
+
 class AlphaEquationAssertion(StrictModel):
     expression: str = Field(min_length=1, max_length=4000)
     meaning: str = Field(min_length=10, max_length=4000)

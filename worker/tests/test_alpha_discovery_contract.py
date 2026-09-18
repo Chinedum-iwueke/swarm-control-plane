@@ -116,6 +116,33 @@ def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
     ]
 
 
+def test_representation_schema_is_outcome_blind_and_records_alternatives():
+    schema = _schema("representation")
+    plan = schema["properties"]["representation_plans"]["items"]
+    required = set(plan["required"])
+    assert {
+        "candidate_key",
+        "instruments",
+        "source_timeframe",
+        "research_timeframe",
+        "resampling_policy",
+        "transformation_rationale",
+        "rejected_alternatives",
+    }.issubset(required)
+    assert plan["properties"]["source_timeframe"]["enum"] == ["1m"]
+    assert "outcome" not in plan["properties"]
+
+
+def test_representation_prompt_forbids_semantic_and_outcome_changes():
+    document = alpha_discovery_contract()
+    document["stage"] = "representation"
+    document["context"]["raw_candidates"] = []
+    prompt = _prompt(AlphaDiscoveryContract.model_validate(document))
+    assert "do not change candidate questions" in prompt
+    assert "before any outcome evaluation" in prompt
+    assert "plausible rejected alternatives" in prompt
+
+
 def test_alpha_discovery_contract_survives_complete_policy_validation():
     task = SimpleNamespace(
         task_type="alpha_discovery",

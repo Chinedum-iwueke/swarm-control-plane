@@ -172,6 +172,32 @@ async def test_process_runner_uses_configured_execution_virtualenv(
 
 
 @pytest.mark.asyncio
+async def test_validation_runtime_uses_reproducible_umask_under_hardened_parent(
+    tmp_path: Path,
+) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace.repository / "test_umask.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_requested_public_fixture_mode_is_preserved():\n"
+        "    path = Path('fixture.txt')\n"
+        "    path.touch(mode=0o644)\n"
+        "    assert path.stat().st_mode & 0o777 == 0o644\n"
+    )
+    previous = os.umask(0o077)
+    try:
+        result = await executor().execute(
+            task=make_task(),
+            workflow=make_workflow(("run-tests", ["pytest", "-q"])),
+            workspace=workspace,
+            heartbeat=heartbeat_ok,
+        )
+    finally:
+        os.umask(previous)
+
+    assert result.success is True
+
+
+@pytest.mark.asyncio
 async def test_successful_compile_and_test_workflow(
     tmp_path: Path,
 ) -> None:

@@ -31,6 +31,7 @@ from app.schemas.alpha_campaign import (
 from app.schemas.alpha_discovery import (
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
+    AlphaRepresentationPlan,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
 )
@@ -463,22 +464,29 @@ def _task(
     stage: str,
     context: dict,
 ) -> Task:
-    intelligence = stage == "intelligence"
+    stage_code = {"intelligence": "I", "hypothesis": "H", "representation": "R"}[stage]
+    titles = {
+        "intelligence": "Synthesize evidence for an alpha discovery cycle",
+        "hypothesis": "Propose falsifiable predictive hypotheses",
+        "representation": "Select causal data representations for predictive hypotheses",
+    }
+    objectives = {
+        "intelligence": "Synthesize cited mechanisms, contradictions, failures and testable gaps without proposing trades.",
+        "hypothesis": "Produce typed, evidence-grounded predictive hypotheses that fit visible point-in-time data.",
+        "representation": "Select point-in-time baskets, transformations and complete-bar timeframes without inspecting outcomes.",
+    }
+    capabilities = {
+        "intelligence": ["research-intelligence", "knowledge-retrieval"],
+        "hypothesis": ["research-proposal", "prior-art"],
+        "representation": ["data-representation", "market-data-read"],
+    }
     task = build_task(
         TaskCreate(
-            task_number=f"A4-{str(mandate.id)[:8]}-{cycle.ordinal:03d}-{'I' if intelligence else 'H'}",
+            task_number=f"A4-{str(mandate.id)[:8]}-{cycle.ordinal:03d}-{stage_code}",
             project="systematic-research",
             task_type="alpha_discovery",
-            title=(
-                "Synthesize evidence for an alpha discovery cycle"
-                if intelligence
-                else "Propose falsifiable predictive hypotheses"
-            ),
-            objective=(
-                "Synthesize cited mechanisms, contradictions, failures and testable gaps without proposing trades."
-                if intelligence
-                else "Produce typed, evidence-grounded predictive hypotheses that fit admitted point-in-time data."
-            ),
+            title=titles[stage],
+            objective=objectives[stage],
             priority=80,
             risk_level=0,
             created_by="alpha-continuous-director",
@@ -495,9 +503,11 @@ def _task(
                 "authority": "no_capital_research",
             },
             expected_outputs=[
-                "structured cited research brief"
-                if intelligence
-                else "typed falsifiable candidates"
+                {
+                    "intelligence": "structured cited research brief",
+                    "hypothesis": "typed falsifiable candidates",
+                    "representation": "pre-outcome data representation plans",
+                }[stage]
             ],
             acceptance_criteria=[
                 "all claims cite supplied immutable evidence",
@@ -509,11 +519,7 @@ def _task(
                 "mandate_digest": mandate.mandate_digest,
             },
             approval_required=False,
-            required_capabilities=(
-                ["research-intelligence", "knowledge-retrieval"]
-                if intelligence
-                else ["research-proposal", "prior-art"]
-            ),
+            required_capabilities=capabilities[stage],
             allowed_machines=["vm1-developer"],
             max_attempts=3,
         )
@@ -832,6 +838,50 @@ def _question_similarity(first: str, second: str) -> float:
     left = {word for word in first.replace("?", "").split() if len(word) > 2}
     right = {word for word in second.replace("?", "").split() if len(word) > 2}
     return len(left & right) / len(left | right) if left or right else 1.0
+
+
+def _apply_representation_plans(
+    raw_candidates: list[dict], raw_plans: list[dict]
+) -> tuple[list[dict], dict]:
+    """Bind one independently selected, outcome-blind representation per candidate."""
+    candidates = {
+        item.get("candidate_key"): dict(item)
+        for item in raw_candidates
+        if isinstance(item, dict) and isinstance(item.get("candidate_key"), str)
+    }
+    if len(candidates) != len(raw_candidates):
+        raise ValueError("candidate keys must be present and unique")
+    plans: dict[str, AlphaRepresentationPlan] = {}
+    for document in raw_plans:
+        plan = AlphaRepresentationPlan.model_validate(document)
+        if plan.candidate_key in plans:
+            raise ValueError("representation plans must have unique candidate keys")
+        plans[plan.candidate_key] = plan
+    if set(plans) != set(candidates):
+        raise ValueError("representation plans must cover exactly the frozen candidates")
+    bound = []
+    audit = {}
+    for key, candidate in candidates.items():
+        plan = plans[key]
+        candidate["data"] = {
+            "venue": plan.venue,
+            "instrument": plan.instrument,
+            "instruments": plan.instruments,
+            "timeframe": plan.source_timeframe,
+            "research_timeframe": plan.research_timeframe,
+            "resampling_policy": plan.resampling_policy,
+            "required_fields": plan.required_fields,
+            "minimum_history_observations": plan.minimum_history_observations,
+            "liquidity_floor_usd": plan.liquidity_floor_usd,
+        }
+        bound.append(candidate)
+        audit[key] = {
+            "data": candidate["data"],
+            "transformation_rationale": plan.transformation_rationale,
+            "rejected_alternatives": plan.rejected_alternatives,
+            "outcome_data_consulted": False,
+        }
+    return bound, audit
 
 
 def _materialize_candidates(
@@ -1213,7 +1263,11 @@ def recover_discovery_grounding(db: Session, mandate, payload):
         )
     if cycle.context.get("research_intelligence", {}).get("citations"):
         raise HTTPException(409, "Grounded discovery cannot use grounding recovery.")
-    for task_id in (cycle.intelligence_task_id, cycle.hypothesis_task_id):
+    for task_id in (
+        cycle.intelligence_task_id,
+        cycle.hypothesis_task_id,
+        cycle.representation_task_id,
+    ):
         if task_id:
             task = db.get(Task, task_id)
             if task is None or task.status not in {"succeeded", "failed", "cancelled"}:
@@ -1261,6 +1315,7 @@ def _recover_resumed_stage(db: Session, mandate, cycle) -> bool:
     stage = {
         "intelligence_synthesis": "intelligence",
         "hypothesis_generation": "hypothesis",
+        "representation_selection": "representation",
     }.get(cycle.phase)
     if stage is None:
         return False
@@ -1609,8 +1664,75 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         .get("alpha_discovery_output", {})
         .get("candidates", [])
     )
+    if not isinstance(raw, list):
+        cycle.status = "needs_attention"
+        cycle.next_action = "review_invalid_hypothesis_output"
+        return
+    if cycle.representation_task_id is None:
+        task = _task(
+            db,
+            mandate,
+            cycle,
+            "representation",
+            {
+                **cycle.context,
+                "research_brief": brief,
+                "raw_candidates": raw,
+                "outcome_data_available": False,
+            },
+        )
+        cycle.representation_task_id = task.id
+        cycle.phase = "representation_selection"
+        cycle.next_action = "await_data_representation_agent"
+        _event(
+            db,
+            mandate,
+            "representation_task_created",
+            {"task_id": str(task.id), "candidate_count": len(raw)},
+            cycle,
+        )
+        return
+    representation = db.get(Task, cycle.representation_task_id)
+    if representation is None or representation.status not in {
+        "succeeded",
+        "failed",
+        "cancelled",
+    }:
+        return
+    if representation.status != "succeeded":
+        cycle.status = "needs_attention"
+        cycle.next_action = "repair_data_representation_agent"
+        _event(
+            db,
+            mandate,
+            "representation_stage_failed",
+            {"task_id": str(representation.id)},
+            cycle,
+        )
+        return
+    raw_plans = (
+        representation.result.get("summary", {})
+        .get("alpha_discovery_output", {})
+        .get("representation_plans", [])
+    )
+    try:
+        represented, representation_brief = _apply_representation_plans(
+            raw, raw_plans if isinstance(raw_plans, list) else []
+        )
+    except (ValidationError, ValueError) as exc:
+        cycle.status = "needs_attention"
+        cycle.next_action = "review_invalid_representation_output"
+        _event(
+            db,
+            mandate,
+            "representation_output_rejected",
+            {"task_id": str(representation.id), "detail": str(exc)[:2000]},
+            cycle,
+        )
+        return
+    cycle.representation_brief = representation_brief
     records = _materialize_candidates(
-        db, mandate, cycle, raw if isinstance(raw, list) else []
+        db, mandate, cycle, represented
     )
     accepted = [item for item in records if item.disposition == "accepted"]
     awaiting_data = [
@@ -1735,6 +1857,7 @@ def overview(db: Session) -> dict:
                     "vm1-m13-senior-research-specialist",
                     "vm1-alpha004-research-intelligence-director",
                     "vm1-alpha004-senior-researcher",
+                    "vm1-alpha-data-representation-scientist",
                     "vm1-alpha-research-executor-v2",
                     "vm1-alpha-research-executor-capacity-2",
                 ]
@@ -1767,6 +1890,12 @@ def overview(db: Session) -> dict:
                 "phase": item.phase,
                 "next_action": item.next_action,
                 "metrics": item.metrics,
+                "representation_task_id": (
+                    str(item.representation_task_id)
+                    if item.representation_task_id
+                    else None
+                ),
+                "representation_count": len(item.representation_brief or {}),
                 "campaign_id": str(item.campaign_id) if item.campaign_id else None,
                 "heartbeat_at": item.heartbeat_at,
             }

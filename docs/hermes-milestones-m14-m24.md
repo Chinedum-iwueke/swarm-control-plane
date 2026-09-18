@@ -65,7 +65,8 @@ Every generated variant is registered before evaluation; broad unconstrained min
 remains prohibited.
 
 ALPHA-004 adds the continuous production feeder for this milestone: separately
-chartered RI and senior-research agents, weekly digest-bound no-capital mandates,
+chartered RI, senior-research and outcome-blind data-representation agents, weekly
+digest-bound no-capital mandates,
 DATA-002/003 admission, predictive/falsifiability rejection, DISC-009 replenishment,
 BT-009 campaign creation, outcome feedback, and Mission Control throughput/stall
 visibility. LLM-assisted equations remain source-bound and cannot self-certify.
@@ -75,9 +76,11 @@ stronger independence requires an AGT-006 receipt and disagreements fail closed
 visibly. Migration `a0d6e8f92b51` and live report
 `675ffd7409aedb864dd535272ff89b150ef9ce0a2e1afa65310d1ac7cf10ed4c`
 demonstrated cache reuse, mismatch rejection and a source-bound
-`machine_verified` receipt. ALPHA-004 operational exit separately requires three
-active supervised services, one approved weekly mandate and a terminal real-data
-campaign attempt.
+`machine_verified` receipt. The representation stage selects hypothesis-specific
+baskets and arbitrary safe whole-minute/hour/day research timeframes before outcomes,
+retains rejected alternatives, and binds Bulletproof's complete-bar resampler.
+ALPHA-004 operational exit separately requires four active supervised services, one
+approved weekly mandate and a terminal real-data campaign attempt.
 
 Exit: a fixed discovery budget produces a complete searchable family including every
 failure.
