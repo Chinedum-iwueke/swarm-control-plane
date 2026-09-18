@@ -884,15 +884,27 @@ def _apply_representation_plans(
     return bound, audit
 
 
+def _candidate_enters_novelty_memory(item: AlphaDiscoveryCandidate) -> bool:
+    return not (
+        item.disposition == "rejected"
+        and "candidate_schema_invalid" in item.reason_codes
+    )
+
+
 def _materialize_candidates(
     db: Session,
     mandate: AlphaResearchMandate,
     cycle: AlphaDiscoveryCycle,
     raw: list[dict],
 ) -> list[AlphaDiscoveryCandidate]:
+    prior_candidates = db.scalars(select(AlphaDiscoveryCandidate)).all()
     prior_questions = [
         item.question for item in db.scalars(select(AlphaCampaignAttempt)).all()
-    ] + [item.question for item in db.scalars(select(AlphaDiscoveryCandidate)).all()]
+    ] + [
+        item.question
+        for item in prior_candidates
+        if _candidate_enters_novelty_memory(item)
+    ]
     records = []
     for raw_candidate in raw[: mandate.budget["maximum_candidates_per_cycle"]]:
         try:

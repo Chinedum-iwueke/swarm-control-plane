@@ -14,6 +14,7 @@ from app.schemas.alpha_discovery import (
 from app.services.alpha_discovery import (
     _apply_representation_plans,
     _bounded_context,
+    _candidate_enters_novelty_memory,
     _candidate_reasons,
     _discovery_catalog,
     _discovery_corpus,
@@ -863,6 +864,20 @@ def test_founder_idea_enforces_one_year_and_eight_variant_boundary():
     assert "founder_variant_budget_exceeded" in reasons
     assert "founder_minimum_history_not_requested" in reasons
     assert "mandate_window_below_founder_minimum" in reasons
+
+
+def test_schema_invalid_candidate_does_not_enter_novelty_memory():
+    invalid = SimpleNamespace(
+        disposition="rejected", reason_codes=["candidate_schema_invalid"]
+    )
+    scientific_rejection = SimpleNamespace(
+        disposition="rejected", reason_codes=["semantic_duplicate_prior_question"]
+    )
+    accepted = SimpleNamespace(disposition="accepted", reason_codes=[])
+
+    assert _candidate_enters_novelty_memory(invalid) is False
+    assert _candidate_enters_novelty_memory(scientific_rejection) is True
+    assert _candidate_enters_novelty_memory(accepted) is True
 
 
 def test_llm_equation_is_not_accepted_as_verified_without_receipt():
