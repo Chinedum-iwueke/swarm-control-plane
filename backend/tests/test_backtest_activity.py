@@ -74,6 +74,68 @@ def test_drafting_success_is_not_execution_or_admission():
     assert result["promotion"] == "shadow_review_requested"
 
 
+def test_commissioning_terminal_receipt_projects_native_evidence_without_promotion():
+    item = task(stage="execute")
+    item.input_contract["execution_class"] = "commissioning"
+    item.result = {
+        "summary": {
+            "disposition": "commissioning_complete",
+            "receipt_digest": "a" * 64,
+            "execution_class": "commissioning",
+            "qualification_authority": False,
+            "metrics": {
+                "declared_variant_count": 8,
+                "selected_variant_index": 6,
+                "oos_mean_net_r": -0.8,
+            },
+        },
+        "downstream_handoff": {
+            "publication_envelope": {
+                "schema_version": "alpha003-publication-envelope-v1.0.0",
+                "execution_class": "commissioning",
+                "qualification_authority": False,
+                "trial": {
+                    "result_disposition": "rejected",
+                    "bundle_digest": "b" * 64,
+                    "bundle_manifest_digest": "c" * 64,
+                    "representation_contract_digest": "d" * 64,
+                    "market_model_bundle_digest": "e" * 64,
+                    "search_plan_digest": "f" * 64,
+                },
+            },
+            "producer_gate_report": {
+                "failed_gates": ["positive_oos_net_edge"],
+                "reproducible": True,
+                "truth_certified": True,
+                "qualification_authority": False,
+                "shadow_eligible": False,
+            },
+        },
+    }
+
+    result = serialize_backtest(item)
+
+    assert result["execution_evidence"] == "native_terminal_receipt"
+    assert result["execution_class"] == "commissioning"
+    assert result["qualification_authority"] is False
+    assert result["outcome"] == "rejected"
+    assert result["trial_count"] == 1
+    assert result["failed_gates"] == ["positive_oos_net_edge"]
+    assert result["gate_report"] == {
+        "reproducible": True,
+        "truth_certified": True,
+        "shadow_eligible": False,
+    }
+    assert result["evidence_digests"] == [
+        "b" * 64,
+        "c" * 64,
+        "d" * 64,
+        "e" * 64,
+        "f" * 64,
+    ]
+    assert result["promotion"] == "not_established"
+
+
 def test_activity_has_protected_static_route_before_campaign_id():
     assert router.dependencies
     paths = [route.path for route in router.routes]
