@@ -265,14 +265,7 @@ def register_trial(
         .where(ResearchHypothesis.trial_family == hypothesis.trial_family)
         .with_for_update()
     ).all()
-    family_count = (
-        db.scalar(
-            select(func.count(ResearchTrial.id)).where(
-                ResearchTrial.trial_family == hypothesis.trial_family
-            )
-        )
-        or 0
-    )
+    family_count = _trial_family_count(db, hypothesis.trial_family)
     maximum = int(hypothesis.specification["maximum_trials"])
     if family_count >= maximum:
         raise HTTPException(status_code=409, detail="Trial-family budget is exhausted.")
@@ -296,6 +289,32 @@ def register_trial(
             executed_by=payload.executed_by,
         ),
         "Trial run, digest, or family sequence already exists.",
+    )
+
+
+def next_trial_number(db: Session, experiment_id: UUID) -> int:
+    """Return the next locked sequence number used in a trial record digest."""
+    experiment = db.get(ResearchExperiment, experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found.")
+    hypothesis = db.get(ResearchHypothesis, experiment.hypothesis_id)
+    assert hypothesis is not None
+    db.scalars(
+        select(ResearchHypothesis)
+        .where(ResearchHypothesis.trial_family == hypothesis.trial_family)
+        .with_for_update()
+    ).all()
+    return _trial_family_count(db, hypothesis.trial_family) + 1
+
+
+def _trial_family_count(db: Session, trial_family: str) -> int:
+    return (
+        db.scalar(
+            select(func.count(ResearchTrial.id)).where(
+                ResearchTrial.trial_family == trial_family
+            )
+        )
+        or 0
     )
 
 

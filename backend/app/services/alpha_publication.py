@@ -67,6 +67,7 @@ from app.services.laboratory import (
 )
 from app.services.research import (
     add_review,
+    next_trial_number,
     record_digest,
     register_data_snapshot,
     register_decision,
@@ -551,7 +552,7 @@ def publish_execution(db: Session, envelope: dict[str, Any]) -> dict[str, Any]:
         )
         document = {
             "experiment_digest": experiment.manifest_digest,
-            "trial_number": 1,
+            "trial_number": next_trial_number(db, experiment.id),
             "plan": plan.model_dump(mode="json"),
             "executed_by": "bulletproof-alpha-producer",
         }
