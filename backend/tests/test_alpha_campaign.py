@@ -792,6 +792,34 @@ def test_running_strategy_engineering_is_not_terminalized(monkeypatch):
     assert record.terminal_reason == {}
 
 
+def test_reconciliation_recovers_requeued_strategy_engineering(monkeypatch):
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="strategy_engineering",
+        next_action="strategy_engineering_failed",
+        completed_at=datetime.now(UTC),
+        terminal_reason={
+            "category": "strategy_engineering_failed",
+            "task_id": str(task_id),
+            "status": "running",
+        },
+    )
+    engineering = SimpleNamespace(id=task_id, status="pending_approval")
+    db = MagicMock()
+    db.get.return_value = engineering
+    advance = MagicMock(return_value=engineering)
+    monkeypatch.setattr(service, "_advance_governed_pipeline", advance)
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+    advance.assert_called_once_with(db, record)
+
+
 @pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
