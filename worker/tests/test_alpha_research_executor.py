@@ -16,16 +16,26 @@ def test_capacity_telemetry_fails_closed_when_missing_or_stale(tmp_path):
     import json
     from datetime import UTC, datetime
 
-    executor = AlphaResearchExecutor(heartbeat_interval_seconds=30,
-                                    capacity_database=tmp_path / "db")
+    executor = AlphaResearchExecutor(
+        heartbeat_interval_seconds=30, capacity_database=tmp_path / "db"
+    )
     assert executor.capacity_progress() == {"telemetry_current": False}
     state = tmp_path / "alpha-capacity-state.json"
     state.write_text(json.dumps({"updated_at": "2020-01-01T00:00:00+00:00"}))
     assert not executor.capacity_progress()["telemetry_current"]
-    state.write_text(json.dumps({"updated_at": datetime.now(UTC).isoformat(),
-                                "worker_slots": {"running": 16}, "jobs": []}))
+    state.write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.now(UTC).isoformat(),
+                "worker_slots": {"running": 16},
+                "jobs": [],
+            }
+        )
+    )
     assert executor.capacity_progress()["worker_slots"]["running"] == 16
     assert executor.capacity_progress()["telemetry_current"]
+
+
 from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.policy import AlphaResearchExecutionContract
 from swarm_worker.workflows import WorkflowLoader
@@ -38,6 +48,29 @@ def test_native_execution_failure_is_bounded_retryable_source_contract() -> None
     assert 'else "native_bulletproof_failed"' in source
     assert '"workflow_timeout"' in source
     assert "retryable=True" in source
+
+
+def test_capacity_queue_uses_host_runtime_not_pinned_strategy_checkout(
+    tmp_path,
+) -> None:
+    queue_script = tmp_path / "installed" / "queue_alpha_capacity_assignment.py"
+    executor = AlphaResearchExecutor(
+        heartbeat_interval_seconds=30,
+        capacity_queue_script=queue_script,
+    )
+
+    assert executor._capacity_queue_script == queue_script
+    assert (
+        "workspace.repository"
+        not in (
+            Path(__file__).parents[1] / "src/swarm_worker/executors/alpha_research.py"
+        )
+        .read_text(encoding="utf-8")
+        .split(
+            'if self._capacity_database is not None and contract.stage == "execute":', 1
+        )[1]
+        .split("env =", 1)[0]
+    )
 
 
 def contract(**changes):
@@ -208,7 +241,9 @@ def test_commissioning_contract_is_short_bounded_and_review_contained() -> None:
         )
 
 
-def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> None:
+def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> (
+    None
+):
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",
         "qualified": True,

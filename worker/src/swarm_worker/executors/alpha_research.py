@@ -79,11 +79,15 @@ class AlphaResearchExecutor:
         python_path: Path = Path(
             "/home/omenka/Projects/bulletproof_bt/.venv/bin/python"
         ),
+        capacity_queue_script: Path = Path(
+            "/home/omenka/Projects/bulletproof_bt/scripts/queue_alpha_capacity_assignment.py"
+        ),
         capacity_database: Path | None = None,
     ) -> None:
         self._heartbeat_interval = max(5.0, heartbeat_interval_seconds)
         self._effective_uid = effective_uid
         self._python = python_path
+        self._capacity_queue_script = capacity_queue_script
         configured = os.environ.get("SWARM_BULLETPROOF_CAPACITY_DB")
         self._capacity_database = capacity_database or (
             Path(configured) if configured else None
@@ -182,9 +186,7 @@ class AlphaResearchExecutor:
                 )
             command = (
                 str(self._python),
-                str(
-                    workspace.repository / "scripts/queue_alpha_capacity_assignment.py"
-                ),
+                str(self._capacity_queue_script),
                 "--db",
                 str(self._capacity_database),
                 *command[2:],
