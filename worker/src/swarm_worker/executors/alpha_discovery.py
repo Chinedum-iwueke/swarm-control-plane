@@ -524,6 +524,9 @@ optional. Never invent or repair an equation. A source_replayed equation must oc
 in its supplied source excerpt; otherwise mark it pending_independent_verification so the controller rejects it.
 Evidence object IDs are UUIDs and content digests are 64-character lowercase SHA-256 values. Never place a digest
 in an object-ID field or an object ID in a digest field; omit unsupported evidence rather than swapping identifiers.
+Candidate evidence_object_ids and evidence_digests may contain only exact pairs listed under
+research_intelligence.citations. Founder-idea IDs, task IDs, dataset receipts, strategy contracts, and other UUIDs
+in the context are constraints or provenance, not candidate evidence citations; never include them in those arrays.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
 Domain and cluster keys must use lowercase letters, digits and hyphens, never underscores.
 Read research_constraints before choosing data requirements. Include the actual liquidity measurement

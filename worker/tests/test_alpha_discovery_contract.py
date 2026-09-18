@@ -142,6 +142,8 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     assert "not as a reason to declare the research question blocked" in prompt
     assert "left-closed, left-labeled, complete-bar resampling" in prompt
     assert "Never place a digest" in prompt
+    assert "only exact pairs listed under" in prompt
+    assert "Founder-idea IDs" in prompt
     assert "right-closed, left-labeled" not in prompt
 
 
