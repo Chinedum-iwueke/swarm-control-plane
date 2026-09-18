@@ -47,7 +47,24 @@ def test_hypothesis_schema_enforces_api_candidate_bounds():
         == 500
     )
     assert properties["evidence_object_ids"]["maxItems"] == 20
+    assert "{8}-" in properties["evidence_object_ids"]["items"]["pattern"]
+    assert properties["evidence_digests"]["items"]["pattern"] == "^[0-9a-f]{64}$"
     assert properties["expected_information_gain"]["maximum"] == 1
+
+
+def test_intelligence_and_equation_evidence_identifiers_are_typed():
+    intelligence_pair = _schema("intelligence")["properties"]["research_brief"][
+        "properties"
+    ]["evidence_pairs"]["items"]["properties"]
+    hypothesis = _schema("hypothesis")["properties"]["candidates"]["items"][
+        "properties"
+    ]
+    equation = hypothesis["equations"]["items"]["properties"]
+
+    assert "{8}-" in intelligence_pair["object_id"]["pattern"]
+    assert intelligence_pair["content_digest"]["pattern"] == "^[0-9a-f]{64}$"
+    assert equation["source_object_id"] == intelligence_pair["object_id"]
+    assert equation["source_content_digest"] == intelligence_pair["content_digest"]
 
 
 def test_discovery_runtime_is_private_and_separate_from_credentials(tmp_path):
@@ -124,6 +141,7 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     assert "only datasets listed as admitted may enter execution" in prompt
     assert "not as a reason to declare the research question blocked" in prompt
     assert "left-closed, left-labeled, complete-bar resampling" in prompt
+    assert "Never place a digest" in prompt
     assert "right-closed, left-labeled" not in prompt
 
 
