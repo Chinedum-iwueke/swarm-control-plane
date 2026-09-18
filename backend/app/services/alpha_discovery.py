@@ -1572,6 +1572,11 @@ def _reconcile_data_admissions(
         admission.receipt_ids = [item["producer_receipt_id"] for item in bindings]
         admission.dataset_bindings = bindings
         admission.completed_at = now()
+        candidate.disposition = "accepted"
+        candidate.reason_codes = [
+            *candidate.reason_codes,
+            "selected_panel_data_admitted",
+        ]
         _event(
             db,
             mandate,
