@@ -16,26 +16,16 @@ def test_capacity_telemetry_fails_closed_when_missing_or_stale(tmp_path):
     import json
     from datetime import UTC, datetime
 
-    executor = AlphaResearchExecutor(
-        heartbeat_interval_seconds=30, capacity_database=tmp_path / "db"
-    )
+    executor = AlphaResearchExecutor(heartbeat_interval_seconds=30,
+                                    capacity_database=tmp_path / "db")
     assert executor.capacity_progress() == {"telemetry_current": False}
     state = tmp_path / "alpha-capacity-state.json"
     state.write_text(json.dumps({"updated_at": "2020-01-01T00:00:00+00:00"}))
     assert not executor.capacity_progress()["telemetry_current"]
-    state.write_text(
-        json.dumps(
-            {
-                "updated_at": datetime.now(UTC).isoformat(),
-                "worker_slots": {"running": 16},
-                "jobs": [],
-            }
-        )
-    )
+    state.write_text(json.dumps({"updated_at": datetime.now(UTC).isoformat(),
+                                "worker_slots": {"running": 16}, "jobs": []}))
     assert executor.capacity_progress()["worker_slots"]["running"] == 16
     assert executor.capacity_progress()["telemetry_current"]
-
-
 from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.policy import AlphaResearchExecutionContract
 from swarm_worker.workflows import WorkflowLoader
@@ -241,9 +231,7 @@ def test_commissioning_contract_is_short_bounded_and_review_contained() -> None:
         )
 
 
-def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> (
-    None
-):
+def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> None:
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",
         "qualified": True,
