@@ -2014,6 +2014,28 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     terminal = campaign.terminal_reason or {}
     if (
         campaign.status == "needs_attention"
+        and terminal.get("category") == "governed_pipeline_task_failed"
+    ):
+        try:
+            failed_task_id = UUID(str(terminal.get("task_id")))
+        except (TypeError, ValueError):
+            failed_task_id = None
+        failed_task = db.get(Task, failed_task_id) if failed_task_id else None
+        if failed_task is not None and _independent_review_correction(failed_task):
+            campaign.status = "running"
+            campaign.phase = "strategy_engineering"
+            campaign.next_action = "create_review_bound_strategy_correction"
+            campaign.completed_at = None
+            campaign.terminal_reason = {}
+            _append_event(
+                db,
+                campaign,
+                "independent_review_correction_recovery",
+                "alpha-campaign-director",
+                {"rejected_task_id": str(failed_task.id)},
+            )
+    if (
+        campaign.status == "needs_attention"
         and terminal.get("category") == "strategy_engineering_failed"
     ):
         try:
