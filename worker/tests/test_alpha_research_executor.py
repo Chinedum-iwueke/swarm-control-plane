@@ -40,6 +40,29 @@ def test_native_execution_failure_is_bounded_retryable_source_contract() -> None
     assert "retryable=True" in source
 
 
+def test_capacity_queue_uses_host_runtime_not_pinned_strategy_checkout(
+    tmp_path,
+) -> None:
+    queue_script = tmp_path / "installed" / "queue_alpha_capacity_assignment.py"
+    executor = AlphaResearchExecutor(
+        heartbeat_interval_seconds=30,
+        capacity_queue_script=queue_script,
+    )
+
+    assert executor._capacity_queue_script == queue_script
+    assert (
+        "workspace.repository"
+        not in (
+            Path(__file__).parents[1] / "src/swarm_worker/executors/alpha_research.py"
+        )
+        .read_text(encoding="utf-8")
+        .split(
+            'if self._capacity_database is not None and contract.stage == "execute":', 1
+        )[1]
+        .split("env =", 1)[0]
+    )
+
+
 def contract(**changes):
     payload = {
         "repository": "bulletproof_bt",
