@@ -99,6 +99,26 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     assert "hypothesis-specific cross-group baskets" in prompt
     assert "one-year catalog candidate may be proposed" in prompt
     assert "only datasets listed as admitted may enter execution" in prompt
+    assert "not as a reason to declare the research question blocked" in prompt
+    assert "left-closed, left-labeled, complete-bar resampling" in prompt
+    assert "right-closed, left-labeled" not in prompt
+
+
+def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
+    document = alpha_discovery_contract()
+    document["stage"] = "hypothesis"
+    document["context"]["lake_catalog"] = {
+        "discovery_authority": True,
+        "one_year_coverage_candidates": [
+            {"venue": "bybit", "instrument": "ETHUSDT", "timeframe": "1m"}
+        ],
+    }
+
+    prompt = _prompt(AlphaDiscoveryContract.model_validate(document))
+
+    assert "Do not return an empty candidate list" in prompt
+    assert "awaiting_data_admission" in prompt
+    assert "before execution" in prompt
 
 
 def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
