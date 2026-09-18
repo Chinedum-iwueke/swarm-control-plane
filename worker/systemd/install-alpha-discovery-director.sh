@@ -8,6 +8,15 @@ unit=invariance-swarm-alpha-discovery-director.service
 test -f "$runtime/compose.yaml"
 test -f "$root/worker/systemd/$unit"
 test -S /var/run/docker.sock
+runtime_name=invariance-swarm-alpha-discovery-director-runtime
+mapfile -t legacy_directors < <(
+  docker ps --format '{{.ID}} {{.Names}} {{.Command}}' |
+    awk -v current="$runtime_name" \
+      '$2 != current && index($0, "app.workers.alpha_discovery") {print $1}'
+)
+if ((${#legacy_directors[@]})); then
+  docker rm -f "${legacy_directors[@]}"
+fi
 (
   cd "$runtime"
   docker compose run --rm --no-deps api \
@@ -17,4 +26,5 @@ install -o root -g root -m 0644 "$root/worker/systemd/$unit" "/etc/systemd/syste
 systemd-analyze verify "/etc/systemd/system/$unit"
 systemctl daemon-reload
 systemctl enable --now "$unit"
+test "$(docker ps --format '{{.Command}}' | grep -c 'app.workers.alpha_discovery')" -eq 1
 printf 'ALPHA-004 discovery director installed and started.\n'
