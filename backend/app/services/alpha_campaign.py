@@ -1173,7 +1173,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         campaign.phase = "strategy_engineering"
         if engineering.status == "pending_approval":
             campaign.next_action = "founder_strategy_engineering_approval"
-        elif engineering.status in {"queued", "in_progress"}:
+        elif engineering.status in {"queued", "in_progress", "running"}:
+            campaign.status = "running"
             campaign.next_action = "await_bounded_strategy_engineering"
         elif engineering.status == "succeeded":
             campaign.status = "needs_attention"
