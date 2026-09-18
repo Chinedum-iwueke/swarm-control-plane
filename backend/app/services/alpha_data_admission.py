@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time
+from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.data_contract import ResearchDatasetBuild
+from app.models.lake_operations import LakeGovernanceSnapshot
+from app.models.market_data_catalog import MarketDataCatalogSnapshot
 from app.schemas.alpha_campaign import AlphaDatasetBinding
 from app.schemas.data_contract import (
     DatasetBuildCreate,
@@ -92,6 +97,52 @@ def register_selected_panel_receipt(
     last = _timestamp(result["last_timestamp"])
     key_suffix = panel_digest[:12]
     dataset_key = f"alpha-{venue}-{symbol.lower()}-perp-{timeframe}-{key_suffix}"
+    build_key = f"alpha-build-{venue}-{symbol.lower()}-{key_suffix}"
+    catalog_key = f"alpha-catalog-{venue}-{symbol.lower()}-{key_suffix}"
+    governance_key = f"alpha-governance-{venue}-{symbol.lower()}-{key_suffix}"
+
+    # A panel may be selected by more than one campaign. Reuse its complete,
+    # content-addressed DATA binding instead of attempting to mint a second
+    # timestamp-dependent snapshot under the same immutable keys.
+    existing_build = db.scalar(
+        select(ResearchDatasetBuild).where(ResearchDatasetBuild.build_key == build_key)
+    )
+    existing_catalog = db.scalar(
+        select(MarketDataCatalogSnapshot).where(
+            MarketDataCatalogSnapshot.catalog_key == catalog_key
+        )
+    )
+    existing_governance = db.scalar(
+        select(LakeGovernanceSnapshot).where(
+            LakeGovernanceSnapshot.snapshot_key == governance_key
+        )
+    )
+    existing = (existing_build, existing_catalog, existing_governance)
+    if all(isinstance(record.id, UUID) for record in existing if record is not None):
+        if any(record is None for record in existing):
+            raise AlphaDataAdmissionConflict(
+                "Selected panel has an incomplete existing DATA binding."
+            )
+        partitions = existing_catalog.catalog.get("partitions", [])
+        if (
+            existing_build.content_digest != panel_digest
+            or len(partitions) != 1
+            or partitions[0].get("content_digest") != panel_digest
+            or existing_governance.catalog_digest != existing_catalog.catalog_digest
+        ):
+            raise AlphaDataAdmissionConflict(
+                "Selected panel existing DATA binding changed content."
+            )
+        return AlphaDatasetBinding(
+            dataset_build_id=existing_build.id,
+            catalog_id=existing_catalog.id,
+            lake_governance_snapshot_id=existing_governance.id,
+            producer_receipt_id=quantitative.id,
+            dataset_key=dataset_key,
+            partition_digests=[panel_digest],
+            evidence_class="live_exchange_history",
+            research_principal="alpha-research-runner",
+        )
     instrument_id = f"crypto:{symbol.lower()}-perpetual"
     listing_id = f"{venue}:{symbol.lower()}-perpetual"
     source_key = f"{venue}-local-canonical"
@@ -263,7 +314,7 @@ def register_selected_panel_receipt(
         ),
     )
     build_core = {
-        "build_key": f"alpha-build-{venue}-{symbol.lower()}-{key_suffix}",
+        "build_key": build_key,
         "manifest_id": manifest_record.id,
         "builder_repository": "bulletproof_bt",
         "builder_commit": receipt_document["source_commit"],
@@ -369,7 +420,7 @@ def register_selected_panel_receipt(
     catalog_record = register_catalog(
         db,
         MarketDataCatalogCreate(
-            catalog_key=f"alpha-catalog-{venue}-{symbol.lower()}-{key_suffix}",
+            catalog_key=catalog_key,
             catalog=catalog_document,
             catalog_digest=record_digest(catalog_document),
             registered_by="alpha-data-admission",
@@ -437,7 +488,7 @@ def register_selected_panel_receipt(
     governance_record = register_lake_governance(
         db,
         LakeGovernanceCreate(
-            snapshot_key=f"alpha-governance-{venue}-{symbol.lower()}-{key_suffix}",
+            snapshot_key=governance_key,
             snapshot=governance_document,
             snapshot_digest=record_digest(governance_document),
             registered_by="alpha-data-admission",
