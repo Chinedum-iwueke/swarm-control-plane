@@ -5,6 +5,9 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 from app.api.routes.alpha_campaign import router
 from app.models.data_contract import ResearchDatasetBuild, ResearchDatasetManifest
 from app.models.discovery_portfolio import (
@@ -18,9 +21,8 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
 )
+from app.schemas.proposal import ProposalEngineeringMissionContract
 from app.services import alpha_campaign as service
-from fastapi import HTTPException
-from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
@@ -783,7 +785,7 @@ def test_running_strategy_engineering_is_not_terminalized(monkeypatch):
     )
     engineering = SimpleNamespace(id=uuid4(), status="running", result={})
     db = MagicMock()
-    db.scalar.side_effect = [draft, engineering]
+    db.scalar.side_effect = [draft, None, engineering]
 
     assert service._advance_governed_pipeline(db, record) is engineering
     assert record.status == "running"
@@ -1259,9 +1261,6 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         service._create_strategy_engineering_task(db, record, source, {})
     assert len(persisted) == 1
 
-    from app.schemas.proposal import ProposalEngineeringMissionContract
-    from pydantic import ValidationError
-
     for bad_evidence in (
         "[]",
         "not-json",
@@ -1273,6 +1272,59 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         with pytest.raises(ValidationError):
             ProposalEngineeringMissionContract.model_validate(document)
 
+
+def test_independent_review_failure_materializes_new_correction_task(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        status="failed",
+        plan_digest="a" * 64,
+        failure={
+            "error_category": "independent_review_rejected",
+            "execution_evidence": {
+                "artifacts": ["artifacts/review.json", "artifacts/changes.patch"],
+                "summary": {
+                    "independent_review": {
+                        "approved": False,
+                        "summary": "causal mismatch",
+                        "findings": [
+                            {
+                                "severity": "high",
+                                "message": "matched controls are absent",
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, None, rejected]
+    corrected = SimpleNamespace(
+        id=uuid4(), status="pending_approval", plan_digest="b" * 64
+    )
+    create = MagicMock(return_value=corrected)
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    result = service._advance_governed_pipeline(db, record)
+
+    assert result is corrected
+    assert record.phase == "strategy_engineering"
+    assert record.next_action == "founder_strategy_engineering_approval"
+    kwargs = create.call_args.kwargs
+    assert kwargs["stage"] == "G4"
+    assert kwargs["parent_task_id"] == rejected.id
+    assert kwargs["correction_feedback"]["findings"][0]["severity"] == "high"
 
 def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypatch):
     record = campaign()
