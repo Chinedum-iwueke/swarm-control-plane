@@ -1919,6 +1919,27 @@ def record_attempt(
 
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
+    terminal = campaign.terminal_reason or {}
+    if (
+        campaign.status == "needs_attention"
+        and terminal.get("category") == "strategy_engineering_failed"
+    ):
+        try:
+            engineering_task_id = UUID(str(terminal.get("task_id")))
+        except (TypeError, ValueError):
+            engineering_task_id = None
+        engineering = db.get(Task, engineering_task_id) if engineering_task_id else None
+        if engineering is not None and engineering.status in {
+            "pending_approval",
+            "queued",
+            "leased",
+            "in_progress",
+            "running",
+            "succeeded",
+        }:
+            campaign.status = "running"
+            campaign.completed_at = None
+            campaign.terminal_reason = {}
     if campaign.status != "running":
         return
     if _consume_execution_task(db, campaign):
