@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -270,6 +271,7 @@ class AlphaResearchExecutionContract(BaseModel):
     hypothesis_card: dict[str, Any] | None = None
     card_approval: dict[str, Any] | None = None
     qualification: dict[str, Any] | None = None
+    execution_class: Literal["qualification", "commissioning"] = "qualification"
 
     @model_validator(mode="after")
     def stage_contract(self):
@@ -315,6 +317,36 @@ class AlphaResearchExecutionContract(BaseModel):
             and self.qualification.get("qualified") is not True
         ):
             raise ValueError("execution requires a qualified strategy contract")
+        if self.execution_class == "commissioning":
+            if self.stage != "execute" or self.qualification is None:
+                raise ValueError(
+                    "commissioning requires a qualified execute-stage strategy"
+                )
+            if self.window_start is None or self.window_end is None:
+                raise ValueError("commissioning requires an immutable bounded window")
+            start = datetime.fromisoformat(self.window_start.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(self.window_end.replace("Z", "+00:00"))
+            if start.tzinfo is None or end.tzinfo is None:
+                raise ValueError("commissioning window timestamps must include a timezone")
+            if end <= start or end - start > timedelta(days=31):
+                raise ValueError("commissioning window must be positive and at most 31 days")
+            reviewed_window = self.qualification.get("window")
+            if not isinstance(reviewed_window, dict):
+                raise ValueError("commissioning requires the reviewed execution window")
+            reviewed_start = datetime.fromisoformat(
+                str(reviewed_window.get("start", "")).replace("Z", "+00:00")
+            )
+            reviewed_end = datetime.fromisoformat(
+                str(reviewed_window.get("end", "")).replace("Z", "+00:00")
+            )
+            if reviewed_start.tzinfo is None or reviewed_end.tzinfo is None:
+                raise ValueError("reviewed window timestamps must include a timezone")
+            if start < reviewed_start or end > reviewed_end:
+                raise ValueError(
+                    "commissioning window must be contained by the reviewed window"
+                )
+            if self.max_variants > 8:
+                raise ValueError("commissioning permits at most eight variants")
         if self.dataset_bindings:
             primary = self.dataset_bindings[0]
             if any(

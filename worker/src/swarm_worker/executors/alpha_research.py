@@ -280,6 +280,10 @@ class AlphaResearchExecutor:
             or document.get("question_digest") != contract.question_digest
             or document.get("dataset_digest") != contract.dataset_digest
             or document.get("source_commit") != workspace.plan.resolved_base_commit
+            or document.get("execution_class", "qualification")
+            != contract.execution_class
+            or document.get("qualification_authority")
+            != (contract.execution_class == "qualification")
             or document.get("authority")
             != {
                 "capital": False,
@@ -374,7 +378,24 @@ class AlphaResearchExecutor:
                     if "engineering_requirement" in document
                     else {}
                 ),
+                **(
+                    {
+                        "commissioning_receipt": {
+                            key: document["commissioning_receipt"][key]
+                            for key in (
+                                "record_digest",
+                                "variant_count",
+                                "selected_variant_index",
+                                "window",
+                            )
+                        }
+                    }
+                    if "commissioning_receipt" in document
+                    else {}
+                ),
                 "production_eligible": False,
                 "capital_authority": False,
+                "execution_class": contract.execution_class,
+                "qualification_authority": document["qualification_authority"],
             },
         )

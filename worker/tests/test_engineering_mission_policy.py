@@ -42,6 +42,19 @@ class FakeGit:
         return CommandResult(tuple(args), 0, "one\n", "")
 
 
+def test_default_validation_budget_covers_complete_bulletproof_suite(
+    tmp_path: Path,
+) -> None:
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=3600,
+        heartbeat_interval_seconds=30,
+        effective_uid=lambda: 1000,
+    )
+    assert executor._validator._step_timeout_seconds == 1200.0
+
+
 def test_contract_rejects_commands_and_traversal() -> None:
     document = contract().model_dump()
     document["command"] = ["bash", "-c", "anything"]

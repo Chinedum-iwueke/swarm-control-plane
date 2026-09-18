@@ -45,7 +45,11 @@ class EngineeringMissionExecutor:
         self._runner = process_runner or AsyncProcessRunner()
         self._git = git_runner or SubprocessRunner()
         self._validator = validation_executor or CodeValidationExecutor(
-            heartbeat_interval_seconds=heartbeat_interval_seconds
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+            # Bulletproof's complete deterministic suite normally finishes near ten
+            # minutes. Leave headroom for a loaded VM; the mission deadline remains
+            # the absolute execution bound.
+            step_timeout_seconds=1200.0,
         )
         self._effective_uid = effective_uid
 
