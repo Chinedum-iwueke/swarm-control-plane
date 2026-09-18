@@ -10,6 +10,7 @@ from app.schemas.alpha_discovery import (
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
+    AlphaStrategyCapabilityCatalog,
 )
 from app.services.alpha_discovery import (
     _apply_representation_plans,
@@ -516,6 +517,32 @@ def strategy_catalog():
     from app.services.graph import digest_document
 
     return {**core, "catalog_digest": digest_document(core)}
+
+
+def test_strategy_catalog_v11_requires_semantic_contracts():
+    document = strategy_catalog()
+    document["schema_version"] = "alpha-strategy-capability-catalog-v1.1.0"
+    from app.services.graph import digest_document
+
+    core = {key: value for key, value in document.items() if key != "catalog_digest"}
+    document["catalog_digest"] = digest_document(core)
+    with pytest.raises(ValidationError, match="immutable research semantics"):
+        AlphaStrategyCapabilityCatalog.model_validate(document)
+
+    capability = document["capabilities"][0]
+    capability["research_contract"] = {
+        "parameter_grid": {"lookback": [30, 60]},
+        "entry": {"order_timing": "next_bar"},
+        "truth_contract": {"no_lookahead": True},
+    }
+    capability["research_contract_digest"] = "d" * 64
+    core = {key: value for key, value in document.items() if key != "catalog_digest"}
+    document["catalog_digest"] = digest_document(core)
+
+    result = AlphaStrategyCapabilityCatalog.model_validate(document)
+    assert result.capabilities[0].research_contract["parameter_grid"] == {
+        "lookback": [30, 60]
+    }
 
 
 def candidate(**changes):

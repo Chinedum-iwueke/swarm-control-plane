@@ -57,10 +57,15 @@ class AlphaReusableStrategy(StrictModel):
         pattern=r"^research/hypotheses/[A-Za-z0-9._-]+\.yaml$", max_length=300
     )
     contract_digest: str = Field(pattern=_DIGEST)
+    research_contract: dict | None = None
+    research_contract_digest: str | None = Field(default=None, pattern=_DIGEST)
 
 
 class AlphaStrategyCapabilityCatalog(StrictModel):
-    schema_version: Literal["alpha-strategy-capability-catalog-v1.0.0"]
+    schema_version: Literal[
+        "alpha-strategy-capability-catalog-v1.0.0",
+        "alpha-strategy-capability-catalog-v1.1.0",
+    ]
     source_commit: str = Field(pattern=_COMMIT)
     capabilities: list[AlphaReusableStrategy] = Field(min_length=1, max_length=200)
     capital_or_order_authority: Literal[False]
@@ -72,6 +77,17 @@ class AlphaStrategyCapabilityCatalog(StrictModel):
         identities = [item.hypothesis_id for item in self.capabilities]
         if len(identities) != len(set(identities)):
             raise ValueError("strategy capability identities must be unique")
+        if (
+            self.schema_version == "alpha-strategy-capability-catalog-v1.1.0"
+            and any(
+                item.research_contract is None
+                or item.research_contract_digest is None
+                for item in self.capabilities
+            )
+        ):
+            raise ValueError(
+                "v1.1 strategy capabilities require immutable research semantics"
+            )
         return self
 
 
