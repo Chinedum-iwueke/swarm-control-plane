@@ -121,3 +121,28 @@ An isolated PostgreSQL replay with `autoflush=False` exercises two event appends
 in one transaction and checks contiguous sequence and digest linkage. The new
 alpha-discovery CI job runs this database-backed regression on each PR and main
 push; focused mocks alone are not accepted as this transaction proof.
+
+## VM1 restart and orphan-lock recovery (2026-09-18)
+
+An abrupt VM1 reset left capacity row
+`0a611347-b2d6-4a5e-b23c-b0a88a476ea4` locked by a process from the prior boot.
+The director now identifies locks by host, process and boot identity at startup.
+It refuses to steal a live same-boot owner, but terminalizes a dead prior-boot
+Hermes lease as `FAILED`, clears both lock columns and retains partial artifacts.
+The retained failure reason is `capacity scheduler restart detected dead Hermes
+lease owner; partial artifacts retained`; the original attempt is never rewritten
+as successful or silently requeued.
+
+Replacement row `32c713e0-c44d-4284-91d5-8b9147cccd2c` bound the same immutable
+assignment digest and completed `DONE`. The production journal records one
+`failed_dead_owner` recovery at director startup, followed by the replacement
+launch and exit code zero. A post-recovery database audit found no locked rows.
+The focused native recovery suite passes 10 tests, covering dead prior-boot
+owners, live same-boot owners, retry limits and idempotent repeated startup.
+
+The first one-year eight-variant run consumed about 4.1 GiB per worker. Production
+admission therefore uses 4.5 GiB per requested worker, plus its free-memory floor.
+On the 71 GiB VM1 this correctly serializes two eight-worker jobs when concurrent
+admission would exceed measured safe capacity. Concurrency is a capacity outcome,
+not a milestone assertion; the scheduler must not overcommit memory merely to make
+two jobs overlap.
