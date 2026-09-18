@@ -76,7 +76,7 @@ CLAIM_BOUNDARY = (
     "capital allocation, production promotion or self-approval."
 )
 STRATEGY_ENGINEERING_STAGE = "G3"
-STRATEGY_CORRECTION_STAGE = "G4"
+STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
@@ -858,11 +858,38 @@ def _independent_review_correction(task: Task) -> dict | None:
         if severity not in {"low", "medium", "high"} or not isinstance(message, str):
             return None
         normalized.append({"severity": severity, "message": message})
+    prior_findings: list[dict] = []
+    try:
+        prior = json.loads(
+            getattr(task, "input_contract", {}).get("evidence_context", "{}")
+        ).get(
+            "independent_review_correction"
+        )
+    except (AttributeError, json.JSONDecodeError, TypeError):
+        prior = None
+    if isinstance(prior, dict):
+        candidates = prior.get("cumulative_findings", prior.get("findings", []))
+        if isinstance(candidates, list):
+            prior_findings = [
+                item
+                for item in candidates
+                if isinstance(item, dict)
+                and item.get("severity") in {"low", "medium", "high"}
+                and isinstance(item.get("message"), str)
+            ]
+    cumulative = []
+    seen = set()
+    for finding in [*prior_findings, *normalized]:
+        key = (finding["severity"], finding["message"])
+        if key not in seen:
+            cumulative.append(finding)
+            seen.add(key)
     return {
         "rejected_task_id": str(task.id),
         "rejected_plan_digest": task.plan_digest,
         "review_summary": str(review.get("summary", ""))[:2000],
-        "findings": normalized,
+        "latest_findings": normalized,
+        "cumulative_findings": cumulative,
         "artifact_paths": evidence.get("artifacts", []),
         "disposition": "correct_without_weakening_scientific_gates",
     }
@@ -1213,24 +1240,16 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         requirement = summary.get(
             "engineering_requirement", {"category": "hypothesis_draft_missing"}
         )
+        stages = (STRATEGY_ENGINEERING_STAGE, *STRATEGY_CORRECTION_STAGES)
         engineering = db.scalar(
-            select(Task).where(
-                Task.task_number
-                == _stage_task_number(
-                    campaign, source, STRATEGY_CORRECTION_STAGE
+            select(Task)
+            .where(
+                Task.task_number.in_(
+                    [_stage_task_number(campaign, source, stage) for stage in stages]
                 )
             )
+            .order_by(Task.created_at.desc())
         )
-        original_engineering = db.scalar(
-            select(Task).where(
-                Task.task_number
-                == _stage_task_number(
-                    campaign, source, STRATEGY_ENGINEERING_STAGE
-                )
-            )
-        )
-        if engineering is None:
-            engineering = original_engineering
         if engineering is None:
             engineering = _legacy_strategy_engineering_task(db, campaign, source)
         if engineering is None:
@@ -1238,18 +1257,20 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 db, campaign, source, requirement
             )
         elif (
-            engineering is original_engineering
-            and (correction := _independent_review_correction(engineering))
-            is not None
+            (correction := _independent_review_correction(engineering)) is not None
+            and (current_stage := engineering.task_number.rsplit("-", 1)[-1])
+            in stages[:-1]
         ):
+            next_stage = stages[stages.index(current_stage) + 1]
+            rejected = engineering
             engineering = _create_strategy_engineering_task(
                 db,
                 campaign,
                 source,
                 requirement,
-                stage=STRATEGY_CORRECTION_STAGE,
+                stage=next_stage,
                 correction_feedback=correction,
-                parent_task_id=original_engineering.id,
+                parent_task_id=rejected.id,
             )
             _append_event(
                 db,
@@ -1257,9 +1278,10 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 "strategy_correction_created",
                 "alpha-campaign-director",
                 {
-                    "rejected_task_id": str(original_engineering.id),
+                    "rejected_task_id": str(rejected.id),
                     "correction_task_id": str(engineering.id),
                     "correction_plan_digest": engineering.plan_digest,
+                    "correction_stage": next_stage,
                 },
             )
         campaign.phase = "strategy_engineering"

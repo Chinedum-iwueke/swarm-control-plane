@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -785,7 +786,7 @@ def test_running_strategy_engineering_is_not_terminalized(monkeypatch):
     )
     engineering = SimpleNamespace(id=uuid4(), status="running", result={})
     db = MagicMock()
-    db.scalar.side_effect = [draft, None, engineering]
+    db.scalar.side_effect = [draft, engineering]
 
     assert service._advance_governed_pipeline(db, record) is engineering
     assert record.status == "running"
@@ -1308,8 +1309,11 @@ def test_independent_review_failure_materializes_new_correction_task(monkeypatch
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     rejected = SimpleNamespace(
         id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G3",
         status="failed",
         plan_digest="a" * 64,
+        input_contract={"evidence_context": "{}"},
+        result={},
         failure={
             "error_category": "independent_review_rejected",
             "execution_evidence": {
@@ -1338,7 +1342,7 @@ def test_independent_review_failure_materializes_new_correction_task(monkeypatch
         },
     )
     db = MagicMock()
-    db.scalar.side_effect = [draft, None, rejected]
+    db.scalar.side_effect = [draft, rejected]
     corrected = SimpleNamespace(
         id=uuid4(), status="pending_approval", plan_digest="b" * 64
     )
@@ -1354,7 +1358,128 @@ def test_independent_review_failure_materializes_new_correction_task(monkeypatch
     kwargs = create.call_args.kwargs
     assert kwargs["stage"] == "G4"
     assert kwargs["parent_task_id"] == rejected.id
-    assert kwargs["correction_feedback"]["findings"][0]["severity"] == "high"
+    assert kwargs["correction_feedback"]["cumulative_findings"][0]["severity"] == "high"
+
+
+def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    prior = {
+        "cumulative_findings": [
+            {"severity": "high", "message": "missing-bar handling is unsafe"}
+        ]
+    }
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G4",
+        status="failed",
+        plan_digest="a" * 64,
+        input_contract={
+            "evidence_context": json.dumps(
+                {"independent_review_correction": prior}
+            )
+        },
+        failure={
+            "error_category": "independent_review_rejected",
+            "execution_evidence": {
+                "artifacts": ["artifacts/review.json"],
+                "summary": {
+                    "independent_review": {
+                        "approved": False,
+                        "summary": "cost stress is directionally incorrect",
+                        "findings": [
+                            {
+                                "severity": "high",
+                                "message": "doubled costs improve the short-side result",
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, rejected]
+    corrected = SimpleNamespace(
+        id=uuid4(), status="pending_approval", plan_digest="b" * 64
+    )
+    create = MagicMock(return_value=corrected)
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    assert service._advance_governed_pipeline(db, record) is corrected
+
+    kwargs = create.call_args.kwargs
+    assert kwargs["stage"] == "G5"
+    assert kwargs["parent_task_id"] == rejected.id
+    feedback = kwargs["correction_feedback"]
+    assert feedback["latest_findings"] == [
+        {
+            "severity": "high",
+            "message": "doubled costs improve the short-side result",
+        }
+    ]
+    assert feedback["cumulative_findings"] == [
+        {"severity": "high", "message": "missing-bar handling is unsafe"},
+        {
+            "severity": "high",
+            "message": "doubled costs improve the short-side result",
+        },
+    ]
+
+
+def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G6",
+        status="failed",
+        plan_digest="a" * 64,
+        input_contract={"evidence_context": "{}"},
+        result={},
+        failure={
+            "error_category": "independent_review_rejected",
+            "execution_evidence": {
+                "artifacts": ["artifacts/review.json"],
+                "summary": {
+                    "independent_review": {
+                        "approved": False,
+                        "summary": "scientific contract still fails",
+                        "findings": [
+                            {"severity": "high", "message": "target remains invalid"}
+                        ],
+                    }
+                },
+            },
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, rejected]
+    create = MagicMock()
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+
+    assert service._advance_governed_pipeline(db, record) is rejected
+    create.assert_not_called()
+    assert record.status == "needs_attention"
+    assert record.next_action == "strategy_engineering_failed"
+    assert record.terminal_reason["task_id"] == str(rejected.id)
 
 def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypatch):
     record = campaign()
