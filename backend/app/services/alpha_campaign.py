@@ -1085,6 +1085,85 @@ def _supersede_stale_strategy_review_route(
     )
 
 
+def _supersede_failed_strategy_review_route(
+    db: Session,
+    route: EvaluationRoute,
+    subject: dict,
+) -> EvaluationRoute:
+    """Issue a successor when reviewer infrastructure exhausted without a verdict."""
+    if route.status != "assigned":
+        return route
+    assignments = list(
+        db.scalars(
+            select(EvaluatorAssignment).where(EvaluatorAssignment.route_id == route.id)
+        ).all()
+    )
+    failed = []
+    for assignment in assignments:
+        task = db.scalar(
+            select(Task).where(Task.task_number == f"AR-{assignment.id}")
+        )
+        if (
+            assignment.status == "assigned"
+            and task is not None
+            and task.status in {"failed", "cancelled"}
+            and assignment.review_id is None
+        ):
+            failed.append((assignment, task))
+    if not failed:
+        return route
+
+    stamp = now()
+    for assignment in assignments:
+        if assignment.status == "assigned":
+            assignment.status = "superseded"
+            assignment.completed_at = stamp
+    route.status = "superseded"
+    route.completed_at = stamp
+    route.blocked_reason = {
+        "category": "reviewer_task_exhausted_without_verdict",
+        "tasks": [
+            {
+                "assignment_id": str(assignment.id),
+                "task_id": str(task.id),
+                "task_status": task.status,
+                "failure": task.failure,
+            }
+            for assignment, task in failed
+        ],
+    }
+    append_evaluation_event(
+        db,
+        route,
+        "route_superseded",
+        "alpha-campaign-director",
+        route.blocked_reason,
+    )
+    routed_producers = [
+        ProducerIdentity(actor=identity["agent_id"], **identity)
+        for identity in subject["producer_identities"]
+    ]
+    revision = int(route.policy.get("routing_revision", 1))
+    return create_route(
+        db,
+        EvaluationRouteCreate(
+            subject_type=route.subject_type,
+            subject_id=route.subject_id,
+            subject_digest=route.subject_digest,
+            producer=routed_producers[1],
+            excluded_producers=routed_producers,
+            required_review_kinds=route.policy["required_review_kinds"],
+            required_capabilities=route.policy.get("required_capabilities", []),
+            max_pairwise_shared_dimensions=route.policy[
+                "max_pairwise_shared_dimensions"
+            ],
+            requested_by=route.requested_by,
+            routing_revision=revision + 1,
+            supersedes_route_id=route.id,
+        ),
+    )
+
+
 def _retain_strategy_review_rejection(
     db: Session,
     campaign: AlphaCampaign,
@@ -1512,6 +1591,9 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         )
     elif review_route.status == "assigned":
         review_route = _supersede_stale_strategy_review_route(
+            db, review_route, subject
+        )
+        review_route = _supersede_failed_strategy_review_route(
             db, review_route, subject
         )
     elif review_route.status == "blocked":

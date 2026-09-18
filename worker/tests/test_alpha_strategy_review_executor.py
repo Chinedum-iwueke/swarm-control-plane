@@ -108,6 +108,75 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
 
 
 @pytest.mark.asyncio
+async def test_reviewer_retries_transient_model_capacity_inside_one_task_attempt(
+    tmp_path, monkeypatch
+):
+    payload = contract()
+    for name in ("artifacts", "logs", "repository"):
+        (tmp_path / name).mkdir()
+    workspace = SimpleNamespace(
+        artifacts=tmp_path / "artifacts", logs=tmp_path / "logs",
+        repository=tmp_path / "repository",
+        plan=SimpleNamespace(resolved_base_commit=payload["base_ref"]),
+    )
+
+    class Runner:
+        calls = 0
+
+        async def start(self, _args, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                kwargs["stderr"].write(
+                    b"ERROR: Selected model is at capacity. Please try a different model.\n"
+                )
+                kwargs["stderr"].flush()
+                return SimpleNamespace(process=SimpleNamespace(returncode=1))
+            output = {
+                "subject_digest": payload["subject_digest"],
+                "verdict": "approve",
+                "rationale": "Reviewed the exact frozen card after transient capacity cleared.",
+                "checks": ["semantic fidelity"],
+                "blockers": [],
+            }
+            (workspace.artifacts / "strategy-review.json").write_text(
+                json.dumps(output), encoding="utf-8"
+            )
+            return SimpleNamespace(process=SimpleNamespace(returncode=0))
+
+    async def no_sleep(_seconds):
+        return None
+
+    async def heartbeat(_metadata):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", no_sleep)
+    runner = Runner()
+    executor = AlphaStrategyReviewExecutor(
+        codex_home=tmp_path, codex_model="test-model",
+        heartbeat_interval_seconds=1, process_runner=runner,
+        effective_uid=lambda: 1000,
+    )
+    task = SimpleNamespace(
+        input_contract=payload,
+        assigned_agent_id=UUID(payload["evaluator_agent_id"]), attempt_count=1,
+    )
+    result = await executor.execute(
+        task=task,
+        workflow=SimpleNamespace(
+            name=payload["workflow"], steps=[], timeout_seconds=60
+        ),
+        workspace=workspace,
+        heartbeat=heartbeat,
+    )
+
+    assert result.success
+    assert runner.calls == 2
+    assert "Selected model is at capacity" in (
+        workspace.logs / "review.stderr.log"
+    ).read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
 async def test_lease_loss_terminates_the_owned_reviewer_process(tmp_path):
     payload = contract()
     for name in ("artifacts", "logs", "repository"):

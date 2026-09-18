@@ -33,6 +33,13 @@ class AlphaStrategyReviewExecutor:
         self._runner = process_runner or AsyncProcessRunner()
         self._uid = effective_uid
 
+    @staticmethod
+    def _capacity_limited(stderr: Path) -> bool:
+        if not stderr.is_file():
+            return False
+        message = stderr.read_text(encoding="utf-8", errors="replace").lower()
+        return "selected model is at capacity" in message
+
     async def execute(self, *, task: Task, workflow: WorkflowDefinition,
                       workspace: TaskWorkspace, heartbeat: HeartbeatCallback):
         if self._uid() == 0:
@@ -64,43 +71,62 @@ class AlphaStrategyReviewExecutor:
             path.chmod(0o600)
         started_at, started = datetime.now(UTC), time.monotonic()
         timed_out = False
-        with (prompt.open("rb") as stdin, (workspace.logs / "review.stdout.log").open("xb") as stdout,
-              (workspace.logs / "review.stderr.log").open("xb") as stderr):
-            (workspace.logs / "review.stdout.log").chmod(0o600)
-            (workspace.logs / "review.stderr.log").chmod(0o600)
-            running = await self._runner.start(
-                ["codex", "exec", "--ignore-user-config", "--ephemeral", "--sandbox", "read-only",
-                 "-c", "features.plugins=false", "-c", "features.apps=false",
-                 "-c", "features.remote_plugin=false", "-c", "sandbox_workspace_write.network_access=false",
-                 "--model", self._model, "--output-schema", str(schema),
-                 "--output-last-message", str(output), "-"],
-                cwd=workspace.repository, stdin=stdin, stdout=stdout, stderr=stderr,
-                environment_overrides={"CODEX_HOME": str(self._home), "NODE_OPTIONS": "--jitless"},
-            )
-            wait_task = (asyncio.create_task(running.process.wait())
-                         if running.process.returncode is None else None)
-            try:
-                deadline = started + min(contract.max_duration_seconds, workflow.timeout_seconds)
-                while running.process.returncode is None:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        timed_out = True
-                        break
-                    try:
-                        await asyncio.wait_for(asyncio.shield(wait_task),
-                                               timeout=min(self._interval, remaining))
-                    except TimeoutError:
-                        await heartbeat({"phase": "independent_strategy_review",
-                                         "route_id": str(contract.route_id), "review_kind": contract.review_kind})
-            finally:
+        stdout_path = workspace.logs / "review.stdout.log"
+        stderr_path = workspace.logs / "review.stderr.log"
+        stdout_path.touch(mode=0o600, exist_ok=False)
+        stderr_path.touch(mode=0o600, exist_ok=False)
+        deadline = started + min(contract.max_duration_seconds, workflow.timeout_seconds)
+        running = None
+        for capacity_attempt in range(3):
+            if output.exists():
+                output.unlink()
+            with (prompt.open("rb") as stdin, stdout_path.open("ab") as stdout,
+                  stderr_path.open("ab") as stderr):
+                running = await self._runner.start(
+                    ["codex", "exec", "--ignore-user-config", "--ephemeral", "--sandbox", "read-only",
+                     "-c", "features.plugins=false", "-c", "features.apps=false",
+                     "-c", "features.remote_plugin=false", "-c", "sandbox_workspace_write.network_access=false",
+                     "--model", self._model, "--output-schema", str(schema),
+                     "--output-last-message", str(output), "-"],
+                    cwd=workspace.repository, stdin=stdin, stdout=stdout, stderr=stderr,
+                    environment_overrides={"CODEX_HOME": str(self._home), "NODE_OPTIONS": "--jitless"},
+                )
+                wait_task = (asyncio.create_task(running.process.wait())
+                             if running.process.returncode is None else None)
                 try:
-                    if running.process.returncode is None:
-                        await self._runner.terminate(running, grace_seconds=5)
+                    while running.process.returncode is None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            timed_out = True
+                            break
+                        try:
+                            await asyncio.wait_for(asyncio.shield(wait_task),
+                                                   timeout=min(self._interval, remaining))
+                        except TimeoutError:
+                            await heartbeat({"phase": "independent_strategy_review",
+                                             "route_id": str(contract.route_id), "review_kind": contract.review_kind})
                 finally:
-                    if wait_task is not None:
-                        if not wait_task.done():
-                            wait_task.cancel()
-                        await asyncio.gather(wait_task, return_exceptions=True)
+                    try:
+                        if running.process.returncode is None:
+                            await self._runner.terminate(running, grace_seconds=5)
+                    finally:
+                        if wait_task is not None:
+                            if not wait_task.done():
+                                wait_task.cancel()
+                            await asyncio.gather(wait_task, return_exceptions=True)
+            if timed_out or running.process.returncode == 0:
+                break
+            if capacity_attempt == 2 or not self._capacity_limited(stderr_path):
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            await heartbeat({"phase": "independent_strategy_review_capacity_backoff",
+                             "route_id": str(contract.route_id), "review_kind": contract.review_kind,
+                             "capacity_attempt": capacity_attempt + 1})
+            await asyncio.sleep(min(15 * (2 ** capacity_attempt), remaining))
+        assert running is not None
         result = None
         if not timed_out and running.process.returncode == 0 and output.is_file():
             if output.is_symlink() or output.stat().st_size > 15_000:
