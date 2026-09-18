@@ -11,9 +11,22 @@ def serialize_backtest(
     task: Task, campaign: AlphaCampaign | None = None, progress: dict | None = None
 ) -> dict:
     contract = task.input_contract or {}
-    summary = (task.result or {}).get("summary", {})
+    result = task.result or {}
+    summary = result.get("summary", {})
     attempt = summary.get("alpha_campaign_attempt") or {}
-    gates = attempt.get("gate_report") or {}
+    handoff = result.get("downstream_handoff") or {}
+    publication = handoff.get("publication_envelope") or {}
+    trial = publication.get("trial") or {}
+    producer_gates = handoff.get("producer_gate_report") or {}
+    gates = attempt.get("gate_report") or producer_gates
+    has_native_receipt = bool(
+        attempt
+        or (
+            publication.get("schema_version")
+            and trial.get("bundle_digest")
+            and summary.get("receipt_digest")
+        )
+    )
     stage = contract.get("stage", "execute")
     terminal = task.status in {"succeeded", "failed", "cancelled"}
     category = (
@@ -48,8 +61,8 @@ def serialize_backtest(
         "completed_at": task.completed_at,
         "campaign_id": contract.get("campaign_id"),
         "campaign_phase": campaign.phase if campaign else None,
-        "outcome": attempt.get("outcome"),
-        "trial_count": attempt.get("trial_count"),
+        "outcome": attempt.get("outcome") or trial.get("result_disposition"),
+        "trial_count": attempt.get("trial_count") if attempt else (1 if trial else None),
         "failure_stage": attempt.get("failure_stage"),
         "disposition": summary.get("disposition"),
         "failed_gates": gates.get("failed_gates", []),
@@ -81,13 +94,30 @@ def serialize_backtest(
                 "selection_basis",
             )
         },
-        "evidence_digests": attempt.get("evidence_digests", []),
+        "evidence_digests": attempt.get("evidence_digests", [])
+        or [
+            value
+            for value in (
+                trial.get("bundle_digest"),
+                trial.get("bundle_manifest_digest"),
+                trial.get("representation_contract_digest"),
+                trial.get("market_model_bundle_digest"),
+                trial.get("search_plan_digest"),
+            )
+            if value
+        ],
         "error_category": (task.failure or {}).get("error_category"),
+        "execution_class": summary.get("execution_class")
+        or publication.get("execution_class")
+        or contract.get("execution_class", "qualification"),
+        "qualification_authority": summary.get("qualification_authority")
+        if "qualification_authority" in summary
+        else publication.get("qualification_authority"),
         "promotion": "shadow_review_requested"
         if campaign and campaign.status == "shadow_candidate"
         else "not_established",
         "execution_evidence": "native_terminal_receipt"
-        if attempt and stage == "execute"
+        if has_native_receipt and stage == "execute"
         else "no_native_terminal_receipt",
     }
 

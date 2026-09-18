@@ -195,7 +195,13 @@ def campaign(**updates):
         "specification": {
             "bulletproof_source_commit": COMMIT,
             "dataset_bindings": [
-                {"dataset_build_id": str(uuid4()), "dataset_digest": DIGEST}
+                {
+                    "dataset_build_id": str(uuid4()),
+                    "dataset_digest": DIGEST,
+                    "dataset_key": "bybit-btcusdt-perp-1m",
+                    "venue": "bybit",
+                    "instruments": ["BTCUSDT"],
+                }
             ],
             "research_queue": [
                 {
