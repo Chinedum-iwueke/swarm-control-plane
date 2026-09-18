@@ -41,3 +41,15 @@ def test_runtime_installer_does_not_copy_or_truncate_credentials():
     assert 'test ! -L "$runtime"' in source
     assert 'test ! -L "$runtime/auth.json"' in source
     assert "cp " not in source
+
+
+def test_discovery_director_has_single_named_runtime_lifecycle() -> None:
+    unit = (
+        ROOT / "systemd/invariance-swarm-alpha-discovery-director.service"
+    ).read_text(encoding="utf-8")
+    runtime_name = "invariance-swarm-alpha-discovery-director-runtime"
+
+    assert f"ExecStartPre=-/usr/bin/docker rm -f {runtime_name}" in unit
+    assert f"--name {runtime_name} api python -m app.workers.alpha_discovery" in unit
+    assert f"ExecStop=-/usr/bin/docker stop --timeout 30 {runtime_name}" in unit
+    assert f"ExecStopPost=-/usr/bin/docker rm -f {runtime_name}" in unit
