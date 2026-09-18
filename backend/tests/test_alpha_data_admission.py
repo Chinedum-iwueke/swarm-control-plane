@@ -128,8 +128,10 @@ def test_selected_panel_receipt_materializes_exact_data_registry(monkeypatch):
         "app.services.alpha_data_admission.register_lake_governance",
         register("governance", None),
     )
+    db = MagicMock()
+    db.scalar.side_effect = [None, None, None]
     binding = register_selected_panel_receipt(
-        MagicMock(),
+        db,
         receipt_document=receipt(),
         registered_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
@@ -138,7 +140,9 @@ def test_selected_panel_receipt_materializes_exact_data_registry(monkeypatch):
     assert binding.evidence_class == "live_exchange_history"
     assert captured["manifest"].manifest.source_objects[0].sha256 == DIGEST
     assert captured["build"].output_uri == f"file:///recovery/{DIGEST}.parquet"
-    assert {item.check: item.observed for item in captured["build"].quality_results} == {
+    assert {
+        item.check: item.observed for item in captured["build"].quality_results
+    } == {
         "duplicate_timestamp_count": 0,
         "missing_bar_count": 0,
         "non_finite_value_count": 0,
@@ -152,3 +156,49 @@ def test_selected_panel_receipt_materializes_exact_data_registry(monkeypatch):
     assert governance.entitlements[0].actions == ["read"]
     assert governance.recovery_manifests[0].integrity_verified is True
     assert governance.observed_storage_bytes[binding.dataset_key] == 1024
+
+
+def test_selected_panel_receipt_reuses_complete_content_binding(monkeypatch):
+    quantitative = SimpleNamespace(id=uuid4())
+    build = SimpleNamespace(
+        id=uuid4(),
+        content_digest=DIGEST,
+    )
+    catalog = SimpleNamespace(
+        id=uuid4(),
+        catalog_digest="6" * 64,
+        catalog={"partitions": [{"content_digest": DIGEST}]},
+    )
+    governance = SimpleNamespace(
+        id=uuid4(),
+        catalog_digest=catalog.catalog_digest,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [build, catalog, governance]
+    monkeypatch.setattr(
+        "app.services.alpha_data_admission.register_receipt",
+        lambda _db, _payload: quantitative,
+    )
+    for name in (
+        "register_reference_snapshot",
+        "register_manifest",
+        "register_build",
+        "register_catalog",
+        "register_lake_governance",
+    ):
+        monkeypatch.setattr(
+            f"app.services.alpha_data_admission.{name}",
+            MagicMock(side_effect=AssertionError(f"{name} must not be called")),
+        )
+
+    binding = register_selected_panel_receipt(
+        db,
+        receipt_document=receipt(),
+        registered_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+
+    assert binding.dataset_build_id == build.id
+    assert binding.catalog_id == catalog.id
+    assert binding.lake_governance_snapshot_id == governance.id
+    assert binding.producer_receipt_id == quantitative.id
+    assert binding.partition_digests == [DIGEST]
