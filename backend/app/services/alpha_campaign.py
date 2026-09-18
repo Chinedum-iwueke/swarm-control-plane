@@ -389,15 +389,17 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             entry["research_timeframe"] = source.document["data"][
                 "research_timeframe"
             ]
-            entry["resampling_policy"] = source.document["data"][
-                "resampling_policy"
-            ]
+            entry["resampling_policy"] = _canonical_resampling_policy(
+                source.document["data"]
+            )
             entry["reusable_strategy"] = source.document.get(
                 "reusable_strategy_capability"
             )
             entry["discovery_candidate_id"] = str(source.id)
             entry["discovery_candidate_digest"] = source.candidate_digest
         research_queue.append(entry)
+    for entry in research_queue:
+        entry["resampling_policy"] = _canonical_resampling_policy(entry)
     specification["research_queue"] = research_queue
     specification["authority_boundary"] = {
         "capital": False,
