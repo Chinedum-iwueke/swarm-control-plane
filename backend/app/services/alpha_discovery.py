@@ -1653,23 +1653,24 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                 cycle,
             )
         elif campaign and campaign.status == "completed_no_candidate":
-            cycle.status = "completed"
-            cycle.phase = "complete"
-            cycle.next_action = "schedule_next_discovery_cycle"
-            cycle.completed_at = moment
-            mandate.hypothesis_count += campaign.hypothesis_count
-            mandate.trial_count += campaign.trial_count
-            _event(
-                db,
-                mandate,
-                "campaign_completed_without_candidate",
-                {
-                    "campaign_id": str(campaign.id),
-                    "hypotheses": campaign.hypothesis_count,
-                    "trials": campaign.trial_count,
-                },
-                cycle,
-            )
+            if cycle.status != "completed":
+                cycle.status = "completed"
+                cycle.phase = "complete"
+                cycle.next_action = "schedule_next_discovery_cycle"
+                cycle.completed_at = moment
+                mandate.hypothesis_count += campaign.hypothesis_count
+                mandate.trial_count += campaign.trial_count
+                _event(
+                    db,
+                    mandate,
+                    "campaign_completed_without_candidate",
+                    {
+                        "campaign_id": str(campaign.id),
+                        "hypotheses": campaign.hypothesis_count,
+                        "trials": campaign.trial_count,
+                    },
+                    cycle,
+                )
         elif campaign and campaign.status == "needs_attention":
             cycle.status = "needs_attention"
             cycle.next_action = campaign.next_action
@@ -1691,7 +1692,10 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                     },
                     cycle,
                 )
-        if campaign is None or campaign.status != "cancelled":
+        if campaign is None or campaign.status not in {
+            "cancelled",
+            "completed_no_candidate",
+        }:
             return
     if _reconcile_data_admissions(db, mandate, cycle):
         return
@@ -1890,6 +1894,117 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         )
         return
     _portfolio_and_campaign(db, mandate, cycle, accepted)
+
+
+def mandate_counter_projection(
+    events: list[AlphaDiscoveryEvent],
+) -> dict[str, int | list[str]]:
+    """Rebuild mandate counters from one immutable terminal event per cycle."""
+    started_cycles: set[str] = set()
+    completed_cycles: set[str] = set()
+    hypothesis_count = 0
+    trial_count = 0
+    duplicate_completion_events = 0
+
+    for event in events:
+        cycle_id = str(event.cycle_id) if event.cycle_id else None
+        if event.event_type == "cycle_started" and cycle_id:
+            started_cycles.add(cycle_id)
+            continue
+        if event.event_type != "campaign_completed_without_candidate" or not cycle_id:
+            continue
+        if cycle_id in completed_cycles:
+            duplicate_completion_events += 1
+            continue
+        hypotheses = event.payload.get("hypotheses")
+        trials = event.payload.get("trials")
+        if (
+            not isinstance(hypotheses, int)
+            or isinstance(hypotheses, bool)
+            or hypotheses < 0
+            or not isinstance(trials, int)
+            or isinstance(trials, bool)
+            or trials < 0
+        ):
+            raise ValueError(
+                "Terminal campaign event contains invalid mandate counter evidence."
+            )
+        completed_cycles.add(cycle_id)
+        hypothesis_count += hypotheses
+        trial_count += trials
+
+    return {
+        "cycle_count": len(started_cycles),
+        "hypothesis_count": hypothesis_count,
+        "trial_count": trial_count,
+        "completed_cycle_ids": sorted(completed_cycles),
+        "duplicate_completion_events": duplicate_completion_events,
+    }
+
+
+def reconstruct_mandate_counters(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    *,
+    actor: str,
+    reason: str,
+    apply: bool,
+) -> dict:
+    db.scalar(
+        select(AlphaResearchMandate.id)
+        .where(AlphaResearchMandate.id == mandate.id)
+        .with_for_update()
+    )
+    events = db.scalars(
+        select(AlphaDiscoveryEvent)
+        .where(AlphaDiscoveryEvent.mandate_id == mandate.id)
+        .order_by(AlphaDiscoveryEvent.sequence)
+    ).all()
+    projection = mandate_counter_projection(events)
+    cycle_rows = db.scalar(
+        select(func.count(AlphaDiscoveryCycle.id)).where(
+            AlphaDiscoveryCycle.mandate_id == mandate.id
+        )
+    )
+    if projection["cycle_count"] != cycle_rows:
+        raise ValueError(
+            "Immutable cycle-start evidence does not match the canonical cycle ledger."
+        )
+
+    before = {
+        "cycle_count": mandate.cycle_count,
+        "hypothesis_count": mandate.hypothesis_count,
+        "trial_count": mandate.trial_count,
+    }
+    after = {
+        "cycle_count": projection["cycle_count"],
+        "hypothesis_count": projection["hypothesis_count"],
+        "trial_count": projection["trial_count"],
+    }
+    report = {
+        "schema_version": "alpha-mandate-counter-repair-v1.0.0",
+        "mandate_id": str(mandate.id),
+        "mandate_digest": mandate.mandate_digest,
+        "actor": actor,
+        "reason": reason,
+        "applied": apply,
+        "before": before,
+        "after": after,
+        "completed_cycle_ids": projection["completed_cycle_ids"],
+        "duplicate_completion_events": projection["duplicate_completion_events"],
+    }
+    report["report_digest"] = digest_document(report)
+    if apply:
+        mandate.cycle_count = int(after["cycle_count"])
+        mandate.hypothesis_count = int(after["hypothesis_count"])
+        mandate.trial_count = int(after["trial_count"])
+        _event(
+            db,
+            mandate,
+            "mandate_counter_projection_repaired",
+            report,
+        )
+    return report
 
 
 def reconcile_all(db: Session) -> list[AlphaResearchMandate]:
