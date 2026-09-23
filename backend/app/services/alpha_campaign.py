@@ -1946,6 +1946,25 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
     return True
 
 
+_IN_FLIGHT_EXECUTION_STATUSES = {"queued", "leased", "in_progress", "running"}
+
+
+def _current_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
+    """Return the immutable execution task for the campaign's current question."""
+    queue = campaign.specification.get("research_queue", [])
+    if campaign.hypothesis_count >= len(queue):
+        return None
+    source = queue[campaign.hypothesis_count]
+    protocol = campaign.specification.get("execution_protocol")
+    if protocol in {"alpha003-governed-v1", "alpha004-delegated-v1"}:
+        number = _stage_task_number(campaign, source, "E")
+    elif protocol == "alpha002-native-v1":
+        number = _execution_task_number(campaign, source)
+    else:
+        return None
+    return db.scalar(select(Task).where(Task.task_number == number))
+
+
 def _bound_dataset(campaign: AlphaCampaign, build_id, digest: str) -> bool:
     return any(
         item["dataset_build_id"] == str(build_id) and item["dataset_digest"] == digest
@@ -2116,6 +2135,30 @@ def record_attempt(
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
     terminal = campaign.terminal_reason or {}
+    execution = _current_execution_task(db, campaign)
+    if (
+        campaign.status == "completed_no_candidate"
+        and terminal.get("category") == "duration_budget_exhausted"
+        and execution is not None
+        and execution.status in {*_IN_FLIGHT_EXECUTION_STATUSES, "succeeded"}
+    ):
+        campaign.status = "running"
+        campaign.phase = "execution"
+        campaign.next_action = "await_native_bulletproof_execution"
+        campaign.completed_at = None
+        campaign.terminal_reason = {}
+        _append_event(
+            db,
+            campaign,
+            "inflight_execution_recovered",
+            "alpha-campaign-director",
+            {
+                "task_id": str(execution.id),
+                "task_number": execution.task_number,
+                "task_status": execution.status,
+                "prior_terminal_category": "duration_budget_exhausted",
+            },
+        )
     if (
         campaign.status == "needs_attention"
         and terminal.get("category") == "governed_pipeline_task_failed"
@@ -2161,6 +2204,16 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     if campaign.status != "running":
         return
     if _consume_execution_task(db, campaign):
+        return
+    execution = _current_execution_task(db, campaign)
+    if execution is not None and execution.status in _IN_FLIGHT_EXECUTION_STATUSES:
+        campaign.phase = "execution"
+        campaign.next_action = {
+            "queued": "await_vm1_executor",
+            "leased": "executor_lease_acquired",
+            "in_progress": "native_bulletproof_execution",
+            "running": "native_bulletproof_execution",
+        }[execution.status]
         return
     deadline = campaign.activated_at + timedelta(
         seconds=campaign.budget["max_duration_seconds"]
