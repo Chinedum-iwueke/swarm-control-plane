@@ -165,7 +165,7 @@ class WorkflowDefinition(BaseModel):
         "alpha_discovery",
         "alpha_data_admission",
     ]
-    timeout_seconds: int = Field(ge=1, le=21_600)
+    timeout_seconds: int = Field(ge=1, le=28_800)
     allowed_repositories: Annotated[
         list[
             Annotated[

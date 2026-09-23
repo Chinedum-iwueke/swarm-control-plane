@@ -1,13 +1,13 @@
 schema_version: 1
 name: vm1-alpha-research-executor-capacity-2
-version: 1.1.0
+version: 1.2.0
 role: Restricted VM1 governed hypothesis and Bulletproof scientific executor
 task_types:
 - alpha_research_execution
 workflows:
 - name: alpha-research-execution
   file: alpha-research-execution.yaml
-  sha256: 0d8fe9021f554046f0566577825aa7ceb67f7bc0f6395acd485ef47a9bea3eed
+  sha256: ee13bbeca6065f28032510a3ccd4087a9327725f70768f9920ab215277867647
 required_capabilities:
 - alpha-research-execution
 - backtesting
