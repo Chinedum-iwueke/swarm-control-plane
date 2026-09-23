@@ -1791,6 +1791,102 @@ def test_budget_exhaustion_closes_honestly(monkeypatch):
     assert record.terminal_reason["category"] == "hypothesis_budget_exhausted"
 
 
+def test_duration_expiry_waits_for_inflight_execution(monkeypatch):
+    record = campaign()
+    record.activated_at = datetime.now(UTC) - timedelta(days=2)
+    record.budget["max_duration_seconds"] = 1
+    task = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A2-{str(record.id)[:8]}-001",
+        status="running",
+    )
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: task)
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    append = MagicMock()
+    monkeypatch.setattr(service, "_append_event", append)
+
+    service.reconcile_campaign(MagicMock(), record)
+
+    assert record.status == "running"
+    assert record.phase == "execution"
+    assert record.next_action == "native_bulletproof_execution"
+    assert record.terminal_reason == {}
+    append.assert_not_called()
+
+
+def test_duration_terminal_is_recovered_for_inflight_execution(monkeypatch):
+    record = campaign(
+        status="completed_no_candidate",
+        phase="complete",
+        next_action="founder_closeout_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={"category": "duration_budget_exhausted"},
+    )
+    task = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A2-{str(record.id)[:8]}-001",
+        status="running",
+    )
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: task)
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    append = MagicMock()
+    monkeypatch.setattr(service, "_append_event", append)
+
+    service.reconcile_campaign(MagicMock(), record)
+
+    assert record.status == "running"
+    assert record.phase == "execution"
+    assert record.next_action == "native_bulletproof_execution"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+    append.assert_called_once()
+    assert append.call_args.args[2] == "inflight_execution_recovered"
+
+
+def test_duration_terminal_recovers_before_consuming_succeeded_execution(monkeypatch):
+    record = campaign(
+        status="completed_no_candidate",
+        phase="complete",
+        next_action="founder_closeout_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={"category": "duration_budget_exhausted"},
+    )
+    task = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A2-{str(record.id)[:8]}-001",
+        status="succeeded",
+    )
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: task)
+    consume = MagicMock(return_value=True)
+    monkeypatch.setattr(service, "_consume_execution_task", consume)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.reconcile_campaign(MagicMock(), record)
+
+    assert record.status == "running"
+    assert record.completed_at is None
+    consume.assert_called_once()
+
+
+def test_duration_terminal_without_execution_remains_closed(monkeypatch):
+    record = campaign(
+        status="completed_no_candidate",
+        phase="complete",
+        next_action="founder_closeout_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={"category": "duration_budget_exhausted"},
+    )
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    consume = MagicMock(return_value=False)
+    monkeypatch.setattr(service, "_consume_execution_task", consume)
+
+    service.reconcile_campaign(MagicMock(), record)
+
+    assert record.status == "completed_no_candidate"
+    assert record.terminal_reason == {"category": "duration_budget_exhausted"}
+    consume.assert_not_called()
+
+
 def test_routes_expose_campaign_lifecycle():
     paths = {route.path for route in router.routes}
     assert {
