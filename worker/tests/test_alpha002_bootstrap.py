@@ -32,6 +32,33 @@ def identity() -> dict:
     }
 
 
+def test_historical_executor_charter_is_compatible_only_when_authority_matches() -> (
+    None
+):
+    package_name = "vm1-alpha-research-executor-v2"
+    manifest = MODULE.load_role_package(
+        MODULE.ROOT / "role-packages" / package_name / "manifest.yaml",
+        MODULE.ROOT / "workflows",
+    ).manifest
+    expected = MODULE.executor_charter_manifest(manifest, package_name)
+    historical = {
+        **expected,
+        "responsibilities": [
+            "Execute one leased no-capital question through Bulletproof only."
+        ],
+    }
+
+    assert MODULE.compatible_executor_charter(historical, expected, package_name)
+    assert not MODULE.compatible_executor_charter(
+        {**historical, "risk_ceiling": 1}, expected, package_name
+    )
+    assert not MODULE.compatible_executor_charter(
+        {**historical, "responsibilities": ["Execute arbitrary work."]},
+        expected,
+        package_name,
+    )
+
+
 def test_api_error_reports_route_and_detail_without_request_payload() -> None:
     secret = "signed-package-secret-that-must-not-be-printed"
 
@@ -255,6 +282,10 @@ def test_existing_state_requires_explicit_package_rotation(
     new_package_id = "66666666-6666-4666-8666-666666666666"
     old_deployment_id = "77777777-7777-4777-8777-777777777777"
     new_deployment_id = "88888888-8888-4888-8888-888888888888"
+    historical_charter = MODULE.executor_charter_manifest(manifest, package_name)
+    historical_charter["responsibilities"] = [
+        "Execute one leased no-capital question through Bulletproof only."
+    ]
     requests = []
 
     def handler(request):
@@ -282,7 +313,15 @@ def test_existing_state_requires_explicit_package_rotation(
                         "package": {"id": old_package_id},
                     }
                 ],
-                "/v1/agent-governance/charters": [],
+                "/v1/agent-governance/charters": [
+                    {
+                        "id": state()["charter_id"],
+                        "agent_id": agent["id"],
+                        "version": "1.0.0",
+                        "manifest": historical_charter,
+                        "manifest_digest": MODULE.digest(historical_charter),
+                    }
+                ],
                 "/v1/agent-governance/grants": [
                     {
                         "id": capability,
@@ -392,6 +431,7 @@ def test_existing_state_requires_explicit_package_rotation(
     assert rotated["source_commit"] == "b" * 40
     assert rotated["workload_identity_version"] == "1.0.1"
     assert "SWARM_AGENT_TOKEN=rotated-secret" in env_file.read_text()
+    assert ("POST", "/v1/agent-governance/charters") not in requests
     assert ("POST", "/v1/agent-governance/grants") not in requests
     deploy_index = requests.index(("POST", "/v1/packages/deployments"))
     revoke_index = requests.index(

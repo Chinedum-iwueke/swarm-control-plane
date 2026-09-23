@@ -32,6 +32,53 @@ def digest(value: object) -> str:
     ).hexdigest()
 
 
+def compatible_executor_charter(
+    existing: dict, expected: dict, package_name: str
+) -> bool:
+    """Accept the historical description only when authority is unchanged."""
+    if existing == expected:
+        return True
+    allowed_responsibilities = {
+        ("Execute one leased no-capital question through Bulletproof only.",),
+        (
+            f"Execute one leased no-capital question through Bulletproof only as {package_name}.",
+        ),
+    }
+    if tuple(existing.get("responsibilities", [])) not in allowed_responsibilities:
+        return False
+    existing_authority = {
+        key: value for key, value in existing.items() if key != "responsibilities"
+    }
+    expected_authority = {
+        key: value for key, value in expected.items() if key != "responsibilities"
+    }
+    return existing_authority == expected_authority
+
+
+def executor_charter_manifest(manifest, package_name: str) -> dict:
+    return {
+        "schema_version": "agent-charter-v1.0.0",
+        "role": manifest.role,
+        "responsibilities": [
+            f"Execute one leased no-capital question through Bulletproof only as {package_name}."
+        ],
+        "capabilities": manifest.required_capabilities,
+        "allowed_machines": ["vm1-developer"],
+        "allowed_task_types": manifest.task_types,
+        "allowed_repositories": ["bulletproof_bt"],
+        "risk_ceiling": manifest.risk_ceiling,
+        "accountable_owner": "senior-quantitative-research",
+        "conflicts": [],
+        "forbidden_actions": [
+            "capital-allocation",
+            "order-placement",
+            "live-trading",
+            "production-promotion",
+            "self-approval",
+        ],
+    }
+
+
 def call(client: httpx.Client, method: str, path: str, payload: dict | None = None):
     response = client.request(method, path, json=payload)
     if response.is_error:
@@ -267,27 +314,7 @@ def main() -> int:
                         "POST",
                         f"/v1/packages/deployments/{prior['id']}/revoke",
                     )
-        charter_manifest = {
-            "schema_version": "agent-charter-v1.0.0",
-            "role": manifest.role,
-            "responsibilities": [
-                f"Execute one leased no-capital question through Bulletproof only as {package_name}."
-            ],
-            "capabilities": manifest.required_capabilities,
-            "allowed_machines": ["vm1-developer"],
-            "allowed_task_types": manifest.task_types,
-            "allowed_repositories": ["bulletproof_bt"],
-            "risk_ceiling": manifest.risk_ceiling,
-            "accountable_owner": "senior-quantitative-research",
-            "conflicts": [],
-            "forbidden_actions": [
-                "capital-allocation",
-                "order-placement",
-                "live-trading",
-                "production-promotion",
-                "self-approval",
-            ],
-        }
+        charter_manifest = executor_charter_manifest(manifest, package_name)
         charters = call(api, "GET", "/v1/agent-governance/charters")
         matches = [
             item
@@ -297,7 +324,9 @@ def main() -> int:
         ]
         if matches and (
             len(matches) != 1
-            or matches[0]["manifest_digest"] != digest(charter_manifest)
+            or not compatible_executor_charter(
+                matches[0]["manifest"], charter_manifest, package_name
+            )
         ):
             raise RuntimeError(
                 "Partial executor charter differs from the reviewed package."
