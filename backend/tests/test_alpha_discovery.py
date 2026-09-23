@@ -579,6 +579,99 @@ def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
     new_cycle.assert_called_once_with(db, mandate, queued)
 
 
+def test_completed_campaign_accounting_is_idempotent(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_until=moment + timedelta(days=1),
+        heartbeat_at=None,
+        cycle_count=1,
+        hypothesis_count=1,
+        trial_count=8,
+        budget={
+            "maximum_cycles": 10,
+            "maximum_hypotheses": 10,
+            "maximum_total_trials": 80,
+            "cadence_seconds": 3600,
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        campaign_id=uuid4(),
+        status="completed",
+        phase="complete",
+        next_action="schedule_next_discovery_cycle",
+        created_at=moment,
+        completed_at=moment,
+        heartbeat_at=None,
+    )
+    campaign = SimpleNamespace(
+        id=cycle.campaign_id,
+        status="completed_no_candidate",
+        hypothesis_count=1,
+        trial_count=8,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [cycle, None]
+    db.get.return_value = campaign
+    event = MagicMock()
+    new_cycle = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._reconcile_data_admissions",
+        lambda *_: False,
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._recover_resumed_stage", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._next_founder_idea", lambda *_: None
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
+
+    reconcile_mandate(db, mandate)
+
+    assert mandate.hypothesis_count == 1
+    assert mandate.trial_count == 8
+    event.assert_not_called()
+    new_cycle.assert_not_called()
+
+
+def test_mandate_counter_projection_deduplicates_terminal_cycle_evidence():
+    from app.services.alpha_discovery import mandate_counter_projection
+
+    first_cycle = uuid4()
+    second_cycle = uuid4()
+    events = [
+        SimpleNamespace(event_type="cycle_started", cycle_id=first_cycle, payload={}),
+        SimpleNamespace(
+            event_type="campaign_completed_without_candidate",
+            cycle_id=first_cycle,
+            payload={"hypotheses": 1, "trials": 8},
+        ),
+        SimpleNamespace(
+            event_type="campaign_completed_without_candidate",
+            cycle_id=first_cycle,
+            payload={"hypotheses": 1, "trials": 8},
+        ),
+        SimpleNamespace(event_type="cycle_started", cycle_id=second_cycle, payload={}),
+        SimpleNamespace(
+            event_type="campaign_completed_without_candidate",
+            cycle_id=second_cycle,
+            payload={"hypotheses": 2, "trials": 4},
+        ),
+    ]
+
+    assert mandate_counter_projection(events) == {
+        "cycle_count": 2,
+        "hypothesis_count": 3,
+        "trial_count": 12,
+        "completed_cycle_ids": sorted([str(first_cycle), str(second_cycle)]),
+        "duplicate_completion_events": 1,
+    }
+
+
 def binding():
     return {
         "dataset_build_id": uuid4(),
