@@ -1,6 +1,6 @@
 name: alpha-research-execution
 task_type: alpha_research_execution
-timeout_seconds: 21600
+timeout_seconds: 28800
 allowed_repositories:
 - bulletproof_bt
 steps: []
