@@ -44,7 +44,7 @@ def test_research_package_is_narrow_and_digest_verified() -> None:
 
 def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
     package = load_role_package(ALPHA_MANIFEST, WORKFLOWS)
-    assert package.manifest.version == "1.2.0"
+    assert package.manifest.version == "1.3.0"
     assert package.manifest.task_types == ["alpha_research_execution"]
     assert package.manifest.required_capabilities == [
         "alpha-research-execution",
@@ -56,7 +56,7 @@ def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
     assert package.manifest.repository_profile.primary_checkout_write is False
     assert package.manifest.repository_profile.remote_write is False
     workflow = WorkflowLoader(WORKFLOWS).load("alpha-research-execution")
-    assert workflow.timeout_seconds == 28_800
+    assert workflow.timeout_seconds == 43_200
 
 
 def test_alpha_strategy_engineer_has_exclusive_engineering_capability() -> None:
