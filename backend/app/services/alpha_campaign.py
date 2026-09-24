@@ -43,6 +43,7 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignActivation,
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
+    AlphaCompletedExecutionRecovery,
 )
 from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity
 from app.schemas.task import TaskCreate
@@ -1883,19 +1884,10 @@ def _qualification_from_result(result: dict) -> dict | None:
     return qualification if isinstance(qualification, dict) else None
 
 
-def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
-    queue = campaign.specification["research_queue"]
-    if campaign.hypothesis_count >= len(queue):
-        return False
-    source = queue[campaign.hypothesis_count]
-    number = (
-        _stage_task_number(campaign, source, "E")
-        if campaign.specification.get("execution_protocol")
-        in {"alpha003-governed-v1", "alpha004-delegated-v1"}
-        else _execution_task_number(campaign, source)
-    )
-    task = db.scalar(select(Task).where(Task.task_number == number))
-    if task is None or task.status != "succeeded":
+def _consume_completed_execution_task(
+    db: Session, campaign: AlphaCampaign, task: Task
+) -> bool:
+    if task.status != "succeeded":
         return False
     summary = task.result.get("summary", {})
     raw_attempt = summary.get("alpha_campaign_attempt")
@@ -1917,6 +1909,15 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
             "evidence_digests": publication["evidence_digests"],
         }
     payload = AlphaCampaignAttemptCreate.model_validate(raw_attempt)
+    existing = db.scalar(
+        select(AlphaCampaignAttempt).where(
+            (AlphaCampaignAttempt.campaign_id == campaign.id)
+            & (AlphaCampaignAttempt.attempt_key == payload.attempt_key)
+        )
+    )
+    if existing is not None:
+        record_attempt(db, campaign, payload)
+        return True
     record_attempt(db, campaign, payload)
     _append_event(
         db,
@@ -1944,6 +1945,23 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
         )
     )
     return True
+
+
+def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
+    queue = campaign.specification["research_queue"]
+    if campaign.hypothesis_count >= len(queue):
+        return False
+    source = queue[campaign.hypothesis_count]
+    number = (
+        _stage_task_number(campaign, source, "E")
+        if campaign.specification.get("execution_protocol")
+        in {"alpha003-governed-v1", "alpha004-delegated-v1"}
+        else _execution_task_number(campaign, source)
+    )
+    task = db.scalar(select(Task).where(Task.task_number == number))
+    if task is None:
+        return False
+    return _consume_completed_execution_task(db, campaign, task)
 
 
 _IN_FLIGHT_EXECUTION_STATUSES = {"queued", "leased", "in_progress", "running"}
@@ -1975,8 +1993,6 @@ def _bound_dataset(campaign: AlphaCampaign, build_id, digest: str) -> bool:
 def record_attempt(
     db: Session, campaign: AlphaCampaign, payload: AlphaCampaignAttemptCreate
 ) -> AlphaCampaignAttempt:
-    if campaign.status != "running":
-        raise HTTPException(409, "Attempts are accepted only for running campaigns.")
     if campaign.campaign_digest != payload.expected_campaign_digest:
         raise HTTPException(409, "Campaign digest changed before attempt publication.")
     if payload.source_commit != campaign.specification["bulletproof_source_commit"]:
@@ -2009,6 +2025,8 @@ def record_attempt(
                 409, "Attempt key is already bound to different evidence."
             )
         return existing
+    if campaign.status != "running":
+        raise HTTPException(409, "Attempts are accepted only for running campaigns.")
     if payload.trial_count > campaign.budget["max_variants_per_hypothesis"]:
         raise HTTPException(422, "Attempt exceeds its frozen variant budget.")
     if campaign.hypothesis_count + 1 > campaign.budget["max_hypotheses"]:
@@ -2308,6 +2326,170 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             "failed": "operator_review_failed_execution",
             "cancelled": "operator_review_cancelled_execution",
         }.get(task.status, "await_executor_terminal_receipt")
+
+
+def recover_completed_execution(
+    db: Session,
+    task: Task,
+    agent: Agent,
+    payload: AlphaCompletedExecutionRecovery,
+) -> AlphaCampaign:
+    """Recover a native run attested by the agent that executed the failed attempt."""
+    contract = task.input_contract if isinstance(task.input_contract, dict) else {}
+    try:
+        campaign_id = UUID(str(contract.get("campaign_id")))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(409, "Task lacks an immutable alpha campaign binding.") from exc
+    campaign = db.scalar(
+        select(AlphaCampaign)
+        .where(AlphaCampaign.id == campaign_id)
+        .with_for_update()
+    )
+    if campaign is None:
+        raise HTTPException(404, "Task-bound alpha campaign not found.")
+    if campaign.campaign_digest != payload.expected_campaign_digest:
+        raise HTTPException(409, "Campaign digest changed before execution recovery.")
+    if (
+        task.task_type != "alpha_research_execution"
+        or contract.get("workflow") != "alpha-research-execution"
+        or contract.get("campaign_digest") != campaign.campaign_digest
+    ):
+        raise HTTPException(409, "Task is not the immutable campaign execution task.")
+
+    recovered_event = db.scalar(
+        select(TaskEvent)
+        .where(
+            TaskEvent.task_id == task.id,
+            TaskEvent.event_type == "task_completed_result_recovered",
+        )
+        .order_by(TaskEvent.id.desc())
+        .limit(1)
+    )
+    if task.status == "succeeded":
+        if (
+            recovered_event is None
+            or recovered_event.agent_id != agent.id
+            or recovered_event.payload.get("receipt_digest")
+            != payload.expected_receipt_digest
+            or recovered_event.payload.get("receipt_file_sha256")
+            != payload.receipt_file_sha256
+            or recovered_event.payload.get("receipt_file_size")
+            != payload.receipt_file_size
+        ):
+            raise HTTPException(409, "Recovered task attestation does not match.")
+    else:
+        failure_event = db.scalar(
+            select(TaskEvent)
+            .where(
+                TaskEvent.task_id == task.id,
+                TaskEvent.event_type == "task_failed",
+                TaskEvent.attempt_number == task.attempt_count,
+            )
+            .order_by(TaskEvent.id.desc())
+            .limit(1)
+        )
+        failure_payload = failure_event.payload if failure_event is not None else {}
+        detail = str(failure_payload.get("detail", (task.failure or {}).get("detail", "")))
+        error_category = failure_payload.get(
+            "error_category", (task.failure or {}).get("error_category")
+        )
+        if (
+            task.status != "failed"
+            or failure_event is None
+            or failure_event.agent_id != agent.id
+            or error_category != "executor_ValidationError"
+            or "downstream handoff exceeds 32 KiB" not in detail
+        ):
+            raise HTTPException(
+                409,
+                "Execution recovery requires the original agent's recorded bounded-handoff failure.",
+            )
+
+    result = payload.result
+    summary = result.get("summary")
+    handoff = result.get("downstream_handoff")
+    envelope = handoff.get("publication_envelope") if isinstance(handoff, dict) else None
+    expected_commit = contract.get("base_ref")
+    if not isinstance(summary, dict) or not isinstance(envelope, dict):
+        raise HTTPException(422, "Recovered result lacks its bounded publication handoff.")
+    if len(json.dumps(summary, ensure_ascii=True, sort_keys=True)) > 16_384:
+        raise HTTPException(422, "Recovered execution summary exceeds 16 KiB.")
+    if len(json.dumps(handoff, ensure_ascii=True, sort_keys=True)) > 32_768:
+        raise HTTPException(422, "Recovered downstream handoff exceeds 32 KiB.")
+    trial = envelope.get("trial")
+    if (
+        not isinstance(trial, dict)
+        or not isinstance(trial.get("bundle_digest"), str)
+        or len(trial["bundle_digest"]) != 64
+    ):
+        raise HTTPException(422, "Recovered result lacks its bundle digest.")
+    if (
+        result.get("workflow") != "alpha-research-execution"
+        or result.get("repository") != "bulletproof_bt"
+        or result.get("success") is not True
+        or result.get("task_attempt") != task.attempt_count
+        or result.get("base_commit") != expected_commit
+        or summary.get("receipt_digest") != payload.expected_receipt_digest
+        or envelope.get("receipt_digest") != payload.expected_receipt_digest
+        or envelope.get("task_id") != str(task.id)
+        or envelope.get("campaign_digest") != campaign.campaign_digest
+        or envelope.get("source_commit") != expected_commit
+    ):
+        raise HTTPException(422, "Recovered execution identity does not match the task.")
+    raw_attempt = summary.get("alpha_campaign_attempt")
+    if not isinstance(raw_attempt, dict):
+        raise HTTPException(422, "Recovered result lacks its campaign attempt receipt.")
+    if raw_attempt.get("expected_campaign_digest") != campaign.campaign_digest:
+        raise HTTPException(422, "Recovered attempt is not bound to this campaign.")
+    if envelope.get("producer_gate_report", {}).get("capital_authority") is not False:
+        raise HTTPException(422, "Recovered result violates the no-capital boundary.")
+
+    if task.status == "failed":
+        prior_failure = dict(task.failure)
+        task.status = "succeeded"
+        task.result = result
+        task.failure = {}
+        task.completed_at = now()
+        clear_lease(task)
+        append_task_event(
+            db,
+            task,
+            "task_completed_result_recovered",
+            "Completed native execution recovered from a bounded-handoff encoding failure.",
+            agent_id=agent.id,
+            payload={
+                "reason": payload.reason,
+                "receipt_digest": payload.expected_receipt_digest,
+                "receipt_file_sha256": payload.receipt_file_sha256,
+                "receipt_file_size": payload.receipt_file_size,
+                "bundle_digest": trial["bundle_digest"],
+                "prior_error_category": prior_failure.get("error_category"),
+            },
+        )
+        prior_terminal = dict(campaign.terminal_reason or {})
+        _append_event(
+            db,
+            campaign,
+            "completed_execution_handoff_recovered",
+            f"agent:{agent.id}",
+            {
+                "task_id": str(task.id),
+                "receipt_digest": payload.expected_receipt_digest,
+                "receipt_file_sha256": payload.receipt_file_sha256,
+                "receipt_file_size": payload.receipt_file_size,
+                "prior_terminal_reason": prior_terminal,
+            },
+        )
+    elif task.result != result:
+        raise HTTPException(409, "Recovered task is already bound to different evidence.")
+
+    campaign.status = "running"
+    campaign.phase = "recovery"
+    campaign.next_action = "publish_recovered_native_execution"
+    campaign.completed_at = None
+    campaign.terminal_reason = {}
+    _consume_completed_execution_task(db, campaign, task)
+    return campaign
 
 
 def resume_campaign(

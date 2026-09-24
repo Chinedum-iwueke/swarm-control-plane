@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -214,6 +214,23 @@ class AlphaCampaignAction(StrictModel):
     expected_campaign_digest: str = Field(pattern=_DIGEST)
     actor: str = Field(pattern=_KEY, max_length=150)
     reason: str = Field(min_length=10, max_length=2000)
+
+
+class AlphaCompletedExecutionRecovery(StrictModel):
+    expected_campaign_digest: str = Field(pattern=_DIGEST)
+    expected_receipt_digest: str = Field(pattern=_DIGEST)
+    receipt_file_sha256: str = Field(pattern=_DIGEST)
+    receipt_file_size: int = Field(ge=1)
+    result: dict[str, Any]
+    reason: str = Field(min_length=20, max_length=2000)
+
+    @model_validator(mode="after")
+    def bounded_result(self):
+        import json
+
+        if len(json.dumps(self.result, ensure_ascii=True, sort_keys=True)) > 65_536:
+            raise ValueError("recovered execution result exceeds 64 KiB")
+        return self
 
 
 class AlphaCampaignResponse(StrictModel):

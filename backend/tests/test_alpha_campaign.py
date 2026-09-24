@@ -18,6 +18,7 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignAction,
     AlphaCampaignAttemptCreate,
     AlphaCampaignCreate,
+    AlphaCompletedExecutionRecovery,
 )
 from app.schemas.proposal import ProposalEngineeringMissionContract
 from app.services import alpha_campaign as service
@@ -1772,6 +1773,186 @@ def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch):
     assert service.record_attempt(db, record, payload) is existing
     assert record.hypothesis_count == 1
     assert record.trial_count == 4
+
+
+def test_completed_execution_recovery_is_agent_bound_and_resumable(monkeypatch):
+    record = campaign(
+        status="completed_no_candidate",
+        phase="complete",
+        terminal_reason={"category": "duration_budget_exhausted"},
+        completed_at=datetime.now(UTC),
+    )
+    task_id = uuid4()
+    receipt_digest = "9" * 64
+    raw_attempt = attempt(record).model_dump(mode="json")
+    envelope = {
+        "schema_version": "alpha003-publication-envelope-v1.0.0",
+        "task_id": str(task_id),
+        "campaign_digest": record.campaign_digest,
+        "source_commit": COMMIT,
+        "receipt_digest": receipt_digest,
+        "producer_gate_report": {"capital_authority": False},
+        "trial": {"bundle_digest": "8" * 64},
+    }
+    result = {
+        "workflow": "alpha-research-execution",
+        "repository": "bulletproof_bt",
+        "base_commit": COMMIT,
+        "task_attempt": 3,
+        "success": True,
+        "summary": {
+            "receipt_digest": receipt_digest,
+            "alpha_campaign_attempt": raw_attempt,
+        },
+        "downstream_handoff": {"publication_envelope": envelope},
+    }
+    task = SimpleNamespace(
+        id=task_id,
+        task_type="alpha_research_execution",
+        status="failed",
+        attempt_count=3,
+        input_contract={
+            "workflow": "alpha-research-execution",
+            "base_ref": COMMIT,
+            "campaign_id": str(record.id),
+            "campaign_digest": record.campaign_digest,
+        },
+        failure={
+            "error_category": "executor_ValidationError",
+            "detail": "downstream handoff exceeds 32 KiB",
+        },
+        result={},
+        completed_at=datetime.now(UTC),
+        assigned_agent_id=None,
+        leased_at=None,
+        lease_expires_at=None,
+        lease_token_prefix=None,
+        lease_token_digest=None,
+        last_execution_heartbeat_at=None,
+    )
+    agent = SimpleNamespace(id=uuid4())
+    failure_event = SimpleNamespace(
+        id=1,
+        agent_id=agent.id,
+        payload={
+            "error_category": "executor_ValidationError",
+            "detail": "downstream handoff exceeds 32 KiB",
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [record, None, failure_event]
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+    monkeypatch.setattr(service, "append_task_event", MagicMock())
+    consume = MagicMock(return_value=True)
+    monkeypatch.setattr(service, "_consume_completed_execution_task", consume)
+
+    recovered = service.recover_completed_execution(
+        db,
+        task,
+        agent,
+        AlphaCompletedExecutionRecovery(
+            expected_campaign_digest=record.campaign_digest,
+            expected_receipt_digest=receipt_digest,
+            receipt_file_sha256="7" * 64,
+            receipt_file_size=77_605_586,
+            result=result,
+            reason="Recover the immutable completed run after bounded handoff encoding failed.",
+        ),
+    )
+
+    assert recovered is record
+    assert task.status == "succeeded"
+    assert task.result == result
+    assert task.failure == {}
+    assert record.status == "running"
+    assert record.phase == "recovery"
+    consume.assert_called_once_with(db, record, task)
+
+    recovery_event = SimpleNamespace(
+        id=2,
+        agent_id=agent.id,
+        payload={
+            "receipt_digest": receipt_digest,
+            "receipt_file_sha256": "7" * 64,
+            "receipt_file_size": 77_605_586,
+        },
+    )
+    db.scalar.side_effect = [record, recovery_event]
+    with pytest.raises(HTTPException, match="attestation"):
+        service.recover_completed_execution(
+            db,
+            task,
+            SimpleNamespace(id=uuid4()),
+            AlphaCompletedExecutionRecovery(
+                expected_campaign_digest=record.campaign_digest,
+                expected_receipt_digest=receipt_digest,
+                receipt_file_sha256="7" * 64,
+                receipt_file_size=77_605_586,
+                result=result,
+                reason="Reject a different agent replaying the completed execution receipt.",
+            ),
+        )
+
+    db.scalar.side_effect = [record, recovery_event]
+    service.recover_completed_execution(
+        db,
+        task,
+        agent,
+        AlphaCompletedExecutionRecovery(
+            expected_campaign_digest=record.campaign_digest,
+            expected_receipt_digest=receipt_digest,
+            receipt_file_sha256="7" * 64,
+            receipt_file_size=77_605_586,
+            result=result,
+            reason="Idempotently confirm the same immutable completed execution receipt.",
+        ),
+    )
+    assert consume.call_count == 2
+
+
+def test_completed_execution_recovery_rejects_other_failures(monkeypatch):
+    task = SimpleNamespace(
+        id=uuid4(),
+        task_type="alpha_research_execution",
+        status="failed",
+        attempt_count=3,
+        failure={"error_category": "native_execution_failed", "detail": "failed"},
+    )
+    record = campaign(
+        status="needs_attention",
+        terminal_reason={"category": "execution_task_failed", "task_id": str(task.id)},
+    )
+    task.input_contract = {
+        "workflow": "alpha-research-execution",
+        "base_ref": COMMIT,
+        "campaign_id": str(record.id),
+        "campaign_digest": record.campaign_digest,
+    }
+    agent = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    db.scalar.side_effect = [
+        record,
+        None,
+        SimpleNamespace(
+            id=1,
+            agent_id=agent.id,
+            payload={"error_category": "native_execution_failed", "detail": "failed"},
+        ),
+    ]
+    with pytest.raises(HTTPException, match="original agent"):
+        service.recover_completed_execution(
+            db,
+            task,
+            agent,
+            AlphaCompletedExecutionRecovery(
+                expected_campaign_digest=record.campaign_digest,
+                expected_receipt_digest="9" * 64,
+                receipt_file_sha256="7" * 64,
+                receipt_file_size=100,
+                result={},
+                reason="This unrelated native failure must remain terminal and retained.",
+            ),
+        )
 
 
 def test_budget_exhaustion_closes_honestly(monkeypatch):
