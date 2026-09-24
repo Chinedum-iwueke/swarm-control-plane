@@ -249,20 +249,29 @@ def _schema(stage: str) -> dict:
                         "type": "object",
                         "additionalProperties": False,
                         "required": [
+                            "schema_version",
                             "candidate_key",
                             "venue",
                             "instrument",
                             "instruments",
+                            "basket_members",
                             "source_timeframe",
                             "research_timeframe",
                             "resampling_policy",
                             "required_fields",
                             "minimum_history_observations",
                             "liquidity_floor_usd",
+                            "transformations",
                             "transformation_rationale",
                             "rejected_alternatives",
+                            "selection_data_boundary",
+                            "outcome_data_consulted",
                         ],
                         "properties": {
+                            "schema_version": {
+                                "type": "string",
+                                "enum": ["adaptive-representation-plan-v1.0.0"],
+                            },
                             "candidate_key": {"type": "string"},
                             "venue": {"type": "string", "enum": ["bybit", "binance"]},
                             "instrument": {"type": "string"},
@@ -271,6 +280,42 @@ def _schema(stage: str) -> dict:
                                 "minItems": 1,
                                 "maxItems": 20,
                                 "items": {"type": "string"},
+                            },
+                            "basket_members": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 20,
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": [
+                                        "instrument",
+                                        "role",
+                                        "legacy_groups",
+                                        "selection_rationale",
+                                    ],
+                                    "properties": {
+                                        "instrument": {"type": "string"},
+                                        "role": {
+                                            "type": "string",
+                                            "enum": [
+                                                "primary",
+                                                "predictor",
+                                                "control",
+                                                "hedge",
+                                            ],
+                                        },
+                                        "legacy_groups": {
+                                            "type": "array",
+                                            "maxItems": 2,
+                                            "items": {
+                                                "type": "string",
+                                                "enum": ["stable", "volatile"],
+                                            },
+                                        },
+                                        "selection_rationale": {"type": "string"},
+                                    },
+                                },
                             },
                             "source_timeframe": {"type": "string", "enum": ["1m"]},
                             "research_timeframe": {
@@ -284,8 +329,62 @@ def _schema(stage: str) -> dict:
                             "required_fields": string_array,
                             "minimum_history_observations": {"type": "integer"},
                             "liquidity_floor_usd": {"type": "number"},
+                            "transformations": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 30,
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": [
+                                        "output_field",
+                                        "operation",
+                                        "input_fields",
+                                        "parameters",
+                                        "fit_policy",
+                                        "rationale",
+                                    ],
+                                    "properties": {
+                                        "output_field": {"type": "string"},
+                                        "operation": {
+                                            "type": "string",
+                                            "enum": [
+                                                "identity",
+                                                "simple_return",
+                                                "log_return",
+                                                "fractional_difference",
+                                                "rolling_zscore",
+                                                "realized_volatility",
+                                                "spread",
+                                                "ratio",
+                                                "cross_sectional_rank",
+                                            ],
+                                        },
+                                        "input_fields": string_array,
+                                        "parameters": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "number"
+                                            },
+                                        },
+                                        "fit_policy": {
+                                            "type": "string",
+                                            "enum": ["stateless", "train_only"],
+                                        },
+                                        "rationale": {"type": "string"},
+                                    },
+                                },
+                            },
                             "transformation_rationale": {"type": "string"},
                             "rejected_alternatives": string_array,
+                            "selection_data_boundary": {
+                                "type": "string",
+                                "enum": ["metadata_predictors_only_no_targets"],
+                            },
+                            "outcome_data_consulted": {
+                                "type": "boolean",
+                                "const": False,
+                            },
                         },
                     },
                 }
@@ -548,7 +647,18 @@ mechanisms, parameter budgets, or evidence. Return exactly one plan for every su
 smallest causally sufficient point-in-time basket and timeframe before any outcome evaluation. You may cross legacy
 stable/volatile groups when the mechanism requires it, but every asset must exist in the supplied lake catalog or
 admitted dataset inventory. Explain the chosen transformation and retain plausible rejected alternatives. The
-source remains 1m and all aggregation must be left-closed, left-labeled, complete-bar resampling.
+source remains 1m and all aggregation must be left-closed, left-labeled, complete-bar resampling. Assign every
+basket member an explicit primary, predictor, control, or hedge role. Stable and volatile labels are descriptive
+metadata, never mandatory partitions. Choose the research timeframe from the causal horizon and information-arrival
+process, not from a fixed allowlist or observed performance. Declare an ordered transformation graph using only the
+supported native operations. Price levels usually require a scale-safe representation such as log/simple returns or,
+when persistence and memory retention are material to the question, train-only fractional differentiation with
+0 < d < 0.5. Fractional differentiation is not automatic evidence of stationarity: explain why it is appropriate,
+bind d and its truncation threshold before validation/test outcomes, and retain returns/differences as rejected
+alternatives. Use rolling normalization or volatility only when the mechanism requires local scaling. Cross-asset
+spreads, ratios, and ranks must name all causal inputs. Never select assets, timeframe, transformation, d, window, or
+missingness policy by comparing target returns, backtest PnL, held-out metrics, or downstream promotion outcomes.
+Set selection_data_boundary to metadata_predictors_only_no_targets and outcome_data_consulted to false.
 The strategy_catalog is the exact native capability inventory at the reviewed Bulletproof commit. Set
 reusable_hypothesis_id only when a listed eligible contract genuinely tests the proposed mechanism at the chosen
 research timeframe. Otherwise use null; never distort a question merely to reuse code.

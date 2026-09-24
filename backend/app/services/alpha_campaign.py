@@ -397,6 +397,9 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             entry["reusable_strategy"] = source.document.get(
                 "reusable_strategy_capability"
             )
+            entry["representation_plan"] = source.document.get(
+                "representation_plan"
+            )
             entry["discovery_candidate_id"] = str(source.id)
             entry["discovery_candidate_digest"] = source.candidate_digest
         research_queue.append(entry)
@@ -568,6 +571,7 @@ def _stage_contract(
         "timeframe": "1m",
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": _canonical_resampling_policy(source),
+        "representation_plan": source.get("representation_plan"),
         "reusable_strategy": source.get("reusable_strategy"),
         "tier": "Tier2B",
         "max_variants": campaign.budget["max_variants_per_hypothesis"],
@@ -721,6 +725,7 @@ def _create_strategy_engineering_task(
         ),
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": _canonical_resampling_policy(source),
+        "representation_plan": source.get("representation_plan"),
         "window": {
             "start": campaign.specification["execution_window_start"],
             "end": campaign.specification["execution_window_end"],
@@ -769,6 +774,7 @@ def _create_strategy_engineering_task(
             "The implementation follows the canonical hypothesis/strategy generation and backtest-truth instructions in full.",
             "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
             "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
+            "When an adaptive representation plan exists, the strategy declares and consumes its exact ordered output fields and plan digest at causal decision timestamps.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
             "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
             "No capital, order, promotion or self-approval authority is introduced.",

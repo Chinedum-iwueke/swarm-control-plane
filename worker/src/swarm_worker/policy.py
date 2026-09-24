@@ -261,6 +261,7 @@ class AlphaResearchExecutionContract(BaseModel):
     resampling_policy: Literal["left_closed_left_labeled_complete_bars"] = (
         _RESAMPLING_POLICY
     )
+    representation_plan: dict[str, Any] | None = None
     reusable_strategy: dict[str, Any] | None = None
     tier: Literal["Tier2A", "Tier2B", "Tier3"]
     max_variants: int = Field(ge=1, le=256)
@@ -282,6 +283,36 @@ class AlphaResearchExecutionContract(BaseModel):
 
     @model_validator(mode="after")
     def stage_contract(self):
+        if self.representation_plan is not None:
+            plan = self.representation_plan
+            required = {
+                "schema_version",
+                "candidate_key",
+                "instruments",
+                "basket_members",
+                "source_timeframe",
+                "research_timeframe",
+                "resampling_policy",
+                "transformations",
+                "transformation_rationale",
+                "rejected_alternatives",
+                "selection_data_boundary",
+                "outcome_data_consulted",
+            }
+            if set(plan) != required:
+                raise ValueError("adaptive representation plan fields are not exact")
+            if plan["schema_version"] != "adaptive-representation-plan-v1.0.0":
+                raise ValueError("unsupported adaptive representation plan")
+            if plan["instruments"] != self.instruments:
+                raise ValueError("representation basket must match admitted bindings")
+            if plan["research_timeframe"] != self.research_timeframe:
+                raise ValueError("representation timeframe differs from assignment")
+            if plan["resampling_policy"] != self.resampling_policy:
+                raise ValueError("representation resampling policy differs from assignment")
+            if plan["selection_data_boundary"] != "metadata_predictors_only_no_targets":
+                raise ValueError("representation selection boundary is unsafe")
+            if plan["outcome_data_consulted"] is not False:
+                raise ValueError("representation selection must be outcome blind")
         if self.reusable_strategy is not None:
             reusable = self.reusable_strategy
             required = {

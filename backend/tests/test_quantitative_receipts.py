@@ -240,7 +240,55 @@ def test_lake_summary_prefers_manifest_catalog_as_visibility_only():
     result = lake_inventory_summary(db)
     assert result["status"] == "manifest_catalog_visible_unadmitted"
     assert result["assets"] == [["perp", "bybit", "ETHUSDT"]]
+    assert result["membership_records"] == []
     assert result["execution_authority"] is False
+
+
+def test_manifest_catalog_accepts_bound_point_in_time_membership_metadata():
+    value = manifest_catalog_receipt()
+    value["result"]["schema_version"] = "data002-manifest-catalog-v1.1.0"
+    value["result"]["manifests"]["stable_universe"] = {
+        "path": "manifests/stable_universe.parquet",
+        "content_digest": "4" * 64,
+        "row_count": 1,
+        "columns": ["market", "exchange", "symbol", "first_seen_ts"],
+    }
+    value["result"]["manifest_count"] = 4
+    value["result"]["memberships"] = {
+        "stable_universe": {
+            "content_digest": "4" * 64,
+            "row_count": 1,
+            "columns": ["market", "exchange", "symbol", "first_seen_ts"],
+            "classification": "optional_research_metadata",
+        }
+    }
+    value["result"]["membership_records"] = [{
+        "source_manifest": "stable_universe",
+        "source_manifest_digest": "4" * 64,
+        "membership_kind": "static",
+        "group": "stable",
+        "source_universe": "stable",
+        "market": "perp",
+        "venue": "bybit",
+        "instrument": "ETHUSDT",
+        "effective_from": "2025-01-01T00:00:00Z",
+        "effective_to": "2025-01-01T00:00:00Z",
+        "observation_count": 1,
+        "available": True,
+        "execution_eligible": False,
+    }]
+    value["result"]["membership_record_count"] = 1
+    value["input_digest"] = value["dataset_digest"] = digest(
+        value["result"]["manifests"]
+    )
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
+
+    db = MagicMock()
+    db.scalar.return_value = None
+    assert register_receipt(db, payload(value)).milestone == "DATA-002"
 
 
 def test_lake_summary_fails_closed_when_bound_receipt_digest_changes():

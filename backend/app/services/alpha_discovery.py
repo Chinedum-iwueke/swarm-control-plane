@@ -181,7 +181,10 @@ def _discovery_catalog(db: Session, payload: AlphaResearchMandateCreate) -> dict
         )
     result = record.receipt.get("result", {})
     if (
-        result.get("schema_version") != "data002-manifest-catalog-v1.0.0"
+        result.get("schema_version") not in {
+            "data002-manifest-catalog-v1.0.0",
+            "data002-manifest-catalog-v1.1.0",
+        }
         or not set(binding.allowed_venues).issubset(set(result.get("venue_scope", [])))
         or result.get("execution_eligible") is not False
     ):
@@ -900,7 +903,7 @@ def _question_similarity(first: str, second: str) -> float:
 
 
 def _apply_representation_plans(
-    raw_candidates: list[dict], raw_plans: list[dict]
+    raw_candidates: list[dict], raw_plans: list[dict], context: dict | None = None
 ) -> tuple[list[dict], dict]:
     """Bind one independently selected, outcome-blind representation per candidate."""
     candidates = {
@@ -924,6 +927,23 @@ def _apply_representation_plans(
     audit = {}
     for key, candidate in candidates.items():
         plan = plans[key]
+        membership_records = (
+            (context or {}).get("lake_catalog", {}).get("membership_records", [])
+        )
+        if membership_records:
+            for member in plan.basket_members:
+                evidenced_groups = {
+                    item.get("group")
+                    for item in membership_records
+                    if item.get("venue") == plan.venue
+                    and item.get("instrument") == member.instrument
+                    and item.get("available") is True
+                }
+                if not set(member.legacy_groups).issubset(evidenced_groups):
+                    raise ValueError(
+                        f"basket membership labels are not catalog-evidenced for "
+                        f"{plan.venue}:{member.instrument}"
+                    )
         candidate["data"] = {
             "venue": plan.venue,
             "instrument": plan.instrument,
@@ -935,11 +955,29 @@ def _apply_representation_plans(
             "minimum_history_observations": plan.minimum_history_observations,
             "liquidity_floor_usd": plan.liquidity_floor_usd,
         }
+        representation_plan = {
+            "schema_version": plan.schema_version,
+            "candidate_key": plan.candidate_key,
+            "instruments": plan.instruments,
+            "basket_members": [
+                item.model_dump(mode="json") for item in plan.basket_members
+            ],
+            "source_timeframe": plan.source_timeframe,
+            "research_timeframe": plan.research_timeframe,
+            "resampling_policy": plan.resampling_policy,
+            "transformations": [
+                item.model_dump(mode="json") for item in plan.transformations
+            ],
+            "transformation_rationale": plan.transformation_rationale,
+            "rejected_alternatives": plan.rejected_alternatives,
+            "selection_data_boundary": plan.selection_data_boundary,
+            "outcome_data_consulted": plan.outcome_data_consulted,
+        }
+        candidate["representation_plan"] = representation_plan
         bound.append(candidate)
         audit[key] = {
             "data": candidate["data"],
-            "transformation_rationale": plan.transformation_rationale,
-            "rejected_alternatives": plan.rejected_alternatives,
+            "representation_plan": representation_plan,
             "outcome_data_consulted": False,
         }
     return bound, audit
@@ -1009,6 +1047,9 @@ def _materialize_candidates(
             normalized_candidate, deterministic_normalizations = (
                 _normalize_candidate_input(raw_candidate, cycle)
             )
+            representation_plan = normalized_candidate.pop(
+                "representation_plan", None
+            )
             candidate = AlphaPredictiveCandidate.model_validate(normalized_candidate)
             assured_equations = []
             for equation in candidate.equations:
@@ -1038,6 +1079,7 @@ def _materialize_candidates(
             document = candidate.model_dump(mode="json") | {
                 "dataset_binding_index": binding_index,
                 "deterministic_normalizations": deterministic_normalizations,
+                "representation_plan": representation_plan,
                 "reusable_strategy_capability": next(
                     (
                         item
@@ -1842,7 +1884,9 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     )
     try:
         represented, representation_brief = _apply_representation_plans(
-            raw, raw_plans if isinstance(raw_plans, list) else []
+            raw,
+            raw_plans if isinstance(raw_plans, list) else [],
+            cycle.context,
         )
     except (ValidationError, ValueError) as exc:
         cycle.status = "needs_attention"

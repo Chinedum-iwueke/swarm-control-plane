@@ -79,6 +79,11 @@ demonstrated cache reuse, mismatch rejection and a source-bound
 `machine_verified` receipt. The representation stage selects hypothesis-specific
 baskets and arbitrary safe whole-minute/hour/day research timeframes before outcomes,
 retains rejected alternatives, and binds Bulletproof's complete-bar resampler.
+ALPHA-009 closes the next ownership boundary: DATA-002 exposes digest-bound compact
+membership schedules, the representation scientist emits a typed transformation graph,
+and Bulletproof alone materializes and feeds causal outputs into native strategies.
+Qualification requires diverse held-out reasoning cases plus a terminal mixed-basket
+BT-009 outcome; fluent plans without engine consumption remain unqualified.
 ALPHA-004 operational exit separately requires four active supervised services, one
 approved weekly mandate and a terminal real-data campaign attempt.
 

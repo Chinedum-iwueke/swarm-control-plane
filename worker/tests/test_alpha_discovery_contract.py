@@ -193,16 +193,24 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
     plan = schema["properties"]["representation_plans"]["items"]
     required = set(plan["required"])
     assert {
+        "schema_version",
         "candidate_key",
         "instruments",
+        "basket_members",
         "source_timeframe",
         "research_timeframe",
         "resampling_policy",
         "transformation_rationale",
         "rejected_alternatives",
+        "transformations",
+        "selection_data_boundary",
+        "outcome_data_consulted",
     }.issubset(required)
     assert plan["properties"]["source_timeframe"]["enum"] == ["1m"]
-    assert "outcome" not in plan["properties"]
+    assert plan["properties"]["outcome_data_consulted"]["const"] is False
+    assert "fractional_difference" in plan["properties"]["transformations"][
+        "items"
+    ]["properties"]["operation"]["enum"]
 
 
 def test_representation_prompt_forbids_semantic_and_outcome_changes():
@@ -213,6 +221,9 @@ def test_representation_prompt_forbids_semantic_and_outcome_changes():
     assert "do not change candidate questions" in prompt
     assert "before any outcome evaluation" in prompt
     assert "plausible rejected alternatives" in prompt
+    assert "0 < d < 0.5" in prompt
+    assert "Stable and volatile labels are descriptive" in prompt
+    assert "metadata, never mandatory partitions" in prompt
 
 
 def test_alpha_discovery_contract_survives_complete_policy_validation():

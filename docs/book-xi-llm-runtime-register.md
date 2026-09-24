@@ -10,7 +10,7 @@ it is never a backtest result, risk decision, promotion decision or order instru
 | Founder planner | `worker/src/swarm_worker/planner/engine.py` | Turns a founder conversation into a bounded decision brief or proposal | Structured response only | Digest-safe founder approval before execution |
 | Research Intelligence director | `AlphaDiscoveryExecutor`, stage `intelligence` | Synthesizes cited mechanisms, contradictions, prior failures, observations and portfolio gaps | Structured cited brief only | Deterministic citation and mandate checks |
 | Senior researcher | `AlphaDiscoveryExecutor`, stage `hypothesis` | Proposes predictive, timed, falsifiable questions and mechanisms | Structured candidate questions only | Falsifiability, novelty, equation and data gates |
-| Data representation scientist | `AlphaDiscoveryExecutor`, stage `representation` | Selects pre-outcome baskets, timeframes, required fields and transformations; records alternatives | Structured representation plan only | Exact-coverage schema and DATA-002/003 availability checks |
+| Data representation scientist | `AlphaDiscoveryExecutor`, stage `representation` | Selects pre-outcome baskets, member roles, clocks and a typed transformation graph; may use or cross optional stable/volatile labels when justified; records rejected alternatives | `adaptive-representation-plan-v1.0.0` only | Catalog-label validation, exact DATA-002/003 panel admission, native causal replay, exact strategy-consumer binding and terminal BT-009 evidence |
 | Strategy engineer | `EngineeringMissionExecutor`, coding session | Drafts an exact native Bulletproof hypothesis contract, strategy and tests in an isolated worktree | Approved paths and diff budget only | Tests, independent review, PR/merge and source-commit rebinding |
 | Engineering reviewer | `EngineeringMissionExecutor`, review session | Reviews the uncommitted engineering patch against its immutable acceptance contract | Read-only | High findings fail the task; it cannot merge or approve itself |
 | Strategy-spec reviewer | `AlphaStrategyReviewExecutor` | Independently critiques native strategy/spec equivalence and reproducibility | Structured review only | Separate evaluator profile and controller reconciliation |
@@ -26,6 +26,10 @@ place orders. Bulletproof-native code performs data transformation and backtests
 immutable contracts. The control plane enforces budgets, authority, independence,
 lineage and lifecycle transitions. New code, expanded data authority, shadow admission
 and every capital action remain explicit gates.
+An LLM may propose fractional differentiation, returns, local scaling or a cross-asset
+representation, but it may not tune those choices against targets or held-out results.
+The native compiler validates parameters, materializes complete bars, aligns panels,
+and exposes fields only at their decision timestamps.
 
 ## Evidence requirements
 
