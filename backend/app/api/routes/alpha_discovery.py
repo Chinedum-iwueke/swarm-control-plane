@@ -11,6 +11,7 @@ from app.models.alpha_discovery import AlphaFounderResearchIdea, AlphaResearchMa
 from app.schemas.alpha_discovery import (
     AlphaDiscoveryGroundingRecovery,
     AlphaDiscoveryOverview,
+    AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaFounderResearchIdeaResponse,
     AlphaResearchMandateApproval,
@@ -24,6 +25,7 @@ from app.services.alpha_discovery import (
     reconcile_mandate,
     recover_discovery_grounding,
     register_mandate,
+    retry_invalid_discovery_stage,
     serialize_mandate,
 )
 
@@ -149,6 +151,29 @@ def recover_grounding(
         "cycle_id": str(cycle.id),
         "status": cycle.status,
         "cycle_digest": cycle.cycle_digest,
+    }
+
+
+@router.post("/mandates/{mandate_id}/retry-invalid-stage")
+def retry_invalid_stage(
+    mandate_id: UUID,
+    payload: AlphaDiscoveryStageRetry,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = _locked(db, mandate_id)
+    cycle = retry_invalid_discovery_stage(db, mandate, payload)
+    db.commit()
+    db.refresh(cycle)
+    return {
+        "cycle_id": str(cycle.id),
+        "status": cycle.status,
+        "phase": cycle.phase,
+        "next_action": cycle.next_action,
+        "representation_task_id": (
+            str(cycle.representation_task_id)
+            if cycle.representation_task_id
+            else None
+        ),
     }
 
 

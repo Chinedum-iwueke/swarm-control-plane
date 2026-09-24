@@ -155,6 +155,13 @@ class AlphaDiscoveryGroundingRecovery(StrictModel):
     reason: str = Field(min_length=10, max_length=2000)
 
 
+class AlphaDiscoveryStageRetry(StrictModel):
+    expected_mandate_digest: str = Field(pattern=_DIGEST)
+    expected_cycle_id: uuid.UUID
+    actor: str = Field(pattern=_KEY, max_length=150)
+    reason: str = Field(min_length=10, max_length=2000)
+
+
 class AlphaFounderResearchIdeaCreate(StrictModel):
     mandate_id: uuid.UUID
     expected_mandate_digest: str = Field(pattern=_DIGEST)

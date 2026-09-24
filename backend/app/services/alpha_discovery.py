@@ -31,6 +31,7 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignCreate,
 )
 from app.schemas.alpha_discovery import (
+    AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaRepresentationPlan,
@@ -468,6 +469,8 @@ def _task(
     cycle: AlphaDiscoveryCycle,
     stage: str,
     context: dict,
+    *,
+    task_number: str | None = None,
 ) -> Task:
     stage_code = {"intelligence": "I", "hypothesis": "H", "representation": "R"}[stage]
     titles = {
@@ -487,7 +490,8 @@ def _task(
     }
     task = build_task(
         TaskCreate(
-            task_number=f"A4-{str(mandate.id)[:8]}-{cycle.ordinal:03d}-{stage_code}",
+            task_number=task_number
+            or f"A4-{str(mandate.id)[:8]}-{cycle.ordinal:03d}-{stage_code}",
             project="systematic-research",
             task_type="alpha_discovery",
             title=titles[stage],
@@ -531,6 +535,93 @@ def _task(
     )
     persist_new_task(db, task)
     return task
+
+
+def retry_invalid_discovery_stage(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    payload: AlphaDiscoveryStageRetry,
+) -> AlphaDiscoveryCycle:
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before stage recovery.")
+    if mandate.status != "active" or not mandate.valid_from <= now() < mandate.valid_until:
+        raise HTTPException(409, "Stage recovery requires an active mandate.")
+    cycle = db.scalar(
+        select(AlphaDiscoveryCycle)
+        .where(AlphaDiscoveryCycle.mandate_id == mandate.id)
+        .order_by(AlphaDiscoveryCycle.ordinal.desc())
+        .with_for_update()
+        .limit(1)
+    )
+    if cycle is None or cycle.id != payload.expected_cycle_id:
+        raise HTTPException(409, "The expected discovery cycle is no longer current.")
+    stages = {
+        "review_invalid_intelligence_output": (
+            "intelligence",
+            "intelligence_task_id",
+            "intelligence_synthesis",
+            "await_recovered_intelligence",
+        ),
+        "review_invalid_hypothesis_output": (
+            "hypothesis",
+            "hypothesis_task_id",
+            "hypothesis_generation",
+            "await_recovered_hypothesis",
+        ),
+        "review_invalid_representation_output": (
+            "representation",
+            "representation_task_id",
+            "representation_selection",
+            "await_recovered_representation",
+        ),
+    }
+    recovery = stages.get(cycle.next_action) if cycle.status == "needs_attention" else None
+    if recovery is None:
+        raise HTTPException(409, "The current cycle has no invalid stage to retry.")
+    stage, task_attribute, phase, next_action = recovery
+    previous = db.get(Task, getattr(cycle, task_attribute))
+    if previous is None or previous.status != "succeeded":
+        raise HTTPException(409, "Invalid-stage recovery requires retained successful output.")
+    contract = previous.input_contract or {}
+    if any(
+        contract.get(key) != value
+        for key, value in {
+            "mandate_id": str(mandate.id),
+            "mandate_digest": mandate.mandate_digest,
+            "cycle_id": str(cycle.id),
+            "stage": stage,
+        }.items()
+    ):
+        raise HTTPException(409, "The retained stage contract no longer matches the cycle.")
+    replacement = _task(
+        db,
+        mandate,
+        cycle,
+        stage,
+        deepcopy(contract.get("context", {})),
+        task_number=f"{previous.task_number}-R{previous.id.hex[:8]}",
+    )
+    setattr(cycle, task_attribute, replacement.id)
+    cycle.status = "running"
+    cycle.phase = phase
+    cycle.next_action = next_action
+    cycle.completed_at = None
+    cycle.heartbeat_at = now()
+    _event(
+        db,
+        mandate,
+        "invalid_discovery_stage_superseded",
+        {
+            "stage": stage,
+            "actor": payload.actor,
+            "reason": payload.reason,
+            "previous_task_id": str(previous.id),
+            "previous_result_digest": digest_document(previous.result or {}),
+            "replacement_task_id": str(replacement.id),
+        },
+        cycle,
+    )
+    return cycle
 
 
 def queue_founder_idea(
