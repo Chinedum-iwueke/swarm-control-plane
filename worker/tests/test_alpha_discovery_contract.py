@@ -6,6 +6,7 @@ import pytest
 from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryError,
     AlphaDiscoveryExecutor,
+    _normalize_output,
     _prompt,
     _runtime_options,
     _schema,
@@ -211,6 +212,42 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
     assert "fractional_difference" in plan["properties"]["transformations"][
         "items"
     ]["properties"]["operation"]["enum"]
+    parameters = plan["properties"]["transformations"]["items"]["properties"][
+        "parameters"
+    ]
+    assert parameters["additionalProperties"] is False
+    assert set(parameters["required"]) == {
+        "periods",
+        "window",
+        "d",
+        "weight_threshold",
+    }
+
+
+def test_representation_output_drops_unused_nullable_parameters():
+    output = {
+        "representation_plans": [
+            {
+                "transformations": [
+                    {
+                        "operation": "fractional_difference",
+                        "parameters": {
+                            "periods": None,
+                            "window": None,
+                            "d": 0.4,
+                            "weight_threshold": 0.0001,
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+
+    normalized = _normalize_output("representation", output)
+
+    assert normalized["representation_plans"][0]["transformations"][0][
+        "parameters"
+    ] == {"d": 0.4, "weight_threshold": 0.0001}
 
 
 def test_representation_prompt_forbids_semantic_and_outcome_changes():

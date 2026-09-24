@@ -149,7 +149,10 @@ class AlphaDiscoveryExecutor:
         success = process.returncode == 0 and output_path.is_file()
         output = {}
         if success:
-            output = json.loads(output_path.read_text(encoding="utf-8"))
+            output = _normalize_output(
+                contract.stage,
+                json.loads(output_path.read_text(encoding="utf-8")),
+            )
             if len(json.dumps(output, separators=(",", ":"))) > 15_000:
                 raise AlphaDiscoveryError(
                     "Discovery output exceeds the bounded task result."
@@ -186,6 +189,18 @@ class AlphaDiscoveryExecutor:
             retryable=not success,
             summary={"alpha_discovery_output": output} if success else {},
         )
+
+
+def _normalize_output(stage: str, output: dict) -> dict:
+    if stage != "representation":
+        return output
+    for plan in output.get("representation_plans", []):
+        for transformation in plan.get("transformations", []):
+            parameters = transformation.get("parameters", {})
+            transformation["parameters"] = {
+                key: value for key, value in parameters.items() if value is not None
+            }
+    return output
 
 
 def _schema(stage: str) -> dict:
@@ -363,8 +378,26 @@ def _schema(stage: str) -> dict:
                                         "input_fields": string_array,
                                         "parameters": {
                                             "type": "object",
-                                            "additionalProperties": {
-                                                "type": "number"
+                                            "additionalProperties": False,
+                                            "required": [
+                                                "periods",
+                                                "window",
+                                                "d",
+                                                "weight_threshold",
+                                            ],
+                                            "properties": {
+                                                "periods": {
+                                                    "type": ["number", "null"]
+                                                },
+                                                "window": {
+                                                    "type": ["number", "null"]
+                                                },
+                                                "d": {
+                                                    "type": ["number", "null"]
+                                                },
+                                                "weight_threshold": {
+                                                    "type": ["number", "null"]
+                                                },
                                             },
                                         },
                                         "fit_policy": {
