@@ -44,9 +44,8 @@ strategy-engineering gate. No approximate strategy substitution is allowed.
 
 Focused validation passes 90 backend tests, 30 worker tests and 33 native tests. The
 complete control-plane suites pass 899 backend tests with one optional skip and 335
-worker tests. Alembic has one head, `c2a8e4f61d90`. Repository-wide native validation,
-merge, deployment, a new founder-approved mandate and two concurrent one-year BT-009
-receipts remain required operational evidence.
+worker tests. Alembic has one head, `c2a8e4f61d90`. These counts describe the source
+baseline; the production continuation below is the authoritative operational state.
 
 ## Claim Boundary And Rollback
 
@@ -59,3 +58,38 @@ added.
 Rollback stops new ALPHA data-admission leases and new mandate activation, preserves
 all catalog, candidate, receipt and DATA records, and restores the prior single-panel
 campaign path. Existing immutable approvals are never broadened or rewritten.
+
+## Production continuation (2026-09-23)
+
+The production DATA-002 catalog receipt
+`c6b28b37-55b6-44e9-b6b2-1cfaddcb62f8` exposes 689 assets, 3,441 availability
+records and 123 one-year coverage candidates without opening every lake object in
+each cycle. It contains 686 Bybit assets and three Binance assets. Stable and
+volatile memberships remain optional descriptive metadata rather than executable
+universe boundaries. Catalog visibility is not data admission: every selected panel
+still requires content-bound DATA-002/003 evidence before execution.
+
+The active production mandate remains deliberately narrower than that catalog. Its
+current execution authority is one admitted Bybit BTCUSDT panel, so this validation
+proves broad discovery visibility and lazy admission but does not yet certify
+adaptive multi-asset or mixed-basket execution. The automatic successor cycle
+correctly routes novel strategy code to founder approval instead of substituting an
+existing single-instrument implementation.
+
+Control-plane PRs #346 through #352 are deployed. They repair idempotent mandate
+accounting, extend the bounded native execution timeout, preserve charter authority
+during package rotation, rebaseline RI retrieval without weakening thresholds and
+recover an in-flight campaign that crossed its wall-clock deadline. PR #351
+calibrates the worker ceiling to 12 hours from measured classic-engine throughput
+without changing the question, dataset, window, tier, grid or authority. PR #352
+adds an authenticated, identity-bound recovery path for a completed native receipt
+whose full evidence exceeded the bounded worker-result contract. The rebuilt VM2
+API and VM1 executors run the merged #352 source.
+
+Both genuine one-year attempts are now terminal negative results with complete
+BT-009 publication and memory confirmation. The successor discovery cycle was
+created exactly once after immutable mandate-counter reconstruction. This closes the
+initial no-capital autonomous-loop evidence boundary. It does not certify adaptive
+multi-asset execution, a shadow-admitted candidate, or any order or capital
+authority. Exact terminal evidence is recorded in
+`backtest-activity-validation.md`.

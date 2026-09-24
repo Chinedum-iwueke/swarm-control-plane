@@ -146,3 +146,50 @@ On the 71 GiB VM1 this correctly serializes two eight-worker jobs when concurren
 admission would exceed measured safe capacity. Concurrency is a capacity outcome,
 not a milestone assertion; the scheduler must not overcommit memory merely to make
 two jobs overlap.
+
+## One-year production execution continuation (2026-09-23)
+
+Two genuine approved one-year tasks overlapped on VM1 from 2026-09-19 00:44 UTC
+until 01:07 UTC. The impact-proxy job completed during that interval. The funding-
+basis job continued until its original six-hour execution bound, retained the timed-
+out attempt, and was requeued against the same immutable task after the reviewed
+eight-hour package rotation. This is overlapping admission and execution evidence;
+it is not a claim that both jobs finished concurrently.
+
+The impact-proxy campaign `c2fa962a-4f56-41ad-aaae-d01263fa62a6` is terminal
+`completed_no_candidate`. It retained one negative attempt with eight trials and
+complete reproducibility, point-in-time, held-out, cost-stress, selection-bias,
+independent-review and logging gates. BT-009 bridge
+`f801d5eb-8b58-51b1-aa6d-bae405ddf928` is `complete`; its publication bundle digest
+is `5b82fd5223a8b8298a8c1da4d88a5670f02ba9862fe445f32f85e29a99ab5f26`
+and its independent disposition is `retain_negative`.
+
+The replacement funding-basis task used four preregistered variants over the 2023
+calendar year and four capacity-governed workers. Direct measurement under the
+classic engine showed roughly 684 rows per minute for the slowest variant, which
+would miss the former eight-hour ceiling. Attempt two was therefore cooperatively
+released at the worker boundary, preserving its immutable task events and partial
+workspace, before timeout. PR #351 passed 373 worker tests, was merged as
+`9e7670af8bad73f503d2ee0fe74a3b6880e7ede5`, and rotated only the signed executor
+package to version 1.3.0 with a 43,200-second ceiling. The unchanged plan digest
+`98455e60da54f3833d4cbb5c3b57e786044bafb95f65e0ab7e458d6021897482`
+was reapproved under the bounded risk-zero delegation.
+
+Attempt three completed four trials and produced a 77,605,586-byte native receipt.
+Its scientific outcome is negative because matched-control support was inadequate;
+no out-of-sample, cost-stress, shadow, order or capital authority was inferred. The
+full receipt is retained under durable bundle
+`103cf716d7e079755b3e2963a1c338428ead1c4de2e8162078268edfbf84710a`
+with manifest digest
+`001cf628eb3aecdf4e6166b8ffe6ef1a4bb508551339a8b41b08845f613944bf`.
+
+The original worker handoff could not place that evidence inside its 32 KiB result
+contract. PR #352, merged as
+`bd7674e8f7c21aebb3255191c6e2444c4d8762ff`, replaced the oversized payload with a
+compact digest-addressed handoff and added an authenticated recovery endpoint bound
+to the exact workload identity on the failed attempt. After RI-016 reconciled to
+source epoch 577480 with incremental/full digest parity, recovery completed BT-009
+bridge `596171f2-2e8b-57e8-a405-186552478300`, publication
+`158843cb-2a03-5392-9ca3-04820cca146c`, and memory confirmation. The campaign is
+terminal `completed_no_candidate`; complete evidence was preserved while the
+bounded worker contract remained intact.
