@@ -378,7 +378,8 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
                     )
                     if index is None:
                         raise HTTPException(
-                            409, "Admitted candidate dataset is absent from the campaign."
+                            409,
+                            "Admitted candidate dataset is absent from the campaign.",
                         )
                     binding_indices.append(index)
                 binding_index = binding_indices[0]
@@ -388,18 +389,14 @@ def register_campaign(db: Session, payload: AlphaCampaignCreate) -> AlphaCampaig
             entry["dataset_binding_indices"] = binding_indices
             entry["instrument"] = source.document["data"]["instrument"]
             entry["instruments"] = source.document["data"]["instruments"]
-            entry["research_timeframe"] = source.document["data"][
-                "research_timeframe"
-            ]
+            entry["research_timeframe"] = source.document["data"]["research_timeframe"]
             entry["resampling_policy"] = _canonical_resampling_policy(
                 source.document["data"]
             )
             entry["reusable_strategy"] = source.document.get(
                 "reusable_strategy_capability"
             )
-            entry["representation_plan"] = source.document.get(
-                "representation_plan"
-            )
+            entry["representation_plan"] = source.document.get("representation_plan")
             entry["discovery_candidate_id"] = str(source.id)
             entry["discovery_candidate_digest"] = source.candidate_digest
         research_queue.append(entry)
@@ -566,7 +563,11 @@ def _stage_contract(
         ),
         "instruments": source.get(
             "instruments",
-            [source.get("instrument", campaign.specification["allowed_instruments"][0])],
+            [
+                source.get(
+                    "instrument", campaign.specification["allowed_instruments"][0]
+                )
+            ],
         ),
         "timeframe": "1m",
         "research_timeframe": source.get("research_timeframe", "1m"),
@@ -594,7 +595,9 @@ def _source_bindings(campaign: AlphaCampaign, source: dict) -> list[dict]:
     if not isinstance(indices, list) or not indices:
         raise HTTPException(409, "Research queue has no admitted dataset bindings.")
     try:
-        bindings = [campaign.specification["dataset_bindings"][int(item)] for item in indices]
+        bindings = [
+            campaign.specification["dataset_bindings"][int(item)] for item in indices
+        ]
     except (IndexError, TypeError, ValueError) as exc:
         raise HTTPException(409, "Research queue dataset bindings changed.") from exc
     if len({item["dataset_build_id"] for item in bindings}) != len(bindings):
@@ -721,7 +724,11 @@ def _create_strategy_engineering_task(
         ),
         "instruments": source.get(
             "instruments",
-            [source.get("instrument", campaign.specification["allowed_instruments"][0])],
+            [
+                source.get(
+                    "instrument", campaign.specification["allowed_instruments"][0]
+                )
+            ],
         ),
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": _canonical_resampling_policy(source),
@@ -737,6 +744,10 @@ def _create_strategy_engineering_task(
         "authority": campaign.specification["authority_boundary"],
     }
     if correction_feedback is not None:
+        # Correction stages already carry the complete ordered binding list. Drop
+        # the legacy singular alias before adding review evidence so the typed
+        # mission contract remains within its 20-key top-level safety bound.
+        evidence.pop("dataset_binding")
         evidence["independent_review_correction"] = correction_feedback
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
@@ -805,9 +816,7 @@ def _create_strategy_engineering_task(
     ProposalEngineeringMissionContract.model_validate(executable_contract)
     task = build_task(
         TaskCreate(
-            task_number=_stage_task_number(
-                campaign, source, stage
-            ),
+            task_number=_stage_task_number(campaign, source, stage),
             project="bulletproof_bt",
             task_type="engineering_mission",
             title=f"Engineer native strategy: {question[:120]}",
@@ -869,9 +878,7 @@ def _independent_review_correction(task: Task) -> dict | None:
     try:
         prior = json.loads(
             getattr(task, "input_contract", {}).get("evidence_context", "{}")
-        ).get(
-            "independent_review_correction"
-        )
+        ).get("independent_review_correction")
     except (AttributeError, json.JSONDecodeError, TypeError):
         prior = None
     if isinstance(prior, dict):
@@ -950,13 +957,19 @@ def _legacy_strategy_engineering_task(
 
 
 def _materialize_strategy_review_tasks(
-    db: Session, route: EvaluationRoute, subject: dict, qualification: dict,
+    db: Session,
+    route: EvaluationRoute,
+    subject: dict,
+    qualification: dict,
 ) -> None:
     if route.status != "assigned":
         return
-    assignments = db.scalars(select(EvaluatorAssignment).where(
-        EvaluatorAssignment.route_id == route.id, EvaluatorAssignment.status == "assigned",
-    )).all()
+    assignments = db.scalars(
+        select(EvaluatorAssignment).where(
+            EvaluatorAssignment.route_id == route.id,
+            EvaluatorAssignment.status == "assigned",
+        )
+    ).all()
     for assignment in assignments:
         profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
         if profile is None:
@@ -964,26 +977,47 @@ def _materialize_strategy_review_tasks(
         number = f"AR-{assignment.id}"
         if db.scalar(select(Task).where(Task.task_number == number)) is not None:
             continue
-        task = build_task(TaskCreate(
-            task_number=number, project="bulletproof-bt", task_type="alpha_strategy_review",
-            title=f"Independent {assignment.review_kind} review",
-            objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
-            risk_level=0, created_by="alpha-campaign-director", max_attempts=2,
-            required_capabilities=[f"alpha-strategy-review-{assignment.review_kind}"],
-            allowed_machines=[profile.machine],
-            input_contract={
-                "repository": "bulletproof_bt", "workflow": "alpha-strategy-review",
-                "base_ref": subject["source_commit"], "route_id": str(route.id),
-                "assignment_id": str(assignment.id), "evaluator_agent_id": str(profile.agent_id),
-                "evaluator_profile_digest": profile.profile_digest,
-                "evaluator_package_digest": profile.package_digest,
-                "review_kind": assignment.review_kind, "subject_digest": route.subject_digest,
-                "subject": deepcopy(subject), "qualification": deepcopy(qualification),
-                "max_duration_seconds": 900, "authority": "review_only_no_execution",
-            },
-            expected_outputs=["typed strategy review verdict", "retained review logs"],
-            acceptance_criteria=["Exact subject/source binding", "No producer self-review", "No execution authority"],
-        ))
+        task = build_task(
+            TaskCreate(
+                task_number=number,
+                project="bulletproof-bt",
+                task_type="alpha_strategy_review",
+                title=f"Independent {assignment.review_kind} review",
+                objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
+                risk_level=0,
+                created_by="alpha-campaign-director",
+                max_attempts=2,
+                required_capabilities=[
+                    f"alpha-strategy-review-{assignment.review_kind}"
+                ],
+                allowed_machines=[profile.machine],
+                input_contract={
+                    "repository": "bulletproof_bt",
+                    "workflow": "alpha-strategy-review",
+                    "base_ref": subject["source_commit"],
+                    "route_id": str(route.id),
+                    "assignment_id": str(assignment.id),
+                    "evaluator_agent_id": str(profile.agent_id),
+                    "evaluator_profile_digest": profile.profile_digest,
+                    "evaluator_package_digest": profile.package_digest,
+                    "review_kind": assignment.review_kind,
+                    "subject_digest": route.subject_digest,
+                    "subject": deepcopy(subject),
+                    "qualification": deepcopy(qualification),
+                    "max_duration_seconds": 900,
+                    "authority": "review_only_no_execution",
+                },
+                expected_outputs=[
+                    "typed strategy review verdict",
+                    "retained review logs",
+                ],
+                acceptance_criteria=[
+                    "Exact subject/source binding",
+                    "No producer self-review",
+                    "No execution authority",
+                ],
+            )
+        )
         persist_new_task(db, task)
 
 
@@ -1028,9 +1062,7 @@ def _supersede_stale_strategy_review_route(
         if assignment.status == "assigned":
             assignment.status = "superseded"
             assignment.completed_at = stamp
-        task = db.scalar(
-            select(Task).where(Task.task_number == f"AR-{assignment.id}")
-        )
+        task = db.scalar(select(Task).where(Task.task_number == f"AR-{assignment.id}"))
         if task is not None and task.status not in {
             "succeeded",
             "failed",
@@ -1107,9 +1139,7 @@ def _supersede_failed_strategy_review_route(
     )
     failed = []
     for assignment in assignments:
-        task = db.scalar(
-            select(Task).where(Task.task_number == f"AR-{assignment.id}")
-        )
+        task = db.scalar(select(Task).where(Task.task_number == f"AR-{assignment.id}"))
         if (
             assignment.status == "assigned"
             and task is not None
@@ -1209,10 +1239,7 @@ def _retain_strategy_review_rejection(
         if isinstance(bounded_contract, dict)
         else digest_document(hypothesis)
     )
-    if (
-        not isinstance(hypothesis_digest, str)
-        or len(hypothesis_digest) != 64
-    ):
+    if not isinstance(hypothesis_digest, str) or len(hypothesis_digest) != 64:
         raise HTTPException(
             409, "Rejected strategy evidence has an invalid hypothesis digest."
         )
@@ -1230,13 +1257,7 @@ def _retain_strategy_review_rejection(
             *(item.review_digest for item in assignments if item.review_digest),
         }
     )
-    blockers = sorted(
-        {
-            blocker
-            for review in reviews
-            for blocker in review.blockers
-        }
-    )
+    blockers = sorted({blocker for review in reviews for blocker in review.blockers})
     record_attempt(
         db,
         campaign,
@@ -1343,10 +1364,10 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 db, campaign, source, requirement
             )
         elif (
-            (correction := _independent_review_correction(engineering)) is not None
-            and (current_stage := engineering.task_number.rsplit("-", 1)[-1])
-            in stages[:-1]
-        ):
+            correction := _independent_review_correction(engineering)
+        ) is not None and (
+            current_stage := engineering.task_number.rsplit("-", 1)[-1]
+        ) in stages[:-1]:
             next_stage = stages[stages.index(current_stage) + 1]
             rejected = engineering
             engineering = _create_strategy_engineering_task(
@@ -1597,9 +1618,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             ),
         )
     elif review_route.status == "assigned":
-        review_route = _supersede_stale_strategy_review_route(
-            db, review_route, subject
-        )
+        review_route = _supersede_stale_strategy_review_route(db, review_route, subject)
         review_route = _supersede_failed_strategy_review_route(
             db, review_route, subject
         )
@@ -2345,11 +2364,11 @@ def recover_completed_execution(
     try:
         campaign_id = UUID(str(contract.get("campaign_id")))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(409, "Task lacks an immutable alpha campaign binding.") from exc
+        raise HTTPException(
+            409, "Task lacks an immutable alpha campaign binding."
+        ) from exc
     campaign = db.scalar(
-        select(AlphaCampaign)
-        .where(AlphaCampaign.id == campaign_id)
-        .with_for_update()
+        select(AlphaCampaign).where(AlphaCampaign.id == campaign_id).with_for_update()
     )
     if campaign is None:
         raise HTTPException(404, "Task-bound alpha campaign not found.")
@@ -2395,7 +2414,9 @@ def recover_completed_execution(
             .limit(1)
         )
         failure_payload = failure_event.payload if failure_event is not None else {}
-        detail = str(failure_payload.get("detail", (task.failure or {}).get("detail", "")))
+        detail = str(
+            failure_payload.get("detail", (task.failure or {}).get("detail", ""))
+        )
         error_category = failure_payload.get(
             "error_category", (task.failure or {}).get("error_category")
         )
@@ -2414,10 +2435,14 @@ def recover_completed_execution(
     result = payload.result
     summary = result.get("summary")
     handoff = result.get("downstream_handoff")
-    envelope = handoff.get("publication_envelope") if isinstance(handoff, dict) else None
+    envelope = (
+        handoff.get("publication_envelope") if isinstance(handoff, dict) else None
+    )
     expected_commit = contract.get("base_ref")
     if not isinstance(summary, dict) or not isinstance(envelope, dict):
-        raise HTTPException(422, "Recovered result lacks its bounded publication handoff.")
+        raise HTTPException(
+            422, "Recovered result lacks its bounded publication handoff."
+        )
     if len(json.dumps(summary, ensure_ascii=True, sort_keys=True)) > 16_384:
         raise HTTPException(422, "Recovered execution summary exceeds 16 KiB.")
     if len(json.dumps(handoff, ensure_ascii=True, sort_keys=True)) > 32_768:
@@ -2441,7 +2466,9 @@ def recover_completed_execution(
         or envelope.get("campaign_digest") != campaign.campaign_digest
         or envelope.get("source_commit") != expected_commit
     ):
-        raise HTTPException(422, "Recovered execution identity does not match the task.")
+        raise HTTPException(
+            422, "Recovered execution identity does not match the task."
+        )
     raw_attempt = summary.get("alpha_campaign_attempt")
     if not isinstance(raw_attempt, dict):
         raise HTTPException(422, "Recovered result lacks its campaign attempt receipt.")
@@ -2487,7 +2514,9 @@ def recover_completed_execution(
             },
         )
     elif task.result != result:
-        raise HTTPException(409, "Recovered task is already bound to different evidence.")
+        raise HTTPException(
+            409, "Recovered task is already bound to different evidence."
+        )
 
     campaign.status = "running"
     campaign.phase = "recovery"
@@ -2520,12 +2549,13 @@ def resume_campaign(
         raise HTTPException(409, "Recorded pipeline task is unavailable.")
     recorded_task_number = terminal.get("task_number")
     if recorded_task_number and recorded_task_number != task.task_number:
-        raise HTTPException(409, "Recorded pipeline task no longer matches its campaign.")
+        raise HTTPException(
+            409, "Recorded pipeline task no longer matches its campaign."
+        )
     superseded_obsolete_engineering = False
     if (
         task.status in {"failed", "cancelled"}
-        and task.task_number.rsplit("-", 1)[-1]
-        in OBSOLETE_STRATEGY_ENGINEERING_STAGES
+        and task.task_number.rsplit("-", 1)[-1] in OBSOLETE_STRATEGY_ENGINEERING_STAGES
     ):
         supersession = db.scalar(
             select(TaskEvent)

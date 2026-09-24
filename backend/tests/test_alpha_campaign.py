@@ -445,9 +445,7 @@ def test_qualification_prefers_bounded_downstream_handoff() -> None:
 def test_qualification_accepts_legacy_summary_result() -> None:
     legacy = {"qualified": True, "card_digest": "a" * 64}
 
-    result = service._qualification_from_result(
-        {"summary": {"qualification": legacy}}
-    )
+    result = service._qualification_from_result({"summary": {"qualification": legacy}})
 
     assert result == legacy
 
@@ -570,7 +568,9 @@ def test_needs_attention_campaign_can_be_cancelled_after_failed_recovery(monkeyp
     assert record.terminal_reason["category"] == "operator_cancelled"
 
 
-@pytest.mark.parametrize("status", ["cancelled", "completed_no_candidate", "shadow_candidate"])
+@pytest.mark.parametrize(
+    "status", ["cancelled", "completed_no_candidate", "shadow_candidate"]
+)
 def test_completed_campaigns_cannot_be_cancelled_again(status):
     record = campaign(status=status)
     with pytest.raises(HTTPException, match="Terminal campaigns"):
@@ -1033,11 +1033,15 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
             "runtime": "python",
         },
     )
-    route_create = MagicMock(side_effect=lambda db, payload: SimpleNamespace(
-        id=uuid4(), subject_type=payload.subject_type,
-        subject_digest=payload.subject_digest, status="blocked",
-        blocked_reason={"category": "independent_evaluator_unavailable"},
-    ))
+    route_create = MagicMock(
+        side_effect=lambda db, payload: SimpleNamespace(
+            id=uuid4(),
+            subject_type=payload.subject_type,
+            subject_digest=payload.subject_digest,
+            status="blocked",
+            blocked_reason={"category": "independent_evaluator_unavailable"},
+        )
+    )
     monkeypatch.setattr(service, "create_route", route_create)
     assert service._advance_governed_pipeline(db, record) is qualification
     if mutation:
@@ -1058,12 +1062,24 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
     create.assert_not_called()
 
 
-def test_routed_review_tasks_preserve_subject_profile_and_source_without_execution(monkeypatch):
-    assignment = SimpleNamespace(id=uuid4(), evaluator_profile_id=uuid4(), review_kind="strategy_spec")
-    profile = SimpleNamespace(agent_id=uuid4(), machine="vm1-developer", profile_digest="b" * 64, package_digest="c" * 64)
+def test_routed_review_tasks_preserve_subject_profile_and_source_without_execution(
+    monkeypatch,
+):
+    assignment = SimpleNamespace(
+        id=uuid4(), evaluator_profile_id=uuid4(), review_kind="strategy_spec"
+    )
+    profile = SimpleNamespace(
+        agent_id=uuid4(),
+        machine="vm1-developer",
+        profile_digest="b" * 64,
+        package_digest="c" * 64,
+    )
     route = SimpleNamespace(id=uuid4(), status="assigned", subject_digest=DIGEST)
     subject = {"source_commit": COMMIT, "card_digest": "d" * 64}
-    qualification = {"card": {"status": "confirmed"}, "artifact_bundle": {"strategy_spec": "exact"}}
+    qualification = {
+        "card": {"status": "confirmed"},
+        "artifact_bundle": {"strategy_spec": "exact"},
+    }
     db = MagicMock()
     db.scalars.return_value.all.return_value = [assignment]
     db.get.return_value = profile
@@ -1188,9 +1204,14 @@ def test_failed_strategy_review_task_supersedes_route_without_a_verdict(monkeypa
         id=uuid4(), status="assigned", review_id=None, completed_at=None
     )
     route = SimpleNamespace(
-        id=uuid4(), status="assigned", subject_type="alpha_strategy_qualification",
-        subject_id=str(uuid4()), subject_digest="a" * 64,
-        requested_by="alpha-campaign-director", completed_at=None, blocked_reason={},
+        id=uuid4(),
+        status="assigned",
+        subject_type="alpha_strategy_qualification",
+        subject_id=str(uuid4()),
+        subject_digest="a" * 64,
+        requested_by="alpha-campaign-director",
+        completed_at=None,
+        blocked_reason={},
         policy={
             "required_review_kinds": ["strategy_spec", "causality_leakage"],
             "required_capabilities": [],
@@ -1199,13 +1220,18 @@ def test_failed_strategy_review_task_supersedes_route_without_a_verdict(monkeypa
         },
     )
     task = SimpleNamespace(
-        id=uuid4(), status="failed", failure={"retryable": True},
+        id=uuid4(),
+        status="failed",
+        failure={"retryable": True},
     )
     identities = [
         {
-            "agent_id": str(uuid4()), "machine": "vm1-developer",
-            "provider": "openai", "model_family": "codex",
-            "runtime": "hermes/0.3.2", "context_group": f"producer-{position}",
+            "agent_id": str(uuid4()),
+            "machine": "vm1-developer",
+            "provider": "openai",
+            "model_family": "codex",
+            "runtime": "hermes/0.3.2",
+            "context_group": f"producer-{position}",
             "package_digest": str(position) * 64,
             "profile_digest": str(position + 2) * 64,
         }
@@ -1260,13 +1286,11 @@ def test_strategy_review_rejection_is_retained_as_invalid_without_trials(monkeyp
                 "hypothesis_id": "CAUSAL-H1",
                 "generation_provenance": {"source_card_hash": "7" * 64},
             }
-        }
+        },
     }
     route = SimpleNamespace(id=uuid4(), route_digest="4" * 64)
     reviews = [
-        SimpleNamespace(
-            blockers=["60-minute target differs from a 240-minute hold"]
-        )
+        SimpleNamespace(blockers=["60-minute target differs from a 240-minute hold"])
     ]
     assignments = [SimpleNamespace(review_digest="5" * 64)]
     db = MagicMock()
@@ -1383,9 +1407,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         "python",
         "testing",
     ]
-    assert not set(task.required_capabilities).issubset(
-        {"git", "python", "testing"}
-    )
+    assert not set(task.required_capabilities).issubset({"git", "python", "testing"})
     assert task.input_contract["allowed_paths"] == [
         "research/hypotheses",
         "src/bt/strategy",
@@ -1490,6 +1512,72 @@ def test_independent_review_failure_materializes_new_correction_task(monkeypatch
     assert kwargs["correction_feedback"]["cumulative_findings"][0]["severity"] == "high"
 
 
+def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["BTCUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
+    source = record.specification["research_queue"][0]
+    source["instrument"] = "BTCUSDT"
+    source["discovery_candidate_id"] = str(uuid4())
+    source["discovery_candidate_digest"] = "7" * 64
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        candidate_digest="7" * 64,
+        question=source["question"],
+        document={"predictor": "lagged displacement", "target": "next-hour return"},
+    )
+    persisted = []
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "citations": []},
+    )
+    monkeypatch.setattr(
+        service, "persist_new_task", lambda _db, task: persisted.append(task)
+    )
+    correction = {
+        "rejected_task_id": str(uuid4()),
+        "rejected_plan_digest": "a" * 64,
+        "review_summary": "The implementation needs scientific correction.",
+        "latest_findings": [
+            {"severity": "high", "message": "held-out evaluation is absent"}
+        ],
+        "cumulative_findings": [
+            {"severity": "high", "message": "held-out evaluation is absent"}
+        ],
+        "artifact_paths": ["artifacts/review.json", "artifacts/changes.patch"],
+        "disposition": "correct_without_weakening_scientific_gates",
+    }
+
+    task = service._create_strategy_engineering_task(
+        db,
+        record,
+        source,
+        {"category": "exact_strategy_unavailable"},
+        stage="G4",
+        correction_feedback=correction,
+        parent_task_id=uuid4(),
+    )
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    assert task is persisted[0]
+    assert "dataset_binding" not in evidence
+    assert evidence["dataset_bindings"] == record.specification["dataset_bindings"]
+    assert evidence["independent_review_correction"] == correction
+    assert len(evidence) <= 20
+    ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
 def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
@@ -1504,9 +1592,7 @@ def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch)
         status="failed",
         plan_digest="a" * 64,
         input_contract={
-            "evidence_context": json.dumps(
-                {"independent_review_correction": prior}
-            )
+            "evidence_context": json.dumps({"independent_review_correction": prior})
         },
         failure={
             "error_category": "independent_review_rejected",
@@ -1609,6 +1695,7 @@ def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeyp
     assert record.status == "needs_attention"
     assert record.next_action == "strategy_engineering_failed"
     assert record.terminal_reason["task_id"] == str(rejected.id)
+
 
 def test_obsolete_pending_engineering_contract_is_immutably_superseded(monkeypatch):
     record = campaign()
