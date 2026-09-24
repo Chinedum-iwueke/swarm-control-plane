@@ -7,6 +7,7 @@ import pytest
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
     AlphaDiscoveryCatalogBinding,
+    AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
     AlphaResearchMandateCreate,
@@ -27,6 +28,7 @@ from app.services.alpha_discovery import (
     _task,
     reconcile_mandate,
     recover_discovery_grounding,
+    retry_invalid_discovery_stage,
 )
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -329,6 +331,68 @@ def test_grounding_recovery_preserves_old_cycle_and_approval(monkeypatch, condit
         assert error.value.status_code == 409
         new_cycle.assert_not_called()
         event.assert_not_called()
+
+
+def test_invalid_representation_retry_supersedes_output_without_rewriting_history(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_from=moment - timedelta(days=1),
+        valid_until=moment + timedelta(days=1),
+        mandate_digest=DIGEST,
+        budget={"maximum_candidates_per_cycle": 5},
+    )
+    previous = SimpleNamespace(
+        id=uuid4(),
+        task_number="A4-example-001-R",
+        status="succeeded",
+        result={"summary": {"invalid": True}},
+        input_contract={
+            "mandate_id": str(mandate.id),
+            "mandate_digest": DIGEST,
+            "cycle_id": "placeholder",
+            "stage": "representation",
+            "context": {"raw_candidates": [{"candidate_key": "frozen"}]},
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        ordinal=1,
+        status="needs_attention",
+        phase="representation_selection",
+        next_action="review_invalid_representation_output",
+        representation_task_id=previous.id,
+        completed_at=moment,
+        heartbeat_at=moment,
+    )
+    previous.input_contract["cycle_id"] = str(cycle.id)
+    replacement = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    db.get.return_value = previous
+    create_task = MagicMock(return_value=replacement)
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._task", create_task)
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    payload = AlphaDiscoveryStageRetry(
+        expected_mandate_digest=DIGEST,
+        expected_cycle_id=cycle.id,
+        actor="codex-loop-recovery",
+        reason="Retry the frozen stage after a deployed contract correction.",
+    )
+
+    result = retry_invalid_discovery_stage(db, mandate, payload)
+
+    assert result is cycle
+    assert cycle.status == "running"
+    assert cycle.representation_task_id == replacement.id
+    assert previous.status == "succeeded"
+    assert create_task.call_args.args[4] == previous.input_contract["context"]
+    assert create_task.call_args.kwargs["task_number"].startswith(
+        "A4-example-001-R-R"
+    )
+    assert event.call_args.args[2] == "invalid_discovery_stage_superseded"
 
 
 def test_discovery_query_plan_is_bounded_data_aware_and_rotates():
