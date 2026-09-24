@@ -236,11 +236,79 @@ class AlphaDiscoveryParameterBudget(StrictModel):
         return self
 
 
+class AlphaRepresentationBasketMember(StrictModel):
+    instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
+    role: Literal["primary", "predictor", "control", "hedge"]
+    legacy_groups: list[Literal["stable", "volatile"]] = Field(
+        default_factory=list, max_length=2
+    )
+    selection_rationale: str = Field(min_length=20, max_length=2000)
+
+
+class AlphaRepresentationTransformation(StrictModel):
+    output_field: str = Field(pattern=r"^[a-z][a-z0-9_]{0,99}$")
+    operation: Literal[
+        "identity",
+        "simple_return",
+        "log_return",
+        "fractional_difference",
+        "rolling_zscore",
+        "realized_volatility",
+        "spread",
+        "ratio",
+        "cross_sectional_rank",
+    ]
+    input_fields: list[str] = Field(min_length=1, max_length=20)
+    parameters: dict[str, float | int] = Field(default_factory=dict)
+    fit_policy: Literal["stateless", "train_only"]
+    rationale: str = Field(min_length=20, max_length=2000)
+
+    @model_validator(mode="after")
+    def operation_contract(self):
+        if self.operation in {"identity", "simple_return", "log_return"}:
+            if len(self.input_fields) != 1:
+                raise ValueError(f"{self.operation} requires one input")
+            expected = set() if self.operation == "identity" else {"periods"}
+            if set(self.parameters) != expected:
+                raise ValueError(f"{self.operation} parameters are invalid")
+            if self.operation != "identity" and not 1 <= int(
+                self.parameters["periods"]
+            ) <= 10_000:
+                raise ValueError("return periods are outside the bounded range")
+        elif self.operation == "fractional_difference":
+            if len(self.input_fields) != 1 or set(self.parameters) != {
+                "d",
+                "weight_threshold",
+            }:
+                raise ValueError("fractional difference parameters are invalid")
+            if not 0 < float(self.parameters["d"]) < 0.5:
+                raise ValueError("fractional difference d must be between 0 and 0.5")
+            if not 1e-8 <= float(self.parameters["weight_threshold"]) <= 0.1:
+                raise ValueError("fractional difference threshold is invalid")
+            if self.fit_policy != "train_only":
+                raise ValueError("fractional difference selection must be train-only")
+        elif self.operation in {"rolling_zscore", "realized_volatility"}:
+            if len(self.input_fields) != 1 or set(self.parameters) != {"window"}:
+                raise ValueError(f"{self.operation} parameters are invalid")
+            if not 2 <= int(self.parameters["window"]) <= 100_000:
+                raise ValueError("rolling window is outside the bounded range")
+        elif self.operation in {"spread", "ratio"}:
+            if len(self.input_fields) != 2 or self.parameters:
+                raise ValueError(f"{self.operation} requires two inputs")
+        elif len(self.input_fields) < 2 or self.parameters:
+            raise ValueError("cross-sectional rank requires multiple unparameterized inputs")
+        return self
+
+
 class AlphaRepresentationPlan(StrictModel):
+    schema_version: Literal["adaptive-representation-plan-v1.0.0"]
     candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     instruments: list[str] = Field(min_length=1, max_length=20)
+    basket_members: list[AlphaRepresentationBasketMember] = Field(
+        min_length=1, max_length=20
+    )
     source_timeframe: Literal["1m"]
     research_timeframe: str = Field(
         pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$"
@@ -249,8 +317,13 @@ class AlphaRepresentationPlan(StrictModel):
     required_fields: list[str] = Field(min_length=1, max_length=50)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
+    transformations: list[AlphaRepresentationTransformation] = Field(
+        min_length=1, max_length=30
+    )
     transformation_rationale: str = Field(min_length=20, max_length=4000)
     rejected_alternatives: list[str] = Field(min_length=1, max_length=20)
+    selection_data_boundary: Literal["metadata_predictors_only_no_targets"]
+    outcome_data_consulted: Literal[False]
 
     @field_validator("resampling_policy", mode="before")
     @classmethod
@@ -264,6 +337,28 @@ class AlphaRepresentationPlan(StrictModel):
             raise ValueError("primary instrument must be included in the basket")
         if len(self.instruments) != len(set(self.instruments)):
             raise ValueError("basket instruments must be unique")
+        members = [item.instrument for item in self.basket_members]
+        if members != self.instruments:
+            raise ValueError("basket member order must match instruments")
+        primaries = [item.instrument for item in self.basket_members if item.role == "primary"]
+        if primaries != [self.instrument]:
+            raise ValueError("the declared instrument must be the sole primary basket member")
+        available = {
+            f"{instrument}__{field}"
+            for instrument in self.instruments
+            for field in ("open", "high", "low", "close", "volume", "quote_volume")
+        }
+        outputs = set()
+        for transformation in self.transformations:
+            if any(item not in available for item in transformation.input_fields):
+                raise ValueError("transformation references an unavailable field")
+            if (
+                transformation.output_field in available
+                or transformation.output_field in outputs
+            ):
+                raise ValueError("transformation outputs must be unique")
+            outputs.add(transformation.output_field)
+            available.add(transformation.output_field)
         return self
 
 

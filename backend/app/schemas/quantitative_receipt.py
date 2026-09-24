@@ -10,6 +10,7 @@ _KEY = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
 
 QuantitativeMilestone = Literal[
     "ALPHA-001",
+    "ALPHA-009",
     "DATA-001",
     "DATA-002",
     "DATA-003",

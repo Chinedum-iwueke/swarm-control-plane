@@ -148,6 +148,42 @@ def test_alpha_contract_binds_exact_basket_and_arbitrary_safe_resample() -> None
             instruments=["BTCUSDT", "ETHUSDT"],
             research_timeframe="7m",
             resampling_policy="right_closed_left_labeled_complete_bars",
+            representation_plan={
+                "schema_version": "adaptive-representation-plan-v1.0.0",
+                "candidate_key": "mixed-basket",
+                "instruments": ["BTCUSDT", "ETHUSDT"],
+                "basket_members": [
+                    {
+                        "instrument": "BTCUSDT",
+                        "role": "primary",
+                        "legacy_groups": ["stable"],
+                        "selection_rationale": "Primary asset named by the question.",
+                    },
+                    {
+                        "instrument": "ETHUSDT",
+                        "role": "control",
+                        "legacy_groups": ["volatile"],
+                        "selection_rationale": "Cross-group control for market movement.",
+                    },
+                ],
+                "source_timeframe": "1m",
+                "research_timeframe": "7m",
+                "resampling_policy": "left_closed_left_labeled_complete_bars",
+                "transformations": [
+                    {
+                        "output_field": "btc_return",
+                        "operation": "log_return",
+                        "input_fields": ["BTCUSDT__close"],
+                        "parameters": {"periods": 1},
+                        "fit_policy": "stateless",
+                        "rationale": "Represent the price level as a scale-safe return.",
+                    }
+                ],
+                "transformation_rationale": "Seven-minute bars match the causal horizon.",
+                "rejected_alternatives": ["One-minute bars are too noisy."],
+                "selection_data_boundary": "metadata_predictors_only_no_targets",
+                "outcome_data_consulted": False,
+            },
         )
     )
     assert value.research_timeframe == "7m"
@@ -156,6 +192,7 @@ def test_alpha_contract_binds_exact_basket_and_arbitrary_safe_resample() -> None
         "BTCUSDT",
         "ETHUSDT",
     ]
+    assert value.representation_plan["basket_members"][1]["role"] == "control"
     with pytest.raises(ValidationError, match="basket must match"):
         AlphaResearchExecutionContract.model_validate(
             contract(dataset_bindings=bindings, instruments=["ETHUSDT", "BTCUSDT"])

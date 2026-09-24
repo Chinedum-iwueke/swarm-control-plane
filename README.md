@@ -74,6 +74,8 @@ The repository currently contains:
 - continuous ALPHA discovery, data admission, strategy engineering, review,
   capacity scheduling, campaign execution, publication, and negative-result
   retention;
+- typed outcome-blind multi-asset representation plans whose causal transforms are
+  compiled by Bulletproof and bound to the exact strategy fields that consume them;
 - platform, research, fleet, execution, risk, portfolio, shadow, demo, and venue
   telemetry registries;
 - a restricted Telegram founder gateway and a Mac-local Mission Control app;

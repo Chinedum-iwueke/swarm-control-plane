@@ -355,28 +355,66 @@ def test_representation_plan_changes_only_data_shape_and_retains_audit():
         [raw],
         [
             {
+                "schema_version": "adaptive-representation-plan-v1.0.0",
                 "candidate_key": raw["candidate_key"],
                 "venue": "bybit",
                 "instrument": "BTCUSDT",
                 "instruments": ["BTCUSDT", "ETHUSDT"],
+                "basket_members": [
+                    {
+                        "instrument": "BTCUSDT",
+                        "role": "primary",
+                        "legacy_groups": ["stable"],
+                        "selection_rationale": "Primary target named by the frozen question.",
+                    },
+                    {
+                        "instrument": "ETHUSDT",
+                        "role": "control",
+                        "legacy_groups": ["volatile"],
+                        "selection_rationale": "Cross-group control isolates broad market movement.",
+                    },
+                ],
                 "source_timeframe": "1m",
                 "research_timeframe": "7m",
                 "resampling_policy": "right_closed_left_labeled_complete_bars",
                 "required_fields": ["ts", "close", "quote_volume"],
                 "minimum_history_observations": 525600,
                 "liquidity_floor_usd": 1000000,
+                "transformations": [
+                    {
+                        "output_field": "btc_return",
+                        "operation": "log_return",
+                        "input_fields": ["BTCUSDT__close"],
+                        "parameters": {"periods": 1},
+                        "fit_policy": "stateless",
+                        "rationale": "Scale-safe target return for the causal seven-minute horizon.",
+                    },
+                    {
+                        "output_field": "eth_return",
+                        "operation": "log_return",
+                        "input_fields": ["ETHUSDT__close"],
+                        "parameters": {"periods": 1},
+                        "fit_policy": "stateless",
+                        "rationale": "Scale-safe control return aligned at the same decision clock.",
+                    },
+                ],
                 "transformation_rationale": (
                     "Seven-minute complete bars align the predictor with its causal horizon."
                 ),
                 "rejected_alternatives": [
                     "One-minute bars amplify microstructure noise without adding timing evidence."
                 ],
+                "selection_data_boundary": "metadata_predictors_only_no_targets",
+                "outcome_data_consulted": False,
             }
         ],
     )
     assert represented[0]["question"] == original_question
     assert represented[0]["data"]["research_timeframe"] == "7m"
     assert represented[0]["data"]["instruments"] == ["BTCUSDT", "ETHUSDT"]
+    assert represented[0]["representation_plan"]["basket_members"][1]["role"] == (
+        "control"
+    )
     assert audit[raw["candidate_key"]]["outcome_data_consulted"] is False
 
 
@@ -384,6 +422,106 @@ def test_representation_plan_requires_exact_candidate_coverage():
     value, _ = candidate()
     with pytest.raises(ValueError, match="cover exactly"):
         _apply_representation_plans([value.model_dump(mode="json")], [])
+
+
+def test_representation_group_claim_must_be_catalog_evidenced():
+    value, _ = candidate()
+    raw = value.model_dump(mode="json")
+    plan = {
+        "schema_version": "adaptive-representation-plan-v1.0.0",
+        "candidate_key": raw["candidate_key"],
+        "venue": "bybit",
+        "instrument": "BTCUSDT",
+        "instruments": ["BTCUSDT"],
+        "basket_members": [{
+            "instrument": "BTCUSDT",
+            "role": "primary",
+            "legacy_groups": ["volatile"],
+            "selection_rationale": "The point-in-time label is part of the proposed state.",
+        }],
+        "source_timeframe": "1m",
+        "research_timeframe": "5m",
+        "resampling_policy": "left_closed_left_labeled_complete_bars",
+        "required_fields": ["ts", "close", "volume"],
+        "minimum_history_observations": 525600,
+        "liquidity_floor_usd": 1000000,
+        "transformations": [{
+            "output_field": "btc_return",
+            "operation": "log_return",
+            "input_fields": ["BTCUSDT__close"],
+            "parameters": {"periods": 1},
+            "fit_policy": "stateless",
+            "rationale": "Returns remove price-level scale from the predictor.",
+        }],
+        "transformation_rationale": "Five-minute bars match the proposed causal horizon.",
+        "rejected_alternatives": ["Raw price levels preserve an avoidable trend."],
+        "selection_data_boundary": "metadata_predictors_only_no_targets",
+        "outcome_data_consulted": False,
+    }
+    context = {
+        "lake_catalog": {
+            "membership_records": [{
+                "venue": "bybit",
+                "instrument": "BTCUSDT",
+                "group": "stable",
+                "available": True,
+            }]
+        }
+    }
+    with pytest.raises(ValueError, match="not catalog-evidenced"):
+        _apply_representation_plans([raw], [plan], context)
+
+
+def test_representation_plan_rejects_outcome_selection_and_unsafe_fractional_difference():
+    value, _ = candidate()
+    raw = value.model_dump(mode="json")
+    plan = {
+        "schema_version": "adaptive-representation-plan-v1.0.0",
+        "candidate_key": raw["candidate_key"],
+        "venue": "bybit",
+        "instrument": "BTCUSDT",
+        "instruments": ["BTCUSDT"],
+        "basket_members": [
+            {
+                "instrument": "BTCUSDT",
+                "role": "primary",
+                "legacy_groups": ["stable"],
+                "selection_rationale": "Primary point-in-time target in the frozen question.",
+            }
+        ],
+        "source_timeframe": "1m",
+        "research_timeframe": "30m",
+        "resampling_policy": "left_closed_left_labeled_complete_bars",
+        "required_fields": ["ts", "close", "volume"],
+        "minimum_history_observations": 525600,
+        "liquidity_floor_usd": 1000000,
+        "transformations": [
+            {
+                "output_field": "stationary_close",
+                "operation": "fractional_difference",
+                "input_fields": ["BTCUSDT__close"],
+                "parameters": {"d": 0.4, "weight_threshold": 0.001},
+                "fit_policy": "train_only",
+                "rationale": "Reduce persistent price-level behavior while retaining memory.",
+            }
+        ],
+        "transformation_rationale": "Thirty-minute decisions match the stated slower horizon.",
+        "rejected_alternatives": ["Log returns remove more low-frequency memory."],
+        "selection_data_boundary": "metadata_predictors_only_no_targets",
+        "outcome_data_consulted": False,
+    }
+    represented, _ = _apply_representation_plans([raw], [plan])
+    assert represented[0]["representation_plan"]["transformations"][0][
+        "parameters"
+    ]["d"] == 0.4
+
+    plan["outcome_data_consulted"] = True
+    with pytest.raises(ValidationError, match="outcome_data_consulted"):
+        _apply_representation_plans([raw], [plan])
+    plan["outcome_data_consulted"] = False
+    plan["transformations"][0]["parameters"]["d"] = 0.7
+    with pytest.raises(ValidationError, match="between 0 and 0.5"):
+        _apply_representation_plans([raw], [plan])
 
 
 def test_representation_task_routes_only_to_dedicated_capability(monkeypatch):

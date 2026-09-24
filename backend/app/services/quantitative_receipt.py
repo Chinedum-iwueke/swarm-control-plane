@@ -71,6 +71,7 @@ def lake_inventory_summary(
             ],
             "venue_scope": result["venue_scope"],
             "memberships": result["memberships"],
+            "membership_records": result.get("membership_records", []),
             "claim_boundary": result["claim_boundary"],
             "execution_authority": False,
         }
@@ -89,6 +90,10 @@ def lake_inventory_summary(
 
 PRODUCERS = {
     "ALPHA-001": "bt.institutional.alpha.real_data_admission_receipt",
+    "ALPHA-009": (
+        "bt.institutional.adaptive_representation."
+        "adaptive_representation_certification_receipt"
+    ),
     "DATA-001": "bt.institutional.data.reference_snapshot_receipt",
     "DATA-002": "bt.institutional.data.market_catalog_receipt",
     "DATA-003": "bt.institutional.data.lake_quality_receipt",
@@ -187,8 +192,13 @@ def _validate_manifest_catalog(receipt: dict) -> None:
     assets = result.get("assets")
     candidates = result.get("one_year_coverage_candidates")
     memberships = result.get("memberships")
+    schema_version = result.get("schema_version")
+    membership_records = result.get("membership_records", [])
     if (
-        result.get("schema_version") != "data002-manifest-catalog-v1.0.0"
+        schema_version not in {
+            "data002-manifest-catalog-v1.0.0",
+            "data002-manifest-catalog-v1.1.0",
+        }
         or not isinstance(manifests, dict)
         or not {"coverage", "fetch_state", "instruments"}.issubset(manifests)
         or result.get("manifest_count") != len(manifests)
@@ -198,6 +208,8 @@ def _validate_manifest_catalog(receipt: dict) -> None:
         or not isinstance(assets, list)
         or not isinstance(candidates, list)
         or not isinstance(memberships, dict)
+        or not isinstance(membership_records, list)
+        or len(membership_records) > 50_000
         or result.get("venue_scope") != ["binance", "bybit"]
         or result.get("group_labels_are_optional_metadata") is not True
         or result.get("execution_eligible") is not False
@@ -205,6 +217,10 @@ def _validate_manifest_catalog(receipt: dict) -> None:
         or not result["claim_boundary"]
     ):
         raise QuantitativeReceiptConflict("Malformed manifest-first lake catalog.")
+    if schema_version == "data002-manifest-catalog-v1.1.0" and (
+        result.get("membership_record_count") != len(membership_records)
+    ):
+        raise QuantitativeReceiptConflict("Manifest membership record count is not bound.")
     if receipt["input_digest"] != _digest(manifests) or receipt[
         "dataset_digest"
     ] != _digest(manifests):
@@ -231,6 +247,38 @@ def _validate_manifest_catalog(receipt: dict) -> None:
             or descriptor.get("classification") != "optional_research_metadata"
         ):
             raise QuantitativeReceiptConflict("Malformed optional membership descriptor.")
+    previous_membership_key = None
+    for item in membership_records:
+        if (
+            not isinstance(item, dict)
+            or item.get("source_manifest")
+            not in {"stable_universe", "volatile_universe_membership"}
+            or not _is_digest(item.get("source_manifest_digest"))
+            or item.get("source_manifest_digest")
+            != memberships.get(item.get("source_manifest"), {}).get("content_digest")
+            or item.get("membership_kind")
+            not in {"static", "point_in_time_schedule_summary"}
+            or item.get("group") not in {"stable", "volatile"}
+            or not all(
+                isinstance(item.get(key), str) and item[key]
+                for key in (
+                    "market", "venue", "instrument", "effective_from", "effective_to"
+                )
+            )
+            or item["venue"] not in {"binance", "bybit"}
+            or type(item.get("available")) is not bool
+            or type(item.get("observation_count")) is not int
+            or item["observation_count"] < 1
+            or item.get("execution_eligible") is not False
+        ):
+            raise QuantitativeReceiptConflict("Malformed point-in-time membership metadata.")
+        membership_key = (
+            item["effective_from"], item["group"], item["market"],
+            item["venue"], item["instrument"],
+        )
+        if previous_membership_key is not None and membership_key < previous_membership_key:
+            raise QuantitativeReceiptConflict("Membership metadata is not canonically ordered.")
+        previous_membership_key = membership_key
     for item in availability:
         if (
             not isinstance(item, dict)
