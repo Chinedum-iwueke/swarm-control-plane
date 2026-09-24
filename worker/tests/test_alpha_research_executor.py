@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from swarm_worker.executors.alpha_research import (
     AlphaResearchExecutionError,
     AlphaResearchExecutor,
+    _publication_handoff,
     _qualification_handoff,
 )
 
@@ -301,10 +302,43 @@ def test_qualification_handoff_fails_closed_without_execution_artifact() -> None
 def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
     publication_envelope = {
         "schema_version": "alpha003-publication-envelope-v1.0.0",
-        "bridge_proposal": {"source": {"evidence": "x" * 7_000}},
-        "hypothesis_card": {"citations": "y" * 5_000},
-        "trial": {"selection_bias_audit": "z" * 3_000},
+        "bridge_proposal": {"source": {"question": "bounded question"}},
+        "hypothesis_card": {"citations": ["retained citation"]},
+        "experiment": {"features": ["close"]},
+        "memory_receipt": {"receipt_digest": "a" * 64},
+        "producer_gate_report": {"failed_gates": ["insufficient support"]},
+        "execution_class": "qualification",
+        "qualification_authority": True,
+        "durable_bundle_path": "/durable/bundle",
+        "trial": {
+            "trial_id": "trial-1",
+            "code_digest": "b" * 64,
+            "metrics": {"oos_trades": 93},
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "ended_at": "2026-01-02T00:00:00+00:00",
+            "truth": {"truth_certified": True},
+            "bundle_digest": "c" * 64,
+            "bundle_manifest_digest": "d" * 64,
+            "market_model_bundle_digest": "e" * 64,
+            "representation_contract_digest": "f" * 64,
+            "search_plan_digest": "1" * 64,
+            "selection_bias_audit": {
+                "record_digest": "2" * 64,
+                "matched_controls": ["x" * 1024] * 80,
+            },
+            "required_trade_logging_evaluation": {
+                "record_digest": "3" * 64,
+                "trade_log": ["y" * 1024] * 40,
+            },
+            "hypothesis_evaluation": {
+                "outcome": "failed",
+                "record_digest": "4" * 64,
+                "reason": "no_supported_validation_variant",
+                "large_diagnostics": ["z" * 1024] * 40,
+            },
+        },
     }
+    handoff = _publication_handoff(publication_envelope)
     result = WorkflowExecutionResult(
         workflow="alpha-research-execution",
         repository="bulletproof_bt",
@@ -314,10 +348,19 @@ def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
         steps=[],
         success=True,
         summary={"disposition": "native_execution_complete"},
-        downstream_handoff={"publication_envelope": publication_envelope},
+        downstream_handoff={"publication_envelope": handoff},
     )
 
-    assert result.downstream_handoff["publication_envelope"] == publication_envelope
+    retained = result.downstream_handoff["publication_envelope"]
+    assert retained["trial"]["hypothesis_evaluation"] == {
+        "outcome": "failed",
+        "record_digest": "4" * 64,
+        "reason": "no_supported_validation_variant",
+    }
+    assert "selection_bias_audit" not in retained["trial"]
+    assert retained["durable_evidence"]["selection_bias_audit_digest"] == "2" * 64
+    assert retained["durable_evidence"]["required_trade_logging_digest"] == "3" * 64
+    assert len(json.dumps(result.downstream_handoff, sort_keys=True)) < 32_768
 
 
 def test_commissioning_summary_retains_bounded_proof_fields() -> None:

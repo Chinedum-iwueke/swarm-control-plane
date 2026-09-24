@@ -25,6 +25,10 @@ from app.schemas import (
     TaskResponse,
     TaskStartRequest,
 )
+from app.schemas.alpha_campaign import (
+    AlphaCampaignResponse,
+    AlphaCompletedExecutionRecovery,
+)
 from app.services.broker_tickets import issue_broker_ticket
 from app.services.controls import matching_control_scopes
 from app.services.evaluator_routing import complete_strategy_review_task
@@ -44,6 +48,28 @@ router = APIRouter(
     prefix="/v1/agent/tasks",
     tags=["agent-task-runtime"],
 )
+
+
+@router.post(
+    "/{task_id}/recover-completed-alpha-execution",
+    response_model=AlphaCampaignResponse,
+)
+def recover_completed_alpha_execution(
+    task_id: uuid.UUID,
+    payload: AlphaCompletedExecutionRecovery,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AlphaCampaignResponse:
+    from app.services.alpha_campaign import (
+        recover_completed_execution,
+        serialize_campaign,
+    )
+
+    task = lock_task(db, task_id)
+    campaign = recover_completed_execution(db, task, agent, payload)
+    db.commit()
+    db.refresh(campaign)
+    return AlphaCampaignResponse.model_validate(serialize_campaign(db, campaign))
 
 
 def _reconcile_task_graph(db: Session, task) -> None:

@@ -70,6 +70,80 @@ def _qualification_handoff(qualification: dict) -> dict:
     return retained
 
 
+def _publication_handoff(publication_envelope: dict) -> dict:
+    """Project a durable publication receipt onto the bounded control-plane wire."""
+    trial = publication_envelope.get("trial")
+    if not isinstance(trial, dict):
+        raise AlphaResearchExecutionError(
+            "Bulletproof publication envelope is missing its trial receipt."
+        )
+    required_trial_fields = (
+        "trial_id",
+        "code_digest",
+        "metrics",
+        "started_at",
+        "ended_at",
+        "truth",
+        "bundle_digest",
+        "bundle_manifest_digest",
+        "market_model_bundle_digest",
+        "representation_contract_digest",
+        "search_plan_digest",
+    )
+    missing = [name for name in required_trial_fields if name not in trial]
+    if missing:
+        raise AlphaResearchExecutionError(
+            "Bulletproof publication trial is missing: " + ", ".join(missing)
+        )
+
+    projected_trial = {name: trial[name] for name in required_trial_fields}
+    evaluation = trial.get("hypothesis_evaluation")
+    if isinstance(evaluation, dict):
+        projected_trial["hypothesis_evaluation"] = {
+            key: evaluation[key]
+            for key in ("outcome", "record_digest", "reason")
+            if key in evaluation
+        }
+    else:
+        projected_trial["hypothesis_evaluation"] = None
+
+    projected = {
+        key: publication_envelope[key]
+        for key in (
+            "schema_version",
+            "bridge_proposal",
+            "hypothesis_card",
+            "experiment",
+            "memory_receipt",
+            "producer_gate_report",
+            "execution_class",
+            "qualification_authority",
+        )
+        if key in publication_envelope
+    }
+    projected["trial"] = projected_trial
+    projected["durable_evidence"] = {
+        "bundle_digest": trial["bundle_digest"],
+        "bundle_manifest_digest": trial["bundle_manifest_digest"],
+        **(
+            {"bundle_path": publication_envelope["durable_bundle_path"]}
+            if isinstance(publication_envelope.get("durable_bundle_path"), str)
+            else {}
+        ),
+        "selection_bias_audit_digest": (
+            trial.get("selection_bias_audit", {}).get("record_digest")
+            if isinstance(trial.get("selection_bias_audit"), dict)
+            else None
+        ),
+        "required_trade_logging_digest": (
+            trial.get("required_trade_logging_evaluation", {}).get("record_digest")
+            if isinstance(trial.get("required_trade_logging_evaluation"), dict)
+            else None
+        ),
+    }
+    return projected
+
+
 class AlphaResearchExecutor:
     def __init__(
         self,
@@ -300,10 +374,11 @@ class AlphaResearchExecutor:
         publication_envelope = document.get("publication_envelope")
         if isinstance(publication_envelope, dict):
             publication_envelope = {
-                **publication_envelope,
+                **_publication_handoff(publication_envelope),
                 "task_id": str(task.id),
                 "campaign_digest": document["campaign_digest"],
                 "source_commit": document["source_commit"],
+                "receipt_digest": document["receipt_digest"],
             }
         qualification_handoff = (
             _qualification_handoff(document["qualification"])
