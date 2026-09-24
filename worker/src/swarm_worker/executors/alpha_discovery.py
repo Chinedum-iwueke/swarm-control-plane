@@ -360,7 +360,10 @@ def _schema(stage: str) -> dict:
                                         "rationale",
                                     ],
                                     "properties": {
-                                        "output_field": {"type": "string"},
+                                        "output_field": {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z0-9_]{0,99}$",
+                                        },
                                         "operation": {
                                             "type": "string",
                                             "enum": [
@@ -375,7 +378,18 @@ def _schema(stage: str) -> dict:
                                                 "cross_sectional_rank",
                                             ],
                                         },
-                                        "input_fields": string_array,
+                                        "input_fields": {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "maxItems": 20,
+                                            "items": {
+                                                "type": "string",
+                                                "pattern": (
+                                                    "^(?:[A-Z0-9_-]+__(?:open|high|low|close|volume|quote_volume)"
+                                                    "|[a-z][a-z0-9_]{0,99})$"
+                                                ),
+                                            },
+                                        },
                                         "parameters": {
                                             "type": "object",
                                             "additionalProperties": False,
@@ -692,6 +706,12 @@ alternatives. Use rolling normalization or volatility only when the mechanism re
 spreads, ratios, and ranks must name all causal inputs. Never select assets, timeframe, transformation, d, window, or
 missingness policy by comparing target returns, backtest PnL, held-out metrics, or downstream promotion outcomes.
 Set selection_data_boundary to metadata_predictors_only_no_targets and outcome_data_consulted to false.
+Transformation output_field values must be lowercase snake_case identifiers. Raw transform inputs must be
+instrument-qualified canonical panel columns such as BTCUSDT__close or ETHUSDT__quote_volume; later transforms may
+reference an earlier snake_case output_field. The adaptive compiler materializes only open, high, low, close, volume,
+and quote_volume. Candidate-required auxiliary fields such as funding, open interest, and their source timestamps
+remain governed native-strategy inputs and must not be copied into this transform graph. Do not invent an identity
+transform for timestamps or unsupported auxiliary fields.
 The strategy_catalog is the exact native capability inventory at the reviewed Bulletproof commit. Set
 reusable_hypothesis_id only when a listed eligible contract genuinely tests the proposed mechanism at the chosen
 research timeframe. Otherwise use null; never distort a question merely to reuse code.

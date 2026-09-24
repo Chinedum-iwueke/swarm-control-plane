@@ -222,6 +222,11 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
         "d",
         "weight_threshold",
     }
+    transformation = plan["properties"]["transformations"]["items"]["properties"]
+    assert transformation["output_field"]["pattern"] == "^[a-z][a-z0-9_]{0,99}$"
+    input_pattern = transformation["input_fields"]["items"]["pattern"]
+    assert "quote_volume" in input_pattern
+    assert "A-Z0-9_-" in input_pattern
 
 
 def test_representation_output_drops_unused_nullable_parameters():
@@ -261,6 +266,10 @@ def test_representation_prompt_forbids_semantic_and_outcome_changes():
     assert "0 < d < 0.5" in prompt
     assert "Stable and volatile labels are descriptive" in prompt
     assert "metadata, never mandatory partitions" in prompt
+    assert "instrument-qualified canonical panel columns" in prompt
+    assert "BTCUSDT__close" in prompt
+    assert "remain governed native-strategy inputs" in prompt
+    assert "must not be copied into this transform graph" in prompt
 
 
 def test_alpha_discovery_contract_survives_complete_policy_validation():
