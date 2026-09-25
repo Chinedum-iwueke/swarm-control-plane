@@ -15,3 +15,4 @@ def test_engineering_and_validation_use_distinct_umasks(tmp_path: Path) -> None:
     assert engineering._runner._child_umask == 0o077
     assert engineering._validator._runner._child_umask == 0o022
     assert engineering._runner is not engineering._validator._runner
+    assert engineering._validator._step_timeout_seconds == 1200.0
