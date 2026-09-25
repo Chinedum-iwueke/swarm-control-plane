@@ -1616,8 +1616,13 @@ def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch
     )
     binding = record.specification["dataset_bindings"][0]
     binding.update(
+        catalog_id=str(uuid4()),
+        lake_governance_snapshot_id=str(uuid4()),
         producer_receipt_id=str(uuid4()),
         producer_receipt_digest="4" * 64,
+        partition_digests=["5" * 64],
+        evidence_class="live_exchange_history",
+        research_principal="alpha-research-runner",
     )
     source = record.specification["research_queue"][0]
     candidate_id = uuid4()
@@ -1636,7 +1641,13 @@ def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch
         task_id=uuid4(),
         record_digest="8" * 64,
         assets=[{"venue": "bybit", "instrument": "BTCUSDT", "timeframe": "1m"}],
-        dataset_bindings=[dict(binding)],
+        dataset_bindings=[
+            {
+                key: value
+                for key, value in binding.items()
+                if key not in {"dataset_digest", "producer_receipt_digest"}
+            }
+        ],
     )
     db = MagicMock()
     db.get.return_value = candidate

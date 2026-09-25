@@ -893,14 +893,20 @@ def _selected_panel_admission_evidence(
     if not isinstance(admitted_bindings, list) or not admitted_bindings:
         raise HTTPException(409, "Selected-panel admission has no DATA bindings.")
 
-    def identities(items: list[dict]) -> list[dict]:
+    def admission_identities(items: list[dict]) -> list[dict]:
         return sorted(
             [
                 {
                     "dataset_build_id": str(item["dataset_build_id"]),
-                    "dataset_digest": item["dataset_digest"],
+                    "catalog_id": str(item["catalog_id"]),
+                    "lake_governance_snapshot_id": str(
+                        item["lake_governance_snapshot_id"]
+                    ),
                     "producer_receipt_id": str(item["producer_receipt_id"]),
-                    "producer_receipt_digest": item["producer_receipt_digest"],
+                    "dataset_key": item["dataset_key"],
+                    "partition_digests": sorted(item["partition_digests"]),
+                    "evidence_class": item["evidence_class"],
+                    "research_principal": item["research_principal"],
                 }
                 for item in items
             ],
@@ -908,8 +914,8 @@ def _selected_panel_admission_evidence(
         )
 
     try:
-        expected = identities(bindings)
-        admitted = identities(admitted_bindings)
+        expected = admission_identities(bindings)
+        admitted = admission_identities(admitted_bindings)
     except (KeyError, TypeError) as exc:
         raise HTTPException(
             409, "Selected-panel admission binding identity is incomplete."
@@ -918,6 +924,18 @@ def _selected_panel_admission_evidence(
         raise HTTPException(
             409, "Selected-panel admission does not match campaign DATA bindings."
         )
+    enriched_bindings = sorted(
+        [
+            {
+                "dataset_build_id": str(item["dataset_build_id"]),
+                "dataset_digest": item["dataset_digest"],
+                "producer_receipt_id": str(item["producer_receipt_id"]),
+                "producer_receipt_digest": item["producer_receipt_digest"],
+            }
+            for item in bindings
+        ],
+        key=lambda item: (item["dataset_build_id"], item["producer_receipt_id"]),
+    )
     document = {
         "schema_version": "alpha-selected-panel-engineering-handoff-v1.0.0",
         "candidate_id": str(candidate_uuid),
@@ -927,7 +945,7 @@ def _selected_panel_admission_evidence(
         "admission_record_digest": admission.record_digest,
         "status": "admitted",
         "assets": admission.assets,
-        "bindings": admitted,
+        "bindings": enriched_bindings,
         "precedence": (
             "This final admission supersedes only earlier pre-admission status "
             "statements; it does not alter the frozen question, representation, "
