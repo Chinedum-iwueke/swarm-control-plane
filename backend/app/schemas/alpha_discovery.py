@@ -144,7 +144,7 @@ class AlphaResearchMandateCreate(StrictModel):
 
 class AlphaResearchMandateApproval(StrictModel):
     expected_mandate_digest: str = Field(pattern=_DIGEST)
-    actor: Literal["founder-operator"]
+    actor: str = Field(pattern=_KEY, max_length=150)
     reason: str = Field(min_length=10, max_length=2000)
 
 

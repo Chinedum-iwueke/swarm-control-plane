@@ -20,6 +20,7 @@ from app.models.alpha_discovery import (
     AlphaFounderResearchIdea,
     AlphaResearchMandate,
 )
+from app.models.authority import AuthorityDelegation
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
@@ -39,6 +40,7 @@ from app.schemas.alpha_discovery import (
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
 )
+from app.schemas.authority import AuthorityResolutionRequest
 from app.schemas.discovery_portfolio import (
     DiscoveryAttentionCandidate,
     DiscoveryAttentionPolicy,
@@ -52,6 +54,7 @@ from app.services.alpha_campaign import (
     validate_real_data_bindings,
 )
 from app.services.alpha_data_admission import register_selected_panel_receipt
+from app.services.authority import resolve_authority
 from app.services.discovery_portfolio import register_portfolio
 from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import digest_document
@@ -273,6 +276,51 @@ def approve_mandate(
     moment = now()
     if not (mandate.valid_from <= moment < mandate.valid_until):
         raise HTTPException(409, "Mandate is outside its validity interval.")
+    decision = resolve_authority(
+        db,
+        AuthorityResolutionRequest(
+            actor=payload.actor,
+            decision_type="research-program-charter",
+            action="approve",
+            object_type="alpha-research-mandate",
+            object_id=str(mandate.id),
+            object_digest=mandate.mandate_digest,
+            scope={
+                "authority": mandate.specification["authority"],
+                "mandate_key": mandate.mandate_key,
+                "bulletproof_source_commit": mandate.specification[
+                    "bulletproof_source_commit"
+                ],
+                "capital": False,
+                "orders": False,
+                "shadow": False,
+            },
+            risk_level=0,
+            environment="internal",
+            requester=mandate.created_by,
+        ),
+        now=moment,
+    )
+    if payload.actor != "founder-operator":
+        delegation = (
+            db.get(AuthorityDelegation, decision.delegation_id)
+            if decision.delegation_id is not None
+            else None
+        )
+        scope = delegation.scope if delegation is not None else {}
+        if (
+            scope.get("mandate_approval") is not True
+            or scope.get("authority") != "no_capital_research"
+            or scope.get("capital") is not False
+            or scope.get("orders") is not False
+            or scope.get("shadow") is not False
+            or scope.get("code_changes") is not False
+            or scope.get("promotion") is not False
+            or mandate.mandate_digest not in scope.get("mandate_digests", [])
+        ):
+            raise HTTPException(
+                403, "Delegation does not cover this exact no-capital mandate."
+            )
     mandate.status = "active"
     mandate.approved_by = payload.actor
     mandate.approved_at = mandate.heartbeat_at = moment

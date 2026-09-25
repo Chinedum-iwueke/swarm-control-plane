@@ -11,6 +11,7 @@ from app.schemas.alpha_discovery import (
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
+    AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
     AlphaStrategyCapabilityCatalog,
 )
@@ -28,6 +29,7 @@ from app.services.alpha_discovery import (
     _normalize_candidate_input,
     _recover_resumed_stage,
     _task,
+    approve_mandate,
     reconcile_mandate,
     recover_data_admission,
     recover_discovery_grounding,
@@ -38,6 +40,119 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def mandate_for_approval():
+    moment = datetime.now(UTC)
+    return SimpleNamespace(
+        id=uuid4(),
+        mandate_key="ALPHA009-WEEK-20260925-R5",
+        status="awaiting_approval",
+        mandate_digest=DIGEST,
+        specification={
+            "authority": "no_capital_research",
+            "bulletproof_source_commit": COMMIT,
+        },
+        created_by="alpha-continuous-director",
+        valid_from=moment - timedelta(minutes=1),
+        valid_until=moment + timedelta(days=7),
+        heartbeat_at=moment,
+        approved_by=None,
+        approved_at=None,
+    )
+
+
+def test_founder_can_approve_exact_research_mandate(monkeypatch):
+    mandate = mandate_for_approval()
+    db = MagicMock()
+    db.scalar.side_effect = [mandate.id, None]
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.resolve_authority",
+        lambda *args, **kwargs: SimpleNamespace(delegation_id=None),
+    )
+
+    approve_mandate(
+        db,
+        mandate,
+        AlphaResearchMandateApproval(
+            expected_mandate_digest=DIGEST,
+            actor="founder-operator",
+            reason="Approve the exact bounded no-capital research charter.",
+        ),
+    )
+
+    assert mandate.status == "active"
+    assert mandate.approved_by == "founder-operator"
+
+
+def test_exact_no_capital_delegation_can_approve_research_mandate(monkeypatch):
+    mandate = mandate_for_approval()
+    delegation_id = uuid4()
+    db = MagicMock()
+    db.scalar.side_effect = [mandate.id, None]
+    db.get.return_value = SimpleNamespace(
+        scope={
+            "mandate_approval": True,
+            "authority": "no_capital_research",
+            "mandate_digests": [DIGEST],
+            "capital": False,
+            "orders": False,
+            "shadow": False,
+            "code_changes": False,
+            "promotion": False,
+        }
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.resolve_authority",
+        lambda *args, **kwargs: SimpleNamespace(delegation_id=delegation_id),
+    )
+
+    approve_mandate(
+        db,
+        mandate,
+        AlphaResearchMandateApproval(
+            expected_mandate_digest=DIGEST,
+            actor="codex-loop-recovery",
+            reason="Approve only the delegated immutable historical mandate.",
+        ),
+    )
+
+    assert mandate.status == "active"
+    assert mandate.approved_by == "codex-loop-recovery"
+
+
+def test_delegation_cannot_approve_a_different_mandate_digest(monkeypatch):
+    mandate = mandate_for_approval()
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        scope={
+            "mandate_approval": True,
+            "authority": "no_capital_research",
+            "mandate_digests": ["c" * 64],
+            "capital": False,
+            "orders": False,
+            "shadow": False,
+            "code_changes": False,
+            "promotion": False,
+        }
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.resolve_authority",
+        lambda *args, **kwargs: SimpleNamespace(delegation_id=uuid4()),
+    )
+
+    with pytest.raises(HTTPException, match="exact no-capital mandate"):
+        approve_mandate(
+            db,
+            mandate,
+            AlphaResearchMandateApproval(
+                expected_mandate_digest=DIGEST,
+                actor="codex-loop-recovery",
+                reason="Attempt approval outside the delegated immutable digest.",
+            ),
+        )
+
+    assert mandate.status == "awaiting_approval"
 
 
 def test_founder_context_focus_keeps_named_asset_and_strategy_only():
