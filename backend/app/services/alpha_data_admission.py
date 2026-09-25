@@ -95,7 +95,25 @@ def register_selected_panel_receipt(
     reference = result["instrument_reference"]
     first = _timestamp(result["first_timestamp"])
     last = _timestamp(result["last_timestamp"])
-    key_suffix = panel_digest[:12]
+    output_columns = result.get("output_columns")
+    if (
+        not isinstance(output_columns, list)
+        or not output_columns
+        or not {"ts", "open", "high", "low", "close", "volume"}.issubset(
+            output_columns
+        )
+    ):
+        raise AlphaDataAdmissionConflict(
+            "Selected-panel receipt lacks its complete output-column contract."
+        )
+    key_suffix = record_digest(
+        {
+            "panel_digest": panel_digest,
+            "schema_digest": schema_digest,
+            "output_columns": output_columns,
+            "registry_contract": "alpha-selected-panel-v2",
+        }
+    )[:12]
     dataset_key = f"alpha-{venue}-{symbol.lower()}-perp-{timeframe}-{key_suffix}"
     build_key = f"alpha-build-{venue}-{symbol.lower()}-{key_suffix}"
     catalog_key = f"alpha-catalog-{venue}-{symbol.lower()}-{key_suffix}"
@@ -282,8 +300,8 @@ def register_selected_panel_receipt(
                     "name": "canonical-panel-verification",
                     "operation": "Retain the exact native canonical one-minute panel after deterministic quality checks.",
                     "parameters": {"content_digest": panel_digest},
-                    "input_columns": ["ts", "open", "high", "low", "close", "volume"],
-                    "output_columns": ["ts", "open", "high", "low", "close", "volume"],
+                    "input_columns": output_columns,
+                    "output_columns": output_columns,
                 }
             ],
             "features": [
@@ -296,7 +314,7 @@ def register_selected_panel_receipt(
                     "null_policy": "preserve",
                 }
             ],
-            "output_columns": ["ts", "open", "high", "low", "close", "volume"],
+            "output_columns": output_columns,
             "quality_assertions": [
                 {"check": "duplicate_timestamp_count", "maximum": 0},
                 {"check": "missing_bar_count", "maximum": 0},

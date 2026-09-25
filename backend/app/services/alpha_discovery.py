@@ -1250,11 +1250,22 @@ def _ensure_data_admission_task(
     if catalog is None:
         raise HTTPException(409, "Candidate has no founder-approved discovery catalog.")
     data = candidate.document["data"]
+    shared_fields = {
+        field for field in data["required_fields"] if "__" not in field
+    }
     assets = [
         {
             "venue": data["venue"],
             "instrument": instrument,
             "timeframe": data["timeframe"],
+            "required_fields": sorted(
+                shared_fields
+                | {
+                    field.removeprefix(f"{instrument}__")
+                    for field in data["required_fields"]
+                    if field.startswith(f"{instrument}__")
+                }
+            ),
         }
         for instrument in data["instruments"]
     ]
@@ -1335,6 +1346,28 @@ def _ensure_data_admission_task(
     db.add(admission)
     db.flush()
     return admission
+
+
+def _missing_admission_fields(
+    receipts: list[dict], assets: list[dict]
+) -> tuple[dict, list[str]] | None:
+    receipts_by_identity = {
+        (
+            item.get("result", {}).get("venue"),
+            item.get("result", {}).get("instrument"),
+            item.get("result", {}).get("timeframe"),
+        ): item
+        for item in receipts
+    }
+    for asset in assets:
+        identity = (asset["venue"], asset["instrument"], asset["timeframe"])
+        result = receipts_by_identity[identity].get("result", {})
+        missing = sorted(
+            set(asset["required_fields"]) - set(result.get("output_columns", []))
+        )
+        if missing:
+            return asset, missing
+    return None
 
 
 def _portfolio_and_campaign(
@@ -1693,6 +1726,26 @@ def _reconcile_data_admissions(
         }
         if observed != expected:
             raise HTTPException(409, "Selected-panel admission assets changed.")
+        missing_contract = _missing_admission_fields(receipts, admission.assets)
+        if missing_contract is not None:
+            asset, missing = missing_contract
+            admission.status = "failed"
+            admission.failure = {
+                "category": "required_fields_missing",
+                "asset": {
+                    "venue": asset["venue"],
+                    "instrument": asset["instrument"],
+                    "timeframe": asset["timeframe"],
+                },
+                "missing_fields": missing,
+            }
+            admission.completed_at = now()
+            candidate.disposition = "rejected"
+            candidate.reason_codes = [
+                *candidate.reason_codes,
+                "selected_panel_required_fields_missing",
+            ]
+            continue
         bindings = [
             register_selected_panel_receipt(
                 db,

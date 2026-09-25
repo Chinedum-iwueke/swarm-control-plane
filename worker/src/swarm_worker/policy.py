@@ -438,6 +438,7 @@ class AlphaDataAdmissionAsset(BaseModel):
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     timeframe: Literal["1m"] = "1m"
+    required_fields: list[str] = Field(min_length=1, max_length=50)
 
 
 class AlphaDataAdmissionContract(BaseModel):
