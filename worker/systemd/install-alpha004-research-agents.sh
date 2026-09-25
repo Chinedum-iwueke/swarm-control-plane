@@ -15,9 +15,12 @@ runtime=/var/lib/invariance-swarm/codex-discovery-runtime
 test ! -L "$runtime"
 install -d -o omenka -g omenka -m 0700 "$runtime"
 test ! -L "$runtime/auth.json"
-if [[ ! -e "$runtime/auth.json" ]]; then
-  install -o root -g root -m 0600 /dev/null "$runtime/auth.json"
+if [[ ! -s "$runtime/auth.json" ]]; then
+  install -o omenka -g omenka -m 0600 \
+    /etc/invariance-swarm/codex-worker/auth.json "$runtime/auth.json"
 fi
+chown omenka:omenka "$runtime/auth.json"
+chmod 0600 "$runtime/auth.json"
 install -o root -g root -m 0600 "$root/systemd/codex-discovery-runtime.env" \
   /etc/invariance-swarm/codex-discovery-runtime.env
 install -d -o omenka -g omenka -m 0700 /home/omenka/Projects/swarm-agent-workspaces

@@ -604,7 +604,7 @@ def retry_invalid_discovery_stage(
     )
     if cycle is None or cycle.id != payload.expected_cycle_id:
         raise HTTPException(409, "The expected discovery cycle is no longer current.")
-    stages = {
+    invalid_stages = {
         "review_invalid_intelligence_output": (
             "intelligence",
             "intelligence_task_id",
@@ -624,13 +624,40 @@ def retry_invalid_discovery_stage(
             "await_recovered_representation",
         ),
     }
-    recovery = stages.get(cycle.next_action) if cycle.status == "needs_attention" else None
+    failed_stages = {
+        "repair_research_intelligence_worker": (
+            "intelligence",
+            "intelligence_task_id",
+            "intelligence_synthesis",
+            "await_recovered_intelligence",
+        ),
+        "repair_senior_researcher": (
+            "hypothesis",
+            "hypothesis_task_id",
+            "hypothesis_generation",
+            "await_recovered_hypothesis",
+        ),
+        "repair_representation_worker": (
+            "representation",
+            "representation_task_id",
+            "representation_selection",
+            "await_recovered_representation",
+        ),
+    }
+    recovery = (
+        invalid_stages.get(cycle.next_action)
+        or failed_stages.get(cycle.next_action)
+        if cycle.status == "needs_attention"
+        else None
+    )
     if recovery is None:
-        raise HTTPException(409, "The current cycle has no invalid stage to retry.")
+        raise HTTPException(409, "The current cycle has no recoverable stage to retry.")
     stage, task_attribute, phase, next_action = recovery
     previous = db.get(Task, getattr(cycle, task_attribute))
-    if previous is None or previous.status != "succeeded":
-        raise HTTPException(409, "Invalid-stage recovery requires retained successful output.")
+    failed_recovery = cycle.next_action in failed_stages
+    expected_statuses = {"failed", "cancelled"} if failed_recovery else {"succeeded"}
+    if previous is None or previous.status not in expected_statuses:
+        raise HTTPException(409, "Stage recovery requires retained terminal evidence.")
     contract = previous.input_contract or {}
     if any(
         contract.get(key) != value
@@ -643,7 +670,7 @@ def retry_invalid_discovery_stage(
     ):
         raise HTTPException(409, "The retained stage contract no longer matches the cycle.")
     recovery_context = deepcopy(contract.get("context", {}))
-    if stage == "representation":
+    if stage == "representation" and not failed_recovery:
         rejection = db.scalar(
             select(AlphaDiscoveryEvent)
             .where(
@@ -685,7 +712,11 @@ def retry_invalid_discovery_stage(
     _event(
         db,
         mandate,
-        "invalid_discovery_stage_superseded",
+        (
+            "failed_discovery_stage_superseded"
+            if failed_recovery
+            else "invalid_discovery_stage_superseded"
+        ),
         {
             "stage": stage,
             "actor": payload.actor,
