@@ -193,17 +193,14 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     ).read_text(encoding="utf-8")
     assert "Environment=NODE_OPTIONS=--jitless" in unit
     assert (
-        "Environment=SWARM_CODEX_HOME=/var/lib/invariance-swarm/"
-        "codex-alpha-strategy-engineer-runtime" in unit
+        "EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env" in unit
     )
     assert (
         "Environment=SWARM_ENGINEERING_VIRTUALENV="
         "/home/omenka/Projects/bulletproof_bt/.venv" in unit
     )
     assert (
-        "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:"
-        "/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json"
-        in unit
+        "ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime" in unit
     )
     assert "MemoryDenyWriteExecute=true" not in unit
     assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" in unit
@@ -220,8 +217,7 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     assert ".lifecycle.checks | all(.[]; . == true)" in installer
     assert 'test ! -L "$runtime/auth.json"' in installer
     assert (
-        "--codex-home /var/lib/invariance-swarm/"
-        "codex-alpha-strategy-engineer-runtime" in installer
+        "--codex-home /var/lib/invariance-swarm/codex-discovery-runtime" in installer
     )
     assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
     assert "systemctl enable invariance-swarm-alpha-strategy-engineer.service" in installer

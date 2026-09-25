@@ -9,7 +9,7 @@ User=omenka
 Group=omenka
 WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
 EnvironmentFile=/etc/invariance-swarm/alpha-strategy-engineer.env
-Environment=SWARM_CODEX_HOME=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime
+EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env
 Environment=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=NODE_OPTIONS=--jitless
@@ -36,9 +36,7 @@ LockPersonality=true
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
-ReadOnlyPaths=/etc/invariance-swarm/codex-worker
-BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json
-ReadWritePaths=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime
+ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime
 ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces
 ReadWritePaths=/home/omenka/Projects/bulletproof_bt/.git/worktrees
 ReadWritePaths=/home/omenka/.local/state/invariance-swarm

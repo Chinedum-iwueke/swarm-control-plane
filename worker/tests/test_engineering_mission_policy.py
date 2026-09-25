@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,8 +187,10 @@ async def test_codex_subprocess_survives_temporary_heartbeat_outage(
         artifacts=artifacts,
         logs=logs,
     )
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
     executor = EngineeringMissionExecutor(
-        codex_home=tmp_path / "codex-home",
+        codex_home=codex_home,
         codex_model="test",
         timeout_seconds=10,
         heartbeat_interval_seconds=0.01,
@@ -213,6 +216,74 @@ async def test_codex_subprocess_survives_temporary_heartbeat_outage(
     assert set(heartbeat_failures) == {
         "coding-agent: temporary ConnectionError"
     }
+
+
+@pytest.mark.asyncio
+async def test_codex_subprocess_serializes_shared_credential_refresh(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+
+    def workspace(name: str):
+        root = tmp_path / name
+        repository = root / "repository"
+        artifacts = root / "artifacts"
+        logs = root / "logs"
+        repository.mkdir(parents=True)
+        artifacts.mkdir()
+        logs.mkdir()
+        return SimpleNamespace(
+            repository=repository,
+            artifacts=artifacts,
+            logs=logs,
+        )
+
+    executor = EngineeringMissionExecutor(
+        codex_home=codex_home,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=0.01,
+        effective_uid=lambda: 1000,
+    )
+    heartbeat_events: list[dict] = []
+
+    async def heartbeat(progress):
+        heartbeat_events.append(progress)
+
+    first = asyncio.create_task(
+        executor._run_codex(
+            name="coding-agent",
+            args=["bash", "-c", "sleep 0.1"],
+            prompt="first bounded prompt",
+            workspace=workspace("first"),
+            heartbeat=heartbeat,
+            heartbeat_failures=[],
+            timeout_seconds=1,
+        )
+    )
+    await asyncio.sleep(0.01)
+    second = asyncio.create_task(
+        executor._run_codex(
+            name="coding-agent",
+            args=["bash", "-c", "true"],
+            prompt="second bounded prompt",
+            workspace=workspace("second"),
+            heartbeat=heartbeat,
+            heartbeat_failures=[],
+            timeout_seconds=1,
+        )
+    )
+
+    first_result, second_result = await asyncio.gather(first, second)
+
+    assert first_result.success is True
+    assert second_result.success is True
+    assert any(
+        event.get("current_step") == "codex_credential_wait"
+        for event in heartbeat_events
+    )
+    assert (codex_home / "credential-refresh.lock").stat().st_mode & 0o777 == 0o600
 
 
 def test_scientific_evidence_reaches_coder_and_independent_reviewer():
