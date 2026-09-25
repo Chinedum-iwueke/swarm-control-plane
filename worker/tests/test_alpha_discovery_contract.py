@@ -255,6 +255,16 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
         "d",
         "weight_threshold",
     }
+    assert parameters["properties"]["periods"] == {
+        "type": ["number", "null"],
+        "minimum": 1,
+        "maximum": 10_000,
+    }
+    assert parameters["properties"]["window"] == {
+        "type": ["number", "null"],
+        "minimum": 2,
+        "maximum": 100_000,
+    }
     transformation = plan["properties"]["transformations"]["items"]["properties"]
     assert transformation["output_field"]["pattern"] == "^[a-z][a-z0-9_]{0,99}$"
     input_pattern = transformation["input_fields"]["items"]["pattern"]
@@ -297,6 +307,7 @@ def test_representation_prompt_forbids_semantic_and_outcome_changes():
     assert "before any outcome evaluation" in prompt
     assert "plausible rejected alternatives" in prompt
     assert "0 < d < 0.5" in prompt
+    assert "one-observation rolling window is invalid" in prompt
     assert "Stable and volatile labels are descriptive" in prompt
     assert "metadata, never mandatory partitions" in prompt
     assert "instrument-qualified canonical panel columns" in prompt
