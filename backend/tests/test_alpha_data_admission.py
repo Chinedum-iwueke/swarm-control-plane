@@ -26,6 +26,15 @@ def receipt() -> dict:
         "panel_uri": "file:///lake/canonical/perp/bybit/BTCUSDT/timeframe=1m/research_panel.parquet",
         "byte_size": 1024,
         "schema_digest": "c" * 64,
+        "output_columns": [
+            "ts",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "quote_volume",
+        ],
         "quality": {
             "null_counts": {},
             "duplicate_timestamp_count": 0,
@@ -139,6 +148,7 @@ def test_selected_panel_receipt_materializes_exact_data_registry(monkeypatch):
     assert binding.partition_digests == [DIGEST]
     assert binding.evidence_class == "live_exchange_history"
     assert captured["manifest"].manifest.source_objects[0].sha256 == DIGEST
+    assert "quote_volume" in captured["manifest"].manifest.output_columns
     assert captured["build"].output_uri == f"file:///recovery/{DIGEST}.parquet"
     assert {
         item.check: item.observed for item in captured["build"].quality_results

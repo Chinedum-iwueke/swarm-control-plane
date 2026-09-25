@@ -23,6 +23,7 @@ from app.services.alpha_discovery import (
     _discovery_queries,
     _ensure_data_admission_task,
     _focus_founder_context,
+    _missing_admission_fields,
     _normalize_candidate_input,
     _recover_resumed_stage,
     _task,
@@ -1237,6 +1238,11 @@ def test_manifest_visible_basket_creates_bounded_no_approval_admission_task(
                 "instruments": ["BTCUSDT", "ETHUSDT"],
                 "timeframe": "1m",
                 "research_timeframe": "7m",
+                "required_fields": [
+                    "ts",
+                    "BTCUSDT__close",
+                    "ETHUSDT__close",
+                ],
             }
         },
     )
@@ -1256,13 +1262,49 @@ def test_manifest_visible_basket_creates_bounded_no_approval_admission_task(
     admission = _ensure_data_admission_task(db, mandate, candidate_record)
     contract = captured["payload"].input_contract
     assert contract["assets"] == [
-        {"venue": "bybit", "instrument": "BTCUSDT", "timeframe": "1m"},
-        {"venue": "bybit", "instrument": "ETHUSDT", "timeframe": "1m"},
+        {
+            "venue": "bybit",
+            "instrument": "BTCUSDT",
+            "timeframe": "1m",
+            "required_fields": ["close", "ts"],
+        },
+        {
+            "venue": "bybit",
+            "instrument": "ETHUSDT",
+            "timeframe": "1m",
+            "required_fields": ["close", "ts"],
+        },
     ]
     assert captured["payload"].approval_required is False
     assert captured["payload"].risk_level == 0
     assert contract["authority"] == "no_capital_data_admission"
     assert admission.task_id == task_id
+
+
+def test_selected_panel_admission_fails_closed_on_missing_candidate_fields():
+    assets = [
+        {
+            "venue": "bybit",
+            "instrument": "ETHUSDT",
+            "timeframe": "1m",
+            "required_fields": ["ts", "close", "quote_volume"],
+        }
+    ]
+    receipts = [
+        {
+            "result": {
+                "venue": "bybit",
+                "instrument": "ETHUSDT",
+                "timeframe": "1m",
+                "output_columns": ["ts", "open", "high", "low", "close", "volume"],
+            }
+        }
+    ]
+
+    assert _missing_admission_fields(receipts, assets) == (
+        assets[0],
+        ["quote_volume"],
+    )
 
 
 def test_founder_idea_enforces_one_year_and_eight_variant_boundary():
