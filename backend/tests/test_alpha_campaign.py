@@ -1395,6 +1395,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     source["discovery_candidate_digest"] = "7" * 64
     source_document = {"predictor": "lagged displacement", "target": "next-hour return"}
     db = MagicMock()
+    db.scalar.return_value = None
     db.get.return_value = SimpleNamespace(
         candidate_digest="7" * 64,
         question=source["question"],
@@ -1551,6 +1552,7 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
     source["discovery_candidate_id"] = str(uuid4())
     source["discovery_candidate_digest"] = "7" * 64
     db = MagicMock()
+    db.scalar.return_value = None
     db.get.return_value = SimpleNamespace(
         candidate_digest="7" * 64,
         question=source["question"],
@@ -1596,6 +1598,112 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
     assert evidence["independent_review_correction"] == correction
     assert len(evidence) <= 20
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
+def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["BTCUSDT", "ETHUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
+    binding = record.specification["dataset_bindings"][0]
+    binding.update(
+        producer_receipt_id=str(uuid4()),
+        producer_receipt_digest="4" * 64,
+    )
+    source = record.specification["research_queue"][0]
+    candidate_id = uuid4()
+    source.update(
+        discovery_candidate_id=str(candidate_id),
+        discovery_candidate_digest="7" * 64,
+        instruments=["BTCUSDT", "ETHUSDT"],
+    )
+    candidate = SimpleNamespace(
+        candidate_digest="7" * 64,
+        question=source["question"],
+        document={"data": {"status": "requires_admission"}},
+    )
+    admission = SimpleNamespace(
+        id=uuid4(),
+        task_id=uuid4(),
+        record_digest="8" * 64,
+        assets=[{"venue": "bybit", "instrument": "BTCUSDT", "timeframe": "1m"}],
+        dataset_bindings=[dict(binding)],
+    )
+    db = MagicMock()
+    db.get.return_value = candidate
+    db.scalar.return_value = admission
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "citations": []},
+    )
+    monkeypatch.setattr(service, "persist_new_task", lambda *_: None)
+
+    task = service._create_strategy_engineering_task(
+        db, record, source, {"category": "exact_strategy_unavailable"}
+    )
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    handoff = evidence["selected_panel_admission"]
+    assert "dataset_binding" not in evidence
+    assert handoff["candidate_id"] == str(candidate_id)
+    assert handoff["status"] == "admitted"
+    assert handoff["capital_or_order_authority"] is False
+    assert handoff["bindings"][0]["dataset_build_id"] == binding["dataset_build_id"]
+    assert len(handoff["handoff_digest"]) == 64
+    assert len(evidence) <= 20
+    ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
+def test_no_change_failure_without_admission_handoff_creates_successor(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G3",
+        status="failed",
+        plan_digest="a" * 64,
+        input_contract={
+            "evidence_context": json.dumps(
+                {"discovery_candidate": {"data": {"status": "requires_admission"}}}
+            )
+        },
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Coding agent produced no changes.",
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, rejected]
+    successor = SimpleNamespace(
+        id=uuid4(), status="pending_approval", plan_digest="b" * 64
+    )
+    create = MagicMock(return_value=successor)
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    assert service._advance_governed_pipeline(db, record) is successor
+    kwargs = create.call_args.kwargs
+    assert kwargs["stage"] == "G4"
+    assert kwargs["parent_task_id"] == rejected.id
+    assert "correction_feedback" not in kwargs
 
 
 def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch):
