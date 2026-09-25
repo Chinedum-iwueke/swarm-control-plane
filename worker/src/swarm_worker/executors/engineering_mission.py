@@ -8,7 +8,12 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from swarm_worker.api_client import AuthenticationError, ConflictError
+from swarm_worker.api_client import (
+    AuthenticationError,
+    ConflictError,
+    ConnectionError,
+    ServerError,
+)
 from swarm_worker.executors.code_validation import (
     AsyncProcessRunner,
     CodeValidationExecutor,
@@ -25,6 +30,7 @@ from swarm_worker.workspace import SubprocessRunner, TaskWorkspace
 
 class EngineeringMissionExecutor:
     _CODEX_NODE_OPTIONS = "--jitless"
+    _MAX_HEARTBEAT_FAILURES = 20
 
     def __init__(
         self,
@@ -73,6 +79,7 @@ class EngineeringMissionExecutor:
             raise ExecutionPolicyError("Engineering executor requires its named workflow.")
         started = time.monotonic()
         deadline = started + min(contract.max_duration_seconds, self._timeout)
+        heartbeat_failures: list[str] = []
         coder = await self._run_codex(
             name="coding-agent",
             args=[
@@ -93,17 +100,33 @@ class EngineeringMissionExecutor:
             prompt=self._coding_prompt(contract),
             workspace=workspace,
             heartbeat=heartbeat,
+            heartbeat_failures=heartbeat_failures,
             timeout_seconds=max(1.0, deadline - time.monotonic()),
         )
         if not coder.success:
-            return self._result(task, workflow, workspace, started, [coder], False)
+            return self._result(
+                task,
+                workflow,
+                workspace,
+                started,
+                [coder],
+                False,
+                heartbeat_failures=heartbeat_failures,
+            )
 
         changed = self._changed_paths(workspace)
         self._enforce_scope(contract, changed, workspace)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return self._result(
-                task, workflow, workspace, started, [coder], False, "workflow_timeout"
+                task,
+                workflow,
+                workspace,
+                started,
+                [coder],
+                False,
+                "workflow_timeout",
+                heartbeat_failures=heartbeat_failures,
             )
         bounded_workflow = workflow.model_copy(
             update={"timeout_seconds": max(1, min(workflow.timeout_seconds, int(remaining)))}
@@ -114,14 +137,34 @@ class EngineeringMissionExecutor:
             workspace=workspace,
             heartbeat=heartbeat,
         )
+        heartbeat_failures.extend(
+            validation.heartbeat_failures[
+                : self._MAX_HEARTBEAT_FAILURES - len(heartbeat_failures)
+            ]
+        )
         steps = [coder, *validation.steps]
         if not validation.success:
-            return self._result(task, workflow, workspace, started, steps, False)
+            return self._result(
+                task,
+                workflow,
+                workspace,
+                started,
+                steps,
+                False,
+                heartbeat_failures=heartbeat_failures,
+            )
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return self._result(
-                task, workflow, workspace, started, steps, False, "workflow_timeout"
+                task,
+                workflow,
+                workspace,
+                started,
+                steps,
+                False,
+                "workflow_timeout",
+                heartbeat_failures=heartbeat_failures,
             )
         review_schema = workspace.artifacts / "review-schema.json"
         review_schema.write_text(
@@ -175,6 +218,7 @@ class EngineeringMissionExecutor:
             prompt=self._review_prompt(contract),
             workspace=workspace,
             heartbeat=heartbeat,
+            heartbeat_failures=heartbeat_failures,
             timeout_seconds=remaining,
         )
         steps.append(review)
@@ -190,10 +234,19 @@ class EngineeringMissionExecutor:
                 steps,
                 False,
                 "independent_review_rejected" if review.success else None,
+                heartbeat_failures=heartbeat_failures,
             )
         bundle = self._create_bundle(contract, changed, workspace)
         steps.append(bundle)
-        return self._result(task, workflow, workspace, started, steps, True)
+        return self._result(
+            task,
+            workflow,
+            workspace,
+            started,
+            steps,
+            True,
+            heartbeat_failures=heartbeat_failures,
+        )
 
     async def _run_codex(
         self,
@@ -203,6 +256,7 @@ class EngineeringMissionExecutor:
         prompt: str,
         workspace: TaskWorkspace,
         heartbeat: HeartbeatCallback,
+        heartbeat_failures: list[str],
         timeout_seconds: float,
     ) -> StepExecutionResult:
         stdout_path = workspace.logs / f"{name}.stdout.log"
@@ -253,6 +307,11 @@ class EngineeringMissionExecutor:
                         lease_lost = True
                         await self._runner.terminate(running, grace_seconds=5)
                         break
+                    except (ConnectionError, ServerError) as exc:
+                        if len(heartbeat_failures) < self._MAX_HEARTBEAT_FAILURES:
+                            heartbeat_failures.append(
+                                f"{name}: temporary {type(exc).__name__}"
+                            )
             return_code = running.process.returncode
         self._secure_evidence(workspace)
         ended_at = datetime.now(timezone.utc)
@@ -462,6 +521,8 @@ class EngineeringMissionExecutor:
         steps: list[StepExecutionResult],
         success: bool,
         reason: str | None = None,
+        *,
+        heartbeat_failures: list[str] | None = None,
     ) -> WorkflowExecutionResult:
         artifact_candidates = (
             "artifacts/coder-summary.md",
@@ -491,6 +552,7 @@ class EngineeringMissionExecutor:
             total_duration_seconds=time.monotonic() - started,
             steps=steps,
             success=success,
+            heartbeat_failures=heartbeat_failures or [],
             termination_reason=reason if reason else (None if success else "step_failed"),
             artifacts=artifacts,
             retryable=(
