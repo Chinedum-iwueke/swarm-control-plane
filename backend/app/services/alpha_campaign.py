@@ -766,9 +766,13 @@ def _create_strategy_engineering_task(
         evidence["selected_panel_admission"] = selected_panel_admission
     if correction_feedback is not None:
         # Correction stages already carry the complete ordered binding list. Drop
-        # the legacy singular alias before adding review evidence so the typed
-        # mission contract remains within its 20-key top-level safety bound.
-        evidence.pop("dataset_binding")
+        # legacy singular aliases before adding review evidence so the typed
+        # mission contract remains within its 20-key top-level safety bound. A
+        # selected-panel handoff has already replaced dataset_binding, making the
+        # singular instrument alias the remaining redundant field.
+        evidence.pop("dataset_binding", None)
+        if selected_panel_admission is not None:
+            evidence.pop("instrument", None)
         evidence["independent_review_correction"] = correction_feedback
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
