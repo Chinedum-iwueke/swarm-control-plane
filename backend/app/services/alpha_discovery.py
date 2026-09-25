@@ -31,6 +31,7 @@ from app.schemas.alpha_campaign import (
     AlphaCampaignCreate,
 )
 from app.schemas.alpha_discovery import (
+    AlphaDataAdmissionRecovery,
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaPredictiveCandidate,
@@ -621,6 +622,85 @@ def retry_invalid_discovery_stage(
         },
         cycle,
     )
+    return cycle
+
+
+def recover_data_admission(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    payload: AlphaDataAdmissionRecovery,
+) -> AlphaDiscoveryCycle:
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before admission recovery.")
+    if mandate.status != "active" or not mandate.valid_from <= now() < mandate.valid_until:
+        raise HTTPException(409, "Admission recovery requires an active mandate.")
+    cycle = db.get(AlphaDiscoveryCycle, payload.expected_cycle_id)
+    if cycle is None or cycle.mandate_id != mandate.id:
+        raise HTTPException(409, "Admission recovery cycle does not match the mandate.")
+    admission = db.scalar(
+        select(AlphaCandidateDataAdmission).where(
+            AlphaCandidateDataAdmission.task_id == payload.expected_task_id
+        )
+    )
+    candidate = (
+        db.get(AlphaDiscoveryCandidate, admission.candidate_id)
+        if admission is not None
+        else None
+    )
+    if (
+        admission is None
+        or candidate is None
+        or candidate.cycle_id != cycle.id
+        or admission.status != "failed"
+        or cycle.status != "rejected"
+    ):
+        raise HTTPException(409, "Admission recovery ledger is not the expected failure.")
+    task = db.get(Task, payload.expected_task_id)
+    contract = task.input_contract if task is not None else {}
+    catalog = mandate.specification.get("discovery_catalog", {})
+    if (
+        task is None
+        or task.status != "succeeded"
+        or contract.get("candidate_id") != str(candidate.id)
+        or contract.get("candidate_digest") != candidate.candidate_digest
+        or contract.get("catalog_receipt_digest") != catalog.get("receipt_digest")
+        or contract.get("source_commit")
+        != mandate.specification.get("bulletproof_source_commit")
+    ):
+        raise HTTPException(409, "Successful admission task does not match frozen scope.")
+    prior_failure = admission.failure
+    admission.status = "queued"
+    admission.failure = {}
+    admission.completed_at = None
+    candidate.disposition = "awaiting_data_admission"
+    cycle.status = "awaiting_data_admission"
+    cycle.phase = "data_admission"
+    cycle.next_action = "await_selected_panel_admission"
+    cycle.completed_at = None
+    founder_idea = db.scalar(
+        select(AlphaFounderResearchIdea).where(
+            AlphaFounderResearchIdea.cycle_id == cycle.id
+        )
+    )
+    if founder_idea is not None:
+        founder_idea.status = "processing"
+    _event(
+        db,
+        mandate,
+        "selected_panel_admission_recovered",
+        {
+            "actor": payload.actor,
+            "reason": payload.reason,
+            "cycle_id": str(cycle.id),
+            "candidate_id": str(candidate.id),
+            "task_id": str(task.id),
+            "task_plan_digest": task.plan_digest,
+            "prior_failure": prior_failure,
+        },
+        cycle,
+    )
+    if not _reconcile_data_admissions(db, mandate, cycle):
+        raise HTTPException(409, "Recovered admission did not reconcile.")
     return cycle
 
 

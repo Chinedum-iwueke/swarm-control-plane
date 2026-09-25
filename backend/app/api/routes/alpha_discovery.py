@@ -9,6 +9,7 @@ from app.core.security import require_orchestrator
 from app.db.session import get_db
 from app.models.alpha_discovery import AlphaFounderResearchIdea, AlphaResearchMandate
 from app.schemas.alpha_discovery import (
+    AlphaDataAdmissionRecovery,
     AlphaDiscoveryGroundingRecovery,
     AlphaDiscoveryOverview,
     AlphaDiscoveryStageRetry,
@@ -23,6 +24,7 @@ from app.services.alpha_discovery import (
     overview,
     queue_founder_idea,
     reconcile_mandate,
+    recover_data_admission,
     recover_discovery_grounding,
     register_mandate,
     retry_invalid_discovery_stage,
@@ -174,6 +176,25 @@ def retry_invalid_stage(
             if cycle.representation_task_id
             else None
         ),
+    }
+
+
+@router.post("/mandates/{mandate_id}/recover-data-admission")
+def recover_admission(
+    mandate_id: UUID,
+    payload: AlphaDataAdmissionRecovery,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = _locked(db, mandate_id)
+    cycle = recover_data_admission(db, mandate, payload)
+    db.commit()
+    db.refresh(cycle)
+    return {
+        "cycle_id": str(cycle.id),
+        "status": cycle.status,
+        "phase": cycle.phase,
+        "next_action": cycle.next_action,
+        "campaign_id": str(cycle.campaign_id) if cycle.campaign_id else None,
     }
 
 

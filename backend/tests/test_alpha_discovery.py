@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from app.schemas.alpha_campaign import AlphaCampaignCreate
 from app.schemas.alpha_discovery import (
+    AlphaDataAdmissionRecovery,
     AlphaDiscoveryCatalogBinding,
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
@@ -28,6 +29,7 @@ from app.services.alpha_discovery import (
     _recover_resumed_stage,
     _task,
     reconcile_mandate,
+    recover_data_admission,
     recover_discovery_grounding,
     retry_invalid_discovery_stage,
 )
@@ -344,6 +346,85 @@ def test_grounding_recovery_preserves_old_cycle_and_approval(monkeypatch, condit
         assert error.value.status_code == 409
         new_cycle.assert_not_called()
         event.assert_not_called()
+
+
+def test_failed_data_admission_recovery_reuses_exact_successful_task(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_from=moment - timedelta(days=1),
+        valid_until=moment + timedelta(days=1),
+        mandate_digest=DIGEST,
+        specification={
+            "bulletproof_source_commit": COMMIT,
+            "discovery_catalog": {"receipt_digest": "c" * 64},
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        mandate_id=mandate.id,
+        status="rejected",
+        phase="complete",
+        next_action="schedule_next_discovery_cycle",
+        completed_at=moment,
+    )
+    candidate = SimpleNamespace(
+        id=uuid4(),
+        cycle_id=cycle.id,
+        candidate_digest="d" * 64,
+        disposition="awaiting_data_admission",
+    )
+    task = SimpleNamespace(
+        id=uuid4(),
+        status="succeeded",
+        plan_digest="e" * 64,
+        input_contract={
+            "candidate_id": str(candidate.id),
+            "candidate_digest": candidate.candidate_digest,
+            "catalog_receipt_digest": "c" * 64,
+            "source_commit": COMMIT,
+        },
+    )
+    admission = SimpleNamespace(
+        candidate_id=candidate.id,
+        task_id=task.id,
+        status="failed",
+        failure={"error_category": "executor_ValidationError"},
+        completed_at=moment,
+    )
+    founder_idea = SimpleNamespace(status="rejected")
+    payload = AlphaDataAdmissionRecovery(
+        expected_mandate_digest=DIGEST,
+        expected_cycle_id=cycle.id,
+        expected_task_id=task.id,
+        actor="founder-operator",
+        reason="Recover the unchanged successful native receipt batch.",
+    )
+    db = MagicMock()
+    db.get.side_effect = lambda model, identity: {
+        cycle.id: cycle,
+        candidate.id: candidate,
+        task.id: task,
+    }.get(identity)
+    db.scalar.side_effect = [admission, founder_idea]
+    event = MagicMock()
+    reconcile = MagicMock(return_value=True)
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._reconcile_data_admissions", reconcile
+    )
+
+    result = recover_data_admission(db, mandate, payload)
+
+    assert result is cycle
+    assert cycle.status == "awaiting_data_admission"
+    assert cycle.phase == "data_admission"
+    assert admission.status == "queued"
+    assert admission.failure == {}
+    assert founder_idea.status == "processing"
+    reconcile.assert_called_once_with(db, mandate, cycle)
+    assert event.call_args.args[2] == "selected_panel_admission_recovered"
 
 
 def test_invalid_representation_retry_supersedes_output_without_rewriting_history(monkeypatch):
