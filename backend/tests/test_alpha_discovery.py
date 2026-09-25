@@ -462,8 +462,13 @@ def test_invalid_representation_retry_supersedes_output_without_rewriting_histor
     )
     previous.input_contract["cycle_id"] = str(cycle.id)
     replacement = SimpleNamespace(id=uuid4())
+    rejection = SimpleNamespace(
+        payload={
+            "detail": "rolling window is outside the bounded range",
+        }
+    )
     db = MagicMock()
-    db.scalar.return_value = cycle
+    db.scalar.side_effect = [cycle, rejection]
     db.get.return_value = previous
     create_task = MagicMock(return_value=replacement)
     event = MagicMock()
@@ -482,7 +487,18 @@ def test_invalid_representation_retry_supersedes_output_without_rewriting_histor
     assert cycle.status == "running"
     assert cycle.representation_task_id == replacement.id
     assert previous.status == "succeeded"
-    assert create_task.call_args.args[4] == previous.input_contract["context"]
+    replacement_context = create_task.call_args.args[4]
+    assert replacement_context["raw_candidates"] == [{"candidate_key": "frozen"}]
+    assert replacement_context["recovery_feedback"] == {
+        "previous_task_id": str(previous.id),
+        "validation_error": "rolling window is outside the bounded range",
+        "correction_requirements": [
+            "preserve the frozen hypothesis and metadata-only selection boundary",
+            "return a complete plan that validates against the supplied schema",
+            "use only declared operations and their bounded parameter contracts",
+            "do not inspect outcomes or silently weaken the research question",
+        ],
+    }
     assert create_task.call_args.kwargs["task_number"].startswith(
         "A4-example-001-R-R"
     )
