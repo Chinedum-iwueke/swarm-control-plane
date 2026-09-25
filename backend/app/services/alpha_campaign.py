@@ -2412,7 +2412,8 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         )
     if (
         campaign.status == "needs_attention"
-        and terminal.get("category") == "governed_pipeline_task_failed"
+        and terminal.get("category")
+        in {"governed_pipeline_task_failed", "strategy_engineering_failed"}
     ):
         try:
             failed_task_id = UUID(str(terminal.get("task_id")))

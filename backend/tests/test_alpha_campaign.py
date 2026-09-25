@@ -950,6 +950,42 @@ def test_reconciliation_recovers_review_rejection_into_correction(monkeypatch):
     advance.assert_called_once_with(db, record)
 
 
+def test_reconciliation_recovers_strategy_engineering_rejection_into_correction(
+    monkeypatch,
+):
+    task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="strategy_engineering",
+        next_action="strategy_engineering_failed",
+        completed_at=datetime.now(UTC),
+        terminal_reason={
+            "category": "strategy_engineering_failed",
+            "task_id": str(task_id),
+            "status": "leased",
+            "result": {},
+        },
+    )
+    rejected = SimpleNamespace(id=task_id, status="failed")
+    correction = {"findings": [{"severity": "high", "message": "fix causality"}]}
+    db = MagicMock()
+    db.get.return_value = rejected
+    advance = MagicMock(return_value=SimpleNamespace(status="pending_approval"))
+    monkeypatch.setattr(service, "_independent_review_correction", lambda _: correction)
+    monkeypatch.setattr(service, "_advance_governed_pipeline", advance)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.phase == "strategy_engineering"
+    assert record.next_action == "create_review_bound_strategy_correction"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+    advance.assert_called_once_with(db, record)
+
+
 @pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
