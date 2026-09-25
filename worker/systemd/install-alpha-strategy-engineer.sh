@@ -47,13 +47,18 @@ import yaml
 print("bulletproof-validation-runtime=ready")
 PY
 
-runtime=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime
+runtime=/var/lib/invariance-swarm/codex-discovery-runtime
 test ! -L "$runtime"
 install -d -o omenka -g omenka -m 0700 "$runtime"
 test ! -L "$runtime/auth.json"
-if [[ ! -e "$runtime/auth.json" ]]; then
-  install -o root -g root -m 0600 /dev/null "$runtime/auth.json"
+if [[ ! -s "$runtime/auth.json" ]]; then
+  install -o omenka -g omenka -m 0600 \
+    /etc/invariance-swarm/codex-worker/auth.json "$runtime/auth.json"
 fi
+chown omenka:omenka "$runtime/auth.json"
+chmod 0600 "$runtime/auth.json"
+install -o root -g root -m 0600 "$source_dir/codex-discovery-runtime.env" \
+  /etc/invariance-swarm/codex-discovery-runtime.env
 
 install -d -o omenka -g omenka -m 0700 \
   /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal \
@@ -82,9 +87,7 @@ systemd-run \
   --property=LockPersonality=yes \
   --property=CapabilityBoundingSet= \
   --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
-  --property=ReadOnlyPaths=/etc/invariance-swarm/codex-worker \
-  --property=BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime/auth.json \
-  --property=ReadWritePaths=/var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime \
+  --property=ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime \
   --property=ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
@@ -94,7 +97,7 @@ systemd-run \
   --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \
   /home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python \
   /home/omenka/Projects/swarm-control-plane/worker/scripts/alpha_loop_rehearsal.py \
-  --codex-home /var/lib/invariance-swarm/codex-alpha-strategy-engineer-runtime \
+  --codex-home /var/lib/invariance-swarm/codex-discovery-runtime \
   --output /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal/production-parity.json
 
 jq -e '

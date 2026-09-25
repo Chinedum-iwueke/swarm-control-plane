@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import time
@@ -266,53 +267,83 @@ class EngineeringMissionExecutor:
         prompt_path.chmod(0o600)
         started_at = datetime.now(timezone.utc)
         monotonic = time.monotonic()
+        deadline = monotonic + timeout_seconds
         timed_out = False
         lease_lost = False
-        with (
-            prompt_path.open("rb") as stdin_file,
-            stdout_path.open("xb") as stdout_file,
-            stderr_path.open("xb") as stderr_file,
-        ):
-            stdout_path.chmod(0o600)
-            stderr_path.chmod(0o600)
-            running = await self._runner.start(
-                args,
-                cwd=workspace.repository,
-                stdin=stdin_file,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                environment_overrides=self._codex_environment(),
-            )
-            deadline = monotonic + timeout_seconds
-            while running.process.returncode is None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    timed_out = True
-                    await self._runner.terminate(running, grace_seconds=5)
-                    break
+        credential_lock_path = self._codex_home / "credential-refresh.lock"
+        credential_lock = credential_lock_path.open("a+b")
+        credential_lock_path.chmod(0o600)
+        try:
+            while True:
                 try:
-                    await asyncio.wait_for(
-                        asyncio.shield(running.process.wait()),
-                        timeout=min(self._heartbeat_interval, remaining),
+                    fcntl.flock(
+                        credential_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
                     )
-                except TimeoutError:
-                    try:
-                        await heartbeat(
-                            {
-                                "current_step": name,
-                                "elapsed_seconds": time.monotonic() - monotonic,
-                            }
-                        )
-                    except (AuthenticationError, ConflictError):
-                        lease_lost = True
-                        await self._runner.terminate(running, grace_seconds=5)
+                    break
+                except BlockingIOError:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
                         break
-                    except (ConnectionError, ServerError) as exc:
-                        if len(heartbeat_failures) < self._MAX_HEARTBEAT_FAILURES:
-                            heartbeat_failures.append(
-                                f"{name}: temporary {type(exc).__name__}"
+                    await heartbeat(
+                        {
+                            "current_step": "codex_credential_wait",
+                            "blocked_step": name,
+                            "elapsed_seconds": time.monotonic() - monotonic,
+                        }
+                    )
+                    await asyncio.sleep(min(self._heartbeat_interval, remaining))
+
+            if timed_out:
+                return_code = None
+            else:
+                with (
+                    prompt_path.open("rb") as stdin_file,
+                    stdout_path.open("xb") as stdout_file,
+                    stderr_path.open("xb") as stderr_file,
+                ):
+                    stdout_path.chmod(0o600)
+                    stderr_path.chmod(0o600)
+                    running = await self._runner.start(
+                        args,
+                        cwd=workspace.repository,
+                        stdin=stdin_file,
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        environment_overrides=self._codex_environment(),
+                    )
+                    while running.process.returncode is None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            timed_out = True
+                            await self._runner.terminate(running, grace_seconds=5)
+                            break
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.shield(running.process.wait()),
+                                timeout=min(self._heartbeat_interval, remaining),
                             )
-            return_code = running.process.returncode
+                        except TimeoutError:
+                            try:
+                                await heartbeat(
+                                    {
+                                        "current_step": name,
+                                        "elapsed_seconds": time.monotonic() - monotonic,
+                                    }
+                                )
+                            except (AuthenticationError, ConflictError):
+                                lease_lost = True
+                                await self._runner.terminate(running, grace_seconds=5)
+                                break
+                            except (ConnectionError, ServerError) as exc:
+                                if len(heartbeat_failures) < self._MAX_HEARTBEAT_FAILURES:
+                                    heartbeat_failures.append(
+                                        f"{name}: temporary {type(exc).__name__}"
+                                    )
+                    return_code = running.process.returncode
+        finally:
+            fcntl.flock(credential_lock.fileno(), fcntl.LOCK_UN)
+            credential_lock.close()
         self._secure_evidence(workspace)
         ended_at = datetime.now(timezone.utc)
         result = StepExecutionResult(
