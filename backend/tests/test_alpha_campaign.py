@@ -1951,12 +1951,69 @@ def test_reconcile_recovers_scope_budget_failure_to_g6(monkeypatch):
     advance.assert_called_once_with(db, record)
 
 
-def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeypatch):
+def test_g6_review_failure_creates_final_g7_correction(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     rejected = SimpleNamespace(
         id=uuid4(),
         task_number=f"A3-{record.id.hex[:8]}-001-G6",
+        status="failed",
+        plan_digest="a" * 64,
+        input_contract={"evidence_context": "{}"},
+        result={},
+        failure={
+            "error_category": "independent_review_rejected",
+            "execution_evidence": {
+                "artifacts": ["artifacts/review.json"],
+                "summary": {
+                    "independent_review": {
+                        "approved": False,
+                        "summary": "end-to-end evidence remains incomplete",
+                        "findings": [
+                            {
+                                "severity": "high",
+                                "message": "native runner does not invoke the evaluator",
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, rejected]
+    successor = SimpleNamespace(
+        id=uuid4(), status="pending_approval", plan_digest="b" * 64
+    )
+    create = MagicMock(return_value=successor)
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    assert service._advance_governed_pipeline(db, record) is successor
+    assert create.call_args.kwargs["stage"] == "G7"
+    assert create.call_args.kwargs["parent_task_id"] == rejected.id
+    assert create.call_args.kwargs["correction_feedback"]["latest_findings"] == [
+        {
+            "severity": "high",
+            "message": "native runner does not invoke the evaluator",
+        }
+    ]
+
+
+def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G7",
         status="failed",
         plan_digest="a" * 64,
         input_contract={"evidence_context": "{}"},
