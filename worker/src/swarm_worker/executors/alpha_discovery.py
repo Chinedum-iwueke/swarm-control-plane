@@ -401,16 +401,24 @@ def _schema(stage: str) -> dict:
                                             ],
                                             "properties": {
                                                 "periods": {
-                                                    "type": ["number", "null"]
+                                                    "type": ["number", "null"],
+                                                    "minimum": 1,
+                                                    "maximum": 10_000,
                                                 },
                                                 "window": {
-                                                    "type": ["number", "null"]
+                                                    "type": ["number", "null"],
+                                                    "minimum": 2,
+                                                    "maximum": 100_000,
                                                 },
                                                 "d": {
-                                                    "type": ["number", "null"]
+                                                    "type": ["number", "null"],
+                                                    "exclusiveMinimum": 0,
+                                                    "exclusiveMaximum": 0.5,
                                                 },
                                                 "weight_threshold": {
-                                                    "type": ["number", "null"]
+                                                    "type": ["number", "null"],
+                                                    "minimum": 1e-8,
+                                                    "maximum": 0.1,
                                                 },
                                             },
                                         },
@@ -708,6 +716,9 @@ bind d and its truncation threshold before validation/test outcomes, and retain 
 alternatives. Use rolling normalization or volatility only when the mechanism requires local scaling. Cross-asset
 spreads, ratios, and ranks must name all causal inputs. Never select assets, timeframe, transformation, d, window, or
 missingness policy by comparing target returns, backtest PnL, held-out metrics, or downstream promotion outcomes.
+Rolling z-score and realized-volatility windows must contain between 2 and 100000 completed research bars; a
+one-observation rolling window is invalid and must be represented with another declared operation or retained for
+the governed evaluator when the native transformation language cannot express it without changing the hypothesis.
 Set selection_data_boundary to metadata_predictors_only_no_targets and outcome_data_consulted to false.
 Transformation output_field values must be lowercase snake_case identifiers. Raw transform inputs must be
 instrument-qualified canonical panel columns such as BTCUSDT__close or ETHUSDT__quote_volume; later transforms may
