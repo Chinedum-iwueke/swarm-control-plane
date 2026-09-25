@@ -594,12 +594,38 @@ def retry_invalid_discovery_stage(
         }.items()
     ):
         raise HTTPException(409, "The retained stage contract no longer matches the cycle.")
+    recovery_context = deepcopy(contract.get("context", {}))
+    if stage == "representation":
+        rejection = db.scalar(
+            select(AlphaDiscoveryEvent)
+            .where(
+                AlphaDiscoveryEvent.cycle_id == cycle.id,
+                AlphaDiscoveryEvent.event_type == "representation_output_rejected",
+            )
+            .order_by(AlphaDiscoveryEvent.sequence.desc())
+            .limit(1)
+        )
+        if rejection is None:
+            raise HTTPException(
+                409,
+                "Representation recovery requires its retained validation failure.",
+            )
+        recovery_context["recovery_feedback"] = {
+            "previous_task_id": str(previous.id),
+            "validation_error": rejection.payload.get("detail", "")[:2000],
+            "correction_requirements": [
+                "preserve the frozen hypothesis and metadata-only selection boundary",
+                "return a complete plan that validates against the supplied schema",
+                "use only declared operations and their bounded parameter contracts",
+                "do not inspect outcomes or silently weaken the research question",
+            ],
+        }
     replacement = _task(
         db,
         mandate,
         cycle,
         stage,
-        deepcopy(contract.get("context", {})),
+        recovery_context,
         task_number=f"{previous.task_number}-R{previous.id.hex[:8]}",
     )
     setattr(cycle, task_attribute, replacement.id)
@@ -618,6 +644,9 @@ def retry_invalid_discovery_stage(
             "reason": payload.reason,
             "previous_task_id": str(previous.id),
             "previous_result_digest": digest_document(previous.result or {}),
+            "validation_feedback_digest": digest_document(
+                recovery_context.get("recovery_feedback", {})
+            ),
             "replacement_task_id": str(replacement.id),
         },
         cycle,
