@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=omenka
 Group=omenka
-WorkingDirectory=/home/omenka/Projects/bulletproof_bt
-Environment=PYTHONPATH=/home/omenka/Projects/bulletproof_bt/src
+WorkingDirectory=/home/omenka/Projects/bulletproof_bt-production
+Environment=PYTHONPATH=/home/omenka/Projects/bulletproof_bt-production/src
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=OMP_NUM_THREADS=1
 Environment=OPENBLAS_NUM_THREADS=1
