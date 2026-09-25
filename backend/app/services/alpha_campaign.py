@@ -2415,17 +2415,20 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         except (TypeError, ValueError):
             failed_task_id = None
         failed_task = db.get(Task, failed_task_id) if failed_task_id else None
-        review_correction = (
-            _independent_review_correction(failed_task)
+        correction = (
+            (
+                _independent_review_correction(failed_task)
+                or _scope_budget_correction(failed_task)
+            )
             if failed_task is not None
             else None
         )
         admission_recovery = (
             failed_task is not None
-            and review_correction is None
+            and correction is None
             and _requires_admission_handoff_recovery(failed_task)
         )
-        if failed_task is not None and (review_correction or admission_recovery):
+        if failed_task is not None and (correction or admission_recovery):
             campaign.status = "running"
             campaign.phase = "strategy_engineering"
             campaign.next_action = (
@@ -2441,7 +2444,7 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
                 (
                     "strategy_admission_handoff_recovery"
                     if admission_recovery
-                    else "independent_review_correction_recovery"
+                    else "strategy_correction_recovery"
                 ),
                 "alpha-campaign-director",
                 {"rejected_task_id": str(failed_task.id)},
