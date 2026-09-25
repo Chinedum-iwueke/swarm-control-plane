@@ -679,6 +679,9 @@ Read research_constraints before choosing data requirements. Include the actual 
 fields required to enforce the mandate's liquidity floor, not merely predictor fields.
 When context contains founder_research_idea, challenge that exact idea before formalizing it. Do not accept its
 premise by default. Obey its frozen minimum-history, maximum-variant and preregistered universe-selection constraints.
+The candidate basket cardinality must remain within founder_research_idea.constraints.minimum_instruments and
+maximum_instruments. A catalog-visible asset does not need prior selected-panel admission at hypothesis time: choose
+the causally justified basket first, after which the controller performs exact content admission before execution.
 Universe selection must happen before outcome evaluation; retain rejected alternatives and never choose a universe
 because it produced the best result. The instruments array is the preregistered hypothesis-specific basket and must
 include the primary instrument. The source timeframe is always 1m. Select any whole-minute/hour/day research_timeframe

@@ -502,6 +502,8 @@ def _grounding_context(db: Session, project: str | None, query: str) -> dict:
         "founder_hypothesis_intake_policy": {
             "minimum_history_days": 365,
             "maximum_variants": 8,
+            "minimum_instruments": 1,
+            "maximum_instruments": 8,
             "universe_selection_policy": "preregistered_point_in_time",
             "universe_slices": ["all_eligible"],
             "selection_rule": "freeze the selected universe and alternatives before outcome evaluation",
@@ -586,6 +588,8 @@ def _specification_guide(project: str | None) -> dict:
                 "purpose": "queue a founder idea for RI evidence retrieval and independent senior-researcher challenge before any test",
                 "minimum_history_days": 365,
                 "maximum_variants": 8,
+                "minimum_instruments": 1,
+                "maximum_instruments": 8,
                 "universe_selection_policy": "preregistered_point_in_time",
             },
         }

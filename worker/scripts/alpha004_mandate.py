@@ -136,6 +136,20 @@ def main() -> int:
                 raise RuntimeError(
                     "Real-data admission is bound to another engine commit. Rebuild/register the native ALPHA-001 admission receipt and supply --producer-receipt-id; no mandate was written."
                 )
+            result = admission["receipt"]["result"]
+            binding.update(
+                {
+                    "producer_receipt_id": admission["id"],
+                    "producer_receipt_digest": admission["receipt_digest"],
+                    "dataset_digest": admission["dataset_digest"],
+                    "partition_digests": [admission["dataset_digest"]],
+                    "venue": result["venue"],
+                    "instruments": [result["instrument"]],
+                    "rows": result["row_count"],
+                    "output_columns": result["output_columns"],
+                    "evidence_class": result["evidence_class"],
+                }
+            )
         catalog_response = client.get(
             "/v1/research/quantitative-receipts/lake-inventory"
         )

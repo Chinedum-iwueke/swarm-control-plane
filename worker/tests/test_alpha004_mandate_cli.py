@@ -88,13 +88,37 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
             return httpx.Response(
                 200,
                 json={
+                    "id": fresh if request.url.path.endswith(fresh) else old,
                     "source_commit": ("b" if request.url.path.endswith(fresh) else "a")
-                    * 40
+                    * 40,
+                    "dataset_digest": "9" * 64,
+                    "receipt_digest": "8" * 64,
+                    "receipt": {
+                        "result": {
+                            "venue": "bybit",
+                            "instrument": "BTCUSDT",
+                            "row_count": 525_600,
+                            "output_columns": [
+                                "ts",
+                                "open",
+                                "high",
+                                "low",
+                                "close",
+                                "volume",
+                                "quote_volume",
+                            ],
+                            "evidence_class": "live_exchange_history",
+                        }
+                    },
                 },
             )
         assert request.method == "POST"
         payload = json.loads(request.content)
         assert payload["dataset_bindings"][0]["producer_receipt_id"] == fresh
+        assert payload["dataset_bindings"][0]["producer_receipt_digest"] == "8" * 64
+        assert payload["dataset_bindings"][0]["dataset_digest"] == "9" * 64
+        assert payload["dataset_bindings"][0]["rows"] == 525_600
+        assert "quote_volume" in payload["dataset_bindings"][0]["output_columns"]
         assert payload["discovery_catalog"] == {
             "producer_receipt_id": catalog_id,
             "receipt_digest": "c" * 64,

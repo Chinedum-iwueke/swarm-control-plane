@@ -317,10 +317,18 @@ class ProposalFounderHypothesisIntakeContract(StrictModel):
     research_idea: str = Field(min_length=20, max_length=12000)
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
+    minimum_instruments: int = Field(default=1, ge=1, le=8)
+    maximum_instruments: int = Field(default=8, ge=1, le=8)
     universe_selection_policy: Literal["preregistered_point_in_time"]
     universe_slices: list[Literal["stable", "volatile", "all_eligible"]] = Field(
         min_length=1, max_length=3
     )
+
+    @model_validator(mode="after")
+    def ordered_instrument_bounds(self):
+        if self.minimum_instruments > self.maximum_instruments:
+            raise ValueError("minimum instruments cannot exceed maximum instruments")
+        return self
 
 
 ProposalInputContract = (
