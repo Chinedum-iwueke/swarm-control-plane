@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import time
@@ -84,6 +85,22 @@ class AlphaDiscoveryExecutor:
             path.chmod(0o600)
         runtime_options = _runtime_options(workspace.plan.attempt_directory)
 
+        credential_lock_path = self._codex_home / "credential-refresh.lock"
+        credential_lock = credential_lock_path.open("a+b")
+        credential_lock_path.chmod(0o600)
+        while True:
+            try:
+                fcntl.flock(credential_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                await heartbeat(
+                    {
+                        "phase": "codex_credential_wait",
+                        "cycle_id": contract.cycle_id,
+                    }
+                )
+                await asyncio.sleep(self._heartbeat_interval)
+
         command = (
             "codex",
             "exec",
@@ -111,39 +128,45 @@ class AlphaDiscoveryExecutor:
         started_at = datetime.now(UTC)
         started = time.monotonic()
         env = self._environment(workspace)
-        with (
-            prompt_path.open("rb") as stdin,
-            stdout_path.open("wb") as stdout,
-            stderr_path.open("wb") as stderr,
-        ):
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                cwd=workspace.repository,
-                env=env,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-            )
-            deadline = started + min(self._timeout, workflow.timeout_seconds)
-            while process.returncode is None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    process.terminate()
-                    await process.wait()
-                    break
-                try:
-                    await asyncio.wait_for(
-                        asyncio.shield(process.wait()),
-                        timeout=min(self._heartbeat_interval, remaining),
-                    )
-                except TimeoutError:
-                    await heartbeat(
-                        {
-                            "phase": contract.stage,
-                            "cycle_id": contract.cycle_id,
-                            "elapsed_seconds": round(time.monotonic() - started, 3),
-                        }
-                    )
+        try:
+            with (
+                prompt_path.open("rb") as stdin,
+                stdout_path.open("wb") as stdout,
+                stderr_path.open("wb") as stderr,
+            ):
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    cwd=workspace.repository,
+                    env=env,
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                deadline = started + min(self._timeout, workflow.timeout_seconds)
+                while process.returncode is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        process.terminate()
+                        await process.wait()
+                        break
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(process.wait()),
+                            timeout=min(self._heartbeat_interval, remaining),
+                        )
+                    except TimeoutError:
+                        await heartbeat(
+                            {
+                                "phase": contract.stage,
+                                "cycle_id": contract.cycle_id,
+                                "elapsed_seconds": round(
+                                    time.monotonic() - started, 3
+                                ),
+                            }
+                        )
+        finally:
+            fcntl.flock(credential_lock.fileno(), fcntl.LOCK_UN)
+            credential_lock.close()
 
         ended_at = datetime.now(UTC)
         success = process.returncode == 0 and output_path.is_file()
