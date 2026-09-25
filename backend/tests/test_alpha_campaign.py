@@ -91,6 +91,7 @@ def records(payload, *, provider_name="bybit-api"):
                 "venue": "bybit",
             },
             "instruments": ["BTCUSDT"],
+            "output_columns": ["ts", "open", "high", "low", "close", "volume"],
             "source_objects": [
                 {"uri": "file:///lake/bybit/BTCUSDT/research_panel.parquet"}
             ],
@@ -152,6 +153,16 @@ def records(payload, *, provider_name="bybit-api"):
                 "admitted": True,
                 "venue": "bybit",
                 "instrument": "BTCUSDT",
+                "row_count": 1_000_000,
+                "output_columns": [
+                    "ts",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "quote_volume",
+                ],
             },
             "authority": {
                 "allocation": False,
@@ -726,6 +737,15 @@ def test_registration_admits_real_exchange_lineage():
     record = service.register_campaign(database(payload), payload)
     assert record.status == "awaiting_activation"
     assert record.specification["dataset_bindings"][0]["venue"] == "bybit"
+    assert record.specification["dataset_bindings"][0]["output_columns"] == [
+        "ts",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "quote_volume",
+    ]
     assert record.specification["authority_boundary"]["capital"] is False
     assert "execution_protocol" not in record.specification
     assert record.specification["research_queue"][0]["resampling_policy"] == (
