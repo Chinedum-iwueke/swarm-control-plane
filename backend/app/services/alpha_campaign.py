@@ -780,8 +780,8 @@ def _create_strategy_engineering_task(
         "work_item_id": f"strategy-{source['source_candidate_id'][:12]}",
         "objective": (
             (
-                "Correct the independently rejected native Bulletproof implementation "
-                "and resolve every retained finding for this admitted Research "
+                "Correct the rejected native Bulletproof implementation and resolve "
+                "every retained finding for this admitted Research "
                 "Intelligence question: "
             )
             if correction_feedback is not None
@@ -825,7 +825,7 @@ def _create_strategy_engineering_task(
     if correction_feedback is not None:
         contract["acceptance_criteria"].insert(
             0,
-            "Every retained independent-review finding is explicitly resolved and regression tested.",
+            "Every retained correction finding is explicitly resolved and regression tested.",
         )
     # The engineering worker contract forbids undeclared fields. Preserve the
     # diagnostic in the task evidence while keeping its executable input typed.
@@ -1033,6 +1033,53 @@ def _independent_review_correction(task: Task) -> dict | None:
         "cumulative_findings": cumulative,
         "artifact_paths": evidence.get("artifacts", []),
         "disposition": "correct_without_weakening_scientific_gates",
+    }
+
+
+def _scope_budget_correction(task: Task) -> dict | None:
+    """Return bounded correction evidence for an otherwise valid oversized patch."""
+    if (
+        task.status != "failed"
+        or task.failure.get("error_category") != "executor_ExecutionPolicyError"
+        or task.failure.get("detail") != "Changed-file budget exceeded."
+    ):
+        return None
+    prior_findings: list[dict] = []
+    try:
+        prior = json.loads(task.input_contract.get("evidence_context", "{}")).get(
+            "independent_review_correction"
+        )
+    except (AttributeError, json.JSONDecodeError, TypeError):
+        prior = None
+    if isinstance(prior, dict):
+        candidates = prior.get("cumulative_findings", prior.get("findings", []))
+        if isinstance(candidates, list):
+            prior_findings = [
+                item
+                for item in candidates
+                if isinstance(item, dict)
+                and item.get("severity") in {"low", "medium", "high"}
+                and isinstance(item.get("message"), str)
+            ]
+    finding = {
+        "severity": "medium",
+        "message": (
+            "The rejected patch exceeded the immutable 12-file engineering budget. "
+            "Consolidate the correction within 12 changed files without removing "
+            "scientific behavior, tests, evidence bindings, or retained findings."
+        ),
+    }
+    cumulative = [*prior_findings]
+    if finding not in cumulative:
+        cumulative.append(finding)
+    return {
+        "rejected_task_id": str(task.id),
+        "rejected_plan_digest": task.plan_digest,
+        "review_summary": "Engineering output exceeded the bounded changed-file scope.",
+        "latest_findings": [finding],
+        "cumulative_findings": cumulative,
+        "artifact_paths": [],
+        "disposition": "consolidate_without_expanding_scope_or_weakening_gates",
     }
 
 
@@ -1518,7 +1565,10 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                 },
             )
         elif (
-            correction := _independent_review_correction(engineering)
+            correction := (
+                _independent_review_correction(engineering)
+                or _scope_budget_correction(engineering)
+            )
         ) is not None and (
             current_stage := engineering.task_number.rsplit("-", 1)[-1]
         ) in stages[:-1]:

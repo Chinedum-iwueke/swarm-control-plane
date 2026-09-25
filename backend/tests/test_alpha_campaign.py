@@ -1790,6 +1790,60 @@ def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch)
     ]
 
 
+def test_scope_budget_failure_creates_bounded_successor(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    prior = {
+        "cumulative_findings": [
+            {"severity": "high", "message": "held-out evaluation is absent"}
+        ]
+    }
+    rejected = SimpleNamespace(
+        id=uuid4(),
+        task_number=f"A3-{record.id.hex[:8]}-001-G5",
+        status="failed",
+        plan_digest="a" * 64,
+        input_contract={
+            "evidence_context": json.dumps({"independent_review_correction": prior})
+        },
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Changed-file budget exceeded.",
+        },
+    )
+    draft = SimpleNamespace(
+        status="succeeded",
+        result={
+            "summary": {
+                "engineering_requirement": {"category": "exact_strategy_unavailable"}
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [draft, rejected]
+    successor = SimpleNamespace(
+        id=uuid4(), status="pending_approval", plan_digest="b" * 64
+    )
+    create = MagicMock(return_value=successor)
+    monkeypatch.setattr(service, "_create_strategy_engineering_task", create)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    assert service._advance_governed_pipeline(db, record) is successor
+
+    kwargs = create.call_args.kwargs
+    assert kwargs["stage"] == "G6"
+    assert kwargs["parent_task_id"] == rejected.id
+    feedback = kwargs["correction_feedback"]
+    assert feedback["disposition"] == (
+        "consolidate_without_expanding_scope_or_weakening_gates"
+    )
+    assert feedback["cumulative_findings"][0] == prior["cumulative_findings"][0]
+    assert "12-file" in feedback["latest_findings"][0]["message"]
+    assert create.call_args.args[3] == {
+        "category": "exact_strategy_unavailable"
+    }
+
+
 def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
