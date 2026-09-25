@@ -709,6 +709,7 @@ def _create_strategy_engineering_task(
     binding = bindings[0]
     research_context = _research_context(db, question)
     candidate_document = None
+    selected_panel_admission = None
     if source.get("discovery_candidate_id"):
         candidate = db.get(AlphaDiscoveryCandidate, source["discovery_candidate_id"])
         if (
@@ -720,6 +721,9 @@ def _create_strategy_engineering_task(
                 409, "Engineering discovery evidence is absent or changed."
             )
         candidate_document = candidate.document
+        selected_panel_admission = _selected_panel_admission_evidence(
+            db, source, bindings
+        )
     evidence = {
         "schema_version": "alpha-strategy-engineering-evidence-v1.0.0",
         "campaign_digest": campaign.campaign_digest,
@@ -754,6 +758,12 @@ def _create_strategy_engineering_task(
         "engineering_requirement": requirement,
         "authority": campaign.specification["authority_boundary"],
     }
+    if selected_panel_admission is not None:
+        # Multi-panel discovery candidates are admitted after their initial
+        # representation is written. Prefer this compact, digest-bound final
+        # authority snapshot over the legacy singular binding alias.
+        evidence.pop("dataset_binding")
+        evidence["selected_panel_admission"] = selected_panel_admission
     if correction_feedback is not None:
         # Correction stages already carry the complete ordered binding list. Drop
         # the legacy singular alias before adding review evidence so the typed
@@ -859,6 +869,94 @@ def _create_strategy_engineering_task(
     )
     persist_new_task(db, task)
     return task
+
+
+def _selected_panel_admission_evidence(
+    db: Session, source: dict, bindings: list[dict]
+) -> dict | None:
+    candidate_id = source.get("discovery_candidate_id")
+    if not candidate_id:
+        return None
+    try:
+        candidate_uuid = UUID(str(candidate_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(409, "Engineering candidate identity is invalid.") from exc
+    admission = db.scalar(
+        select(AlphaCandidateDataAdmission).where(
+            AlphaCandidateDataAdmission.candidate_id == candidate_uuid,
+            AlphaCandidateDataAdmission.status == "admitted",
+        )
+    )
+    if admission is None:
+        return None
+    admitted_bindings = admission.dataset_bindings
+    if not isinstance(admitted_bindings, list) or not admitted_bindings:
+        raise HTTPException(409, "Selected-panel admission has no DATA bindings.")
+
+    def identities(items: list[dict]) -> list[dict]:
+        return sorted(
+            [
+                {
+                    "dataset_build_id": str(item["dataset_build_id"]),
+                    "dataset_digest": item["dataset_digest"],
+                    "producer_receipt_id": str(item["producer_receipt_id"]),
+                    "producer_receipt_digest": item["producer_receipt_digest"],
+                }
+                for item in items
+            ],
+            key=lambda item: (item["dataset_build_id"], item["producer_receipt_id"]),
+        )
+
+    try:
+        expected = identities(bindings)
+        admitted = identities(admitted_bindings)
+    except (KeyError, TypeError) as exc:
+        raise HTTPException(
+            409, "Selected-panel admission binding identity is incomplete."
+        ) from exc
+    if admitted != expected:
+        raise HTTPException(
+            409, "Selected-panel admission does not match campaign DATA bindings."
+        )
+    document = {
+        "schema_version": "alpha-selected-panel-engineering-handoff-v1.0.0",
+        "candidate_id": str(candidate_uuid),
+        "candidate_digest": source["discovery_candidate_digest"],
+        "admission_id": str(admission.id),
+        "admission_task_id": str(admission.task_id),
+        "admission_record_digest": admission.record_digest,
+        "status": "admitted",
+        "assets": admission.assets,
+        "bindings": admitted,
+        "precedence": (
+            "This final admission supersedes only earlier pre-admission status "
+            "statements; it does not alter the frozen question, representation, "
+            "window, costs, or scientific gates."
+        ),
+        "capital_or_order_authority": False,
+    }
+    document["handoff_digest"] = digest_document(document)
+    return document
+
+
+def _requires_admission_handoff_recovery(task: Task) -> bool:
+    if (
+        getattr(task, "status", None) != "failed"
+        or getattr(task, "failure", {}).get("error_category")
+        != "executor_ExecutionPolicyError"
+        or getattr(task, "failure", {}).get("detail")
+        != "Coding agent produced no changes."
+    ):
+        return False
+    try:
+        evidence = json.loads(task.input_contract.get("evidence_context", "{}"))
+    except (AttributeError, json.JSONDecodeError, TypeError):
+        return False
+    return (
+        isinstance(evidence, dict)
+        and isinstance(evidence.get("discovery_candidate"), dict)
+        and "selected_panel_admission" not in evidence
+    )
 
 
 def _independent_review_correction(task: Task) -> dict | None:
@@ -1373,6 +1471,33 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         if engineering is None:
             engineering = _create_strategy_engineering_task(
                 db, campaign, source, requirement
+            )
+        elif (
+            _requires_admission_handoff_recovery(engineering)
+            and (current_stage := engineering.task_number.rsplit("-", 1)[-1])
+            in stages[:-1]
+        ):
+            next_stage = stages[stages.index(current_stage) + 1]
+            rejected = engineering
+            engineering = _create_strategy_engineering_task(
+                db,
+                campaign,
+                source,
+                requirement,
+                stage=next_stage,
+                parent_task_id=rejected.id,
+            )
+            _append_event(
+                db,
+                campaign,
+                "strategy_admission_handoff_correction_created",
+                "alpha-campaign-director",
+                {
+                    "rejected_task_id": str(rejected.id),
+                    "correction_task_id": str(engineering.id),
+                    "correction_plan_digest": engineering.plan_digest,
+                    "correction_stage": next_stage,
+                },
             )
         elif (
             correction := _independent_review_correction(engineering)
@@ -2222,16 +2347,34 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         except (TypeError, ValueError):
             failed_task_id = None
         failed_task = db.get(Task, failed_task_id) if failed_task_id else None
-        if failed_task is not None and _independent_review_correction(failed_task):
+        review_correction = (
+            _independent_review_correction(failed_task)
+            if failed_task is not None
+            else None
+        )
+        admission_recovery = (
+            failed_task is not None
+            and review_correction is None
+            and _requires_admission_handoff_recovery(failed_task)
+        )
+        if failed_task is not None and (review_correction or admission_recovery):
             campaign.status = "running"
             campaign.phase = "strategy_engineering"
-            campaign.next_action = "create_review_bound_strategy_correction"
+            campaign.next_action = (
+                "create_admission_bound_strategy_correction"
+                if admission_recovery
+                else "create_review_bound_strategy_correction"
+            )
             campaign.completed_at = None
             campaign.terminal_reason = {}
             _append_event(
                 db,
                 campaign,
-                "independent_review_correction_recovery",
+                (
+                    "strategy_admission_handoff_recovery"
+                    if admission_recovery
+                    else "independent_review_correction_recovery"
+                ),
                 "alpha-campaign-director",
                 {"rejected_task_id": str(failed_task.id)},
             )
