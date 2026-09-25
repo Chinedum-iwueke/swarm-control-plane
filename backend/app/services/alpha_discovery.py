@@ -638,6 +638,8 @@ def queue_founder_idea(
     constraints = {
         "minimum_history_days": payload.minimum_history_days,
         "maximum_variants": payload.maximum_variants,
+        "minimum_instruments": payload.minimum_instruments,
+        "maximum_instruments": payload.maximum_instruments,
         "universe_selection_policy": payload.universe_selection_policy,
         "universe_slices": payload.universe_slices,
         "selection_timing": "frozen_before_outcome_evaluation",
@@ -834,10 +836,16 @@ def _candidate_reasons(
     if founder_constraints:
         maximum_variants = int(founder_constraints.get("maximum_variants", 8))
         minimum_history_days = int(founder_constraints.get("minimum_history_days", 365))
+        minimum_instruments = int(founder_constraints.get("minimum_instruments", 1))
+        maximum_instruments = int(founder_constraints.get("maximum_instruments", 8))
         if candidate.parameter_budget.maximum_variants > maximum_variants:
             reasons.append("founder_variant_budget_exceeded")
         if candidate.data.minimum_history_observations < minimum_history_days * 1440:
             reasons.append("founder_minimum_history_not_requested")
+        if len(candidate.data.instruments) < minimum_instruments:
+            reasons.append("founder_minimum_instruments_not_met")
+        if len(candidate.data.instruments) > maximum_instruments:
+            reasons.append("founder_maximum_instruments_exceeded")
         window_start = datetime.fromisoformat(
             mandate.specification["execution_window_start"]
         )

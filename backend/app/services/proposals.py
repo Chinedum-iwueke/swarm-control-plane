@@ -152,6 +152,8 @@ def materialize_proposal(
                 conversation_id=source.conversation_id,
                 minimum_history_days=contract.minimum_history_days,
                 maximum_variants=contract.maximum_variants,
+                minimum_instruments=contract.minimum_instruments,
+                maximum_instruments=contract.maximum_instruments,
                 universe_selection_policy=contract.universe_selection_policy,
                 universe_slices=contract.universe_slices,
             ),

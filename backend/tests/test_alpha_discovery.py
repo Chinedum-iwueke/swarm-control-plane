@@ -247,8 +247,20 @@ def test_founder_universe_hints_default_to_all_eligible_without_expanding_mandat
     )
     assert payload.universe_slices == ["all_eligible"]
     assert payload.universe_selection_policy == "preregistered_point_in_time"
+    assert payload.minimum_instruments == 1
+    assert payload.maximum_instruments == 8
     legacy = payload.model_copy(update={"universe_slices": ["stable", "volatile"]})
     assert legacy.universe_slices == ["stable", "volatile"]
+
+    with pytest.raises(ValueError, match="minimum instruments"):
+        AlphaFounderResearchIdeaCreate(
+            mandate_id=uuid4(),
+            expected_mandate_digest=DIGEST,
+            idea="Does a cross-asset basket predict a future residual return?",
+            submitted_by="founder-operator",
+            minimum_instruments=3,
+            maximum_instruments=2,
+        )
 
 
 @pytest.mark.parametrize(
@@ -1312,7 +1324,12 @@ def test_founder_idea_enforces_one_year_and_eight_variant_boundary():
     cycle = SimpleNamespace(
         context={
             "founder_research_idea": {
-                "constraints": {"minimum_history_days": 365, "maximum_variants": 8}
+                "constraints": {
+                    "minimum_history_days": 365,
+                    "maximum_variants": 8,
+                    "minimum_instruments": 2,
+                    "maximum_instruments": 4,
+                }
             },
             "research_intelligence": {
                 "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
@@ -1330,6 +1347,7 @@ def test_founder_idea_enforces_one_year_and_eight_variant_boundary():
     reasons, _ = _candidate_reasons(value, cycle, mandate, [])
     assert "founder_variant_budget_exceeded" in reasons
     assert "founder_minimum_history_not_requested" in reasons
+    assert "founder_minimum_instruments_not_met" in reasons
     assert "mandate_window_below_founder_minimum" in reasons
 
 
