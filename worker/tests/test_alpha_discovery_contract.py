@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryError,
@@ -11,6 +12,7 @@ from swarm_worker.executors.alpha_discovery import (
     _runtime_options,
     _schema,
 )
+from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
 
@@ -134,6 +136,37 @@ def test_alpha_data_admission_fixed_workflow_is_allowlisted():
 
     assert workflow.task_type == "alpha_data_admission"
     assert workflow.steps == []
+
+
+def test_alpha_data_admission_has_bounded_multi_receipt_envelope():
+    common = {
+        "repository": "bulletproof_bt",
+        "base_commit": "a" * 40,
+        "task_attempt": 1,
+        "total_duration_seconds": 1,
+        "steps": [],
+        "success": True,
+    }
+
+    admitted = WorkflowExecutionResult(
+        workflow="alpha-data-admission",
+        summary={"alpha_data_admission": {"receipts": ["x" * 9_000] * 8}},
+        **common,
+    )
+    assert len(admitted.summary["alpha_data_admission"]["receipts"]) == 8
+
+    with pytest.raises(ValidationError, match="16 KiB"):
+        WorkflowExecutionResult(
+            workflow="engineering-mission",
+            summary={"payload": "x" * 17_000},
+            **common,
+        )
+    with pytest.raises(ValidationError, match="128 KiB"):
+        WorkflowExecutionResult(
+            workflow="alpha-data-admission",
+            summary={"payload": "x" * 132_000},
+            **common,
+        )
 
 
 def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():

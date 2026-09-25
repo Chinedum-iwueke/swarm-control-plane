@@ -763,12 +763,13 @@ class WorkflowExecutionResult(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
     downstream_handoff: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("summary")
-    @classmethod
-    def bounded_summary(cls, summary: dict[str, Any]) -> dict[str, Any]:
-        if len(json.dumps(summary, ensure_ascii=True, sort_keys=True)) > 16_384:
-            raise ValueError("execution summary exceeds 16 KiB")
-        return summary
+    @model_validator(mode="after")
+    def bounded_summary(self):
+        limit = 131_072 if self.workflow == "alpha-data-admission" else 16_384
+        if len(json.dumps(self.summary, ensure_ascii=True, sort_keys=True)) > limit:
+            label = "128 KiB" if self.workflow == "alpha-data-admission" else "16 KiB"
+            raise ValueError(f"execution summary exceeds {label}")
+        return self
 
     @field_validator("downstream_handoff")
     @classmethod
