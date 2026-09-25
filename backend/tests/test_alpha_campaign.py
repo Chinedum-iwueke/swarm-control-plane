@@ -1844,6 +1844,43 @@ def test_scope_budget_failure_creates_bounded_successor(monkeypatch):
     }
 
 
+def test_reconcile_recovers_scope_budget_failure_to_g6(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.status = "needs_attention"
+    failed_id = uuid4()
+    record.terminal_reason = {
+        "category": "governed_pipeline_task_failed",
+        "task_id": str(failed_id),
+    }
+    failed = SimpleNamespace(
+        id=failed_id,
+        status="failed",
+        task_number=f"A3-{record.id.hex[:8]}-001-G5",
+        plan_digest="a" * 64,
+        input_contract={"evidence_context": "{}"},
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Changed-file budget exceeded.",
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = failed
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    advance = MagicMock(return_value=None)
+    monkeypatch.setattr(service, "_advance_governed_pipeline", advance)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.phase == "strategy_engineering"
+    assert record.next_action == "create_review_bound_strategy_correction"
+    assert record.terminal_reason == {}
+    advance.assert_called_once_with(db, record)
+
+
 def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
