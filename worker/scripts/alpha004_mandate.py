@@ -137,19 +137,18 @@ def main() -> int:
                     "Real-data admission is bound to another engine commit. Rebuild/register the native ALPHA-001 admission receipt and supply --producer-receipt-id; no mandate was written."
                 )
             result = admission["receipt"]["result"]
-            binding.update(
-                {
-                    "producer_receipt_id": admission["id"],
-                    "producer_receipt_digest": admission["receipt_digest"],
-                    "dataset_digest": admission["dataset_digest"],
-                    "partition_digests": [admission["dataset_digest"]],
-                    "venue": result["venue"],
-                    "instruments": [result["instrument"]],
-                    "rows": result["row_count"],
-                    "output_columns": result["output_columns"],
-                    "evidence_class": result["evidence_class"],
-                }
-            )
+            if admission["dataset_digest"] not in binding["partition_digests"]:
+                raise RuntimeError(
+                    "Native admission does not bind a partition in the immutable "
+                    "dataset binding; no mandate was written."
+                )
+            if not result.get("output_columns"):
+                raise RuntimeError(
+                    "Native admission omits its output-column contract; no mandate "
+                    "was written."
+                )
+            binding["producer_receipt_id"] = admission["id"]
+            binding["evidence_class"] = result["evidence_class"]
         catalog_response = client.get(
             "/v1/research/quantitative-receipts/lake-inventory"
         )
@@ -205,7 +204,11 @@ def main() -> int:
             "created_by": "founder-operator",
         }
         created = client.post("/v1/research/alpha-discovery/mandates", json=payload)
-        created.raise_for_status()
+        if created.is_error:
+            raise RuntimeError(
+                "Mandate registration failed "
+                f"({created.status_code}): {created.text}"
+            )
         print(json.dumps(created.json(), indent=2, sort_keys=True))
     return 0
 

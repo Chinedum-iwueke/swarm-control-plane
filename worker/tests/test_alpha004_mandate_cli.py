@@ -62,7 +62,18 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
                     {
                         "id": "source",
                         "specification": {
-                            "dataset_bindings": [{"producer_receipt_id": old}],
+                            "dataset_bindings": [
+                                {
+                                    "dataset_build_id": "44444444-4444-4444-8444-444444444444",
+                                    "catalog_id": "55555555-5555-4555-8555-555555555555",
+                                    "lake_governance_snapshot_id": "66666666-6666-4666-8666-666666666666",
+                                    "producer_receipt_id": old,
+                                    "dataset_key": "bybit-btcusdt-perp-1m",
+                                    "partition_digests": ["9" * 64],
+                                    "evidence_class": "live_exchange_history",
+                                    "research_principal": "alpha-research-runner",
+                                }
+                            ],
                             "bulletproof_source_commit": "a" * 40,
                             "execution_window_start": "2025-05-01T00:00:00Z",
                             "execution_window_end": "2026-05-01T00:00:00Z",
@@ -115,10 +126,7 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         assert request.method == "POST"
         payload = json.loads(request.content)
         assert payload["dataset_bindings"][0]["producer_receipt_id"] == fresh
-        assert payload["dataset_bindings"][0]["producer_receipt_digest"] == "8" * 64
-        assert payload["dataset_bindings"][0]["dataset_digest"] == "9" * 64
-        assert payload["dataset_bindings"][0]["rows"] == 525_600
-        assert "quote_volume" in payload["dataset_bindings"][0]["output_columns"]
+        assert set(payload["dataset_bindings"][0]) == module.BINDING_KEYS
         assert payload["discovery_catalog"] == {
             "producer_receipt_id": catalog_id,
             "receipt_digest": "c" * 64,

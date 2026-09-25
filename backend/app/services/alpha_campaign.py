@@ -190,6 +190,8 @@ def validate_real_data_bindings(
             )
         receipt = producer_receipt.receipt
         admission = receipt.get("result", {})
+        output_columns = admission.get("output_columns")
+        manifest_output_columns = manifest.get("output_columns", [])
         if (
             producer_receipt.milestone != "ALPHA-001"
             or producer_receipt.dataset_digest != build.content_digest
@@ -199,11 +201,20 @@ def validate_real_data_bindings(
             or admission.get("admitted") is not True
             or str(admission.get("venue", "")).lower() != venue
             or str(admission.get("instrument", "")).upper() not in allowed_instruments
+            or not isinstance(output_columns, list)
+            or not output_columns
+            or any(not isinstance(item, str) or not item for item in output_columns)
+            or len(output_columns) != len(set(output_columns))
             or any(receipt.get("authority", {}).values())
         ):
             raise HTTPException(
                 422,
                 "Bulletproof real-data admission receipt does not match the frozen dataset or authority boundary.",
+            )
+        if not set(manifest_output_columns).issubset(output_columns):
+            raise HTTPException(
+                422,
+                "Native admission output columns are incompatible with the immutable manifest.",
             )
         if provider.get("dataset") != binding.dataset_key:
             raise HTTPException(
@@ -294,7 +305,7 @@ def validate_real_data_bindings(
                 "lake_governance_digest": lake.snapshot_digest,
                 "venue": venue,
                 "instruments": sorted(manifest_instruments),
-                "output_columns": manifest.get("output_columns", []),
+                "output_columns": output_columns,
                 "rows": build.rows,
                 "builder_commit": build.builder_commit,
                 "producer_receipt_digest": producer_receipt.receipt_digest,
