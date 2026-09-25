@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from swarm_worker.api_client import ConnectionError
 from swarm_worker.executors.code_validation import (
     ExecutionPolicyError,
     RootExecutionError,
@@ -167,6 +168,50 @@ def test_codex_subprocess_uses_fixed_jitless_environment(
     assert executor._codex_environment() == {
         "CODEX_HOME": str(tmp_path / "codex-home"),
         "NODE_OPTIONS": "--jitless",
+    }
+
+
+@pytest.mark.asyncio
+async def test_codex_subprocess_survives_temporary_heartbeat_outage(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    repository.mkdir()
+    artifacts.mkdir()
+    logs.mkdir()
+    workspace = SimpleNamespace(
+        repository=repository,
+        artifacts=artifacts,
+        logs=logs,
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path / "codex-home",
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=0.01,
+        effective_uid=lambda: 1000,
+    )
+    heartbeat_failures: list[str] = []
+
+    async def unavailable(_progress):
+        raise ConnectionError("control plane restarting")
+
+    result = await executor._run_codex(
+        name="coding-agent",
+        args=["bash", "-c", "sleep 0.05"],
+        prompt="bounded test prompt",
+        workspace=workspace,
+        heartbeat=unavailable,
+        heartbeat_failures=heartbeat_failures,
+        timeout_seconds=1,
+    )
+
+    assert result.success is True
+    assert heartbeat_failures
+    assert set(heartbeat_failures) == {
+        "coding-agent: temporary ConnectionError"
     }
 
 
