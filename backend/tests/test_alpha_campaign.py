@@ -1675,6 +1675,76 @@ def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
+def test_selected_panel_correction_removes_legacy_binding_idempotently(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["BTCUSDT", "ETHUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
+    source = record.specification["research_queue"][0]
+    source.update(
+        discovery_candidate_id=str(uuid4()),
+        discovery_candidate_digest="7" * 64,
+        instruments=["BTCUSDT", "ETHUSDT"],
+    )
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        candidate_digest="7" * 64,
+        question=source["question"],
+        document={"data": {"status": "requires_admission"}},
+    )
+    monkeypatch.setattr(
+        service,
+        "_selected_panel_admission_evidence",
+        lambda *_: {
+            "schema_version": "alpha-selected-panel-engineering-handoff-v1.0.0",
+            "status": "admitted",
+            "handoff_digest": "8" * 64,
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "citations": []},
+    )
+    monkeypatch.setattr(service, "persist_new_task", lambda *_: None)
+    correction = {
+        "latest_findings": [
+            {"severity": "medium", "message": "consolidate within 12 files"}
+        ],
+        "cumulative_findings": [
+            {"severity": "medium", "message": "consolidate within 12 files"}
+        ],
+    }
+
+    task = service._create_strategy_engineering_task(
+        db,
+        record,
+        source,
+        {"category": "exact_strategy_unavailable"},
+        stage="G6",
+        correction_feedback=correction,
+        parent_task_id=uuid4(),
+    )
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    assert "dataset_binding" not in evidence
+    assert "instrument" not in evidence
+    assert evidence["instruments"] == ["BTCUSDT", "ETHUSDT"]
+    assert evidence["selected_panel_admission"]["status"] == "admitted"
+    assert evidence["independent_review_correction"] == correction
+    assert len(evidence) <= 20
+    ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
 def test_no_change_failure_without_admission_handoff_creates_successor(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
