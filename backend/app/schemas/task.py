@@ -122,6 +122,7 @@ class TaskLeaseRequest(BaseModel):
 class TaskLeaseResponse(BaseModel):
     task: TaskResponse | None
     lease_token: str | None
+    prior_failure: dict = Field(default_factory=dict)
     paused: bool = False
     pause_reasons: list[str] = Field(default_factory=list)
 

@@ -25,9 +25,9 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
         "app.services.tasks.utc_now",
         return_value=datetime(2026, 7, 31, tzinfo=UTC),
     ):
-        task, token, event = lease_next_task(db, agent, 300)
+        task, token, event, prior_failure = lease_next_task(db, agent, 300)
 
-    assert (task, token, event) == (None, None, None)
+    assert (task, token, event, prior_failure) == (None, None, None, {})
     statement = db.scalars.call_args.args[0]
     sql = str(statement.compile(dialect=postgresql.dialect()))
     assert "task_approvals.status =" in sql
@@ -68,6 +68,7 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
         lease_expires_at=None,
         lease_token_prefix=None,
         lease_token_digest=None,
+        failure={"error_category": "prior_validation_failure"},
     )
     no_expired_approvals = MagicMock()
     no_expired_approvals.all.return_value = []
@@ -103,11 +104,13 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
         patch("app.services.tasks.consume_task_approval"),
         patch("app.services.tasks.append_task_event") as append_event,
     ):
-        task, token, _event = lease_next_task(db, agent, 300)
+        task, token, _event, prior_failure = lease_next_task(db, agent, 300)
 
     assert task is allowed
     assert token is not None
     assert allowed.status == "leased"
+    assert prior_failure == {"error_category": "prior_validation_failure"}
+    assert allowed.failure == {}
     assert append_event.call_args_list[0].args[1] is denied
     assert append_event.call_args_list[0].args[2] == "task_authority_denied"
 
@@ -120,7 +123,7 @@ def test_no_work_lease_commits_approval_expiry_reconciliation() -> None:
         patch("app.api.routes.task_runtime.matching_control_scopes", return_value=[]),
         patch(
             "app.api.routes.task_runtime.lease_next_task",
-            return_value=(None, None, None),
+            return_value=(None, None, None, {}),
         ),
     ):
         response = lease_task(TaskLeaseRequest(), agent, db)

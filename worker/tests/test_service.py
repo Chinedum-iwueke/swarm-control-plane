@@ -374,9 +374,11 @@ class FakeExecutor:
         self.result = result
         self.error = error
         self.invoke_heartbeat = invoke_heartbeat
+        self.task: Task | None = None
 
     async def execute(self, **kwargs: object) -> WorkflowExecutionResult:
         self.events.append("execute")
+        self.task = kwargs["task"]
         if self.invoke_heartbeat:
             heartbeat = kwargs["heartbeat"]
             await heartbeat({"current_step": "run-tests"})
@@ -453,6 +455,49 @@ async def test_happy_path_exact_order_and_complete_once(
     assert len(api.requests["artifacts"]) == 2
     assert api.requests["artifacts"][0].location.startswith("workspace://")
     assert api.closed is True
+
+
+@pytest.mark.asyncio
+async def test_retry_failure_context_reaches_executor_without_mutating_task_contract(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    prior_failure = {
+        "error_category": "step_failed",
+        "execution_evidence": {
+            "summary": {"failure_diagnostic": {"stderr_tail": "exact traceback"}}
+        },
+    }
+    leased_task = make_task()
+    original_contract = dict(leased_task.input_contract)
+    api = FakeAPI(
+        events,
+        lease=LeaseResponse(
+            task=leased_task,
+            lease_token=LEASE_TOKEN,
+            prior_failure=prior_failure,
+        ),
+    )
+    settings = make_settings(tmp_path)
+    executor = FakeExecutor(events, make_execution_result())
+    service = WorkerService(
+        settings_loader=lambda: settings,
+        api_client_factory=lambda current: api,
+        workflow_loader_factory=lambda current: object(),
+        workspace_manager_factory=lambda current: FakeWorkspaceManager(
+            events, make_workspace(tmp_path)
+        ),
+        executor_factory=lambda current: executor,
+        policy_validator=lambda *args, **kwargs: make_validated_policy(),
+        role_package_loader=lambda current: verified_role_package(),
+    )
+
+    outcome = await service.run_once()
+
+    assert isinstance(outcome, SucceededOutcome)
+    assert executor.task is not None
+    assert executor.task.prior_failure == prior_failure
+    assert executor.task.input_contract == original_contract
 
 
 @pytest.mark.asyncio

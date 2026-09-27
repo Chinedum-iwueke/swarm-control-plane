@@ -271,7 +271,7 @@ def lease_next_task(
     db: Session,
     agent: Agent,
     lease_seconds: int,
-) -> tuple[Task | None, str | None, TaskEvent | None]:
+) -> tuple[Task | None, str | None, TaskEvent | None, dict[str, Any]]:
     now = utc_now()
     expire_approvals(db, now)
     predecessor = aliased(Task)
@@ -390,11 +390,12 @@ def lease_next_task(
             )
 
     if task is None:
-        return None, None, None
+        return None, None, None, {}
 
     consume_task_approval(db, task, now)
 
     generated = create_task_lease_token()
+    prior_failure = dict(task.failure or {})
 
     task.status = "leased"
     task.assigned_agent_id = agent.id
@@ -407,9 +408,10 @@ def lease_next_task(
     task.failure = {}
 
     producer_identity = None
-    if task.task_type == "alpha_strategy_review" or (task.task_type == "alpha_research_execution" and task.input_contract.get(
-        "stage"
-    ) in {"draft", "qualify"}):
+    if task.task_type == "alpha_strategy_review" or (
+        task.task_type == "alpha_research_execution"
+        and task.input_contract.get("stage") in {"draft", "qualify"}
+    ):
         producer_identity = producer_identity_for_lease(
             db,
             agent,
@@ -449,7 +451,7 @@ def lease_next_task(
         },
     )
 
-    return task, generated.token, event
+    return task, generated.token, event, prior_failure
 
 
 def lock_task(

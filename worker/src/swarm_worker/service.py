@@ -327,7 +327,9 @@ class WorkerService:
                 raise InvalidLeaseResponse(
                     "Control plane returned an incomplete task lease."
                 )
-            task = lease.task
+            task = lease.task.model_copy(
+                update={"prior_failure": dict(lease.prior_failure)}
+            )
             lease_token = lease.lease_token
 
             try:
