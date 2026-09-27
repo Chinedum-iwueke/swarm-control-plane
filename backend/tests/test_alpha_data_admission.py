@@ -3,7 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.services.alpha_data_admission import register_selected_panel_receipt
+from app.services.alpha_data_admission import (
+    _canonical_verification_steps,
+    register_selected_panel_receipt,
+)
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
@@ -166,6 +169,21 @@ def test_selected_panel_receipt_materializes_exact_data_registry(monkeypatch):
     assert governance.entitlements[0].actions == ["read"]
     assert governance.recovery_manifests[0].integrity_verified is True
     assert governance.observed_storage_bytes[binding.dataset_key] == 1024
+
+
+def test_wide_selected_panel_schema_is_preserved_across_verification_steps():
+    columns = ["ts", "open", "high", "low", "close", "volume"] + [
+        f"feature_{index}" for index in range(124)
+    ]
+
+    steps = _canonical_verification_steps(columns, DIGEST)
+
+    assert [step["order"] for step in steps] == [1, 2]
+    assert [len(step["input_columns"]) for step in steps] == [100, 30]
+    assert [column for step in steps for column in step["input_columns"]] == columns
+    assert [column for step in steps for column in step["output_columns"]] == columns
+    assert all(step["parameters"]["content_digest"] == DIGEST for step in steps)
+    assert all(step["parameters"]["schema_chunk_count"] == 2 for step in steps)
 
 
 def test_selected_panel_receipt_reuses_complete_content_binding(monkeypatch):
