@@ -1751,6 +1751,20 @@ def test_selected_panel_correction_removes_legacy_binding_idempotently(monkeypat
         "_research_context",
         lambda *_: {"corpus_digest": "9" * 64, "citations": []},
     )
+    output_columns = [f"feature_{index}" for index in range(250)]
+    monkeypatch.setattr(
+        service,
+        "_source_bindings",
+        lambda *_: [
+            {
+                "dataset_build_id": str(uuid4()),
+                "dataset_digest": "a" * 64,
+                "instruments": ["BTCUSDT", "ETHUSDT"],
+                "output_columns": output_columns,
+                "producer_receipt_digest": "b" * 64,
+            }
+        ],
+    )
     monkeypatch.setattr(service, "persist_new_task", lambda *_: None)
     correction = {
         "latest_findings": [
@@ -1777,6 +1791,12 @@ def test_selected_panel_correction_removes_legacy_binding_idempotently(monkeypat
     assert evidence["instruments"] == ["BTCUSDT", "ETHUSDT"]
     assert evidence["selected_panel_admission"]["status"] == "admitted"
     assert evidence["independent_review_correction"] == correction
+    compact_binding = evidence["dataset_bindings"][0]
+    assert "output_columns" not in compact_binding
+    assert compact_binding["output_columns_count"] == len(output_columns)
+    assert compact_binding["output_columns_digest"] == service.digest_document(
+        output_columns
+    )
     assert len(evidence) <= 20
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 

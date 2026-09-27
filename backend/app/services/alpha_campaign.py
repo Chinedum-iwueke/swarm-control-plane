@@ -773,6 +773,17 @@ def _create_strategy_engineering_task(
         evidence.pop("dataset_binding", None)
         if selected_panel_admission is not None:
             evidence.pop("instrument", None)
+            compact_bindings = []
+            for item in evidence["dataset_bindings"]:
+                compact = dict(item)
+                output_columns = compact.pop("output_columns", None)
+                if isinstance(output_columns, list):
+                    compact["output_columns_count"] = len(output_columns)
+                    compact["output_columns_digest"] = digest_document(
+                        output_columns
+                    )
+                compact_bindings.append(compact)
+            evidence["dataset_bindings"] = compact_bindings
         evidence["independent_review_correction"] = correction_feedback
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
