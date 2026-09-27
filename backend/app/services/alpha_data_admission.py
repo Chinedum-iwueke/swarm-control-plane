@@ -37,6 +37,40 @@ class AlphaDataAdmissionConflict(ValueError):
     """A native selected-panel receipt cannot be promoted into DATA registries."""
 
 
+def _canonical_verification_steps(
+    output_columns: list[str], panel_digest: str
+) -> list[dict]:
+    """Represent a wide immutable schema without weakening its column contract."""
+
+    chunk_size = 100
+    chunks = [
+        output_columns[offset : offset + chunk_size]
+        for offset in range(0, len(output_columns), chunk_size)
+    ]
+    return [
+        {
+            "order": index,
+            "name": (
+                "canonical-panel-verification"
+                if len(chunks) == 1
+                else f"canonical-panel-verification-{index}"
+            ),
+            "operation": (
+                "Retain this ordered portion of the exact native canonical "
+                "one-minute panel schema after deterministic quality checks."
+            ),
+            "parameters": {
+                "content_digest": panel_digest,
+                "schema_chunk": index,
+                "schema_chunk_count": len(chunks),
+            },
+            "input_columns": columns,
+            "output_columns": columns,
+        }
+        for index, columns in enumerate(chunks, start=1)
+    ]
+
+
 def _timestamp(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -294,16 +328,9 @@ def register_selected_panel_receipt(
                 "mode": "not_applicable",
                 "description": "Crypto perpetual bars have no equity corporate actions.",
             },
-            "transformations": [
-                {
-                    "order": 1,
-                    "name": "canonical-panel-verification",
-                    "operation": "Retain the exact native canonical one-minute panel after deterministic quality checks.",
-                    "parameters": {"content_digest": panel_digest},
-                    "input_columns": output_columns,
-                    "output_columns": output_columns,
-                }
-            ],
+            "transformations": _canonical_verification_steps(
+                output_columns, panel_digest
+            ),
             "features": [
                 {
                     "feature_key": "observed-close",
