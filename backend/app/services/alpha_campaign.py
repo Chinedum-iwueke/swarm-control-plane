@@ -77,7 +77,7 @@ CLAIM_BOUNDARY = (
     "capital allocation, production promotion or self-approval."
 )
 STRATEGY_ENGINEERING_STAGE = "G3"
-STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8")
+STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8", "G9")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
@@ -779,9 +779,7 @@ def _create_strategy_engineering_task(
                 output_columns = compact.pop("output_columns", None)
                 if isinstance(output_columns, list):
                     compact["output_columns_count"] = len(output_columns)
-                    compact["output_columns_digest"] = digest_document(
-                        output_columns
-                    )
+                    compact["output_columns_digest"] = digest_document(output_columns)
                 compact_bindings.append(compact)
             evidence["dataset_bindings"] = compact_bindings
         evidence["independent_review_correction"] = correction_feedback
@@ -824,6 +822,9 @@ def _create_strategy_engineering_task(
             "When an adaptive representation plan exists, the strategy declares and consumes its exact ordered output fields and plan digest at causal decision timestamps.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
             "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
+            "Runner integration tests invoke execute_registered and verify trusted evidence binding plus per-variant artifact retention; source-text assertions are insufficient.",
+            "Deterministic tests exercise positive or test-open selection, negative, invalid and failed terminal outcome paths.",
+            "Every immutable catalog, manifest, producer, governance and partition digest exactly matches its admitted source evidence.",
             "No capital, order, promotion or self-approval authority is introduced.",
         ],
         "stop_conditions": [
@@ -2421,11 +2422,10 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
                 "prior_terminal_category": "duration_budget_exhausted",
             },
         )
-    if (
-        campaign.status == "needs_attention"
-        and terminal.get("category")
-        in {"governed_pipeline_task_failed", "strategy_engineering_failed"}
-    ):
+    if campaign.status == "needs_attention" and terminal.get("category") in {
+        "governed_pipeline_task_failed",
+        "strategy_engineering_failed",
+    }:
         try:
             failed_task_id = UUID(str(terminal.get("task_id")))
         except (TypeError, ValueError):

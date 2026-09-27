@@ -191,7 +191,7 @@ def lease_task(
     # A restarted worker cannot release its old lease. Reconcile those leases
     # before selecting work so recovery does not depend on an operator call.
     reap_expired_leases(db)
-    task, raw_token, _ = lease_next_task(
+    task, raw_token, _, prior_failure = lease_next_task(
         db,
         agent,
         payload.lease_seconds,
@@ -213,6 +213,7 @@ def lease_task(
     return TaskLeaseResponse(
         task=TaskResponse.model_validate(serialize_task(task)),
         lease_token=raw_token,
+        prior_failure=prior_failure,
     )
 
 

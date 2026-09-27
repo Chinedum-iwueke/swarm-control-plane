@@ -80,6 +80,7 @@ class Task(BaseModel):
     last_execution_heartbeat_at: datetime | None
     result: dict[str, Any]
     failure: dict[str, Any]
+    prior_failure: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None
@@ -95,6 +96,7 @@ class TaskLeaseRequest(BaseModel):
 class LeaseResponse(BaseModel):
     task: Task | None
     lease_token: str | None
+    prior_failure: dict[str, Any] = Field(default_factory=dict)
     paused: bool = False
     pause_reasons: list[str] = Field(default_factory=list)
 
@@ -218,7 +220,9 @@ class ProposalEngineeringMissionContract(StrictModel):
         try:
             parsed = json.loads(value)
         except RecursionError as error:
-            raise ValueError("engineering evidence nesting exceeds safe limits") from error
+            raise ValueError(
+                "engineering evidence nesting exceeds safe limits"
+            ) from error
         if not isinstance(parsed, dict) or len(parsed) > 20:
             raise ValueError("engineering evidence must be a bounded JSON object")
         pending = [(parsed, 0)]
@@ -226,7 +230,13 @@ class ProposalEngineeringMissionContract(StrictModel):
             node, depth = pending.pop()
             if depth > 32:
                 raise ValueError("engineering evidence nesting exceeds safe limits")
-            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            children = (
+                node.values()
+                if isinstance(node, dict)
+                else node
+                if isinstance(node, list)
+                else ()
+            )
             pending.extend((child, depth + 1) for child in children)
         json.dumps(parsed, allow_nan=False)
         return value
