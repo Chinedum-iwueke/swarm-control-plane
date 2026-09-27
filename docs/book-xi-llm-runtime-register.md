@@ -76,8 +76,11 @@ failure fixture that proves the invariant generalizes. Hypothesis-specific predi
 targets and mechanisms remain in their native card and strategy module.
 
 The current multi-asset engineering sequence demonstrates why this boundary matters.
-Two generated revisions passed Bulletproof's full deterministic suite but were still
-rejected by independent scientific review for integration, provenance, outcome and
-held-out-evaluation defects. Those rejected bundles remain evidence and are not merged
-or described as certified. The successor correction remains in progress until its
-tests, independent reviews and immutable publication complete.
+Three generated revisions passed Bulletproof's full deterministic suite but were still
+rejected by independent scientific review. The latest review found that direct unit
+coverage concealed a runner grid-type mismatch, evidence digests were derived from the
+same untrusted caller frames they purported to authenticate, required logging remained
+incompatible, one grid dimension was not consumed and no runner-level regression
+exercised the governed path. Those bundles remain evidence and are not merged or
+described as certified. The next correction must repair the shared runner/evidence/
+logging contracts and prove them in a materially different context.
