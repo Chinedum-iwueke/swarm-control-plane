@@ -94,6 +94,17 @@ and its first intelligence, hypothesis and representation invocations succeeded;
 still needs independent acceptance and a terminal mixed-basket BT-009 publication.
 No old mandate or failed campaign is retroactively broadened.
 
+The next production cycle demonstrated the intended reasoning boundary. Exact recent
+candidate questions were supplied as novelty exclusions, while a rotating catalog
+frontier supplied underexplored starting points without compelling artificial asset
+diversity. The senior researcher proposed SOL-to-ETH, RUNE and XAUT/PAXG mechanisms.
+The representation scientist retained two mixed baskets where both legs were causal,
+kept RUNE single-asset where another asset was unnecessary, selected 2h/4h complete
+bars, and rejected fractional differentiation rather than applying it decoratively.
+Deterministic DATA gates then rejected XAUT/PAXG for unavailable evidence and admitted
+the other panels. These LLM outputs demonstrate proposal and representation range;
+only native Bulletproof execution and independent evaluation can certify their results.
+
 Signed producer receipts must be registered through the native Python/bootstrap path
 without reconstructing their JSON through `jq`; numeric reserialization changes the
 content digest and must fail closed. That is an evidence-integrity invariant, not an

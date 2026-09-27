@@ -87,9 +87,14 @@ BT-009 outcome; fluent plans without engine consumption remain unqualified.
 Bulletproof PR #341 now supplies the reusable native ETH/BTC/SOL foundation and generic
 immutable lake-binding enforcement at merge `8207ee4e4256ff733df2e6bde4bb4af05c579134`;
 its full suite passed 1,786 tests with 34 skips. This closes the source-contract defect,
-not the production exit. The exact-merge mandate is founder-approved and its first
-intelligence, hypothesis and representation stages succeeded; independent acceptance
-and a terminal mixed-basket BT-009 publication remain required.
+not the production exit. The exact-merge mandate is founder-approved. Its second live
+cycle replenished immediately after a duplicate-only rejection and generated SOL/ETH,
+RUNE and XAUT/PAXG questions at 2h and 4h rather than another BTC-only question. The
+representation stage retained causally necessary mixed baskets, rejected unnecessary
+assets and transformations, admitted ETHUSDT/SOLUSDT/RUNEUSDT panels, and created a
+governed SOL-to-ETH campaign. Native engineering still awaits explicit founder
+approval; independent acceptance and a terminal mixed-basket BT-009 publication
+remain required.
 ALPHA-004 operational exit separately requires four active supervised services, one
 approved weekly mandate and a terminal real-data campaign attempt.
 
