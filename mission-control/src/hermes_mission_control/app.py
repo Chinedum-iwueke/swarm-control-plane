@@ -166,6 +166,13 @@ def create_app(
     async def approve_alpha_mandate(mandate_id: str, request: Request) -> dict:
         return await client.approve_alpha_mandate(mandate_id, await request.json())
 
+    @app.post(
+        "/api/codex-auth/recoveries/{recovery_id}/retry",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def retry_codex_auth(recovery_id: str, request: Request) -> dict:
+        return await client.retry_codex_auth(recovery_id, await request.json())
+
     @app.get("/api/research/backtests")
     async def backtest_activity(
         category: Annotated[

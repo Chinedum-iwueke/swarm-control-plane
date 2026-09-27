@@ -23,6 +23,7 @@ class FakeControlPlane:
         self.conversation_turns: list[tuple[str, str]] = []
         self.research_cycle_decision: tuple[str, str, str, str] | None = None
         self.approval_decision: Any = None
+        self.codex_auth_retry: tuple[str, dict] | None = None
 
     async def close(self) -> None:
         self.closed = True
@@ -77,6 +78,10 @@ class FakeControlPlane:
 
     async def set_pause(self, **kwargs) -> dict:
         return kwargs
+
+    async def retry_codex_auth(self, recovery_id, payload) -> dict:
+        self.codex_auth_retry = (recovery_id, payload)
+        return {"id": recovery_id, "state": "expired"}
 
     async def decide_proposal(self, proposal_id, action, decision) -> dict:
         return {
@@ -280,6 +285,26 @@ def test_new_thread_dialog_cancel_bypasses_required_field_validation(
         in html
     )
     assert 'document.querySelectorAll("[data-close-dialog]")' in script
+
+
+def test_codex_auth_retry_requires_founder_intent_and_preserves_incident(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    payload = {"reason": "Founder requested a replacement device code."}
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        denied = client.post(
+            "/api/codex-auth/recoveries/recovery-id/retry", json=payload
+        )
+        accepted = client.post(
+            "/api/codex-auth/recoveries/recovery-id/retry",
+            headers={"X-Hermes-Intent": "founder-action"},
+            json=payload,
+        )
+
+    assert denied.status_code == 403
+    assert accepted.status_code == 200
+    assert fake.codex_auth_retry == ("recovery-id", payload)
 
 
 def test_approval_center_binds_displayed_review_digest(

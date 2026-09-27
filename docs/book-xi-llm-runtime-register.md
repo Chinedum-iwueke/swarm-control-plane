@@ -18,6 +18,24 @@ it is never a backtest result, risk decision, promotion decision or order instru
 | PDF recovery adviser | `backend/app/ingestion/recovery_controller.py` | Classifies bounded ingestion failures and proposes recovery actions | Recovery recommendation only | Deterministic sanitizer/parser policy; no canonical overwrite |
 | Mission Control research copilot | `mission-control/src/hermes_mission_control/research_copilot.py` | Explains visible research evidence to the founder | UI response only | No task, approval, capital or order authority |
 
+## Authentication continuity
+
+The shared VM1 Codex runtime is supervised by
+`invariance-swarm-codex-auth-watcher.service`. The watcher performs a real, minimal
+`codex exec` probe under the same credential-refresh lock used by discovery and
+engineering. `codex login status` alone is not accepted as proof because a locally
+present session can still have a rejected server-side credential.
+
+On a confirmed authentication rejection the watcher opens one durable recovery
+incident, starts the official device-authorization flow and publishes only the OpenAI
+verification URL, short-lived device code and expiry through Mission Control and the
+restricted founder Telegram channel. Access, refresh and identity tokens never enter
+the control plane, Telegram or Mission Control. An expired attempt stays attached to
+the same incident; `/codex-login retry` or Mission Control's `New code` command asks
+the watcher for a fresh generation. The runtime returns to `healthy` only after the
+real probe succeeds. Authentication recovery does not approve tasks, consume campaign
+attempts or grant research, shadow, order or capital authority.
+
 ## Deterministic boundary
 
 Codex does not calculate performance metrics, resample bars, select winners after

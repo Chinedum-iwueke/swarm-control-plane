@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.security import require_founder_channel
 from app.db.session import get_db
 from app.models import (
+    CodexAuthRecovery,
     EngineeringMission,
     FounderNotification,
     FounderProposal,
@@ -37,11 +38,13 @@ from app.schemas.alpha_discovery import (
     AlphaResearchMandateApproval,
     AlphaResearchMandateResponse,
 )
+from app.schemas.codex_auth import CodexAuthRecoveryResponse, CodexAuthRecoveryRetry
 from app.schemas.founder_channel import FounderChannelDigestDecision
 from app.schemas.operational_note import OperationalNoteResponse
 from app.schemas.research_program import ResearchDailyCycleResponse
 from app.services.alpha_discovery import approve_mandate, serialize_mandate
 from app.services.authority import resolve_task_approval
+from app.services.codex_auth import request_retry
 from app.services.founder_notifications import (
     acknowledge_notification,
     approval_readiness,
@@ -342,6 +345,45 @@ def acknowledge_founder_notification(
     db.commit()
     db.refresh(notification)
     return FounderNotificationResponse.model_validate(notification)
+
+
+@router.get(
+    "/codex-auth/recoveries", response_model=list[CodexAuthRecoveryResponse]
+)
+def list_codex_auth_recoveries(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[CodexAuthRecoveryResponse]:
+    values = db.scalars(
+        select(CodexAuthRecovery).order_by(CodexAuthRecovery.runtime_key)
+    ).all()
+    return [CodexAuthRecoveryResponse.model_validate(item) for item in values]
+
+
+@router.post(
+    "/codex-auth/recoveries/{recovery_id}/retry",
+    response_model=CodexAuthRecoveryResponse,
+)
+def retry_codex_auth_recovery(
+    recovery_id: uuid.UUID,
+    payload: CodexAuthRecoveryRetry,
+    db: Annotated[Session, Depends(get_db)],
+) -> CodexAuthRecoveryResponse:
+    recovery = db.scalar(
+        select(CodexAuthRecovery)
+        .where(CodexAuthRecovery.id == recovery_id)
+        .with_for_update()
+    )
+    if recovery is None:
+        raise HTTPException(status_code=404, detail="Codex auth recovery not found.")
+    request_retry(
+        db,
+        recovery,
+        actor="founder-telegram",
+        reason=payload.reason,
+    )
+    db.commit()
+    db.refresh(recovery)
+    return CodexAuthRecoveryResponse.model_validate(recovery)
 
 
 @router.post(

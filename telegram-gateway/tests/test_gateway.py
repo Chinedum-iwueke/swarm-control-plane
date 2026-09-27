@@ -81,6 +81,8 @@ class Channel:
         self.notification_values: list[dict] = []
         self.research_cycle_values: list[dict] = []
         self.acknowledged: list[tuple[str, str]] = []
+        self.codex_auth_values: list[dict] = []
+        self.codex_auth_retries: list[tuple[str, str]] = []
 
     async def create_request(self, payload):
         self.created.append(payload)
@@ -170,6 +172,13 @@ class Channel:
 
     async def notifications(self):
         return self.notification_values
+
+    async def codex_auth_recoveries(self):
+        return self.codex_auth_values
+
+    async def retry_codex_auth(self, recovery_id, reason):
+        self.codex_auth_retries.append((recovery_id, reason))
+        return {}
 
     async def acknowledge_notification(self, notification_id, delivery_reference):
         self.acknowledged.append((notification_id, delivery_reference))
@@ -1328,6 +1337,78 @@ async def test_service_slo_alert_is_attributable_and_bounded(tmp_path: Path) -> 
     assert channel.acknowledged == [
         ("slo-notification-1", "telegram:456:10001")
     ]
+
+
+@pytest.mark.asyncio
+async def test_codex_auth_notification_contains_only_device_handoff(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [
+        {
+            "id": "codex-notification-1",
+            "kind": "codex_authentication_required",
+            "payload": {
+                "recovery_id": "12345678-1234-1234-1234-123456789012",
+                "runtime_key": "vm1-shared-alpha-codex",
+                "generation": 3,
+                "verification_uri": "https://auth.openai.com/codex/device",
+                "device_code": "ABCD-EFGH1",
+                "code_expires_at": "2026-09-27T12:15:00Z",
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+
+    assert "ABCD-EFGH1" in telegram.sent[0][1]
+    assert "/codex-login retry" in telegram.sent[0][1]
+    assert "No access or refresh token" in telegram.sent[0][1]
+    assert telegram.sent[0][2]["button_url"] == (
+        "https://auth.openai.com/codex/device"
+    )
+    assert channel.acknowledged == [
+        ("codex-notification-1", "telegram:456:10001")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_codex_login_retry_reuses_current_recovery(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.codex_auth_values = [
+        {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "state": "expired",
+            "generation": 2,
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path), telegram=telegram, channel=channel, store=store
+    )
+    await gateway.check()
+
+    await gateway._handle_update(
+        {
+            "update_id": 99,
+            "message": {
+                "message_id": 99,
+                "from": {"id": 123},
+                "chat": {"id": 456},
+                "text": "/codex-login retry",
+            },
+        }
+    )
+
+    assert channel.codex_auth_retries[0][0].startswith("12345678")
+    assert "fresh 15-minute code" in telegram.sent[-1][1]
 
 
 @pytest.mark.asyncio

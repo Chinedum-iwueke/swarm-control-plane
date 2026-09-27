@@ -30,6 +30,7 @@ invariance-research-memory-sync = "swarm_worker.research_memory_bridge:main"
 invariance-swarm-fleet-probe = "swarm_worker.fleet_probe:main"
 invariance-swarm-fleet-watchdog = "swarm_worker.fleet_watchdog:main"
 invariance-swarm-control-plane-backup = "swarm_worker.control_plane_backup:main"
+invariance-swarm-codex-auth-watcher = "swarm_worker.codex_auth_watcher:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 [tool.pytest.ini_options]

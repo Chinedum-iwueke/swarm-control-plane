@@ -7,6 +7,11 @@ from app.schemas.agent import (
     AgentRevocationResponse,
     CredentialSecretResponse,
 )
+from app.schemas.codex_auth import (
+    CodexAuthRecoveryReport,
+    CodexAuthRecoveryResponse,
+    CodexAuthRecoveryRetry,
+)
 from app.schemas.control import (
     ControlEventResponse,
     ControlMutation,
@@ -127,6 +132,9 @@ __all__ = [
     "BrokerTicketPayload",
     "BrokerTicketRequest",
     "BrokerTicketResponse",
+    "CodexAuthRecoveryReport",
+    "CodexAuthRecoveryResponse",
+    "CodexAuthRecoveryRetry",
     "ControlEventResponse",
     "ControlMutation",
     "ControlMutationResponse",

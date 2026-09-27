@@ -36,6 +36,7 @@ from app.models.causal_pipeline import (
     CausalDatasetMaterialization,
     CausalDatasetPipeline,
 )
+from app.models.codex_auth import CodexAuthRecovery, CodexAuthRecoveryEvent
 from app.models.control import ControlEvent, ControlScope
 from app.models.conversation import (
     FounderConversation,
@@ -264,6 +265,8 @@ __all__ = [
     "CanonicalIdentityAlias",
     "CausalDatasetMaterialization",
     "CausalDatasetPipeline",
+    "CodexAuthRecovery",
+    "CodexAuthRecoveryEvent",
     "CognitiveToolReceipt",
     "ControlEvent",
     "ControlScope",
