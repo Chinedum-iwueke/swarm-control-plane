@@ -75,12 +75,24 @@ original failure and a second materially different hypothesis, asset, timeframe 
 failure fixture that proves the invariant generalizes. Hypothesis-specific predictors,
 targets and mechanisms remain in their native card and strategy module.
 
-The current multi-asset engineering sequence demonstrates why this boundary matters.
-Three generated revisions passed Bulletproof's full deterministic suite but were still
-rejected by independent scientific review. The latest review found that direct unit
-coverage concealed a runner grid-type mismatch, evidence digests were derived from the
-same untrusted caller frames they purported to authenticate, required logging remained
-incompatible, one grid dimension was not consumed and no runner-level regression
-exercised the governed path. Those bundles remain evidence and are not merged or
-described as certified. The next correction must repair the shared runner/evidence/
-logging contracts and prove them in a materially different context.
+The multi-asset engineering sequence demonstrates why this boundary matters. Three
+generated revisions passed deterministic tests but were rejected by independent
+scientific review because direct unit coverage concealed a runner grid-type mismatch,
+caller-derived evidence digests, an incompatible logging contract, an unused grid
+dimension and missing runner-level coverage. Those rejected bundles remain evidence.
+
+Bulletproof PR #341 subsequently repaired the shared contracts rather than special-
+casing one campaign. At merge commit `8207ee4e4256ff733df2e6bde4bb4af05c579134`,
+every fully provenance-bound native contract is checked against immutable lake bytes,
+receipt and lineage fields; complete-hour construction is gap-safe; purge and embargo
+use elapsed time; held-out access remains sealed; terminal positive, negative, invalid
+and failed outcomes share the logging contract; and runner-level mutation tests reject
+binding drift. The complete native suite passed with 1,786 tests, 34 skips and no
+failures. This qualifies the reusable source foundation, not autonomous production:
+the exact merge still needs a separately approved mandate and a terminal mixed-basket
+BT-009 publication. No old mandate or failed campaign is retroactively broadened.
+
+Signed producer receipts must be registered through the native Python/bootstrap path
+without reconstructing their JSON through `jq`; numeric reserialization changes the
+content digest and must fail closed. That is an evidence-integrity invariant, not an
+operator workaround.

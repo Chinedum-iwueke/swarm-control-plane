@@ -84,6 +84,11 @@ membership schedules, the representation scientist emits a typed transformation 
 and Bulletproof alone materializes and feeds causal outputs into native strategies.
 Qualification requires diverse held-out reasoning cases plus a terminal mixed-basket
 BT-009 outcome; fluent plans without engine consumption remain unqualified.
+Bulletproof PR #341 now supplies the reusable native ETH/BTC/SOL foundation and generic
+immutable lake-binding enforcement at merge `8207ee4e4256ff733df2e6bde4bb4af05c579134`;
+its full suite passed 1,786 tests with 34 skips. This closes the source-contract defect,
+not the production exit: the exact merge still needs founder-approved scope,
+independent acceptance and a terminal mixed-basket BT-009 publication.
 ALPHA-004 operational exit separately requires four active supervised services, one
 approved weekly mandate and a terminal real-data campaign attempt.
 
