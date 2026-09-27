@@ -47,10 +47,11 @@ Fresh no-authority admissions at that merge exist for BTCUSDT, ETHUSDT and SOLUS
 Successor mandate `d90b621c-7e95-48b7-b5b9-f46ba36fdb68`, key
 `ALPHA009-WEEK-20260927-R6`, digest
 `4933e1e334dd312581f298375099ed1fab00ba72a9e7edd24e7af18983c2d071`,
-is awaiting founder approval. It binds the 2023 calendar-year window and the exact
-native merge. This is an approval request, not execution evidence. Production breadth
-remains open until an independently accepted bundle and terminal mixed-basket BT-009
-publication exist.
+was approved by the founder at `2026-09-27T19:22:51Z`. It binds the 2023 calendar-
+year window and the exact native merge. Its first intelligence, hypothesis and
+representation tasks all succeeded; that is pipeline progress, not execution evidence.
+Production breadth remains open until an independently accepted bundle and terminal
+mixed-basket BT-009 publication exist.
 
 ## Verification
 
