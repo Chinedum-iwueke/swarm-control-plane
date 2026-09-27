@@ -499,7 +499,60 @@ def test_failed_validation_retains_bounded_log_tail_for_retry(tmp_path: Path) ->
     assert diagnostic["stderr_tail"].endswith(
         "AttributeError: exact retained traceback\n"
     )
-    assert len(diagnostic["stderr_tail"]) == 12_000
+    assert len(diagnostic["stderr_tail"]) == 6_000
+
+
+def test_independent_review_rejection_does_not_duplicate_logs_into_summary(
+    tmp_path: Path,
+) -> None:
+    logs = tmp_path / "logs"
+    artifacts = tmp_path / "artifacts"
+    logs.mkdir()
+    artifacts.mkdir()
+    review = {
+        "approved": False,
+        "summary": "held-out isolation failed",
+        "findings": [{"severity": "high", "message": "test opened four times"}],
+    }
+    (artifacts / "review.json").write_text(json.dumps(review), encoding="utf-8")
+    (logs / "independent-review.stdout.log").write_text(
+        json.dumps(review), encoding="utf-8"
+    )
+    (logs / "independent-review.stderr.log").write_text(
+        "verbose reviewer transport log" * 1000, encoding="utf-8"
+    )
+    workspace = SimpleNamespace(
+        artifacts=artifacts,
+        plan=SimpleNamespace(attempt_directory=tmp_path),
+        metadata=SimpleNamespace(
+            repository="bulletproof_bt",
+            resolved_base_commit="a" * 40,
+            attempt_number=1,
+        ),
+    )
+    failed_step = StepExecutionResult(
+        name="independent-review",
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        duration_seconds=1,
+        return_code=0,
+        success=False,
+        timed_out=False,
+        stdout_log="logs/independent-review.stdout.log",
+        stderr_log="logs/independent-review.stderr.log",
+    )
+
+    result = EngineeringMissionExecutor._result(
+        SimpleNamespace(attempt_count=1),
+        SimpleNamespace(name="engineering-mission"),
+        workspace,
+        0.0,
+        [failed_step],
+        False,
+        "independent_review_rejected",
+    )
+
+    assert result.summary == {"independent_review": review}
 
 
 def test_evidence_permissions_are_forced_private(tmp_path: Path) -> None:

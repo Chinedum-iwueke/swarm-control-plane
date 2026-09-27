@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
-from app.api.routes.tasks import rearm_expired_task_approval
+from app.api.routes.tasks import rearm_expired_task_approval, resume_failed_task
 from app.schemas.task import TaskResumeRequest
 from fastapi import HTTPException
 
@@ -161,3 +161,58 @@ def test_stranded_queued_approval_can_be_rearmed() -> None:
     )
     assert response.task.id == record.id
     db.commit.assert_called_once_with()
+
+
+def test_failed_task_resume_retains_bounded_untrusted_diagnostic_context() -> None:
+    record = SimpleNamespace(
+        id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+        status="failed",
+        attempt_count=1,
+        max_attempts=2,
+        completed_at="completed",
+        result={"stale": True},
+        failure={"error_category": "executor_ValidationError"},
+        mission_id=None,
+    )
+    db = MagicMock()
+    db.scalar.return_value = record
+    event = SimpleNamespace()
+    diagnostic = {
+        "source": "retained-independent-review",
+        "findings": [{"severity": "high", "message": "test opened four times"}],
+    }
+    with (
+        patch("app.api.routes.tasks.rearm_task_approval") as rearm,
+        patch("app.api.routes.tasks.append_task_event", return_value=event) as append,
+        patch("app.api.routes.tasks.serialize_task", return_value={}),
+        patch(
+            "app.api.routes.tasks.TaskResponse.model_validate",
+            return_value=SimpleNamespace(id=record.id),
+        ),
+        patch(
+            "app.api.routes.tasks.TaskEventResponse.model_validate",
+            return_value=event,
+        ),
+        patch(
+            "app.api.routes.tasks.TaskMutationResponse",
+            return_value=SimpleNamespace(task=SimpleNamespace(id=record.id)),
+        ),
+    ):
+        response = resume_failed_task(
+            record.id,
+            TaskResumeRequest(
+                requested_by="codex-loop-recovery",
+                reason="Retry unchanged plan after platform summary overflow.",
+                diagnostic_context=diagnostic,
+            ),
+            db,
+        )
+
+    assert response.task.id == record.id
+    assert record.result == {}
+    assert record.completed_at is None
+    assert record.failure["operator_retry_context"] == diagnostic
+    assert append.call_args.kwargs["payload"]["diagnostic_context"] == diagnostic
+    rearm.assert_called_once_with(
+        db, record, "Retry unchanged plan after platform summary overflow."
+    )
