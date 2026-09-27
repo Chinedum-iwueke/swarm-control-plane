@@ -34,6 +34,26 @@ production capability remains open until the registered certification receipt re
 multi-asset BT-009 publication exists. Old failed campaigns and approvals are not
 retroactively changed.
 
+Cycle 2, `38d868f1-9df4-4bec-b0e3-59eb2af58aa4`, was created immediately after
+the duplicate-only first cycle once PR #388 deployed. Its researcher produced three
+semantically distinct non-BTC questions: SOL-to-ETH information diffusion at 2h,
+RUNE liquidity-exhaustion reversal at 2h, and XAUT/PAXG relative-value convergence
+at 4h. The outcome-blind representation agent independently retained the two named
+mixed baskets, kept RUNE single-asset because no additional asset was causally
+necessary, rejected fractional differentiation for all three because return/spread
+semantics did not require it, and recorded alternative timeframes and controls.
+
+XAUT/PAXG failed closed because DATA-002/003 availability was not demonstrated.
+Native selected-panel admission succeeded for ETHUSDT, SOLUSDT and RUNEUSDT. That
+live pass exposed a shared 100-column transformation-step limit against legitimate
+130-column panels; PR #389 now represents wide immutable schemas as ordered bounded
+verification steps without truncating their column or content-digest contract. After
+deployment the cycle accepted two candidates and created campaign
+`221c7817-f638-4a47-b4b2-7698ee62eedf`. Its SOL-to-ETH native engineering task
+`A3-221c7817-001-G3` remains pending explicit founder approval. This demonstrates
+autonomous breadth, causal representation selection, admission and campaign handoff;
+it is not yet terminal mixed-basket execution certification.
+
 ## Claim Boundary
 
 This milestone certifies representation selection and no-capital execution plumbing.
