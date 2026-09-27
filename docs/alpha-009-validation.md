@@ -23,9 +23,10 @@ all fully provenance-bound contracts rather than matching one campaign identifie
 ## Production Status
 
 The source foundation is qualified, and fresh no-authority BTCUSDT, ETHUSDT and
-SOLUSDT admissions bind the exact merge. Mandate
-`d90b621c-7e95-48b7-b5b9-f46ba36fdb68` is awaiting founder approval. ALPHA-009
-production capability remains open until the registered certification receipt reports
+SOLUSDT admissions bind the exact merge. The founder approved mandate
+`d90b621c-7e95-48b7-b5b9-f46ba36fdb68` at `2026-09-27T19:22:51Z`; its first
+intelligence, hypothesis and representation tasks succeeded. ALPHA-009 production
+capability remains open until the registered certification receipt reports
 `status=qualified`, independent review accepts the exact bundle, and one terminal
 multi-asset BT-009 publication exists. Old failed campaigns and approvals are not
 retroactively changed.

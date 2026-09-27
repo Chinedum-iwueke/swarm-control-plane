@@ -88,9 +88,11 @@ receipt and lineage fields; complete-hour construction is gap-safe; purge and em
 use elapsed time; held-out access remains sealed; terminal positive, negative, invalid
 and failed outcomes share the logging contract; and runner-level mutation tests reject
 binding drift. The complete native suite passed with 1,786 tests, 34 skips and no
-failures. This qualifies the reusable source foundation, not autonomous production:
-the exact merge still needs a separately approved mandate and a terminal mixed-basket
-BT-009 publication. No old mandate or failed campaign is retroactively broadened.
+failures. This qualifies the reusable source foundation, not autonomous production.
+The founder approved an exact-merge successor mandate at `2026-09-27T19:22:51Z`,
+and its first intelligence, hypothesis and representation invocations succeeded; it
+still needs independent acceptance and a terminal mixed-basket BT-009 publication.
+No old mandate or failed campaign is retroactively broadened.
 
 Signed producer receipts must be registered through the native Python/bootstrap path
 without reconstructing their JSON through `jq`; numeric reserialization changes the
