@@ -1,0 +1,37 @@
+[Unit]
+Description=Hermes shared Codex authentication watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omenka
+Group=omenka
+WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=NODE_OPTIONS=--jitless
+Environment=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin
+LoadCredential=orchestrator_token:/etc/invariance-swarm/orchestrator.token
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/invariance-swarm-codex-auth-watcher --api-url http://100.112.117.59:8787 --token-file ${CREDENTIALS_DIRECTORY}/orchestrator_token
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime
+
+[Install]
+WantedBy=multi-user.target

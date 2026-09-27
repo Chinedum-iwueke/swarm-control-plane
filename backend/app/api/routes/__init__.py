@@ -17,6 +17,7 @@ from app.api.routes.candidate_admission_schemas import (
 )
 from app.api.routes.causal_pipelines import router as causal_pipelines_router
 from app.api.routes.controls import router as controls_router
+from app.api.routes.codex_auth import router as codex_auth_router
 from app.api.routes.conversations import channel_router as channel_conversations_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.corpus import router as corpus_router
@@ -138,6 +139,7 @@ __all__ = [
     "causal_pipelines_router",
     "channel_conversations_router",
     "controls_router",
+    "codex_auth_router",
     "conversations_router",
     "corpus_router",
     "corpus_sync_router",

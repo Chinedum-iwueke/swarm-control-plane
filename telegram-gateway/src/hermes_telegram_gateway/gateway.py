@@ -203,6 +203,20 @@ class RestrictedTelegramGateway:
                     f"{payload['reason']}"
                     f"{f' ({reasons})' if reasons else ''}",
                 )
+            elif kind == "codex_authentication_required":
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Codex sign-in required\n"
+                    f"Recovery {payload['recovery_id'][:8]} · "
+                    f"attempt {payload['generation']}\n"
+                    f"Code: {payload['device_code']}\n"
+                    f"Expires: {payload['code_expires_at']}\n"
+                    "Open the official sign-in page and enter this one-time code. "
+                    "If it expires, send /codex-login retry in this chat. "
+                    "No access or refresh token is sent through Telegram.",
+                    button_text="Open Codex sign-in",
+                    button_url=payload["verification_uri"],
+                )
             else:
                 continue
             message_ids = [
@@ -308,6 +322,12 @@ class RestrictedTelegramGateway:
         if text == "/context":
             await self._send_context()
             return
+        if text in {"/codex-login", "/codex-login status"}:
+            await self._send_codex_login_status()
+            return
+        if text == "/codex-login retry":
+            await self._retry_codex_login()
+            return
         if text == "/finish" or text == "/stop":
             await self._transition_active(text.removeprefix("/"))
             return
@@ -375,9 +395,10 @@ class RestrictedTelegramGateway:
                 self._settings.founder_chat_id,
                 "Supported: plain-English request, /new, /continue, /cancel, "
                 "/threads, /switch, /context, /finish, /stop, /resume, /status, "
-                "/approvals, /research, /notes, approval links.",
+                "/approvals, /research, /notes, /codex-login, approval links.",
             )
             return
+
         founder_key = self._founder_key
         pending_title = self._store.pop_value("pending-new-title")
         message_id = (
@@ -491,6 +512,47 @@ class RestrictedTelegramGateway:
             sent_message_id = sent_message.get("message_id")
             if sent_message_id is not None:
                 self._store.bind_message(str(sent_message_id), conversation["id"])
+
+    async def _send_codex_login_status(self) -> None:
+        values = await self._channel.codex_auth_recoveries()
+        if not values:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "No shared Codex authentication runtime has reported yet.",
+            )
+            return
+        recovery = values[0]
+        message = (
+            f"Codex authentication · {recovery['state']}\n"
+            f"Recovery {recovery['id'][:8]} · attempt {recovery['generation']}"
+        )
+        if recovery.get("device_code"):
+            message += (
+                f"\nCode: {recovery['device_code']}"
+                f"\nExpires: {recovery['code_expires_at']}"
+            )
+        await self._telegram.send(self._settings.founder_chat_id, message)
+
+    async def _retry_codex_login(self) -> None:
+        values = await self._channel.codex_auth_recoveries()
+        recovery = next(
+            (item for item in values if item.get("state") != "healthy"), None
+        )
+        if recovery is None:
+            await self._telegram.send(
+                self._settings.founder_chat_id,
+                "Codex authentication is healthy; no new device code is needed.",
+            )
+            return
+        await self._channel.retry_codex_auth(
+            recovery["id"],
+            "Founder requested a replacement Codex device code in Telegram.",
+        )
+        await self._telegram.send(
+            self._settings.founder_chat_id,
+            f"Replacement requested for recovery {recovery['id'][:8]}. "
+            "The watcher will post a fresh 15-minute code in this chat.",
+        )
 
     @property
     def _founder_key(self) -> str:

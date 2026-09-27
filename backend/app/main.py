@@ -20,6 +20,7 @@ from app.api.routes import (
     candidate_admission_schemas_router,
     causal_pipelines_router,
     channel_conversations_router,
+    codex_auth_router,
     controls_router,
     conversations_router,
     corpus_router,
@@ -160,6 +161,7 @@ app.include_router(agent_packages_router)
 app.include_router(agent_proposals_router)
 app.include_router(agents_router)
 app.include_router(controls_router)
+app.include_router(codex_auth_router)
 app.include_router(conversations_router)
 app.include_router(channel_conversations_router)
 app.include_router(data_contracts_router)

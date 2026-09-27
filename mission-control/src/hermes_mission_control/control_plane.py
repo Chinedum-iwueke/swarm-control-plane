@@ -131,6 +131,9 @@ class ControlPlaneClient:
             "/v1/authority/overview",
             {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
         )
+        codex_auth_recoveries = await self._optional_collection(
+            "/v1/codex-auth/recoveries"
+        )
         agent_charters = await self._optional_collection(
             "/v1/agent-governance/charters"
         )
@@ -238,6 +241,7 @@ class ControlPlaneClient:
             "observability": observability,
             "execution_telemetry": execution_telemetry,
             "authority": authority,
+            "codex_auth_recoveries": codex_auth_recoveries,
             "agent_charters": agent_charters,
             "agent_capability_grants": agent_grants,
             "workload_identities": workload_identities,
@@ -283,6 +287,13 @@ class ControlPlaneClient:
             "POST",
             f"/v1/research/alpha-discovery/mandates/{mandate_id}/approve",
             json={**payload, "actor": "founder-operator"},
+        )
+
+    async def retry_codex_auth(
+        self, recovery_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/v1/codex-auth/recoveries/{recovery_id}/retry", json=payload
         )
 
     async def scientific_review_context(self, representation_id: str) -> dict[str, Any]:

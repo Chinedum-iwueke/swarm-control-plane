@@ -769,6 +769,34 @@ function renderCommand() {
   document.getElementById("recent-proof").innerHTML = proofRows(tasks, data.artifacts || []);
   renderAttention();
   renderControls();
+  renderCodexAuth();
+}
+
+function renderCodexAuth() {
+  const container = document.getElementById("codex-auth-recovery");
+  const recoveries = state.dashboard?.codex_auth_recoveries || [];
+  if (!recoveries.length) {
+    container.innerHTML = empty("The shared Codex runtime has not reported yet.");
+    return;
+  }
+  container.innerHTML = recoveries.map((item) => {
+    const needsLogin = item.state !== "healthy";
+    const code = item.device_code
+      ? `<p class="mono">${escapeHtml(item.device_code)}</p><p class="muted">Expires ${formatDate(item.code_expires_at)}</p>`
+      : "";
+    return `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(item.runtime_key))}</strong><div class="entity-meta"><span>Attempt ${item.generation}</span><span>Probe ${relativeTime(item.last_probe_at)}</span></div>${code}<p>${escapeHtml(item.failure_summary || "Real Codex probe passed.")}</p></div><div class="entity-side">${statusBadge(item.state)}${needsLogin ? `<button class="secondary compact" data-codex-auth-retry="${item.id}">New code</button>` : ""}${item.verification_uri ? `<a class="button-link" href="${escapeHtml(item.verification_uri)}" target="_blank" rel="noreferrer">Sign in</a>` : ""}</div></article>`;
+  }).join("");
+  container.querySelectorAll("[data-codex-auth-retry]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (state.demo) return toast("Actions are disabled in demonstration mode.");
+      await mutate(
+        `/api/codex-auth/recoveries/${button.dataset.codexAuthRetry}/retry`,
+        { reason: "Founder requested a replacement Codex device code in Mission Control." },
+        "Replacement Codex device code requested."
+      );
+      await loadDashboard();
+    });
+  });
 }
 
 function metric(value, label, context) {

@@ -99,6 +99,20 @@ class FounderChannelClient:
     async def notifications(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/v1/founder-channel/notifications")
 
+    async def codex_auth_recoveries(self) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET", "/v1/founder-channel/codex-auth/recoveries"
+        )
+
+    async def retry_codex_auth(
+        self, recovery_id: str, reason: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/founder-channel/codex-auth/recoveries/{recovery_id}/retry",
+            json={"reason": reason},
+        )
+
     async def acknowledge_notification(
         self, notification_id: str, delivery_reference: str
     ) -> dict[str, Any]:
