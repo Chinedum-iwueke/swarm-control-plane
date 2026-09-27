@@ -23,10 +23,13 @@ from app.services.alpha_discovery import (
     _discovery_catalog,
     _discovery_corpus,
     _discovery_queries,
+    _duplicate_only_cycle,
     _ensure_data_admission_task,
+    _exploration_frontier,
     _focus_founder_context,
     _missing_admission_fields,
     _normalize_candidate_input,
+    _recent_research_memory,
     _recover_resumed_stage,
     _task,
     approve_mandate,
@@ -703,6 +706,79 @@ def test_discovery_query_plan_is_bounded_data_aware_and_rotates():
     assert _discovery_queries(mandate) != first
 
 
+def test_broad_discovery_query_plan_always_contains_cross_asset_grounding():
+    mandate = SimpleNamespace(
+        objective="Discover predictive mechanisms across the admitted lake.",
+        cycle_count=0,
+        specification={
+            "dataset_bindings": [{"output_columns": ["close", "volume"]}],
+            "discovery_catalog": {"receipt_digest": DIGEST},
+        },
+    )
+
+    queries = _discovery_queries(mandate)
+
+    assert len(queries) == 4
+    assert any("cross asset" in item or "cross sectional" in item for item in queries)
+
+
+def test_recent_research_memory_exposes_duplicate_and_coverage_context():
+    item = SimpleNamespace(
+        question="Does ETH lead SOL over the next 30m?",
+        disposition="rejected",
+        reason_codes=["semantic_duplicate_prior_question"],
+        document={
+            "data": {
+                "instrument": "ETHUSDT",
+                "instruments": ["ETHUSDT", "SOLUSDT"],
+                "research_timeframe": "15m",
+            },
+            "representation_plan": {
+                "transformations": [
+                    {"operation": "log_return"},
+                    {"operation": "spread"},
+                ]
+            },
+        },
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [item]
+
+    memory = _recent_research_memory(db)
+
+    assert memory["recent_candidates"][0]["question"] == item.question
+    assert memory["coverage"]["instrument_counts"] == {
+        "ETHUSDT": 1,
+        "SOLUSDT": 1,
+    }
+    assert memory["coverage"]["basket_size_counts"] == {"2": 1}
+    assert memory["coverage"]["transformation_counts"] == {
+        "log_return": 1,
+        "spread": 1,
+    }
+
+
+def test_exploration_frontier_prefers_instruments_absent_from_recent_memory():
+    catalog = {
+        "one_year_coverage_candidates": [
+            {
+                "venue": "bybit",
+                "market": "perp",
+                "instrument": instrument,
+                "timeframe": "1m",
+                "fetch_status": "success",
+                "missing_rows": 0,
+            }
+            for instrument in ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+        ]
+    }
+    memory = {"recent_candidates": [{"instruments": ["BTCUSDT"]}]}
+
+    frontier = _exploration_frontier(catalog, memory, ordinal=1)
+
+    assert [item["instrument"] for item in frontier] == ["ETHUSDT", "SOLUSDT"]
+
+
 def test_representation_plan_changes_only_data_shape_and_retains_audit():
     value, _ = candidate()
     raw = value.model_dump(mode="json")
@@ -1130,6 +1206,77 @@ def test_completed_campaign_accounting_is_idempotent(monkeypatch):
     assert mandate.trial_count == 8
     event.assert_not_called()
     new_cycle.assert_not_called()
+
+
+def test_duplicate_only_cycle_replenishes_without_waiting_for_cadence(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_until=moment + timedelta(days=1),
+        heartbeat_at=None,
+        cycle_count=1,
+        hypothesis_count=0,
+        trial_count=0,
+        budget={
+            "maximum_cycles": 10,
+            "maximum_hypotheses": 10,
+            "maximum_total_trials": 80,
+            "cadence_seconds": 3600,
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        campaign_id=None,
+        status="rejected",
+        phase="complete",
+        next_action="schedule_next_discovery_cycle",
+        created_at=moment,
+        completed_at=moment,
+        heartbeat_at=None,
+        metrics={
+            "generated": 2,
+            "duplicated": 2,
+            "accepted": 0,
+            "awaiting_data_admission": 0,
+        },
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [cycle, None]
+    event = MagicMock()
+    new_cycle = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._reconcile_data_admissions", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._recover_resumed_stage", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._next_founder_idea", lambda *_: None
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
+
+    reconcile_mandate(db, mandate)
+
+    new_cycle.assert_called_once_with(db, mandate)
+    assert event.call_args.args[2] == "duplicate_only_cycle_replenished"
+    assert event.call_args.args[3]["cadence_bypassed"] is True
+
+
+def test_mixed_rejection_does_not_bypass_research_cadence():
+    cycle = SimpleNamespace(
+        status="rejected",
+        campaign_id=None,
+        metrics={
+            "generated": 2,
+            "duplicated": 1,
+            "accepted": 0,
+            "awaiting_data_admission": 0,
+        },
+    )
+
+    assert _duplicate_only_cycle(cycle) is False
 
 
 def test_mandate_counter_projection_deduplicates_terminal_cycle_evidence():
