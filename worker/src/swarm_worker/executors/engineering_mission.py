@@ -32,7 +32,7 @@ from swarm_worker.workspace import SubprocessRunner, TaskWorkspace
 class EngineeringMissionExecutor:
     _CODEX_NODE_OPTIONS = "--jitless"
     _MAX_HEARTBEAT_FAILURES = 20
-    _MAX_FAILURE_DIAGNOSTIC_CHARS = 12_000
+    _MAX_FAILURE_DIAGNOSTIC_CHARS = 6_000
 
     def __init__(
         self,
@@ -588,7 +588,7 @@ class EngineeringMissionExecutor:
         ]
         summary: dict[str, object] = {}
         failed_steps = [step for step in steps if not step.success]
-        if failed_steps:
+        if failed_steps and reason != "independent_review_rejected":
             failed = failed_steps[-1]
             diagnostics: dict[str, str] = {}
             for stream, relative in (

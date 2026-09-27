@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TaskStatus = Literal[
     "queued",
@@ -175,6 +176,14 @@ class TaskFailRequest(TaskLeaseMutation):
 class TaskResumeRequest(BaseModel):
     requested_by: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=1, max_length=2000)
+    diagnostic_context: dict = Field(default_factory=dict)
+
+    @field_validator("diagnostic_context")
+    @classmethod
+    def bounded_diagnostic_context(cls, value: dict) -> dict:
+        if len(json.dumps(value, ensure_ascii=True, sort_keys=True)) > 16_384:
+            raise ValueError("retry diagnostic context exceeds 16 KiB")
+        return value
 
 
 class TaskReleaseRequest(TaskLeaseMutation):

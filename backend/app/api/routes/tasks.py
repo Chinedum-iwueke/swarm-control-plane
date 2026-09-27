@@ -172,6 +172,11 @@ def resume_failed_task(
     task.max_attempts = max(task.max_attempts, previous_attempts + 1)
     task.completed_at = None
     task.result = {}
+    if payload.diagnostic_context:
+        task.failure = {
+            **task.failure,
+            "operator_retry_context": payload.diagnostic_context,
+        }
     rearm_task_approval(db, task, payload.reason)
     event = append_task_event(
         db,
@@ -183,6 +188,7 @@ def resume_failed_task(
             "reason": payload.reason,
             "previous_attempts": previous_attempts,
             "next_attempt": previous_attempts + 1,
+            "diagnostic_context": payload.diagnostic_context,
         },
     )
     if task.mission_id is not None:
