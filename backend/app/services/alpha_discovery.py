@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from copy import deepcopy
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -367,9 +368,19 @@ def _discovery_queries(mandate) -> list[str]:
         facets.extend(["liquidity price impact", "volume return predictability"])
     if "funding_rate" in columns:
         facets.append("funding carry reversal")
+    broad_facets = []
+    if mandate.specification.get("discovery_catalog"):
+        broad_facets = [
+            "crypto cross asset lead lag predictability",
+            "cross sectional liquidity return predictability",
+            "common factor residual relative value",
+            "funding open interest cross asset spillover",
+        ]
     if facets:
         offset = mandate.cycle_count % len(facets)
-        facets = (facets[offset:] + facets[:offset])[:3]
+        facets = (facets[offset:] + facets[:offset])[: 2 if broad_facets else 3]
+    if broad_facets:
+        facets.insert(0, broad_facets[mandate.cycle_count % len(broad_facets)])
     return list(dict.fromkeys([mandate.objective[:1000], *facets]))
 
 
@@ -424,6 +435,103 @@ def _discovery_corpus(db, mandate) -> dict:
         }
 
 
+def _recent_research_memory(db: Session, *, limit: int = 30) -> dict:
+    items = db.scalars(
+        select(AlphaDiscoveryCandidate)
+        .order_by(AlphaDiscoveryCandidate.created_at.desc())
+        .limit(limit)
+    ).all()
+    instrument_counts: Counter[str] = Counter()
+    timeframe_counts: Counter[str] = Counter()
+    transformation_counts: Counter[str] = Counter()
+    basket_size_counts: Counter[str] = Counter()
+    candidates = []
+    for item in items:
+        document = item.document if isinstance(item.document, dict) else {}
+        data = document.get("data", {}) if isinstance(document.get("data"), dict) else {}
+        instruments = data.get("instruments") or [data.get("instrument")]
+        instruments = [str(value) for value in instruments if value]
+        timeframe = data.get("research_timeframe")
+        representation = document.get("representation_plan", {})
+        transformations = (
+            representation.get("transformations", [])
+            if isinstance(representation, dict)
+            else []
+        )
+        operations = sorted(
+            {
+                str(value.get("operation"))
+                for value in transformations
+                if isinstance(value, dict) and value.get("operation")
+            }
+        )
+        instrument_counts.update(instruments)
+        if timeframe:
+            timeframe_counts[str(timeframe)] += 1
+        transformation_counts.update(operations)
+        basket_size_counts[str(len(instruments))] += 1
+        candidates.append(
+            {
+                "question": item.question,
+                "instruments": instruments,
+                "research_timeframe": timeframe,
+                "transformations": operations,
+                "disposition": item.disposition,
+                "reason_codes": item.reason_codes[:10],
+            }
+        )
+    return {
+        "recent_candidates": candidates,
+        "coverage": {
+            "instrument_counts": dict(sorted(instrument_counts.items())),
+            "research_timeframe_counts": dict(sorted(timeframe_counts.items())),
+            "transformation_counts": dict(sorted(transformation_counts.items())),
+            "basket_size_counts": dict(sorted(basket_size_counts.items())),
+        },
+        "claim_boundary": (
+            "Underrepresentation raises exploration priority but never overrides causal "
+            "sufficiency, point-in-time availability, liquidity or novelty gates."
+        ),
+    }
+
+
+def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[dict]:
+    recent = {
+        instrument
+        for item in memory.get("recent_candidates", [])
+        for instrument in item.get("instruments", [])
+    }
+    eligible = [
+        item
+        for item in catalog.get("one_year_coverage_candidates", [])
+        if item.get("fetch_status") == "success"
+        and int(item.get("missing_rows") or 0) == 0
+        and item.get("timeframe") == "1m"
+    ]
+    underexplored = [item for item in eligible if item.get("instrument") not in recent]
+    pool = underexplored or eligible
+    if not pool:
+        return []
+    width = min(16, len(pool))
+    offset = ((max(1, ordinal) - 1) * width) % len(pool)
+    selected = (pool[offset:] + pool[:offset])[:width]
+    return [
+        {
+            key: item.get(key)
+            for key in (
+                "venue",
+                "market",
+                "instrument",
+                "timeframe",
+                "first_ts",
+                "last_ts",
+                "actual_rows",
+            )
+        }
+        for item in selected
+    ]
+
+
 def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
     corpus = _discovery_corpus(db, mandate)
     attempts = db.scalars(
@@ -447,6 +555,10 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         else lake_inventory_summary(db)
     )
     catalog["discovery_authority"] = bool(catalog_binding)
+    research_memory = _recent_research_memory(db)
+    research_memory["exploration_frontier"] = _exploration_frontier(
+        catalog, research_memory, ordinal=getattr(mandate, "cycle_count", 0) + 1
+    )
     return {
         "schema_version": "alpha004-research-context-v1.0.0",
         "mandate_digest": mandate.mandate_digest,
@@ -461,6 +573,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
             }
             for item in attempts
         ],
+        "recent_research_memory": research_memory,
         "execution_observations": [
             {
                 "venue": item.venue,
@@ -2000,6 +2113,23 @@ def _reconcile_data_admissions(
     return True
 
 
+def _duplicate_only_cycle(cycle: AlphaDiscoveryCycle) -> bool:
+    metrics_value = getattr(cycle, "metrics", None)
+    metrics = metrics_value if isinstance(metrics_value, dict) else {}
+    generated = metrics.get("generated", 0)
+    duplicated = metrics.get("duplicated", 0)
+    return (
+        cycle.status == "rejected"
+        and cycle.campaign_id is None
+        and isinstance(generated, int)
+        and not isinstance(generated, bool)
+        and generated > 0
+        and duplicated == generated
+        and metrics.get("accepted", 0) == 0
+        and metrics.get("awaiting_data_admission", 0) == 0
+    )
+
+
 def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     moment = now()
     mandate.heartbeat_at = moment
@@ -2111,6 +2241,20 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             )
         elif (queued := _next_founder_idea(db, mandate)) is not None:
             _new_cycle(db, mandate, queued)
+        elif _duplicate_only_cycle(cycle):
+            _event(
+                db,
+                mandate,
+                "duplicate_only_cycle_replenished",
+                {
+                    "previous_cycle_id": str(cycle.id),
+                    "generated": cycle.metrics.get("generated", 0),
+                    "duplicated": cycle.metrics.get("duplicated", 0),
+                    "cadence_bypassed": True,
+                },
+                cycle,
+            )
+            _new_cycle(db, mandate)
         elif elapsed >= mandate.budget["cadence_seconds"]:
             _new_cycle(db, mandate)
         return

@@ -207,6 +207,33 @@ def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
     assert "before execution" in prompt
 
 
+def test_hypothesis_prompt_receives_novelty_memory_and_bounded_diversity_direction():
+    document = alpha_discovery_contract()
+    document["stage"] = "hypothesis"
+    document["context"]["recent_research_memory"] = {
+        "recent_candidates": [
+            {
+                "question": "Does BTC funding predict its next 60m return?",
+                "instruments": ["BTCUSDT"],
+                "disposition": "rejected",
+                "reason_codes": ["semantic_duplicate_prior_question"],
+            }
+        ],
+        "coverage": {"instrument_counts": {"BTCUSDT": 10}},
+        "exploration_frontier": [
+            {"venue": "bybit", "instrument": "ETHUSDT", "timeframe": "1m"}
+        ],
+    }
+
+    prompt = _prompt(AlphaDiscoveryContract.model_validate(document))
+
+    assert "recent candidate questions are novelty exclusions" in prompt
+    assert "do not paraphrase them" in prompt
+    assert "underexplored instruments" in prompt
+    assert "not a forced universe" in prompt
+    assert "never add an asset merely for diversity" in prompt
+
+
 def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
     data = _schema("hypothesis")["properties"]["candidates"]["items"]["properties"][
         "data"

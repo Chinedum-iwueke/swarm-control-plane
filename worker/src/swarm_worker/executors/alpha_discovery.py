@@ -705,6 +705,14 @@ Candidate evidence_object_ids and evidence_digests may contain only exact pairs 
 research_intelligence.citations. Founder-idea IDs, task IDs, dataset receipts, strategy contracts, and other UUIDs
 in the context are constraints or provenance, not candidate evidence citations; never include them in those arrays.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
+Read recent_research_memory before proposing anything. Its recent candidate questions are novelty exclusions even
+when they never reached a backtest; do not paraphrase them. Its coverage counts reveal overused instruments,
+timeframes, basket sizes and transformations. In an autonomous cycle without a founder_research_idea, produce two
+to {contract.maximum_candidates} semantically distinct candidates when the supplied evidence supports them. Give
+scientifically defensible underexplored instruments, cross-asset mechanisms and non-dominant timeframes genuine
+consideration. The exploration_frontier is a rotating set of catalog-visible starting points, not a forced universe:
+never add an asset merely for diversity, and retain a single-asset design when it is the smallest causally sufficient
+basket. If only one candidate is defensible, emit that one rather than fabricate another.
 Domain and cluster keys must use lowercase letters, digits and hyphens, never underscores.
 Read research_constraints before choosing data requirements. Include the actual liquidity measurement
 fields required to enforce the mandate's liquidity floor, not merely predictor fields.
