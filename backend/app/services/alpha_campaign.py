@@ -77,7 +77,7 @@ CLAIM_BOUNDARY = (
     "capital allocation, production promotion or self-approval."
 )
 STRATEGY_ENGINEERING_STAGE = "G3"
-STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7")
+STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
