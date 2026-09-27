@@ -17,6 +17,7 @@ it is never a backtest result, risk decision, promotion decision or order instru
 | Causality/leakage reviewer | `AlphaStrategyReviewExecutor` | Independently checks timing, leakage, target and implementation equivalence | Structured review only | Separate evaluator profile and controller reconciliation |
 | PDF recovery adviser | `backend/app/ingestion/recovery_controller.py` | Classifies bounded ingestion failures and proposes recovery actions | Recovery recommendation only | Deterministic sanitizer/parser policy; no canonical overwrite |
 | Mission Control research copilot | `mission-control/src/hermes_mission_control/research_copilot.py` | Explains visible research evidence to the founder | UI response only | No task, approval, capital or order authority |
+| Codex authentication watcher | `worker/src/swarm_worker/codex_auth_watcher.py` | Executes a minimal fixed-output probe to distinguish a usable server-side session from stale local login state | Fixed probe output and redacted recovery state only | Authentication continuity only; it cannot reason about research, edit code, approve work or consume an experiment attempt |
 
 ## Authentication continuity
 
@@ -35,6 +36,13 @@ the same incident; `/codex-login retry` or Mission Control's `New code` command 
 the watcher for a fresh generation. The runtime returns to `healthy` only after the
 real probe succeeds. Authentication recovery does not approve tasks, consume campaign
 attempts or grant research, shadow, order or capital authority.
+
+The watcher, Telegram recovery command and Mission Control recovery panel were
+production-observed on 2026-09-27. VM2 runs migration `d3b9f5a72e10`; the VM1
+watcher returned to `healthy` after device authorization; the restricted Telegram
+gateway exposed the same incident; and Mission Control exposed the current state and
+same-thread retry command. This observation proves the recovery path at that time,
+not permanent provider availability.
 
 ## Deterministic boundary
 
@@ -56,3 +64,20 @@ contract and retained output. Agent reasoning must be replayable from supplied c
 Scientific equations require deterministic or genuinely independent assurance; an LLM
 cannot verify its own transcription. Failed, rejected and invalid outputs remain part of
 institutional memory and novelty scoring.
+
+## Durable remediation rule
+
+An error discovered by an experiment must be classified before correction. A defect
+in dispatch, evidence binding, lifecycle accounting, outcome taxonomy, held-out
+evaluation, logging, resource control or validation belongs in the shared producer or
+validator, not in a one-off strategy patch. Closure requires a regression for the
+original failure and a second materially different hypothesis, asset, timeframe or
+failure fixture that proves the invariant generalizes. Hypothesis-specific predictors,
+targets and mechanisms remain in their native card and strategy module.
+
+The current multi-asset engineering sequence demonstrates why this boundary matters.
+Two generated revisions passed Bulletproof's full deterministic suite but were still
+rejected by independent scientific review for integration, provenance, outcome and
+held-out-evaluation defects. Those rejected bundles remain evidence and are not merged
+or described as certified. The successor correction remains in progress until its
+tests, independent reviews and immutable publication complete.
