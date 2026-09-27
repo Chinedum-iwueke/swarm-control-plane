@@ -13,27 +13,44 @@ evidence details; failed requests visibly mark the queue unavailable.
 
 ## Production evidence and remaining closure
 
-Both VM1 capacity consumers and the director are active and authenticated after
-activation at 18:52 UTC. Discovery workers restarted at 18:56 UTC with the fixed
-jitless subprocess environment. The existing capacity queue has zero jobs.
-The next post-fix discovery attempt and two overlapping terminal BT-009 attempts
-remain outstanding. Do not count classic fixture parity as this production proof.
+The initial autonomous-loop certificate is complete: two genuine one-year native
+BT-009 outcomes were retained and published as honest negatives, mandate accounting
+was reconstructed from immutable evidence, reconciliation became idempotent, and one
+successor cycle was replenished exactly once. The detailed receipts are recorded below.
+Classic fixture parity is not counted as this proof.
 
-The approved weekly mandate has 21 discovery cycles, zero hypotheses and zero
-trials. It binds only BTCUSDT, 2026-04-01 through 2026-05-01, and native commit
-67e5db0488a8495f7badfb2e89857cd29c72c383. Its immutable approval cannot authorize
-the new one-year/current-engine path. The mandate CLI now permits explicit
-source campaign, distinct key/version, reviewed commit and timezone-bound
-window overrides. Explicit windows require at least 365 days. This creates a new
-approval request, never broadens an existing approval. Catalog/PIT availability
-checks still determine whether the requested window is executable.
+That certificate was BTC-only. It does not establish adaptive mixed-basket execution.
+The current breadth boundary is ALPHA-009: select a point-in-time basket without seeing
+outcomes, bind exact DATA-002/003 receipts, materialize it in Bulletproof and publish a
+terminal multi-asset BT-009 result. Existing approved mandates remain immutable and
+cannot authorize a newer native commit or broader basket.
 
 RI-014D has a demonstrated source-bound just-in-time assurance receipt, not
 global equation fidelity. The scientific benchmark still has 20 pending
 adjudications and no measured accuracy. RI-015 has no live evaluation runs.
 RI-016 freshness/parity is demonstrated, but does not prove scientific reasoning.
-Literature-grounded senior research is wired; productive post-fix discovery is
-not yet demonstrated. No capital or order authority was changed.
+Literature-grounded senior research and automatic replenishment are demonstrated for
+the initial loop; RI-015's independent held-out reasoning qualification remains open.
+No capital or order authority was changed.
+
+## Adaptive multi-asset source foundation (2026-09-27)
+
+Bulletproof PR #341 merged at
+`8207ee4e4256ff733df2e6bde4bb4af05c579134`. The native ETH/BTC/SOL relative-
+liquidity strategy binds an immutable three-member basket, uses outcome-blind complete-
+hour features, elapsed-time purge/embargo, a frozen four-variant budget and one sealed
+held-out opening. Generic contract verification rejects mutated panel bytes, receipt
+or lineage fields for any fully provenance-bound strategy. The full native suite passed
+1,786 tests with 34 skips; Ruff passed.
+
+Fresh no-authority admissions at that merge exist for BTCUSDT, ETHUSDT and SOLUSDT.
+Successor mandate `d90b621c-7e95-48b7-b5b9-f46ba36fdb68`, key
+`ALPHA009-WEEK-20260927-R6`, digest
+`4933e1e334dd312581f298375099ed1fab00ba72a9e7edd24e7af18983c2d071`,
+is awaiting founder approval. It binds the 2023 calendar-year window and the exact
+native merge. This is an approval request, not execution evidence. Production breadth
+remains open until an independently accepted bundle and terminal mixed-basket BT-009
+publication exist.
 
 ## Verification
 
