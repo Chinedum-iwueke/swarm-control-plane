@@ -481,6 +481,95 @@ def test_pre_review_qualification_routes_only_when_deterministic_gates_pass():
     assert not service._qualification_ready_for_independent_review(blocked)
 
 
+def test_approved_independent_review_promotes_execution_qualification():
+    qualification = {
+        "qualified": False,
+        "qualification_scope": "deterministic_compilation_only",
+        "review": {
+            "review_digest": "0" * 64,
+            "blockers": [],
+            "gates": {
+                "schema_valid": True,
+                "causality_valid": True,
+                "strategy_compilable": True,
+                "leakage_review_passed": True,
+                "auxiliary_joins_backward": True,
+                "independent_review_complete": False,
+            },
+            "independent_of_drafter": False,
+        },
+    }
+    route = SimpleNamespace(id=uuid4())
+    independence = SimpleNamespace(
+        receipt_digest="1" * 64,
+        assertion={"schema_version": "evaluation-independence-assertion-v1.0.0"},
+        verdict="independence_demonstrated",
+    )
+
+    result = service._complete_independent_qualification(
+        qualification,
+        review_route=route,
+        independence=independence,
+        subject={"card_digest": "2" * 64},
+    )
+
+    assert result["qualified"] is True
+    assert result["qualification_scope"] == "independently_reviewed_execution"
+    assert result["review"]["gates"]["independent_review_complete"] is True
+    assert result["review"]["independent_of_drafter"] is True
+    assert result["governed_review"]["receipt_digest"] == "1" * 64
+    assert result["review"]["governed_review_receipt_digest"] == service.digest_document(
+        result["governed_review"]
+    )
+    assert qualification["qualified"] is False
+    assert (
+        qualification["review"]["gates"]["independent_review_complete"] is False
+    )
+
+
+def test_malformed_pending_execution_is_immutably_superseded(monkeypatch):
+    task = SimpleNamespace(
+        id=uuid4(),
+        status="pending_approval",
+        input_contract={"qualification": {"qualified": False}},
+    )
+    approval = SimpleNamespace(status="pending")
+    db = MagicMock()
+    db.scalar.return_value = approval
+    decided = MagicMock()
+    event = MagicMock()
+    monkeypatch.setattr(service, "decide_task", decided)
+    monkeypatch.setattr(service, "append_task_event", event)
+
+    service._supersede_malformed_execution_task(
+        db, task, successor_stage="E2"
+    )
+
+    decided.assert_called_once_with(
+        db,
+        approval,
+        actor="alpha-campaign-director",
+        reason=(
+            "Superseded by an immutable execution contract that incorporates the "
+            "completed independent-review qualification."
+        ),
+        action="reject",
+    )
+    event.assert_called_once()
+    assert event.call_args.kwargs["payload"] == {"successor_stage": "E2"}
+
+
+def test_execution_task_prefers_repaired_successor():
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    repaired = SimpleNamespace(task_number="A3-repaired-001-E2")
+    db = MagicMock()
+    db.scalar.return_value = repaired
+
+    assert service._execution_task(db, record, source) is repaired
+    assert db.scalar.call_count == 1
+
+
 def test_qualification_accepts_legacy_summary_result() -> None:
     legacy = {"qualified": True, "card_digest": "a" * 64}
 
