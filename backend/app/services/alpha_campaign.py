@@ -1731,7 +1731,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     qualification = _qualification_from_result(qualification_task.result)
     if (
         not isinstance(qualification, dict)
-        or qualification.get("qualified") is not True
+        or not _qualification_ready_for_independent_review(qualification)
         or not isinstance(qualification.get("card"), dict)
         or not isinstance(qualification.get("artifact_bundle"), dict)
     ):
@@ -2129,6 +2129,37 @@ def _qualification_from_result(result: dict) -> dict | None:
     return qualification if isinstance(qualification, dict) else None
 
 
+def _qualification_ready_for_independent_review(qualification: dict) -> bool:
+    """Accept deterministic compilation while preserving the independent gate."""
+    if qualification.get("qualified") is True:
+        return True
+    card = qualification.get("card")
+    review = qualification.get("review")
+    if (
+        not isinstance(card, dict)
+        or card.get("independent_review_required") is not True
+        or not isinstance(review, dict)
+        or review.get("blockers") not in ([], ())
+    ):
+        return False
+    gates = review.get("gates")
+    required = {
+        "schema_valid",
+        "causality_valid",
+        "strategy_compilable",
+        "leakage_review_passed",
+        "auxiliary_joins_backward",
+        "independent_review_complete",
+    }
+    if not isinstance(gates, dict) or not required.issubset(gates):
+        return False
+    return gates["independent_review_complete"] is False and all(
+        value is True
+        for name, value in gates.items()
+        if name != "independent_review_complete"
+    )
+
+
 def _consume_completed_execution_task(
     db: Session, campaign: AlphaCampaign, task: Task
 ) -> bool:
@@ -2399,6 +2430,27 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
     terminal = campaign.terminal_reason or {}
     execution = _current_execution_task(db, campaign)
+    if (
+        campaign.status == "needs_attention"
+        and terminal.get("category") == "strategy_not_qualified"
+        and isinstance(terminal.get("qualification"), dict)
+        and _qualification_ready_for_independent_review(
+            terminal["qualification"]
+        )
+    ):
+        campaign.status = "running"
+        campaign.completed_at = None
+        campaign.terminal_reason = {}
+        _append_event(
+            db,
+            campaign,
+            "deterministic_qualification_recovered",
+            "alpha-campaign-director",
+            {
+                "prior_terminal_category": "strategy_not_qualified",
+                "next_gate": "independent_strategy_review",
+            },
+        )
     if (
         campaign.status == "completed_no_candidate"
         and terminal.get("category") == "duration_budget_exhausted"
