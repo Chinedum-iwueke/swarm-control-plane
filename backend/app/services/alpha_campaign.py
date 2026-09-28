@@ -79,6 +79,7 @@ CLAIM_BOUNDARY = (
 STRATEGY_ENGINEERING_STAGE = "G3"
 STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8", "G9")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
+EXECUTION_STAGES = ("E2", "E")
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
     "docs/backtest_truth_certification.md",
@@ -518,6 +519,21 @@ def _execution_task_number(campaign: AlphaCampaign, source: dict) -> str:
 
 def _stage_task_number(campaign: AlphaCampaign, source: dict, stage: str) -> str:
     return f"A3-{str(campaign.id)[:8]}-{int(source['rank']):03d}-{stage}"
+
+
+def _execution_task(
+    db: Session, campaign: AlphaCampaign, source: dict
+) -> Task | None:
+    """Return the newest immutable execution contract, including a repaired successor."""
+    for stage in EXECUTION_STAGES:
+        task = db.scalar(
+            select(Task).where(
+                Task.task_number == _stage_task_number(campaign, source, stage)
+            )
+        )
+        if task is not None:
+            return task
+    return None
 
 
 def _stage_contract(
@@ -1884,20 +1900,21 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         }
         return qualification_task
     independence = require_independence(db, review_route)
-    qualification = deepcopy(qualification)
-    qualification["governed_review"] = {
-        "route_id": str(review_route.id),
-        "receipt_digest": independence.receipt_digest,
-        "assertion": independence.assertion,
-        "subject": subject,
-        "verdict": independence.verdict,
-    }
-    campaign.terminal_reason = {}
-    execution = db.scalar(
-        select(Task).where(
-            Task.task_number == _stage_task_number(campaign, source, "E")
-        )
+    qualification = _complete_independent_qualification(
+        qualification,
+        review_route=review_route,
+        independence=independence,
+        subject=subject,
     )
+    campaign.terminal_reason = {}
+    execution = _execution_task(db, campaign, source)
+    execution_stage = "E"
+    if execution is not None and execution.input_contract.get("qualification", {}).get(
+        "qualified"
+    ) is not True:
+        _supersede_malformed_execution_task(db, execution, successor_stage="E2")
+        execution = None
+        execution_stage = "E2"
     if execution is None:
         campaign.phase = "execution" if delegated else "execution_approval"
         campaign.next_action = (
@@ -1909,7 +1926,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             db,
             campaign,
             source,
-            suffix="E",
+            suffix=execution_stage,
             title=f"Approve bounded Tier2B execution: {card['title']}",
             contract=_stage_contract(
                 db,
@@ -2160,6 +2177,79 @@ def _qualification_ready_for_independent_review(qualification: dict) -> bool:
     )
 
 
+def _complete_independent_qualification(
+    qualification: dict,
+    *,
+    review_route: EvaluationRoute,
+    independence,
+    subject: dict,
+) -> dict:
+    """Apply Bulletproof's independent-review promotion contract verbatim."""
+    result = deepcopy(qualification)
+    packet = {
+        "route_id": str(review_route.id),
+        "receipt_digest": independence.receipt_digest,
+        "assertion": independence.assertion,
+        "subject": subject,
+        "verdict": independence.verdict,
+    }
+    result["governed_review"] = packet
+    review = result.get("review")
+    gates = review.get("gates") if isinstance(review, dict) else None
+    if not isinstance(gates, dict) or "independent_review_complete" not in gates:
+        raise HTTPException(409, "Qualification lacks its independent-review gate.")
+    gates["independent_review_complete"] = True
+    review["independent_of_drafter"] = True
+    review["governed_review_receipt_digest"] = digest_document(packet)
+    review["review_digest"] = digest_document(
+        {key: value for key, value in review.items() if key != "review_digest"}
+    )
+    result["qualified"] = all(value is True for value in gates.values())
+    result["qualification_scope"] = "independently_reviewed_execution"
+    if result["qualified"] is not True:
+        raise HTTPException(409, "Independent review did not satisfy every gate.")
+    return result
+
+
+def _supersede_malformed_execution_task(
+    db: Session,
+    task: Task,
+    *,
+    successor_stage: str,
+) -> None:
+    """Retain a never-started malformed contract and cancel its pending approval."""
+    embedded = task.input_contract.get("qualification", {})
+    if embedded.get("qualified") is True:
+        return
+    if task.status != "pending_approval":
+        raise HTTPException(
+            409,
+            "Malformed execution contract is not safely supersedable while active.",
+        )
+    approval = db.scalar(select(TaskApproval).where(TaskApproval.task_id == task.id))
+    if approval is None or approval.status != "pending":
+        raise HTTPException(
+            409, "Malformed execution approval is not safely supersedable."
+        )
+    decide_task(
+        db,
+        approval,
+        actor="alpha-campaign-director",
+        reason=(
+            "Superseded by an immutable execution contract that incorporates the "
+            "completed independent-review qualification."
+        ),
+        action="reject",
+    )
+    append_task_event(
+        db,
+        task,
+        "task_contract_superseded",
+        "Malformed execution qualification was retained and replaced.",
+        payload={"successor_stage": successor_stage},
+    )
+
+
 def _consume_completed_execution_task(
     db: Session, campaign: AlphaCampaign, task: Task
 ) -> bool:
@@ -2228,13 +2318,14 @@ def _consume_execution_task(db: Session, campaign: AlphaCampaign) -> bool:
     if campaign.hypothesis_count >= len(queue):
         return False
     source = queue[campaign.hypothesis_count]
-    number = (
-        _stage_task_number(campaign, source, "E")
-        if campaign.specification.get("execution_protocol")
-        in {"alpha003-governed-v1", "alpha004-delegated-v1"}
-        else _execution_task_number(campaign, source)
-    )
-    task = db.scalar(select(Task).where(Task.task_number == number))
+    if campaign.specification.get("execution_protocol") in {
+        "alpha003-governed-v1",
+        "alpha004-delegated-v1",
+    }:
+        task = _execution_task(db, campaign, source)
+    else:
+        number = _execution_task_number(campaign, source)
+        task = db.scalar(select(Task).where(Task.task_number == number))
     if task is None:
         return False
     return _consume_completed_execution_task(db, campaign, task)
@@ -2251,7 +2342,7 @@ def _current_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None
     source = queue[campaign.hypothesis_count]
     protocol = campaign.specification.get("execution_protocol")
     if protocol in {"alpha003-governed-v1", "alpha004-delegated-v1"}:
-        number = _stage_task_number(campaign, source, "E")
+        return _execution_task(db, campaign, source)
     elif protocol == "alpha002-native-v1":
         number = _execution_task_number(campaign, source)
     else:
