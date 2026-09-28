@@ -209,11 +209,37 @@ class AlphaResearchDatasetBinding(BaseModel):
     )
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     venue: Literal["bybit", "binance"]
+    catalog_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    manifest_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    producer_receipt_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    lake_governance_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    partition_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("dataset_path")
     @classmethod
     def admitted_panel_path(cls, value: str) -> str:
         return _admitted_alpha_panel_path(value)
+
+    @model_validator(mode="after")
+    def complete_trusted_evidence(self):
+        evidence = (
+            self.catalog_digest,
+            self.manifest_digest,
+            self.producer_receipt_digest,
+            self.lake_governance_digest,
+            self.partition_digest,
+        )
+        if any(value is not None for value in evidence) and not all(
+            value is not None for value in evidence
+        ):
+            raise ValueError(
+                "trusted dataset evidence must provide all immutable digests"
+            )
+        return self
 
 
 def _admitted_alpha_panel_path(value: str) -> str:
