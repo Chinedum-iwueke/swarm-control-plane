@@ -28,11 +28,10 @@ SOLUSDT admissions bind the exact merge. The founder approved mandate
 intelligence, hypothesis and representation tasks succeeded. Cycle
 `71806f40-726e-4989-a928-a030fe28c3e5` then rejected its one generated question as
 a prior duplicate and created no campaign (`generated=1`, `duplicated=1`,
-`accepted=0`). This demonstrates the novelty gate, not native execution. ALPHA-009
-production capability remains open until the registered certification receipt reports
-`status=qualified`, independent review accepts the exact bundle, and one terminal
-multi-asset BT-009 publication exists. Old failed campaigns and approvals are not
-retroactively changed.
+`accepted=0`). This demonstrates the novelty gate, not native execution. The later
+replacement campaign below supplies the terminal multi-asset BT-009 evidence needed
+for ALPHA-009 production qualification. Old failed campaigns and approvals remain
+unchanged.
 
 Cycle 2, `38d868f1-9df4-4bec-b0e3-59eb2af58aa4`, was created immediately after
 the duplicate-only first cycle once PR #388 deployed. Its researcher produced three
@@ -50,9 +49,37 @@ live pass exposed a shared 100-column transformation-step limit against legitima
 verification steps without truncating their column or content-digest contract. After
 deployment the cycle accepted two candidates and created campaign
 `221c7817-f638-4a47-b4b2-7698ee62eedf`. Its SOL-to-ETH native engineering task
-`A3-221c7817-001-G3` remains pending explicit founder approval. This demonstrates
-autonomous breadth, causal representation selection, admission and campaign handoff;
-it is not yet terminal mixed-basket execution certification.
+`A3-221c7817-001-G3` was superseded after its original engineering evidence lost
+trusted scientific-provenance fields in the generic projection. Bulletproof PR #352
+repaired that shared projection at merge
+`3202a9245dab19d648b9051f6e23ee48a4500d00`; no rejected bundle or old approval was
+rewritten.
+
+Replacement campaign `8e68ee6b-0807-4e67-8268-55313b89dd7e` then completed the
+one-year SOLUSDT-to-ETHUSDT path over 2023. The frozen two-variant 2h representation
+used complete bars, prior-only 24h ETH volatility, both instruments' completed-bar
+USD liquidity and a contiguous 4h target. Native receipt
+`0ba464c8a583ababfa81b8ddbc5b7e424302befdfda1d529947a9e392a5268bc`, bundle
+`7443624e97c60a769a59fff8d53d84730926d6ea6740b674d93467dbb7a05bf2` and attempt
+`b075b9ae-c3d2-423c-b221-3f34c8932ff1` retain an honest negative result: support was
+41, mean net signed residual return was `-0.0012288419031189024`, and doubled-cost
+mean was `-0.0021288419031189024`. The dependence-aware lower-bound and doubled-cost
+gates failed; truth, point-in-time, out-of-sample, cost-stress, selection-bias,
+logging, reproducibility and independent-review gates completed.
+
+BT-009 bridge `56341390-6d9c-5f9b-8ab3-71e2ccf93a9f` and publication
+`fb139449-057b-5502-823f-653436d3f3b2` are complete, including projection and
+Bulletproof-memory confirmation. No candidate, shadow, order or capital authority was
+created. After retention, the controller immediately drafted the rank-2 RUNEUSDT
+question and created `A3-8e68ee6b-002-G3` at the explicit new-code approval gate.
+This closes the terminal mixed-basket execution and automatic queue-progression parts
+of ALPHA-009 while preserving the engineering approval boundary.
+
+The publication advanced the canonical corpus to epoch `577535`. RI-016 rebuilt
+retrieval and graph projections and completed at that epoch. Corpus growth had exposed
+two over-broad held-out curriculum queries; immutable curriculum `1.3.0` retained the
+same 13 domains, anchors and thresholds, restored both targets to rank 1 and qualified
+all 13 domains. This is a retrieval-contract repair, not new scientific evidence.
 
 ## Claim Boundary
 

@@ -123,6 +123,20 @@ def _publication_handoff(publication_envelope: dict) -> dict:
         )
 
     projected_trial = {name: trial[name] for name in required_trial_fields}
+    metrics = projected_trial["metrics"]
+    if not isinstance(metrics, dict):
+        raise AlphaResearchExecutionError(
+            "Bulletproof publication trial metrics must be an object."
+        )
+    projected_trial["metrics"] = {
+        key: value
+        for key, value in metrics.items()
+        if value is None or isinstance(value, (bool, int, float))
+    }
+    if not projected_trial["metrics"]:
+        raise AlphaResearchExecutionError(
+            "Bulletproof publication trial has no bounded scientific measurements."
+        )
     evaluation = trial.get("hypothesis_evaluation")
     if isinstance(evaluation, dict):
         projected_trial["hypothesis_evaluation"] = {

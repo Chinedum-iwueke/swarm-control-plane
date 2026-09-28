@@ -10,6 +10,24 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 diagnose = MODULE.diagnose
 preflight = MODULE.preflight
+load_document = MODULE.load_document
+
+
+def test_v13_curriculum_covers_every_domain_with_matching_anchors() -> None:
+    curricula = Path(__file__).resolve().parents[1] / "curricula"
+    catalog = load_document(curricula / "ri009b-research-bible-v1.3.yaml")
+    anchors = load_document(curricula / "ri009b-live-anchors-v1.3.yaml")
+
+    catalog_keys = {item["key"] for item in catalog["domains"]}
+    anchor_keys = {item["key"] for item in anchors["domains"]}
+
+    assert catalog["version"] == "1.3.0"
+    assert catalog["evaluation_version"] == "1.3.0"
+    assert catalog["portfolio_version"] == "1.3.0"
+    assert anchors["version"] == "1.3.0"
+    assert len(catalog_keys) == 13
+    assert catalog_keys == anchor_keys
+    assert "systematic-quantitative-research" in catalog_keys
 
 
 def test_diagnostic_preserves_failed_target_and_unconfigured_domain() -> None:
