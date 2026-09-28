@@ -453,6 +453,34 @@ def test_qualification_prefers_bounded_downstream_handoff() -> None:
     assert result == handoff
 
 
+def test_pre_review_qualification_routes_only_when_deterministic_gates_pass():
+    qualification = {
+        "qualified": False,
+        "card": {"independent_review_required": True},
+        "review": {
+            "blockers": [],
+            "gates": {
+                "schema_valid": True,
+                "causality_valid": True,
+                "strategy_compilable": True,
+                "leakage_review_passed": True,
+                "auxiliary_joins_backward": True,
+                "independent_review_complete": False,
+            },
+        },
+    }
+
+    assert service._qualification_ready_for_independent_review(qualification)
+
+    failed = deepcopy(qualification)
+    failed["review"]["gates"]["causality_valid"] = False
+    assert not service._qualification_ready_for_independent_review(failed)
+
+    blocked = deepcopy(qualification)
+    blocked["review"]["blockers"] = ["native strategy is unavailable"]
+    assert not service._qualification_ready_for_independent_review(blocked)
+
+
 def test_qualification_accepts_legacy_summary_result() -> None:
     legacy = {"qualified": True, "card_digest": "a" * 64}
 
