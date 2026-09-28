@@ -67,6 +67,32 @@ def _qualification_handoff(qualification: dict) -> dict:
         "source_card_hash": hypothesis_spec["source_card_hash"],
         "hypothesis_digest": hashlib.sha256(encoded_hypothesis).hexdigest(),
     }
+    overlap_receipt = qualification.get("overlap_admission_receipt")
+    if overlap_receipt is not None:
+        if not isinstance(overlap_receipt, dict):
+            raise AlphaResearchExecutionError(
+                "Qualified strategy has an invalid overlap admission receipt."
+            )
+        overlap_document = {
+            key: value
+            for key, value in overlap_receipt.items()
+            if key != "record_digest"
+        }
+        overlap_digest = hashlib.sha256(
+            json.dumps(
+                overlap_document, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            overlap_receipt.get("schema_version")
+            != "alpha-basket-overlap-admission-v1.0.0"
+            or overlap_receipt.get("authority") != "DATA-002/003"
+            or overlap_receipt.get("record_digest") != overlap_digest
+        ):
+            raise AlphaResearchExecutionError(
+                "Qualified strategy has an invalid overlap admission receipt."
+            )
+        retained["overlap_admission_receipt"] = overlap_receipt
     return retained
 
 
