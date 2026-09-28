@@ -198,6 +198,21 @@ def database(payload, *, provider_name="bybit-api"):
     return db
 
 
+def test_data_admission_and_strategy_source_commits_are_independently_pinned():
+    payload = request()
+    db = database(payload)
+    producer_receipt = db.get(
+        QuantitativeProducerReceipt, payload.dataset_bindings[0].producer_receipt_id
+    )
+    producer_receipt.source_commit = "c" * 40
+
+    admitted = service.validate_real_data_bindings(db, payload)
+
+    assert admitted[0]["admission_source_commit"] == "c" * 40
+    assert admitted[0]["builder_commit"] == COMMIT
+    assert payload.bulletproof_source_commit == COMMIT
+
+
 def campaign(**updates):
     activated = datetime.now(UTC) - timedelta(minutes=1)
     value = {

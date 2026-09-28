@@ -205,7 +205,6 @@ def validate_real_data_bindings(
         if (
             producer_receipt.milestone != "ALPHA-001"
             or producer_receipt.dataset_digest != build.content_digest
-            or producer_receipt.source_commit != payload.bulletproof_source_commit
             or not producer_receipt.producer.startswith("bt.")
             or admission.get("evidence_class") != "live_exchange_history"
             or admission.get("admitted") is not True
@@ -318,6 +317,7 @@ def validate_real_data_bindings(
                 "output_columns": output_columns,
                 "rows": build.rows,
                 "builder_commit": build.builder_commit,
+                "admission_source_commit": producer_receipt.source_commit,
                 "producer_receipt_digest": producer_receipt.receipt_digest,
             }
         )
