@@ -78,7 +78,10 @@ Installation validates root-owned mode-0600 identity environments, distinct slug
 and non-symlink runtime paths. It does not start or enable units by default. Once
 reviewed worker source is installed, use `--start` to explicitly enable both roles.
 Each role has an isolated writable Codex runtime with a read-only mounted auth
-file; no credential is copied or rotated. Limits are 2 GiB hard memory, 1 GiB
+file from `/var/lib/invariance-swarm/codex-discovery-runtime/auth.json`. That
+source is owned, refreshed and actively authenticated by the Codex auth watcher;
+reviewers must not use the legacy unmanaged `codex-worker` credential. No
+credential is copied or rotated by the reviewer installer. Limits are 2 GiB hard memory, 1 GiB
 memory-pressure threshold, one CPU worth of quota and 128 tasks per reviewer.
 The shared native engine and credentials remain read-only; only disposable
 workspace/worktree bookkeeping and retained logs are writable. Add both unit
