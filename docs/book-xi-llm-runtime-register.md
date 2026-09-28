@@ -89,10 +89,12 @@ use elapsed time; held-out access remains sealed; terminal positive, negative, i
 and failed outcomes share the logging contract; and runner-level mutation tests reject
 binding drift. The complete native suite passed with 1,786 tests, 34 skips and no
 failures. This qualifies the reusable source foundation, not autonomous production.
-The founder approved an exact-merge successor mandate at `2026-09-27T19:22:51Z`,
-and its first intelligence, hypothesis and representation invocations succeeded; it
-still needs independent acceptance and a terminal mixed-basket BT-009 publication.
-No old mandate or failed campaign is retroactively broadened.
+The founder approved an exact-merge successor mandate at `2026-09-27T19:22:51Z`.
+Its intelligence, hypothesis and representation invocations succeeded. Three earlier
+strategy revisions remain rejected evidence; replacement campaign
+`8e68ee6b-0807-4e67-8268-55313b89dd7e` used the corrected native commit and completed
+independent review plus a terminal mixed-basket BT-009 publication. No old mandate,
+approval or failed campaign was retroactively broadened.
 
 The next production cycle demonstrated the intended reasoning boundary. Exact recent
 candidate questions were supplied as novelty exclusions, while a rotating catalog
@@ -102,8 +104,17 @@ The representation scientist retained two mixed baskets where both legs were cau
 kept RUNE single-asset where another asset was unnecessary, selected 2h/4h complete
 bars, and rejected fractional differentiation rather than applying it decoratively.
 Deterministic DATA gates then rejected XAUT/PAXG for unavailable evidence and admitted
-the other panels. These LLM outputs demonstrate proposal and representation range;
-only native Bulletproof execution and independent evaluation can certify their results.
+the other panels. Native Bulletproof then evaluated the preregistered SOLUSDT-to-
+ETHUSDT question over 2023 and retained a negative result: 41 supporting observations,
+mean net signed residual return `-0.0012288419031189024`, and doubled-cost mean
+`-0.0021288419031189024`. Receipt
+`0ba464c8a583ababfa81b8ddbc5b7e424302befdfda1d529947a9e392a5268bc` was published
+through complete BT-009 bridge `56341390-6d9c-5f9b-8ab3-71e2ccf93a9f`; no LLM
+calculated those metrics or decided the gates. The controller retained the failure and
+automatically drafted the next RUNEUSDT question, stopping at explicit new-code
+approval task `A3-8e68ee6b-002-G3`. This demonstrates proposal, representation,
+native evaluation and non-idle queue progression without giving an LLM approval,
+promotion, shadow, order or capital authority.
 
 Signed producer receipts must be registered through the native Python/bootstrap path
 without reconstructing their JSON through `jq`; numeric reserialization changes the

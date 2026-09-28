@@ -205,3 +205,39 @@ deduplicated by the authoritative projection. Successor cycle
 running campaign `02fc8fed-641e-4db9-8d43-2dbbaf3e10d9`. The manually controlled
 one-year campaigns are deliberately not misattributed to mandate counters. This is
 production evidence of automatic next-cycle replenishment after terminal outcomes.
+
+## Multi-asset terminal publication and queue progression (2026-09-28)
+
+Replacement campaign `8e68ee6b-0807-4e67-8268-55313b89dd7e` completed a genuine
+one-year native SOLUSDT-to-ETHUSDT evaluation over 2023. Task
+`A3-8e68ee6b-001-E` consumed the exact founder-authorized digest and retained two
+preregistered variants. Receipt
+`0ba464c8a583ababfa81b8ddbc5b7e424302befdfda1d529947a9e392a5268bc` and bundle
+`7443624e97c60a769a59fff8d53d84730926d6ea6740b674d93467dbb7a05bf2` remain in
+the local untracked workspace; only the bounded digest-linked publication projection
+crossed the worker API.
+
+The terminal outcome is negative, not invalid: support `41`, mean net signed residual
+return `-0.0012288419031189024`, doubled-cost mean
+`-0.0021288419031189024`, and dependence-aware 95% interval
+`[-0.004136483587071577, 0.0015532544080547226]`. The lower-bound and doubled-cost
+gates failed. Point-in-time validity, truth certification, out-of-sample evaluation,
+cost stress, selection-bias audit, required logging, reproducibility and independent
+review all completed; shadow and production eligibility remain false.
+
+BT-009 bridge `56341390-6d9c-5f9b-8ab3-71e2ccf93a9f` is complete. Publication
+`fb139449-057b-5502-823f-653436d3f3b2` includes projection receipt
+`1ce6420264395c0f338844b4e140aef4e2bb931d880eabeb67e281a8296d2c7a` and memory
+receipt `327c0aaf7544e1890ebd5fab753e3b6c2e7fb40f2e733a020ea4797484b59a48`.
+After retaining the negative attempt, the controller automatically consumed the next
+ranked RUNEUSDT question, completed draft task `A3-8e68ee6b-002-D`, and created
+`A3-8e68ee6b-002-G3` at the explicit new-code approval gate. This proves non-idle
+within-campaign replenishment without silently approving code.
+
+The native receipt was 178,831 bytes. A duplicated nested selection-bias audit inside
+`trial.metrics` caused the old generic worker handoff to exceed 32 KiB after the run
+had completed. The durable worker projection now transmits only scalar measurements
+while retaining full audits in the local bundle and their immutable digests in the
+handoff. The real repaired handoff is 11,521 bytes, and the full recovery result is
+19,863 bytes. A regression supplies a large nested audit and verifies the bounded
+projection. The full worker suite passes 392 tests.

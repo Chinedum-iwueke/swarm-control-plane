@@ -433,7 +433,13 @@ def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
         "trial": {
             "trial_id": "trial-1",
             "code_digest": "b" * 64,
-            "metrics": {"oos_trades": 93},
+            "metrics": {
+                "oos_trades": 93,
+                "selection_bias_audit": {
+                    "matched_controls": ["metric-audit" * 1024] * 8,
+                },
+                "confidence_interval_95": [-0.1, 0.2],
+            },
             "started_at": "2026-01-01T00:00:00+00:00",
             "ended_at": "2026-01-02T00:00:00+00:00",
             "truth": {"truth_certified": True},
@@ -478,6 +484,7 @@ def test_large_publication_envelope_uses_bounded_downstream_handoff() -> None:
         "reason": "no_supported_validation_variant",
     }
     assert "selection_bias_audit" not in retained["trial"]
+    assert retained["trial"]["metrics"] == {"oos_trades": 93}
     assert retained["durable_evidence"]["selection_bias_audit_digest"] == "2" * 64
     assert retained["durable_evidence"]["required_trade_logging_digest"] == "3" * 64
     assert len(json.dumps(result.downstream_handoff, sort_keys=True)) < 32_768
