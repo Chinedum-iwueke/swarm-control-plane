@@ -150,6 +150,60 @@ def ensure_workload_identity(
     return identity
 
 
+def ensure_native_producer_profile(api: httpx.Client, state: dict) -> dict:
+    """Bind scientific producer provenance to the active signed package."""
+    profiles = call(api, "GET", "/v1/evaluator-routing/profiles")
+    agent_profiles = [
+        item for item in profiles if item["agent_id"] == state["agent_id"]
+    ]
+    matching = [
+        item
+        for item in agent_profiles
+        if item["status"] == "active"
+        and item["package_id"] == state["package_id"]
+        and item["package_digest"] == state["manifest_digest"]
+    ]
+    if len(matching) > 1:
+        raise RuntimeError("Multiple active native producer profiles match the executor.")
+    if matching:
+        return matching[0]
+    patch_versions = []
+    for item in agent_profiles:
+        try:
+            major, minor, patch = (
+                int(part) for part in item["profile_version"].split(".")
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (major, minor) == (1, 0):
+            patch_versions.append(patch)
+    profile = call(
+        api,
+        "POST",
+        "/v1/evaluator-routing/profiles",
+        {
+            "agent_id": state["agent_id"],
+            "profile_version": f"1.0.{max(patch_versions, default=-1) + 1}",
+            "review_kinds": ["alpha_native_producer"],
+            "capabilities": ["alpha-research-execution"],
+            "provider": "native-bulletproof",
+            "model_family": "deterministic",
+            "context_group": (
+                f"{state['slug']}-native-producer-"
+                f"{state['manifest_digest'][:12]}"
+            ),
+            "registered_by": "founder-operator",
+        },
+    )
+    if (
+        profile.get("status") != "active"
+        or profile.get("package_id") != state["package_id"]
+        or profile.get("package_digest") != state["manifest_digest"]
+    ):
+        raise RuntimeError("Native producer profile differs from the signed deployment.")
+    return profile
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", type=Path, required=True)
@@ -201,6 +255,7 @@ def main() -> int:
                     expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
                     version=manifest.version,
                 )
+                ensure_native_producer_profile(api, state)
             state["workload_identity_id"] = identity["id"]
             state["workload_identity_version"] = manifest.version
             state["workload_scopes"] = WORKLOAD_SCOPES
@@ -416,6 +471,7 @@ def main() -> int:
         state["workload_identity_id"] = identity["id"]
         state["workload_identity_version"] = manifest.version
         state["workload_scopes"] = WORKLOAD_SCOPES
+        ensure_native_producer_profile(api, state)
         if existing_agent:
             rotated = call(
                 api,
