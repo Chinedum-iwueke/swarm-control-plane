@@ -518,13 +518,11 @@ def test_approved_independent_review_promotes_execution_qualification():
     assert result["review"]["gates"]["independent_review_complete"] is True
     assert result["review"]["independent_of_drafter"] is True
     assert result["governed_review"]["receipt_digest"] == "1" * 64
-    assert result["review"]["governed_review_receipt_digest"] == service.digest_document(
-        result["governed_review"]
-    )
+    assert result["review"][
+        "governed_review_receipt_digest"
+    ] == service.digest_document(result["governed_review"])
     assert qualification["qualified"] is False
-    assert (
-        qualification["review"]["gates"]["independent_review_complete"] is False
-    )
+    assert qualification["review"]["gates"]["independent_review_complete"] is False
 
 
 def test_malformed_pending_execution_is_immutably_superseded(monkeypatch):
@@ -541,9 +539,7 @@ def test_malformed_pending_execution_is_immutably_superseded(monkeypatch):
     monkeypatch.setattr(service, "decide_task", decided)
     monkeypatch.setattr(service, "append_task_event", event)
 
-    service._supersede_malformed_execution_task(
-        db, task, successor_stage="E2"
-    )
+    service._supersede_malformed_execution_task(db, task, successor_stage="E2")
 
     decided.assert_called_once_with(
         db,
@@ -568,6 +564,46 @@ def test_execution_task_prefers_repaired_successor():
 
     assert service._execution_task(db, record, source) is repaired
     assert db.scalar.call_count == 1
+
+
+def test_native_qualification_must_match_full_campaign_data_evidence():
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    binding = record.specification["dataset_bindings"][0]
+    binding.update(
+        {
+            "catalog_digest": "1" * 64,
+            "manifest_digest": "2" * 64,
+            "producer_receipt_digest": "3" * 64,
+            "lake_governance_digest": "4" * 64,
+            "partition_digests": [binding["dataset_digest"]],
+        }
+    )
+    expected = {
+        "instrument": "BTCUSDT",
+        "dataset_build_id": binding["dataset_build_id"],
+        "dataset_digest": binding["dataset_digest"],
+        "catalog_digest": binding["catalog_digest"],
+        "manifest_digest": binding["manifest_digest"],
+        "producer_receipt_digest": binding["producer_receipt_digest"],
+        "lake_governance_digest": binding["lake_governance_digest"],
+        "partition_digest": binding["dataset_digest"],
+    }
+    qualification = {
+        "artifact_bundle": {
+            "engine_hypothesis_yaml": {
+                "immutable_contract": {"dataset_bindings": [expected]}
+            }
+        }
+    }
+
+    assert service._qualification_dataset_bindings_match(record, source, qualification)
+
+    mismatched = deepcopy(qualification)
+    mismatched["artifact_bundle"]["engine_hypothesis_yaml"]["immutable_contract"][
+        "dataset_bindings"
+    ][0]["producer_receipt_digest"] = "5" * 64
+    assert not service._qualification_dataset_bindings_match(record, source, mismatched)
 
 
 def test_qualification_accepts_legacy_summary_result() -> None:
@@ -898,7 +934,15 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
         }
     )
     record.specification["dataset_bindings"][0].update(
-        {"dataset_key": "bybit-btcusdt-perp-1m", "venue": "bybit"}
+        {
+            "dataset_key": "bybit-btcusdt-perp-1m",
+            "venue": "bybit",
+            "catalog_digest": "1" * 64,
+            "manifest_digest": "2" * 64,
+            "producer_receipt_digest": "3" * 64,
+            "lake_governance_digest": "4" * 64,
+            "partition_digests": [DIGEST],
+        }
     )
     capability = {
         "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
@@ -935,6 +979,11 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["window_start"] == "2026-04-01T00:00:00Z"
     assert contract["dataset_digest"] == DIGEST
     assert contract["reusable_strategy"] == capability
+    assert contract["dataset_bindings"][0]["catalog_digest"] == "1" * 64
+    assert contract["dataset_bindings"][0]["manifest_digest"] == "2" * 64
+    assert contract["dataset_bindings"][0]["producer_receipt_digest"] == "3" * 64
+    assert contract["dataset_bindings"][0]["lake_governance_digest"] == "4" * 64
+    assert contract["dataset_bindings"][0]["partition_digest"] == DIGEST
 
 
 def test_stage_contract_canonicalizes_legacy_resampling_policy(monkeypatch):
