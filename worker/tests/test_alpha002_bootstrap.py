@@ -148,6 +148,45 @@ def test_existing_workload_identity_is_reused_without_rotation() -> None:
     ]
 
 
+def test_native_producer_profile_rotates_with_the_signed_package() -> None:
+    current = state() | {
+        "slug": "vm1-alpha-research-executor-capacity-2",
+        "manifest_digest": "d" * 64,
+    }
+    stale = {
+        "agent_id": current["agent_id"],
+        "profile_version": "1.0.0",
+        "status": "active",
+        "package_id": "55555555-5555-4555-8555-555555555555",
+        "package_digest": "e" * 64,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=[stale])
+        payload = json.loads(request.content)
+        assert payload["profile_version"] == "1.0.1"
+        assert payload["context_group"].endswith("d" * 12)
+        return httpx.Response(
+            201,
+            json={
+                **payload,
+                "id": "66666666-6666-4666-8666-666666666666",
+                "status": "active",
+                "package_id": current["package_id"],
+                "package_digest": current["manifest_digest"],
+            },
+        )
+
+    with httpx.Client(
+        base_url="http://control-plane.test",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        profile = MODULE.ensure_native_producer_profile(client, current)
+
+    assert profile["package_digest"] == current["manifest_digest"]
+
+
 @pytest.mark.parametrize("recover", [False, True])
 def test_partial_registration_requires_explicit_scoped_recovery(
     tmp_path, monkeypatch, recover
@@ -199,6 +238,7 @@ def test_partial_registration_requires_explicit_scoped_recovery(
                 "/v1/agent-governance/charters": [],
                 "/v1/agent-governance/grants": [],
                 "/v1/workload-identities": [],
+                "/v1/evaluator-routing/profiles": [],
             }
             return httpx.Response(200, json=values[path])
         payload = json.loads(request.content)
@@ -212,6 +252,17 @@ def test_partial_registration_requires_explicit_scoped_recovery(
             return httpx.Response(201, json={"id": payload["capability"]})
         if path == "/v1/workload-identities":
             return httpx.Response(201, json=identity())
+        if path == "/v1/evaluator-routing/profiles":
+            return httpx.Response(
+                201,
+                json={
+                    **payload,
+                    "id": "66666666-6666-4666-8666-666666666666",
+                    "status": "active",
+                    "package_id": state()["package_id"],
+                    "package_digest": manifest_digest,
+                },
+            )
         if path.endswith(("/bind-credentials", "/credentials/finalize")):
             return httpx.Response(200, json={"status": "ok"})
         if path.endswith("/credentials/rotate"):
@@ -334,6 +385,7 @@ def test_existing_state_requires_explicit_package_rotation(
                     for capability in manifest.required_capabilities
                 ],
                 "/v1/workload-identities": [],
+                "/v1/evaluator-routing/profiles": [],
             }
             return httpx.Response(200, json=values[path])
         payload = json.loads(request.content or b"{}")
@@ -370,6 +422,17 @@ def test_existing_state_requires_explicit_package_rotation(
             assert payload["version"] == "1.0.1"
             created = identity() | {"package_id": new_package_id}
             return httpx.Response(201, json=created)
+        if path == "/v1/evaluator-routing/profiles":
+            return httpx.Response(
+                201,
+                json={
+                    **payload,
+                    "id": "99999999-9999-4999-8999-999999999999",
+                    "status": "active",
+                    "package_id": new_package_id,
+                    "package_digest": manifest_digest,
+                },
+            )
         if path.endswith(("/bind-credentials", "/credentials/finalize")):
             return httpx.Response(200, json={"status": "ok"})
         if path.endswith("/credentials/rotate"):
