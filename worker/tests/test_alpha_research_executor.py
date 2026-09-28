@@ -199,6 +199,48 @@ def test_alpha_contract_binds_exact_basket_and_arbitrary_safe_resample() -> None
         )
 
 
+def test_alpha_contract_retains_complete_trusted_dataset_evidence() -> None:
+    trusted = {
+        "catalog_digest": "1" * 64,
+        "manifest_digest": "2" * 64,
+        "producer_receipt_digest": "3" * 64,
+        "lake_governance_digest": "4" * 64,
+        "partition_digest": "5" * 64,
+    }
+    binding = {
+        "dataset_build_id": "33333333-3333-4333-8333-333333333333",
+        "dataset_digest": "e" * 64,
+        "dataset_path": "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet",
+        "dataset_key": "bybit-btcusdt-perp-1m",
+        "instrument": "BTCUSDT",
+        "venue": "bybit",
+        **trusted,
+    }
+
+    value = AlphaResearchExecutionContract.model_validate(
+        contract(dataset_bindings=[binding], instruments=["BTCUSDT"])
+    )
+
+    assert value.model_dump(mode="json")["dataset_bindings"][0] == binding
+
+
+def test_alpha_contract_rejects_partial_trusted_dataset_evidence() -> None:
+    binding = {
+        "dataset_build_id": "33333333-3333-4333-8333-333333333333",
+        "dataset_digest": "e" * 64,
+        "dataset_path": "/home/omenka/Projects/bulletproof_bt/research_data/panel.parquet",
+        "dataset_key": "bybit-btcusdt-perp-1m",
+        "instrument": "BTCUSDT",
+        "venue": "bybit",
+        "catalog_digest": "1" * 64,
+    }
+
+    with pytest.raises(ValidationError, match="all immutable digests"):
+        AlphaResearchExecutionContract.model_validate(
+            contract(dataset_bindings=[binding], instruments=["BTCUSDT"])
+        )
+
+
 def test_alpha_contract_binds_frozen_reusable_native_strategy() -> None:
     reusable = {
         "hypothesis_id": "ALPHA-WEEKEND-MOMENTUM",
