@@ -80,6 +80,15 @@ STRATEGY_ENGINEERING_STAGE = "G3"
 STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8", "G9")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 EXECUTION_STAGES = ("E2", "E")
+TRUSTED_DATASET_BINDING_FIELDS = (
+    "dataset_build_id",
+    "dataset_digest",
+    "catalog_digest",
+    "manifest_digest",
+    "producer_receipt_digest",
+    "lake_governance_digest",
+    "partition_digest",
+)
 STRATEGY_ENGINEERING_CONTEXT_PATHS = [
     "docs/hypothesis_strategy_generation_prompt_instructions.md",
     "docs/backtest_truth_certification.md",
@@ -521,9 +530,7 @@ def _stage_task_number(campaign: AlphaCampaign, source: dict, stage: str) -> str
     return f"A3-{str(campaign.id)[:8]}-{int(source['rank']):03d}-{stage}"
 
 
-def _execution_task(
-    db: Session, campaign: AlphaCampaign, source: dict
-) -> Task | None:
+def _execution_task(db: Session, campaign: AlphaCampaign, source: dict) -> Task | None:
     """Return the newest immutable execution contract, including a repaired successor."""
     for stage in EXECUTION_STAGES:
         task = db.scalar(
@@ -582,6 +589,21 @@ def _stage_contract(
                     ],
                 )[0],
                 "venue": item["venue"],
+                **{
+                    key: item[key]
+                    for key in (
+                        "catalog_digest",
+                        "manifest_digest",
+                        "producer_receipt_digest",
+                        "lake_governance_digest",
+                    )
+                    if key in item
+                },
+                **(
+                    {"partition_digest": item["partition_digests"][0]}
+                    if len(item.get("partition_digests", [])) == 1
+                    else {}
+                ),
             }
             for item in bindings
         ],
@@ -1803,6 +1825,15 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "category": "qualification_differs_from_approved_card"
         }
         return qualification_task
+    if not _qualification_dataset_bindings_match(campaign, source, qualification):
+        campaign.status = "needs_attention"
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "rebind_native_strategy_to_admitted_data_evidence"
+        campaign.terminal_reason = {
+            "category": "qualification_dataset_binding_mismatch",
+            "qualification_task_id": str(qualification_task.id),
+        }
+        return qualification_task
     identities = [
         task_producer_identity(db, task) for task in (draft, qualification_task)
     ]
@@ -1909,9 +1940,11 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     campaign.terminal_reason = {}
     execution = _execution_task(db, campaign, source)
     execution_stage = "E"
-    if execution is not None and execution.input_contract.get("qualification", {}).get(
-        "qualified"
-    ) is not True:
+    if (
+        execution is not None
+        and execution.input_contract.get("qualification", {}).get("qualified")
+        is not True
+    ):
         _supersede_malformed_execution_task(db, execution, successor_stage="E2")
         execution = None
         execution_stage = "E2"
@@ -2174,6 +2207,50 @@ def _qualification_ready_for_independent_review(qualification: dict) -> bool:
         value is True
         for name, value in gates.items()
         if name != "independent_review_complete"
+    )
+
+
+def _qualification_dataset_bindings_match(
+    campaign: AlphaCampaign, source: dict, qualification: dict
+) -> bool:
+    """Require native provenance to equal the campaign's DATA admission identities."""
+    artifact_bundle = qualification.get("artifact_bundle")
+    hypothesis = (
+        artifact_bundle.get("engine_hypothesis_yaml")
+        if isinstance(artifact_bundle, dict)
+        else None
+    )
+    immutable = (
+        hypothesis.get("immutable_contract") if isinstance(hypothesis, dict) else None
+    )
+    expected = (
+        immutable.get("dataset_bindings") if isinstance(immutable, dict) else None
+    )
+    if expected in (None, []):
+        return True
+    if not isinstance(expected, list):
+        return False
+    actual = {}
+    for binding in _source_bindings(campaign, source):
+        instruments = binding.get("instruments", [])
+        if len(instruments) != 1:
+            return False
+        normalized = dict(binding)
+        if len(normalized.get("partition_digests", [])) == 1:
+            normalized["partition_digest"] = normalized["partition_digests"][0]
+        actual[instruments[0]] = normalized
+    expected_by_instrument = {
+        item.get("instrument"): item for item in expected if isinstance(item, dict)
+    }
+    if None in expected_by_instrument or set(actual) != set(expected_by_instrument):
+        return False
+    return all(
+        all(field in item for field in TRUSTED_DATASET_BINDING_FIELDS)
+        and all(
+            str(actual[instrument].get(field)) == str(item[field])
+            for field in TRUSTED_DATASET_BINDING_FIELDS
+        )
+        for instrument, item in expected_by_instrument.items()
     )
 
 
@@ -2525,9 +2602,7 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         campaign.status == "needs_attention"
         and terminal.get("category") == "strategy_not_qualified"
         and isinstance(terminal.get("qualification"), dict)
-        and _qualification_ready_for_independent_review(
-            terminal["qualification"]
-        )
+        and _qualification_ready_for_independent_review(terminal["qualification"])
     ):
         campaign.status = "running"
         campaign.completed_at = None
