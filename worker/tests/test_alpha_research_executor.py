@@ -312,6 +312,23 @@ def test_commissioning_contract_is_short_bounded_and_review_contained() -> None:
 
 
 def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit() -> None:
+    overlap_document = {
+        "schema_version": "alpha-basket-overlap-admission-v1.0.0",
+        "authority": "DATA-002/003",
+        "dataset_bindings": [],
+        "instruments": ["ETHUSDT", "SOLUSDT"],
+        "minimum_contiguous_days": 365,
+        "admitted_start": "2023-01-01T00:00:00+00:00",
+        "admitted_end": "2024-01-01T00:00:00+00:00",
+    }
+    overlap_receipt = {
+        **overlap_document,
+        "record_digest": hashlib.sha256(
+            json.dumps(
+                overlap_document, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
     qualification = {
         "schema_version": "alpha-strategy-qualification-v1.0.0",
         "qualified": True,
@@ -319,6 +336,7 @@ def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit(
         "card_digest": "a" * 64,
         "review": {"gates": {"independent_review_complete": True}},
         "variant_count": 8,
+        "overlap_admission_receipt": overlap_receipt,
         "artifact_bundle": {
             "card": {"duplicated": "x" * 20_000},
             "hypothesis_spec": {
@@ -348,6 +366,7 @@ def test_qualification_handoff_retains_execution_inputs_inside_downstream_limit(
         "source_card_hash": "a" * 64,
         "hypothesis_digest": hashlib.sha256(encoded_hypothesis).hexdigest(),
     }
+    assert handoff["overlap_admission_receipt"] == overlap_receipt
     result = WorkflowExecutionResult(
         workflow="alpha-research-execution",
         repository="bulletproof_bt",
@@ -374,6 +393,28 @@ def test_qualification_handoff_fails_closed_without_execution_artifact() -> None
             {
                 "qualified": True,
                 "artifact_bundle": {"engine_hypothesis_yaml": {}},
+            }
+        )
+
+
+def test_qualification_handoff_rejects_mutated_overlap_receipt() -> None:
+    with pytest.raises(AlphaResearchExecutionError, match="overlap admission"):
+        _qualification_handoff(
+            {
+                "qualified": True,
+                "artifact_bundle": {
+                    "engine_hypothesis_yaml": {},
+                    "strategy_spec": {},
+                    "hypothesis_spec": {
+                        "hypothesis_id": "h1",
+                        "source_card_hash": "a" * 64,
+                    },
+                },
+                "overlap_admission_receipt": {
+                    "schema_version": "alpha-basket-overlap-admission-v1.0.0",
+                    "authority": "DATA-002/003",
+                    "record_digest": "0" * 64,
+                },
             }
         )
 
