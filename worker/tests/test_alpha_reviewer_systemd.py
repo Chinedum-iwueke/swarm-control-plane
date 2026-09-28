@@ -13,11 +13,13 @@ def test_reviewer_service_is_isolated_bounded_and_read_only():
         "KillMode=control-group", "EnvironmentFile=/etc/invariance-swarm/alpha-%i-reviewer.env",
         "Environment=SWARM_CODEX_HOME=/var/lib/invariance-swarm/codex-%i-reviewer-runtime",
         "ReadWritePaths=/var/lib/invariance-swarm/codex-%i-reviewer-runtime",
-        "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:",
+        "ReadOnlyPaths=/var/lib/invariance-swarm/codex-discovery-runtime",
+        "BindReadOnlyPaths=/var/lib/invariance-swarm/codex-discovery-runtime/auth.json:",
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
     ):
         assert setting in unit
     assert "ReadWritePaths=/etc/invariance-swarm/codex-worker" not in unit
+    assert "BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:" not in unit
     assert "MemoryDenyWriteExecute=true" not in unit
     assert "Repository access remains read-only and networkless" in unit
 

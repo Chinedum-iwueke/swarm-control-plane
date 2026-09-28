@@ -45,8 +45,10 @@ CapabilityBoundingSet=
 # Network access remains governed by the Codex read-only sandbox.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
-ReadOnlyPaths=/etc/invariance-swarm/codex-worker
-BindReadOnlyPaths=/etc/invariance-swarm/codex-worker/auth.json:/var/lib/invariance-swarm/codex-%i-reviewer-runtime/auth.json
+# Reviewers share only the auth file maintained and actively probed by the
+# Codex authentication watcher. Their writable runtime state remains isolated.
+ReadOnlyPaths=/var/lib/invariance-swarm/codex-discovery-runtime
+BindReadOnlyPaths=/var/lib/invariance-swarm/codex-discovery-runtime/auth.json:/var/lib/invariance-swarm/codex-%i-reviewer-runtime/auth.json
 ReadWritePaths=/var/lib/invariance-swarm/codex-%i-reviewer-runtime
 ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces
 ReadWritePaths=/home/omenka/Projects/bulletproof_bt/.git/worktrees
