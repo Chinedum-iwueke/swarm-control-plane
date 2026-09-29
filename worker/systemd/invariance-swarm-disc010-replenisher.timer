@@ -1,0 +1,13 @@
+[Unit]
+Description=Maintain bounded DISC-010 fallback research queue
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=15s
+Persistent=true
+Unit=invariance-swarm-disc010-replenisher.service
+
+[Install]
+WantedBy=timers.target
+

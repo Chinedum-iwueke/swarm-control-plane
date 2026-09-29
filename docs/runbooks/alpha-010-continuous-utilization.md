@@ -61,3 +61,9 @@ projections into the policy, publishing its plan in Mission Control, deploying t
 the normal runbook, and observing at least two independently authorized jobs plus one
 safe fallback transition. Existing Bulletproof output directories remain untracked.
 
+The first fallback implementation is Bulletproof DISC-010 (PR 353). Its replenisher
+keeps up to three lower-priority screen assignments present while the native scheduler
+uses measured capacity. On the observed VM1 budget, two six-worker jobs may run and a
+third remains queued. Eight workers remains a ceiling, not a promise. An approved
+backtest has priority over any pending screen; running immutable work is not rewritten
+or silently killed to manufacture utilization.

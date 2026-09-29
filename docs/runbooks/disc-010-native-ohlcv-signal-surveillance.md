@@ -46,11 +46,29 @@ registered model families against unconditional and linear baselines; ML-004 cal
 uncertainty and abstention. Nonlinear mining is a later bounded family, not permission
 to search the sealed OOS set.
 
+## Native source and scheduling
+
+Bulletproof PR 353 implements the authoritative producer, content-bound CLI,
+capacity-queue adapter and manifest-only replenisher. The producer supports arbitrary
+safe minute/hour/day aggregation above the native one-minute panels, cross-asset
+lead/lag families, train-fitted fractional differentiation, empirical circular-shift
+nulls, whole-family correction and a complete invalid/null/survivor ledger.
+
+The replenisher inspects DATA-002 coverage metadata only. It rotates three-asset
+baskets across every quality-visible Bybit perpetual panel with sufficient overlap;
+stable/volatile group labels are not selection constraints. It maintains at most
+three active fallback screens, six workers each under the current memory estimate,
+at queue priority 10. Approved BT-009 assignments retain priority 50. The scientific
+receipt is invariant to one-versus-eight worker execution.
+
+Production uses a code-only Bulletproof checkout and a separate persistent lake. The
+service therefore pins both the exact code commit and an explicit read-only data root.
+It never assumes that a Git worktree owns the lake.
+
 ## Closure
 
-Bulletproof already contains representation, discovery, state-analysis, correlation
-and candidate-ranking components, but they are not yet one continuously scheduled,
-universe-wide receipt producer. DISC-010 remains open until that producer, its complete
-search ledger, synthetic null/leakage tests, cross-asset replay and production receipts
-are demonstrated.
-
+The source producer and queue/replenishment seam are implemented and locally verified.
+DISC-010 remains operationally open until Bulletproof PR 353 lands, the pinned service
+is deployed on VM1, at least two concurrent real-lake screens terminate, their receipts
+are registered through Hermes, and an accepted question (or an honest null family) is
+visible in Mission Control. Source completion is not production certification.

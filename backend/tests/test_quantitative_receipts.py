@@ -85,6 +85,74 @@ def test_registers_alpha001_only_from_bulletproof_admission_producer():
     assert record.receipt["authority"]["orders"] is False
 
 
+def disc010_receipt():
+    value = receipt(
+        milestone="DISC-010",
+        producer=(
+            "bt.institutional.ohlcv_surveillance."
+            "ohlcv_signal_surveillance_receipt"
+        ),
+    )
+    trial_digest = "1" * 64
+    value["result"] = {
+        "schema_version": "disc010-signal-screen-receipt-v1.0.0",
+        "family_id": "cross-asset-v1",
+        "family_digest": "2" * 64,
+        "basket": ["SOLUSDT", "ETHUSDT"],
+        "research_timeframe": "15m",
+        "trial_count": 1,
+        "evaluated_count": 1,
+        "invalid_count": 0,
+        "trials": [
+            {
+                "trial_id": "sol-leads-eth",
+                "trial_digest": trial_digest,
+                "status": "evaluated",
+                "family_adjusted_discovery": True,
+                "direction_stable": True,
+                "minimum_effect_met": True,
+                "question_candidate": True,
+            }
+        ],
+        "question_candidate_digests": [trial_digest],
+        "final_oos_opened": False,
+        "final_oos_metrics": {},
+        "execution_authority": False,
+        "strategy_authority": False,
+        "promotion_authority": False,
+        "claim_boundary": "Research question only.",
+    }
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
+    return value
+
+
+@pytest.mark.parametrize("mutation", [None, "oos", "promotion", "candidate"])
+def test_disc010_registration_preserves_research_only_boundary(mutation):
+    value = disc010_receipt()
+    if mutation == "oos":
+        value["result"]["final_oos_opened"] = True
+    elif mutation == "promotion":
+        value["result"]["promotion_authority"] = True
+    elif mutation == "candidate":
+        value["result"]["trials"][0]["direction_stable"] = False
+    value["result_digest"] = digest(value["result"])
+    value["receipt_digest"] = digest(
+        {key: item for key, item in value.items() if key != "receipt_digest"}
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    if mutation:
+        with pytest.raises(QuantitativeReceiptConflict):
+            register_receipt(db, payload(value))
+    else:
+        record = register_receipt(db, payload(value))
+        assert record.milestone == "DISC-010"
+        assert record.receipt["result"]["final_oos_opened"] is False
+
+
 def test_registration_is_idempotent():
     db = MagicMock()
     existing = object()
