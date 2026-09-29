@@ -669,14 +669,29 @@ def test_active_stale_execution_contract_requests_cooperative_stop(monkeypatch):
     assert task_event.call_args.kwargs["payload"]["cooperative"] is True
 
 
-def test_reconcile_retires_stale_execution_from_parked_campaign(monkeypatch):
+@pytest.mark.parametrize(
+    ("category", "next_action"),
+    [
+        (
+            "qualification_dataset_binding_mismatch",
+            "rebind_native_strategy_to_admitted_data_evidence",
+        ),
+        (
+            "qualification_overlap_admission_missing_or_invalid",
+            "requalify_native_strategy_with_overlap_admission",
+        ),
+    ],
+)
+def test_reconcile_retires_stale_execution_from_parked_campaign(
+    monkeypatch, category, next_action
+):
     qualification_task_id = uuid4()
     record = campaign(
         status="needs_attention",
         phase="strategy_qualification",
-        next_action="rebind_native_strategy_to_admitted_data_evidence",
+        next_action=next_action,
         terminal_reason={
-            "category": "qualification_dataset_binding_mismatch",
+            "category": category,
             "qualification_task_id": str(qualification_task_id),
             "retired_execution_task_ids": [str(uuid4())],
         },
@@ -697,7 +712,7 @@ def test_reconcile_retires_stale_execution_from_parked_campaign(monkeypatch):
     )
     assert str(newly_retired.id) in record.terminal_reason["retired_execution_task_ids"]
     assert record.status == "needs_attention"
-    assert record.next_action == "rebind_native_strategy_to_admitted_data_evidence"
+    assert record.next_action == next_action
 
 
 def test_native_qualification_must_match_full_campaign_data_evidence():
@@ -738,6 +753,68 @@ def test_native_qualification_must_match_full_campaign_data_evidence():
         "dataset_bindings"
     ][0]["producer_receipt_digest"] = "5" * 64
     assert not service._qualification_dataset_bindings_match(record, source, mismatched)
+
+
+def test_multi_asset_qualification_requires_exact_overlap_admission():
+    record = campaign()
+    record.specification.update(
+        execution_window_start="2025-01-01T00:00:00Z",
+        execution_window_end="2026-01-01T00:00:00Z",
+    )
+    first = record.specification["dataset_bindings"][0]
+    second = {
+        **first,
+        "dataset_build_id": str(uuid4()),
+        "dataset_digest": "b" * 64,
+        "dataset_key": "bybit-ethusdt-perp-1m",
+        "instruments": ["ETHUSDT"],
+    }
+    record.specification["dataset_bindings"].append(second)
+    source = record.specification["research_queue"][0]
+    source["dataset_binding_indices"] = [0, 1]
+    expected_bindings = [
+        {
+            "instrument": item["instruments"][0],
+            "dataset_build_id": item["dataset_build_id"],
+            "dataset_digest": item["dataset_digest"],
+        }
+        for item in (first, second)
+    ]
+    document = {
+        "schema_version": "alpha-basket-overlap-admission-v1.0.0",
+        "authority": "DATA-002/003",
+        "dataset_bindings": expected_bindings,
+        "instruments": ["BTCUSDT", "ETHUSDT"],
+        "minimum_contiguous_days": 365,
+        "admitted_start": "2025-01-01T00:00:00+00:00",
+        "admitted_end": "2026-01-01T00:00:00+00:00",
+    }
+    receipt = {**document, "record_digest": service.digest_document(document)}
+
+    assert not service._qualification_overlap_admission_matches(record, source, {})
+    assert service._qualification_overlap_admission_matches(
+        record, source, {"overlap_admission_receipt": receipt}
+    )
+
+    mutated = deepcopy(receipt)
+    mutated["minimum_contiguous_days"] = 364
+    mutated_document = {
+        key: value for key, value in mutated.items() if key != "record_digest"
+    }
+    mutated["record_digest"] = service.digest_document(mutated_document)
+    assert not service._qualification_overlap_admission_matches(
+        record, source, {"overlap_admission_receipt": mutated}
+    )
+
+    non_utc = deepcopy(receipt)
+    non_utc["admitted_start"] = "2025-01-01T01:00:00+01:00"
+    non_utc_document = {
+        key: value for key, value in non_utc.items() if key != "record_digest"
+    }
+    non_utc["record_digest"] = service.digest_document(non_utc_document)
+    assert not service._qualification_overlap_admission_matches(
+        record, source, {"overlap_admission_receipt": non_utc}
+    )
 
 
 def test_qualification_accepts_legacy_summary_result() -> None:
@@ -1287,7 +1364,8 @@ def test_reconciliation_recovers_strategy_engineering_rejection_into_correction(
 
 
 @pytest.mark.parametrize(
-    "mutation", [None, "claim", "dataset", "window", "digest", "provenance"]
+    "mutation",
+    [None, "claim", "dataset", "window", "digest", "provenance", "overlap"],
 )
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
@@ -1400,6 +1478,20 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
                 }
             }
         }
+    elif mutation == "overlap":
+        second = {
+            **binding,
+            "dataset_build_id": str(uuid4()),
+            "dataset_digest": "b" * 64,
+            "dataset_key": "bybit-ethusdt-perp-1m",
+            "instruments": ["ETHUSDT"],
+            "partition_digests": ["b" * 64],
+        }
+        record.specification["dataset_bindings"].append(second)
+        record.specification["research_queue"][0]["dataset_binding_indices"] = [
+            0,
+            1,
+        ]
     db.scalar.side_effect = [draft, confirmation, qualification, None, None]
     create = MagicMock()
     monkeypatch.setattr(service, "_create_stage_task", create)
@@ -1436,6 +1528,17 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
         assert record.next_action == "rebind_native_strategy_to_admitted_data_evidence"
         assert record.terminal_reason == {
             "category": "qualification_dataset_binding_mismatch",
+            "qualification_task_id": str(qualification.id),
+            "retired_execution_task_ids": [],
+        }
+        create.assert_not_called()
+        route_create.assert_not_called()
+        return
+    if mutation == "overlap":
+        assert record.status == "needs_attention"
+        assert record.next_action == "requalify_native_strategy_with_overlap_admission"
+        assert record.terminal_reason == {
+            "category": "qualification_overlap_admission_missing_or_invalid",
             "qualification_task_id": str(qualification.id),
             "retired_execution_task_ids": [],
         }
