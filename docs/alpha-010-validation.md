@@ -42,13 +42,17 @@ that pass the existing governance and scientific gates.
 Focused source verification covers policy, receipt validation, publication replay,
 capacity accounting, systemd hardening, discovery-context projection, Mission Control
 and native Bulletproof behavior; Ruff and JavaScript syntax checks pass. Production runs
-control plane `6991b641bf6b14f03d9bad363a64f81d6b4f582b` and Bulletproof
-`da9f1d2850b707752f0059857932f97fb32b4bb9`. A fresh canonical snapshot observed a
-12-worker resource budget fully allocated to two six-worker DISC-010 screens. With the
-three-job production ceiling, three eligible jobs can instead receive four workers
-each. Seven published families retained 56 evaluated,
-zero invalid trials, zero candidates and unopened final OOS. No model, order, promotion
-or capital authority was changed.
+the continuous-refill timer from control-plane commit
+`9799311c84f90612cef9b995ec542a4dde71a7b7` and the native producer from Bulletproof
+commit `ee68ff124ed4b31823aeb33964c46e44e1e91c36`. The timer refills the bounded queue
+15 seconds after its prior pass becomes inactive.
+
+A post-deploy observation recorded the 12-worker resource budget fully allocated to two
+concurrent six-worker DISC-010 screens with a third screen queued. At that point, 162
+complete local receipts retained 1,296 evaluated trials, zero invalid trials, 29
+validation-screened question candidates and unopened final OOS. These counts establish
+continuous bounded throughput, not alpha or promotion eligibility. No model, order,
+promotion or capital authority was changed.
 
 RI-017's public-feed worker can consume otherwise idle network/retrieval capacity but is
 not a substitute for the native quantitative queue. It has no scientific, execution or
