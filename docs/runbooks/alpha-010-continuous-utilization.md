@@ -62,11 +62,12 @@ promotion, execution, order or capital authority.
 
 ## Rollout boundary
 
-The current source adds and tests deterministic admission/allocation, authoritative
-queue projections, Mission Control visibility and low-water alerts. It is not production
-activation. Production closure requires deploying through the normal runbook and
-observing at least two independently authorized jobs plus one safe fallback transition.
-Existing Bulletproof output directories remain untracked.
+The deterministic admission/allocation, authoritative queue projections, Mission
+Control visibility and low-water alerts are deployed. Production observed the safe
+fallback transition and a fresh `fallback_research_running` snapshot with all 12
+resource-derived worker slots allocated. This closes the fallback-utilization boundary;
+it does not manufacture a standing supply of approved backtests. Existing Bulletproof
+output directories remain untracked.
 
 The first fallback implementation is Bulletproof DISC-010 (PR 353). Its replenisher
 keeps up to three lower-priority screen assignments present while the native scheduler
@@ -80,3 +81,9 @@ input to the next ALPHA-004 cycle. Mission Control reports the canonical screen 
 local output files remain untracked and are never pushed to Git. A survivor replenishes
 the hypothesis-question supply but does not approve code, open final OOS or promote a
 candidate.
+
+The installer refuses to restart the resident capacity scheduler while any local or
+external worker allocation is active. At a zero-active-work boundary it restarts the
+director so its imported dispatch table matches the pinned checkout, then runs the
+replenisher every minute. This prevents source/resident-code drift without interrupting
+immutable work.

@@ -1,7 +1,8 @@
 # ALPHA-010 Validation
 
-Status: source producer, scheduling seam and canonical utilization telemetry implemented;
-production activation and observed closure remain open.
+Status: deployed and production-observed for the no-capital fallback-utilization
+boundary. Approved-backtest throughput remains constrained by the supply of hypotheses
+that pass the existing governance and scientific gates.
 
 - Deterministic resource planning uses CPU, available RAM, a free-memory floor and
   measured per-worker estimate; it never allocates from CPU count alone.
@@ -39,9 +40,13 @@ production activation and observed closure remain open.
 
 Focused source verification covers policy, receipt validation, publication replay,
 capacity accounting, systemd hardening, discovery-context projection, Mission Control
-and native Bulletproof behavior; Ruff and JavaScript syntax checks pass. The production
-services and schema from this change remain undeployed until the pinned rollout is run.
-No model, order, promotion or capital authority was changed.
+and native Bulletproof behavior; Ruff and JavaScript syntax checks pass. Production runs
+control plane `6991b641bf6b14f03d9bad363a64f81d6b4f582b` and Bulletproof
+`da9f1d2850b707752f0059857932f97fb32b4bb9`. A fresh canonical snapshot observed a
+12-worker resource budget fully allocated to two six-worker DISC-010 screens, with a
+third assignment queued/replenished. Seven published families retained 56 evaluated,
+zero invalid trials, zero candidates and unopened final OOS. No model, order, promotion
+or capital authority was changed.
 
 RI-017's public-feed worker can consume otherwise idle network/retrieval capacity but is
 not a substitute for the native quantitative queue. It has no scientific, execution or

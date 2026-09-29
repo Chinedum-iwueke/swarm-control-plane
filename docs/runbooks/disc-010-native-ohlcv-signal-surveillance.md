@@ -91,9 +91,11 @@ closed-authority boundary under **Research -> Signal surveillance ledger**.
 
 ## Closure
 
-The source producer and queue/replenishment seam are implemented and locally verified.
-DISC-010 remains operationally open until Bulletproof PR 353 and control-plane PR 400
-land, the pinned services are deployed on VM1, the rebuilt API and Mission Control are
-deployed, at least two concurrent real-lake screens terminate, their receipts are
-registered through Hermes, and an accepted question (or an honest null family) is
-visible in Mission Control. Source completion is not production certification.
+The initial transparent cross-asset real-lake boundary is operationally complete.
+Bulletproof PR 353 and control-plane PRs 400-402 are merged and deployed. Production
+observed two concurrent six-worker screens with a third queued under the 12-worker
+resource budget, automatic later-cycle replenishment and seven canonical family
+receipts. Those receipts account for 56 evaluated, zero invalid trials and zero question
+candidates across 5m, 15m and 1h representations; final OOS remained closed throughout.
+This is an honest null ledger, not a strategy or alpha result. Serial, calendar,
+change-point and other named family expansions remain separate implementation work.
