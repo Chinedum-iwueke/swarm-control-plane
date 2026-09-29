@@ -79,6 +79,11 @@ per-job ceiling, not a promise. An approved backtest has priority over any pendi
 screen; running immutable work is not rewritten or silently killed to manufacture
 utilization.
 
+The replenisher runs 15 seconds after its previous pass becomes inactive. This closes
+the avoidable idle interval left by the original one-minute timer when short screens
+finished between passes. Each pass is still idempotent and maintains a bounded target
+of three active or queued screens; it does not enqueue work while that target is met.
+
 Completed screen receipts are published idempotently into Hermes and become immutable
 input to the next ALPHA-004 cycle. Mission Control reports the canonical screen ledger;
 local output files remain untracked and are never pushed to Git. A survivor replenishes
