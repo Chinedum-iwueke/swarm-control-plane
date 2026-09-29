@@ -43,5 +43,20 @@
     "owner": "canon-curator",
     "allowed_hosts": ["blog.janestreet.com"],
     "is_enabled": true
+  },
+  {
+    "project": "systematic-research",
+    "source_key": "jane-street-signals-threads-transcripts",
+    "name": "Jane Street Signals and Threads Official Transcripts",
+    "feed_url": "https://signalsandthreads.com/",
+    "feed_kind": "html_transcript_index",
+    "domains": ["finance", "machine-learning", "market-microstructure", "execution", "trading"],
+    "rights": "Public official transcripts; publisher retains copyright. Retained only as attributed low-trust research evidence.",
+    "access_class": "public",
+    "cadence": "weekly",
+    "freshness_hours": 168,
+    "owner": "canon-curator",
+    "allowed_hosts": ["signalsandthreads.com"],
+    "is_enabled": true
   }
 ]

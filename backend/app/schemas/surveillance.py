@@ -19,7 +19,7 @@ class SurveillanceSourceCreate(StrictModel):
     source_key: str = Field(pattern=_NAME)
     name: str = Field(min_length=1, max_length=300)
     feed_url: HttpUrl
-    feed_kind: Literal["atom", "rss"]
+    feed_kind: Literal["atom", "rss", "html_transcript_index"]
     domains: list[
         Literal[
             "finance",

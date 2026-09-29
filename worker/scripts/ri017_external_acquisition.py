@@ -7,6 +7,7 @@ import argparse
 import ipaddress
 import json
 import os
+import re
 import socket
 import tempfile
 import time
@@ -14,14 +15,19 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
-CONNECTOR_VERSION = "ri017-public-syndication-v1.0.0"
+CONNECTOR_VERSION = "ri017-public-syndication-v1.1.0"
 MAX_BYTES = 2_000_000
 MAX_ENTRIES = 100
+MAX_TRANSCRIPT_INDEX_BYTES = 3_000_000
+MAX_TRANSCRIPT_BYTES = 500_000
+MAX_TRANSCRIPT_TOTAL_BYTES = 10_000_000
+MAX_TRANSCRIPTS = 50
 
 
 def atomic_json(path: Path, document: dict) -> None:
@@ -149,7 +155,162 @@ def parse_syndication(content: bytes, *, allowed_host: str) -> list[dict]:
     return entries
 
 
+class _TranscriptIndexParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._preview_depth = 0
+        self.links: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = set((values.get("class") or "").split())
+        if tag == "li" and "podcast-preview" in classes:
+            self._preview_depth = 1
+            return
+        if self._preview_depth and tag == "li":
+            self._preview_depth += 1
+        if self._preview_depth and tag == "a":
+            href = values.get("href")
+            if href and href.startswith("/") and href not in self.links:
+                self.links.append(href)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._preview_depth and tag == "li":
+            self._preview_depth -= 1
+
+
+class _TranscriptEpisodeParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._info_depth = 0
+        self._transcript_depth = 0
+        self._capture: str | None = None
+        self._transcript_started = False
+        self._transcript_marker_open = False
+        self._title_parts: list[str] = []
+        self._byline_parts: list[str] = []
+        self._date_parts: list[str] = []
+        self._transcript_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = set((values.get("class") or "").split())
+        if tag == "div" and "podcast-info" in classes:
+            self._info_depth = 1
+        elif self._info_depth and tag == "div":
+            self._info_depth += 1
+        if tag == "div" and "transcript" in classes and "tab-view" in classes:
+            self._transcript_depth = 1
+        elif self._transcript_depth and tag == "div":
+            self._transcript_depth += 1
+        if self._info_depth and tag in {"h1", "h4", "h5"}:
+            self._capture = tag
+        if self._transcript_depth and tag == "h3" and values.get("id") == "transcript":
+            self._transcript_marker_open = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == self._capture:
+            self._capture = None
+        if tag == "h3" and self._transcript_marker_open:
+            self._transcript_marker_open = False
+            self._transcript_started = True
+        if self._info_depth and tag == "div":
+            self._info_depth -= 1
+        if self._transcript_depth and tag == "div":
+            self._transcript_depth -= 1
+            if not self._transcript_depth:
+                self._transcript_started = False
+
+    def handle_data(self, data: str) -> None:
+        value = " ".join(data.split())
+        if not value:
+            return
+        if self._capture == "h1":
+            self._title_parts.append(value)
+        elif self._capture == "h4":
+            self._byline_parts.append(value)
+        elif self._capture == "h5":
+            self._date_parts.append(value)
+        if self._transcript_started:
+            self._transcript_parts.append(value)
+
+    def entry(self, *, canonical_url: str) -> dict | None:
+        title = " ".join(self._title_parts).strip()
+        transcript = "\n".join(self._transcript_parts).strip()
+        if not title or not transcript:
+            return None
+        raw_date = " ".join(self._date_parts)
+        raw_date = raw_date.split("|")[-1].strip()
+        raw_date = re.sub(r"(?<=\d)(st|nd|rd|th)\b", "", raw_date)
+        try:
+            published = datetime.strptime(raw_date, "%B %d, %Y").replace(tzinfo=UTC)
+        except ValueError:
+            return None
+        byline = " ".join(self._byline_parts).strip()
+        return {
+            "external_id": canonical_url[:500],
+            "title": title[:1000],
+            "abstract": transcript[:50_000],
+            "canonical_url": canonical_url,
+            "published_at": published.isoformat(),
+            "updated_at": None,
+            "doi": None,
+            "authors": [byline[:300]] if byline else [],
+            "status": "published",
+            "corrects_external_id": None,
+            "retracts_external_id": None,
+        }
+
+
+def _public_get(client: httpx.Client, url: str, *, max_bytes: int) -> httpx.Response:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("RI-017 retrieval requires an HTTPS URL")
+    _reject_nonpublic_resolution(parsed.hostname)
+    response = client.get(url)
+    if len(response.content) > max_bytes:
+        raise ValueError("source response exceeds the connector limit")
+    return response
+
+
+def fetch_transcript_index(source: dict) -> tuple[int, list[dict]]:
+    base = source["feed_url"]
+    allowed_host = source["allowed_hosts"][0]
+    entries: list[dict] = []
+    total_bytes = 0
+    with httpx.Client(
+        timeout=20,
+        follow_redirects=False,
+        trust_env=False,
+        headers={"Accept": "text/html"},
+    ) as client:
+        index = _public_get(client, base, max_bytes=MAX_TRANSCRIPT_INDEX_BYTES)
+        if index.status_code >= 400:
+            return index.status_code, []
+        parser = _TranscriptIndexParser()
+        parser.feed(index.text)
+        for path in parser.links[:MAX_TRANSCRIPTS]:
+            url = urljoin(base, path)
+            parsed = urlparse(url)
+            if parsed.hostname != allowed_host:
+                continue
+            response = _public_get(client, url, max_bytes=MAX_TRANSCRIPT_BYTES)
+            if response.status_code >= 400:
+                continue
+            total_bytes += len(response.content)
+            if total_bytes > MAX_TRANSCRIPT_TOTAL_BYTES:
+                break
+            episode = _TranscriptEpisodeParser()
+            episode.feed(response.text)
+            entry = episode.entry(canonical_url=url)
+            if entry is not None:
+                entries.append(entry)
+    return index.status_code, entries
+
+
 def fetch_source(source: dict) -> tuple[int, list[dict]]:
+    if source["feed_kind"] == "html_transcript_index":
+        return fetch_transcript_index(source)
     parsed = urlparse(source["feed_url"])
     host = parsed.hostname or ""
     _reject_nonpublic_resolution(host)

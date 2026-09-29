@@ -47,6 +47,34 @@ def test_parse_syndication_rejects_unsafe_xml_and_non_https_entries() -> None:
     assert [item["external_id"] for item in entries] == ["one"]
 
 
+def test_official_transcript_parser_retains_only_episode_transcript() -> None:
+    index = MODULE._TranscriptIndexParser()
+    index.feed(
+        '<a href="/not-an-episode/">outside</a>'
+        '<li class="podcast-preview"><h2><a href="/episode-one/">One</a></h2>'
+        '<a href="/episode-one/">duplicate</a></li>'
+    )
+    assert index.links == ["/episode-one/"]
+
+    episode = MODULE._TranscriptEpisodeParser()
+    episode.feed(
+        '<div class="podcast-info episodes-10-and-beyond">'
+        '<h1>Point-in-Time Data</h1><h4>with Researcher</h4>'
+        '<h5>Episode 4 | September 2nd, 2026</h5></div>'
+        '<div class="tab-view transcript episodes-28-and-beyond">'
+        '<h3 id="summary">SUMMARY</h3><p>Not retained.</p>'
+        '<h3 class="transcript-section" id="transcript">TRANSCRIPT</h3>'
+        '<h1>Host</h1><p>Use only information available at decision time.</p>'
+        '</div><footer>Not retained either.</footer>'
+    )
+    entry = episode.entry(canonical_url="https://signalsandthreads.com/episode-one/")
+    assert entry is not None
+    assert entry["title"] == "Point-in-Time Data"
+    assert entry["authors"] == ["with Researcher"]
+    assert entry["published_at"] == "2026-09-02T00:00:00+00:00"
+    assert entry["abstract"] == "Host\nUse only information available at decision time."
+
+
 def test_acquisition_registers_fetch_receipt_without_scientific_authority(
     tmp_path: Path,
 ) -> None:
@@ -125,4 +153,3 @@ def test_registry_rejects_private_or_credentialed_sources(tmp_path: Path) -> Non
     )
     with pytest.raises(ValueError, match="public sources"):
         MODULE.load_registry([path])
-
