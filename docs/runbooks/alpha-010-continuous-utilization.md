@@ -28,10 +28,12 @@ only when measured capacity supports the configured minimum per job. Worker coun
 not change the frozen variant grid or scientific contract.
 
 VM1 has 36 CPUs and approximately 66 GiB available at the latest observation. With the
-production estimate of 4.5 GiB per worker and 8 GiB free-memory floor, the safe initial
-budget is 12 workers. Two eligible jobs therefore receive six workers each. Two or
-three eight-worker jobs require more measured free memory or a lower peak-RSS estimate
-established by representative runs; they must not be promised from CPU count alone.
+production estimate of 4.5 GiB per worker and 8 GiB free-memory floor, the measured
+budget is normally 12 workers even though the configured aggregate ceiling is 16. The
+scheduler may therefore run two six-worker jobs or three four-worker jobs, depending on
+the eligible queue. Two eight-worker jobs require at least 80 GiB available under this
+estimate, and three eight-worker jobs require a separately demonstrated 24-worker
+budget; they must not be promised from CPU count alone.
 
 ## Scientific boundaries
 
@@ -71,10 +73,11 @@ output directories remain untracked.
 
 The first fallback implementation is Bulletproof DISC-010 (PR 353). Its replenisher
 keeps up to three lower-priority screen assignments present while the native scheduler
-uses measured capacity. On the observed VM1 budget, two six-worker jobs may run and a
-third remains queued. Eight workers remains a ceiling, not a promise. An approved
-backtest has priority over any pending screen; running immutable work is not rewritten
-or silently killed to manufacture utilization.
+uses measured capacity. On the observed VM1 budget, the three-job concurrency ceiling
+allows either two six-worker jobs or three four-worker jobs. Eight workers remains a
+per-job ceiling, not a promise. An approved backtest has priority over any pending
+screen; running immutable work is not rewritten or silently killed to manufacture
+utilization.
 
 Completed screen receipts are published idempotently into Hermes and become immutable
 input to the next ALPHA-004 cycle. Mission Control reports the canonical screen ledger;
