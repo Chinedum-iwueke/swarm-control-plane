@@ -20,7 +20,7 @@ class SurveillanceSource(Base):
     source_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     feed_url: Mapped[str] = mapped_column(String(2000), nullable=False)
-    feed_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    feed_kind: Mapped[str] = mapped_column(String(40), nullable=False)
     domains: Mapped[list] = mapped_column(JSONB, nullable=False)
     rights: Mapped[str] = mapped_column(String(500), nullable=False)
     access_class: Mapped[str] = mapped_column(String(20), nullable=False)

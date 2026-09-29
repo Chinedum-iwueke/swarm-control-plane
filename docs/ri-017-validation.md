@@ -16,6 +16,9 @@
 - `alpha_discovery._recent_external_surveillance` supplies only sanitized title,
   provenance and deterministic assessment metadata to the next ALPHA-004 context.
   Abstract bodies are not placed in model context.
+- Migration `a7d4e9c21b60` widens the persisted feed-kind discriminator so every
+  API-admitted connector kind fits the database contract. A model/schema regression
+  prevents another accepted-value/persistence mismatch.
 
 ## Verification
 
