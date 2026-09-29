@@ -1090,6 +1090,93 @@ def _independent_review_correction(task: Task) -> dict | None:
     }
 
 
+def _retain_exhausted_strategy_engineering(
+    db: Session,
+    campaign: AlphaCampaign,
+    task: Task,
+    correction: dict,
+) -> None:
+    """Retain a review-rejected strategy after its bounded correction budget ends."""
+    queue = campaign.specification.get("research_queue", [])
+    if campaign.hypothesis_count >= len(queue):
+        raise HTTPException(409, "Exhausted engineering has no current research question.")
+    source = queue[campaign.hypothesis_count]
+    binding = _source_bindings(campaign, source)[0]
+    question = " ".join(source["question"].split())
+    findings = correction.get("latest_findings", [])
+    failed_gates = [
+        str(item.get("message", "")).strip()
+        for item in findings
+        if isinstance(item, dict) and str(item.get("message", "")).strip()
+    ]
+    failure_digest = digest_document(
+        {
+            "task_id": str(task.id),
+            "task_number": task.task_number,
+            "plan_digest": task.plan_digest,
+            "failure": task.failure,
+            "correction": correction,
+        }
+    )
+    record_attempt(
+        db,
+        campaign,
+        AlphaCampaignAttemptCreate(
+            attempt_key=f"engineering-review-exhausted-{task.id}",
+            expected_campaign_digest=campaign.campaign_digest,
+            question=question,
+            question_digest=digest_document({"question": question}),
+            source_candidate_id=source["source_candidate_id"],
+            source_candidate_digest=source["source_candidate_digest"],
+            hypothesis_id=f"engineering-review-{source['source_candidate_id']}",
+            hypothesis_digest=digest_document(
+                {
+                    "campaign_digest": campaign.campaign_digest,
+                    "source_candidate_digest": source["source_candidate_digest"],
+                    "engineering_failure_digest": failure_digest,
+                }
+            ),
+            dataset_build_id=binding["dataset_build_id"],
+            dataset_digest=binding["dataset_digest"],
+            trial_count=0,
+            outcome="invalid",
+            gate_report={
+                "truth_certified": False,
+                "point_in_time_valid": False,
+                "reproducible": False,
+                "out_of_sample_evaluated": False,
+                "cost_stress_evaluated": False,
+                "selection_bias_audited": False,
+                "independent_review_complete": True,
+                "required_trade_logging_complete": False,
+                "execution_class": None,
+                "qualification_authority": False,
+                "shadow_eligible": False,
+                "production_eligible": False,
+                "capital_authority": False,
+                "failed_gates": failed_gates[:50]
+                or ["bounded_strategy_engineering_exhausted"],
+            },
+            evidence_digests=sorted({task.plan_digest, failure_digest}),
+            produced_by="bulletproof_bt",
+            source_commit=campaign.specification["bulletproof_source_commit"],
+        ),
+    )
+    _append_event(
+        db,
+        campaign,
+        "strategy_engineering_exhausted",
+        "alpha-campaign-director",
+        {
+            "task_id": str(task.id),
+            "task_number": task.task_number,
+            "failure_digest": failure_digest,
+            "outcome": "invalid",
+            "next_action": campaign.next_action,
+        },
+    )
+
+
 def _scope_budget_correction(task: Task) -> dict | None:
     """Return bounded correction evidence for an otherwise valid oversized patch."""
     if (
@@ -2662,7 +2749,24 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             and correction is None
             and _requires_admission_handoff_recovery(failed_task)
         )
-        if failed_task is not None and (correction or admission_recovery):
+        failed_stage = (
+            failed_task.task_number.rsplit("-", 1)[-1]
+            if failed_task is not None
+            and isinstance(getattr(failed_task, "task_number", None), str)
+            else None
+        )
+        if (
+            failed_task is not None
+            and correction is not None
+            and failed_stage == STRATEGY_CORRECTION_STAGES[-1]
+        ):
+            campaign.status = "running"
+            campaign.completed_at = None
+            campaign.terminal_reason = {}
+            _retain_exhausted_strategy_engineering(
+                db, campaign, failed_task, correction
+            )
+        elif failed_task is not None and (correction or admission_recovery):
             campaign.status = "running"
             campaign.phase = "strategy_engineering"
             campaign.next_action = (
