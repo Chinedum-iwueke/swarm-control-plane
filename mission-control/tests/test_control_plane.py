@@ -142,6 +142,23 @@ async def test_dashboard_uses_bearer_without_exposing_token(
                     "agents": [],
                 },
             )
+        if request.url.path == (
+            "/v1/research/quantitative-receipts/signal-surveillance"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "counts": {
+                        "families": 0,
+                        "trials": 0,
+                        "evaluated": 0,
+                        "invalid": 0,
+                        "question_candidates": 0,
+                    },
+                    "items": [],
+                    "claim_boundary": "Research questions only.",
+                },
+            )
         if request.url.path == "/v1/research/scientific-fidelity/assurance/overview":
             return httpx.Response(
                 200,

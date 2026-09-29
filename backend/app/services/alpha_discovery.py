@@ -25,6 +25,7 @@ from app.models.authority import AuthorityDelegation
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.surveillance import SurveillancePublication, SurveillanceSource
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 from app.schemas.alpha_campaign import (
@@ -495,6 +496,97 @@ def _recent_research_memory(db: Session, *, limit: int = 30) -> dict:
     }
 
 
+def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
+    """Expose authoritative pre-OOS screens to the next discovery cycle."""
+    records = db.scalars(
+        select(QuantitativeProducerReceipt)
+        .where(QuantitativeProducerReceipt.milestone == "DISC-010")
+        .order_by(QuantitativeProducerReceipt.registered_at.desc())
+        .limit(limit)
+    ).all()
+    screens = []
+    for record in records:
+        result = record.receipt.get("result", {})
+        trials = []
+        for trial in result.get("trials", []):
+            trials.append(
+                {
+                    "trial_digest": trial.get("trial_digest"),
+                    "contract": trial.get("trial_contract"),
+                    "status": trial.get("status"),
+                    "reason": trial.get("reason"),
+                    "exploration_effect": trial.get("exploration_effect"),
+                    "validation_effect": trial.get("validation_effect"),
+                    "validation_empirical_p_value": trial.get(
+                        "validation_empirical_p_value"
+                    ),
+                    "family_adjusted_discovery": trial.get(
+                        "family_adjusted_discovery"
+                    ),
+                    "direction_stable": trial.get("direction_stable"),
+                    "question_candidate": trial.get("question_candidate"),
+                }
+            )
+        screens.append(
+            {
+                "receipt_id": str(record.id),
+                "receipt_digest": record.receipt_digest,
+                "family_id": result.get("family_id"),
+                "basket": result.get("basket", []),
+                "research_timeframe": result.get("research_timeframe"),
+                "trials": trials,
+                "final_oos_opened": False,
+            }
+        )
+    return {
+        "screens": screens,
+        "claim_boundary": (
+            "A question_candidate may seed hypothesis generation, but cannot bypass "
+            "novelty, causal timing, data admission, independent review or sealed OOS gates."
+        ),
+    }
+
+
+def _recent_external_surveillance(db: Session, *, limit: int = 20) -> dict:
+    """Expose sanitized public-source metadata as question seeds, never evidence."""
+    records = db.execute(
+        select(SurveillancePublication, SurveillanceSource)
+        .join(SurveillanceSource, SurveillancePublication.source_id == SurveillanceSource.id)
+        .where(SurveillancePublication.project == "systematic-research")
+        .where(SurveillancePublication.publication_status != "retracted")
+        .where(SurveillanceSource.is_enabled.is_(True))
+        .where(SurveillanceSource.access_class == "public")
+        .order_by(SurveillancePublication.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "question_seeds": [
+            {
+                "publication_id": str(publication.id),
+                "content_digest": publication.content_digest,
+                "title": publication.title,
+                "canonical_url": publication.canonical_url,
+                "published_at": publication.published_at.isoformat(),
+                "source_key": source.source_key,
+                "domains": source.domains,
+                "novelty_score": publication.assessment.get("novelty_score"),
+                "evidence_quality": publication.assessment.get("evidence_quality"),
+                "proposed_question": publication.routing.get("proposed_question"),
+                "fetch_receipt_digest": publication.provenance.get(
+                    "fetch_receipt_digest"
+                ),
+                "trust_class": "public_metadata_question_seed",
+            }
+            for publication, source in records
+        ],
+        "claim_boundary": (
+            "Public metadata may seed a falsifiable question after injection screening. "
+            "It is not scientific support, mathematical verification, code authority, "
+            "execution approval or promotion evidence."
+        ),
+    }
+
+
 def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[dict]:
     recent = {
         instrument
@@ -574,6 +666,8 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
             for item in attempts
         ],
         "recent_research_memory": research_memory,
+        "native_signal_surveillance": _recent_signal_surveillance(db),
+        "external_research_surveillance": _recent_external_surveillance(db),
         "execution_observations": [
             {
                 "venue": item.venue,

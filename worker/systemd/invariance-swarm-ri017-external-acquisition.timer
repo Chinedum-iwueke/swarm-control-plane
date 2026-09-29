@@ -1,0 +1,13 @@
+[Unit]
+Description=Acquire allowlisted public research evidence every six hours
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=true
+Unit=invariance-swarm-ri017-external-acquisition.service
+
+[Install]
+WantedBy=timers.target
+

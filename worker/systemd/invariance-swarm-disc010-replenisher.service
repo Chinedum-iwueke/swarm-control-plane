@@ -1,0 +1,35 @@
+[Unit]
+Description=Bulletproof bounded OHLCV signal-screen replenisher
+After=invariance-swarm-alpha-capacity-director.service
+Requires=invariance-swarm-alpha-capacity-director.service
+
+[Service]
+Type=oneshot
+User=omenka
+Group=omenka
+WorkingDirectory=/home/omenka/Projects/bulletproof_bt-production
+EnvironmentFile=/etc/invariance-swarm/disc010-replenisher.env
+Environment=PYTHONPATH=/home/omenka/Projects/bulletproof_bt-production/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+ExecStart=/home/omenka/Projects/bulletproof_bt/.venv/bin/python scripts/replenish_disc010_signal_screens.py --db /home/omenka/.local/state/invariance-swarm/research-capacity.sqlite --data-root /home/omenka/Projects/bulletproof_bt/research_data --output-root /home/omenka/.local/state/invariance-swarm/disc010/runs --state /home/omenka/.local/state/invariance-swarm/disc010/replenisher-state.json --source-commit ${DISC010_SOURCE_COMMIT} --target-active 3 --max-workers 6
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/home/omenka/.local/state/invariance-swarm
+ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
+ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt-production
+

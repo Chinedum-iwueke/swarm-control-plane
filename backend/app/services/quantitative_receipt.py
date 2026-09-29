@@ -102,6 +102,10 @@ PRODUCERS = {
     "DISC-004": "bt.institutional.discovery.search_proposal_receipt",
     "DISC-005": "bt.institutional.discovery.symbolic_candidate_receipt",
     "DISC-007": "bt.institutional.discovery.selection_audit_receipt",
+    "DISC-010": (
+        "bt.institutional.ohlcv_surveillance."
+        "ohlcv_signal_surveillance_receipt"
+    ),
     "DEMO-001": "bt.institutional.demo_certification.demo_certification_receipt",
     "EXEC-001": "bt.institutional.execution.execution_journal_receipt",
     "EXEC-002": "bt.institutional.microstructure.microstructure_state_receipt",
@@ -468,6 +472,161 @@ def _validate_alpha_admission(receipt: dict) -> None:
         raise QuantitativeReceiptConflict("Malformed ALPHA-001 v2 admission receipt.")
 
 
+def _validate_disc010(receipt: dict) -> None:
+    result = receipt.get("result", {})
+    trials = result.get("trials")
+    candidates = result.get("question_candidate_digests")
+    required_authority = {
+        "execution_authority": False,
+        "strategy_authority": False,
+        "promotion_authority": False,
+    }
+    if (
+        result.get("schema_version") != "disc010-signal-screen-receipt-v1.0.0"
+        or not isinstance(result.get("family_id"), str)
+        or not result["family_id"]
+        or not _is_digest(result.get("family_digest"))
+        or not isinstance(result.get("basket"), list)
+        or not result["basket"]
+        or len(result["basket"]) != len(set(result["basket"]))
+        or not isinstance(trials, list)
+        or not 1 <= len(trials) <= 256
+        or result.get("trial_count") != len(trials)
+        or result.get("evaluated_count")
+        != sum(item.get("status") == "evaluated" for item in trials if isinstance(item, dict))
+        or result.get("invalid_count")
+        != sum(item.get("status") == "invalid" for item in trials if isinstance(item, dict))
+        or not isinstance(candidates, list)
+        or result.get("final_oos_opened") is not False
+        or result.get("final_oos_metrics") != {}
+        or any(result.get(key) is not value for key, value in required_authority.items())
+        or not isinstance(result.get("claim_boundary"), str)
+        or not result["claim_boundary"]
+    ):
+        raise QuantitativeReceiptConflict("Malformed or authority-bearing DISC-010 receipt.")
+    trial_digests: set[str] = set()
+    expected_candidates: list[str] = []
+    contract_fields = {
+        "trial_id",
+        "predictor_instrument",
+        "target_instrument",
+        "predictor",
+        "lookback_bars",
+        "target_horizon_bars",
+        "tail_quantile",
+        "relation",
+        "minimum_support",
+        "minimum_effect",
+        "parameters",
+    }
+    for trial in trials:
+        contract = trial.get("trial_contract") if isinstance(trial, dict) else None
+        if (
+            not isinstance(trial, dict)
+            or not _is_digest(trial.get("trial_digest"))
+            or not isinstance(contract, dict)
+            or set(contract) != contract_fields
+            or _digest(contract) != trial.get("trial_digest")
+            or contract.get("trial_id") != trial.get("trial_id")
+            or contract.get("predictor_instrument") not in result["basket"]
+            or contract.get("target_instrument") not in result["basket"]
+            or contract.get("predictor")
+            not in {
+                "log_return",
+                "fractional_difference",
+                "volume_zscore",
+                "realized_volatility",
+            }
+            or contract.get("relation")
+            not in {"same_direction", "opposite_direction", "positive", "negative"}
+            or trial["trial_digest"] in trial_digests
+            or trial.get("status") not in {"evaluated", "invalid"}
+            or type(trial.get("question_candidate")) is not bool
+            or type(trial.get("family_adjusted_discovery")) is not bool
+        ):
+            raise QuantitativeReceiptConflict("Malformed DISC-010 trial ledger.")
+        trial_digests.add(trial["trial_digest"])
+        if trial["question_candidate"]:
+            if (
+                trial["status"] != "evaluated"
+                or trial["family_adjusted_discovery"] is not True
+                or trial.get("direction_stable") is not True
+                or trial.get("minimum_effect_met") is not True
+            ):
+                raise QuantitativeReceiptConflict(
+                    "DISC-010 candidate contradicts its validation gates."
+                )
+            expected_candidates.append(trial["trial_digest"])
+    if candidates != sorted(expected_candidates):
+        raise QuantitativeReceiptConflict(
+            "DISC-010 candidate summary conflicts with its complete trial ledger."
+        )
+
+
+def signal_surveillance_summary(db: Session, *, limit: int = 50) -> dict:
+    """Project canonical DISC-010 screens without granting downstream authority."""
+    records = db.scalars(
+        select(QuantitativeProducerReceipt)
+        .where(QuantitativeProducerReceipt.milestone == "DISC-010")
+        .order_by(QuantitativeProducerReceipt.registered_at.desc())
+        .limit(limit)
+    ).all()
+    items = []
+    counts = Counter()
+    for record in records:
+        result = record.receipt["result"]
+        candidates = [
+            {
+                "trial_digest": trial["trial_digest"],
+                "contract": trial["trial_contract"],
+                "validation_effect": trial.get("validation_effect"),
+                "validation_empirical_p_value": trial.get(
+                    "validation_empirical_p_value"
+                ),
+            }
+            for trial in result["trials"]
+            if trial["question_candidate"]
+        ]
+        counts["families"] += 1
+        counts["trials"] += result["trial_count"]
+        counts["evaluated"] += result["evaluated_count"]
+        counts["invalid"] += result["invalid_count"]
+        counts["question_candidates"] += len(candidates)
+        items.append(
+            {
+                "receipt_id": str(record.id),
+                "receipt_digest": record.receipt_digest,
+                "source_commit": record.source_commit,
+                "registered_at": record.registered_at,
+                "family_id": result["family_id"],
+                "basket": result["basket"],
+                "research_timeframe": result["research_timeframe"],
+                "trial_count": result["trial_count"],
+                "evaluated_count": result["evaluated_count"],
+                "invalid_count": result["invalid_count"],
+                "question_candidates": candidates,
+                "final_oos_opened": False,
+            }
+        )
+    return {
+        "counts": {
+            key: counts[key]
+            for key in (
+                "families",
+                "trials",
+                "evaluated",
+                "invalid",
+                "question_candidates",
+            )
+        },
+        "items": items,
+        "claim_boundary": (
+            "DISC-010 findings are validation-screened research questions. Final OOS, "
+            "strategy, promotion, order and capital authority remain closed."
+        ),
+    }
+
+
 def register_receipt(
     db: Session, payload: QuantitativeReceiptCreate
 ) -> QuantitativeProducerReceipt:
@@ -495,6 +654,8 @@ def register_receipt(
         raise QuantitativeReceiptConflict("Producer receipt digest does not match.")
     if receipt["milestone"] == "ALPHA-001":
         _validate_alpha_admission(receipt)
+    if receipt["milestone"] == "DISC-010":
+        _validate_disc010(receipt)
     if is_full_quality:
         _validate_full_lake_quality(db, receipt)
     if is_manifest_catalog:

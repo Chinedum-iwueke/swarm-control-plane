@@ -16,6 +16,7 @@ from app.services.quantitative_receipt import (
     QuantitativeReceiptConflict,
     lake_inventory_summary,
     register_receipt,
+    signal_surveillance_summary,
 )
 
 router = APIRouter(
@@ -54,6 +55,11 @@ def list_receipts(db: Annotated[Session, Depends(get_db)]):
 @router.get("/lake-inventory")
 def lake_inventory(db: Annotated[Session, Depends(get_db)]):
     return lake_inventory_summary(db)
+
+
+@router.get("/signal-surveillance")
+def signal_surveillance(db: Annotated[Session, Depends(get_db)]):
+    return signal_surveillance_summary(db)
 
 
 @router.get("/{receipt_id}", response_model=QuantitativeReceiptResponse)
