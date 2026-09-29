@@ -10,6 +10,7 @@ from uuid import UUID
 import httpx
 import pytest
 from app.main import app
+from app.models.surveillance import SurveillanceSource
 from app.schemas.surveillance import (
     CandidateDispositionCreate,
     FeedEntry,
@@ -109,6 +110,7 @@ def test_public_html_transcript_index_is_an_explicit_source_kind() -> None:
         allowed_hosts=["transcripts.example.test"],
     )
     assert source.feed_kind == "html_transcript_index"
+    assert SurveillanceSource.__table__.c.feed_kind.type.length >= len(source.feed_kind)
 
 
 def test_atom_fixture_is_parsed_as_structured_entries() -> None:
