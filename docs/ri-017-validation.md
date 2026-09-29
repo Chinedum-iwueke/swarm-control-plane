@@ -24,11 +24,16 @@
 - A read-only live connector smoke fetched 100 entries from each of the three new feeds.
   This is connectivity/parser evidence only; no production API state was mutated.
 
-## Open production evidence
+## Production evidence
 
-Merge and deploy the exact reviewed commit on VM1, observe successful fetch receipts,
-replay representative candidates in Mission Control and confirm that ALPHA-004 receives
-the bounded question-seed context. Public YouTube transcripts, social observations,
+VM1 runs the phase-one worker from exact control-plane commit
+`6991b641bf6b14f03d9bad363a64f81d6b4f582b`. The first production pass retained five
+successful fetch receipts and 499 immutable publications: 100 from each of three q-fin
+feeds, 99 accepted and one rejected from the ML-method feed, and 100 from Jane Street.
+The worker runs as `omenka` with no capabilities and receives root-owned API credentials
+through systemd credential projection. Candidate metadata is available to the bounded
+ALPHA-004 context and grants no canonical claim or execution authority.
+
+Public YouTube transcripts, social observations,
 NeurIPS/ICML proceedings and full-text adapters remain separate work because their
 identity, rights, corrections and replay contracts are not yet complete.
-
