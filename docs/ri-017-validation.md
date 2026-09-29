@@ -30,16 +30,20 @@
 
 ## Production evidence
 
-VM1 runs the phase-one worker from exact control-plane commit
-`6991b641bf6b14f03d9bad363a64f81d6b4f582b`. The first production pass retained five
-successful fetch receipts and 499 immutable publications: 100 from each of three q-fin
-feeds, 99 accepted and one rejected from the ML-method feed, and 100 from Jane Street.
-The worker runs as `omenka` with no capabilities and receives root-owned API credentials
-through systemd credential projection. Candidate metadata is available to the bounded
-ALPHA-004 context and grants no canonical claim or execution authority.
+VM1 runs the worker from exact control-plane commit
+`a147f2eb8b95df1d8f24d3d9d1809c0c32f5d455`. VM2 runs migration
+`a7d4e9c21b60` and the API rebuilt from that commit. The production pass retained the
+existing five bounded feeds and published 22 official Signals & Threads transcript
+records without rejection. Its immutable fetch-receipt digest is
+`fa445497989a4895c264ff3d0ff1b219c7f71836adbbb6c179381da8c5f3edb4`.
 
-The official transcript adapter is source-verified and tested but not production-
-observed until its exact commit is deployed. Public YouTube transcripts, social
-observations, NeurIPS/ICML proceedings and paper full-text adapters remain separate
-work because their
-identity, rights, corrections and replay contracts are not yet complete.
+The worker runs as `omenka` with no capabilities and receives root-owned API credentials
+through systemd credential projection. Retrieval and transcript extraction are
+deterministic and do not invoke an LLM. Only sanitized title, provenance and assessment
+metadata can later enter the bounded ALPHA-004 reasoning context as a question seed;
+neither transcript text nor model commentary receives canonical claim, execution,
+promotion, order or capital authority.
+
+Public YouTube transcripts, social observations, NeurIPS/ICML proceedings and paper
+full-text adapters remain separate work because their identity, rights, corrections and
+replay contracts are not yet complete.
