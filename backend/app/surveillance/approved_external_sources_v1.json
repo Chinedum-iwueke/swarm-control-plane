@@ -1,0 +1,47 @@
+[
+  {
+    "project": "systematic-research",
+    "source_key": "arxiv-qfin-statistical",
+    "name": "arXiv Quantitative Finance - Statistical Finance",
+    "feed_url": "https://export.arxiv.org/api/query?search_query=cat:q-fin.ST&sortBy=submittedDate&sortOrder=descending&max_results=100",
+    "feed_kind": "atom",
+    "domains": ["statistics", "finance", "trading"],
+    "rights": "Public metadata and abstracts only; full text follows artifact-specific rights.",
+    "access_class": "public",
+    "cadence": "daily",
+    "freshness_hours": 48,
+    "owner": "canon-curator",
+    "allowed_hosts": ["export.arxiv.org"],
+    "is_enabled": true
+  },
+  {
+    "project": "systematic-research",
+    "source_key": "arxiv-ml-methods",
+    "name": "arXiv Machine Learning Methods",
+    "feed_url": "https://export.arxiv.org/api/query?search_query=cat:stat.ML+OR+cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=100",
+    "feed_kind": "atom",
+    "domains": ["machine-learning", "statistics"],
+    "rights": "Public metadata and abstracts only; full text follows artifact-specific rights.",
+    "access_class": "public",
+    "cadence": "daily",
+    "freshness_hours": 48,
+    "owner": "canon-curator",
+    "allowed_hosts": ["export.arxiv.org"],
+    "is_enabled": true
+  },
+  {
+    "project": "systematic-research",
+    "source_key": "jane-street-public-feed",
+    "name": "Jane Street Public Research and Signals Feed",
+    "feed_url": "https://blog.janestreet.com/feed.xml",
+    "feed_kind": "rss",
+    "domains": ["trading", "market-microstructure", "execution", "machine-learning"],
+    "rights": "Public feed metadata and excerpts only; linked content retains publisher rights.",
+    "access_class": "public",
+    "cadence": "daily",
+    "freshness_hours": 168,
+    "owner": "canon-curator",
+    "allowed_hosts": ["blog.janestreet.com"],
+    "is_enabled": true
+  }
+]

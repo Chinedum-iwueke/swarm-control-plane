@@ -36,8 +36,20 @@ the source registry, rights and allowlist are immutable once used by a receipt.
 
 ## Closure
 
-Source policy and quarantine tests are present. RI-017 remains open until an isolated
-worker, source registry, immutable storage, correction/retraction path, Mission Control
-queue and production fetch/replay receipts are deployed. This source slice grants no
-network access to existing ALPHA-004 Codex services.
+The isolated VM1 public-feed worker, expanded immutable source registry and hardened
+six-hour timer are implemented. It submits to the existing RI-006 source, fetch,
+publication, correction/retraction, digest and Mission Control surfaces. The initial
+registry adds statistical-finance and ML-method arXiv feeds plus Jane Street's official
+public feed. It does not call an LLM and does not grant network access to existing
+ALPHA-004 Codex services.
 
+RI-017 remains operationally open until the exact commit is deployed and representative
+fetch/replay receipts are observed. Public YouTube transcripts, social sources,
+NeurIPS/ICML proceedings adapters and full text require separate exact-source, rights,
+correction and parser contracts; Agent Reach availability alone is not admission.
+
+Install on VM1 only after the reviewed commit is present:
+
+```bash
+sudo bash worker/systemd/install-ri017-external-acquisition.sh <exact-control-plane-commit>
+```

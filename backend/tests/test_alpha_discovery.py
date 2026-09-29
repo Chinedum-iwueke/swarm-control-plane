@@ -29,6 +29,7 @@ from app.services.alpha_discovery import (
     _focus_founder_context,
     _missing_admission_fields,
     _normalize_candidate_input,
+    _recent_external_surveillance,
     _recent_research_memory,
     _recent_signal_surveillance,
     _recover_resumed_stage,
@@ -805,6 +806,34 @@ def test_recent_signal_surveillance_preserves_survivors_and_nulls():
     assert context["screens"][0]["trials"][0]["question_candidate"] is True
     assert context["screens"][0]["trials"][1]["question_candidate"] is False
     assert context["screens"][0]["final_oos_opened"] is False
+
+
+def test_recent_external_surveillance_is_a_question_seed_not_evidence():
+    publication = SimpleNamespace(
+        id=uuid4(),
+        content_digest="f" * 64,
+        title="A causal test of cross-market information diffusion",
+        canonical_url="https://papers.example/item",
+        published_at=datetime.now(UTC),
+        assessment={"novelty_score": 0.8, "evidence_quality": 0.7},
+        routing={"proposed_question": "Does this mechanism survive crypto costs?"},
+        provenance={"fetch_receipt_digest": "a" * 64},
+    )
+    source = SimpleNamespace(
+        source_key="public-paper-feed",
+        domains=["market-microstructure"],
+    )
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [(publication, source)]
+
+    context = _recent_external_surveillance(db)
+
+    assert context["question_seeds"][0]["title"] == publication.title
+    assert context["question_seeds"][0]["trust_class"] == (
+        "public_metadata_question_seed"
+    )
+    assert "not scientific support" in context["claim_boundary"]
+    assert "abstract" not in context["question_seeds"][0]
 
 
 def test_exploration_frontier_prefers_instruments_absent_from_recent_memory():

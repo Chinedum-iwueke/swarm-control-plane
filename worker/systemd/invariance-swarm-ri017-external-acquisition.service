@@ -1,0 +1,30 @@
+[Unit]
+Description=Hermes governed public research acquisition worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/omenka/Projects/swarm-control-plane
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/ri017_external_acquisition.py --registry backend/app/surveillance/approved_sources_v1.json --registry backend/app/surveillance/approved_external_sources_v1.json --state /var/lib/invariance-swarm/ri017/acquisition-state.json --api-url-file /etc/invariance-swarm/ri017-api-url --token-file /etc/invariance-swarm/ri017-orchestrator.token
+UMask=0077
+Nice=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/invariance-swarm/ri017
+ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane /etc/invariance-swarm/ri017-api-url /etc/invariance-swarm/ri017-orchestrator.token
+

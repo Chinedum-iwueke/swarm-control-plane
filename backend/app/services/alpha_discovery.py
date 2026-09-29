@@ -25,6 +25,7 @@ from app.models.authority import AuthorityDelegation
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.surveillance import SurveillancePublication, SurveillanceSource
 from app.models.task import Task
 from app.models.task_event import TaskEvent
 from app.schemas.alpha_campaign import (
@@ -546,6 +547,46 @@ def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
     }
 
 
+def _recent_external_surveillance(db: Session, *, limit: int = 20) -> dict:
+    """Expose sanitized public-source metadata as question seeds, never evidence."""
+    records = db.execute(
+        select(SurveillancePublication, SurveillanceSource)
+        .join(SurveillanceSource, SurveillancePublication.source_id == SurveillanceSource.id)
+        .where(SurveillancePublication.project == "systematic-research")
+        .where(SurveillancePublication.publication_status != "retracted")
+        .where(SurveillanceSource.is_enabled.is_(True))
+        .where(SurveillanceSource.access_class == "public")
+        .order_by(SurveillancePublication.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "question_seeds": [
+            {
+                "publication_id": str(publication.id),
+                "content_digest": publication.content_digest,
+                "title": publication.title,
+                "canonical_url": publication.canonical_url,
+                "published_at": publication.published_at.isoformat(),
+                "source_key": source.source_key,
+                "domains": source.domains,
+                "novelty_score": publication.assessment.get("novelty_score"),
+                "evidence_quality": publication.assessment.get("evidence_quality"),
+                "proposed_question": publication.routing.get("proposed_question"),
+                "fetch_receipt_digest": publication.provenance.get(
+                    "fetch_receipt_digest"
+                ),
+                "trust_class": "public_metadata_question_seed",
+            }
+            for publication, source in records
+        ],
+        "claim_boundary": (
+            "Public metadata may seed a falsifiable question after injection screening. "
+            "It is not scientific support, mathematical verification, code authority, "
+            "execution approval or promotion evidence."
+        ),
+    }
+
+
 def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[dict]:
     recent = {
         instrument
@@ -626,6 +667,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         ],
         "recent_research_memory": research_memory,
         "native_signal_surveillance": _recent_signal_surveillance(db),
+        "external_research_surveillance": _recent_external_surveillance(db),
         "execution_observations": [
             {
                 "venue": item.venue,

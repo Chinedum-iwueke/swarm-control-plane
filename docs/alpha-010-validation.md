@@ -35,3 +35,7 @@ systemd hardening, discovery-context projection, Mission Control and native Bull
 behavior; Ruff and JavaScript syntax checks pass. No production service has been
 installed and no real-lake DISC-010 receipt has yet been registered. No model, order,
 promotion or capital authority was changed.
+
+RI-017's public-feed worker can consume otherwise idle network/retrieval capacity but is
+not a substitute for the native quantitative queue. It has no scientific, execution or
+capital authority and enters ALPHA-004 only as sanitized question-seed metadata.
