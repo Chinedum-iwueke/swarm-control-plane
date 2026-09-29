@@ -26,7 +26,7 @@ test -n "${SWARM_API_URL:-}" -a -n "${SWARM_ORCHESTRATOR_TOKEN:-}" || {
   exit 1
 }
 
-install -d -o root -g root -m 0700 /var/lib/invariance-swarm/ri017
+install -d -o omenka -g omenka -m 0700 /var/lib/invariance-swarm/ri017
 printf '%s\n' "$SWARM_API_URL" | install -o root -g root -m 0600 \
   /dev/stdin /etc/invariance-swarm/ri017-api-url
 printf '%s\n' "$SWARM_ORCHESTRATOR_TOKEN" | install -o root -g root -m 0600 \
@@ -39,4 +39,3 @@ systemctl daemon-reload
 systemctl enable --now invariance-swarm-ri017-external-acquisition.timer
 systemctl start invariance-swarm-ri017-external-acquisition.service
 echo 'RI-017 governed external acquisition installed and started.'
-
