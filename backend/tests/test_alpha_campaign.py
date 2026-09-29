@@ -2186,6 +2186,65 @@ def test_reconcile_recovers_scope_budget_failure_to_g6(monkeypatch):
     advance.assert_called_once_with(db, record)
 
 
+def test_reconcile_retains_exhausted_g9_review_and_advances(monkeypatch):
+    record = campaign(
+        status="needs_attention",
+        phase="complete",
+        next_action="operator_review",
+        completed_at=datetime.now(UTC),
+    )
+    failed_id = uuid4()
+    record.terminal_reason = {
+        "category": "governed_pipeline_task_failed",
+        "task_id": str(failed_id),
+    }
+    failed = SimpleNamespace(
+        id=failed_id,
+        status="failed",
+        task_number=f"A3-{record.id.hex[:8]}-001-G9",
+        plan_digest="7" * 64,
+        input_contract={"evidence_context": "{}"},
+        failure={
+            "error_category": "independent_review_rejected",
+            "execution_evidence": {
+                "summary": {
+                    "independent_review": {
+                        "approved": False,
+                        "summary": "The bounded implementation remains invalid.",
+                        "findings": [
+                            {
+                                "severity": "high",
+                                "message": "Held-out execution remains unreachable.",
+                            }
+                        ],
+                    }
+                },
+                "artifacts": ["artifacts/review.json"],
+            },
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = failed
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+    retained = MagicMock()
+    monkeypatch.setattr(service, "record_attempt", retained)
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.terminal_reason == {}
+    payload = retained.call_args.args[2]
+    assert payload.outcome == "invalid"
+    assert payload.trial_count == 0
+    assert payload.gate_report.independent_review_complete is True
+    assert payload.gate_report.out_of_sample_evaluated is False
+    assert payload.gate_report.qualification_authority is False
+    assert payload.gate_report.shadow_eligible is False
+    assert payload.evidence_digests == sorted(payload.evidence_digests)
+
+
 def test_g6_review_failure_creates_g7_correction(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
