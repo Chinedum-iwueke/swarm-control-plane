@@ -84,3 +84,32 @@ class FleetIncidentEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ResearchUtilizationSnapshot(Base):
+    __tablename__ = "research_utilization_snapshots"
+    __table_args__ = (UniqueConstraint("machine", "sample_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    machine: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    sample_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    state: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    worker_budget: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_workers: Mapped[int] = mapped_column(Integer, nullable=False)
+    queue_counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    work_kind_counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    allocations: Mapped[list] = mapped_column(JSONB, nullable=False)
+    scheduler: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    source_commits: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    record_digest: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )

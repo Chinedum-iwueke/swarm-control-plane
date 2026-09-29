@@ -29,6 +29,14 @@ async def test_dashboard_uses_bearer_without_exposing_token(
             return httpx.Response(200, json={"status": "ok"})
         if request.url.path == "/v1/research/alpha-campaigns/backtests/activity":
             return httpx.Response(200, json={"items": [], "counts": {}, "total": 0})
+        if request.url.path == "/v1/research/utilization/current":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [],
+                    "claim_boundary": "Native capacity custody only.",
+                },
+            )
         if request.url.path.endswith("/blocked-artifacts"):
             return httpx.Response(
                 200,
@@ -201,6 +209,7 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["derived_state"]["current"] is True
     assert result["alpha_campaigns"] == []
     assert "backtest_activity" in result
+    assert result["research_utilization"]["items"] == []
     assert result["alpha_discovery"]["mandates"] == []
     assert result["scientific_assurance"]["counts"]["verified"] == 1
 

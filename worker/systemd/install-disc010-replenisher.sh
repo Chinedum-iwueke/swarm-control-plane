@@ -29,6 +29,7 @@ for file in \
   "$native/scripts/run_disc010_signal_screen.py" \
   "$native/scripts/run_alpha_capacity_job.py" \
   "$control/worker/scripts/disc010_publish.py" \
+  "$control/worker/scripts/research_utilization_publish.py" \
   "$control/worker/.venv/bin/python" \
   /home/omenka/Projects/bulletproof_bt/.venv/bin/python \
   "$data_root/manifests/coverage.parquet"; do
@@ -54,7 +55,8 @@ install -d -o omenka -g omenka -m 0700 \
   /home/omenka/.local/state/invariance-swarm/disc010/runs
 environment="$(mktemp)"
 trap 'rm -f "$environment"' EXIT
-printf 'DISC010_SOURCE_COMMIT=%s\n' "$source_commit" > "$environment"
+printf 'DISC010_CONTROL_COMMIT=%s\nDISC010_SOURCE_COMMIT=%s\n' \
+  "$control_commit" "$source_commit" > "$environment"
 install -o root -g root -m 0600 \
   "$environment" /etc/invariance-swarm/disc010-replenisher.env
 printf '%s\n' "$SWARM_API_URL" | install -o root -g root -m 0600 \

@@ -1,6 +1,7 @@
 # ALPHA-010 Validation
 
-Status: source producer and scheduling seam implemented; production activation open.
+Status: source producer, scheduling seam and canonical utilization telemetry implemented;
+production activation and observed closure remain open.
 
 - Deterministic resource planning uses CPU, available RAM, a free-memory floor and
   measured per-worker estimate; it never allocates from CPU count alone.
@@ -29,12 +30,18 @@ Status: source producer and scheduling seam implemented; production activation o
   only complete canonical receipts.
 - Registered survivor, null and invalid trials enter the next ALPHA-004 context; Mission
   Control renders the canonical ledger without implying OOS or promotion authority.
+- A root-only publisher projects the read-only native SQLite queue and scheduler state
+  into immutable Hermes utilization snapshots every two minutes. It accounts exactly
+  for pending, locked, done and failed governed assignments and signal screens.
+- Mission Control distinguishes approved backtests, fallback discovery, queued work,
+  resource blocking, stale telemetry and a genuinely empty eligible queue. Three
+  consecutive empty, stalled or blocked observations create a Telegram founder alert.
 
 Focused source verification covers policy, receipt validation, publication replay,
-systemd hardening, discovery-context projection, Mission Control and native Bulletproof
-behavior; Ruff and JavaScript syntax checks pass. No production service has been
-installed and no real-lake DISC-010 receipt has yet been registered. No model, order,
-promotion or capital authority was changed.
+capacity accounting, systemd hardening, discovery-context projection, Mission Control
+and native Bulletproof behavior; Ruff and JavaScript syntax checks pass. The production
+services and schema from this change remain undeployed until the pinned rollout is run.
+No model, order, promotion or capital authority was changed.
 
 RI-017's public-feed worker can consume otherwise idle network/retrieval capacity but is
 not a substitute for the native quantitative queue. It has no scientific, execution or

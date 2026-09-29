@@ -1340,6 +1340,46 @@ async def test_service_slo_alert_is_attributable_and_bounded(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_research_utilization_alert_reports_exact_capacity_state(
+    tmp_path: Path,
+) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [
+        {
+            "id": "utilization-notification-1",
+            "kind": "research_utilization_alert",
+            "payload": {
+                "machine": "vm1-developer",
+                "state": "eligible_queue_empty",
+                "summary": "No governed backtest or fallback research is eligible to run.",
+                "worker_budget": 12,
+                "active_workers": 0,
+                "queue_counts": {"PENDING": 0, "LOCKED": 0},
+                "record_digest": "a" * 64,
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+
+    assert "Research capacity needs attention" in telegram.sent[0][1]
+    assert "Workers: 0/12" in telegram.sent[0][1]
+    assert channel.acknowledged == [
+        ("utilization-notification-1", "telegram:456:10001")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_codex_auth_notification_contains_only_device_handoff(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()

@@ -72,8 +72,9 @@ It reports queue counts, running/paused/external worker slots, job IDs and RSS.
 Idle agent heartbeats include bounded `research_capacity` metadata; running task
 heartbeats include capacity telemetry and stale/missing telemetry is explicit.
 Hermes' existing task/operation ledger remains authoritative for each assignment.
-Mission Control exposes backtest work, but dedicated queue-depth, safe-fallback and
-resource-allocation visibility remains part of ALPHA-010.
+ALPHA-010 publishes the native queue and scheduler as a separate immutable utilization
+stream, so Mission Control exposes queue depth, safe fallback state, running allocations
+and stale/empty capacity without treating telemetry as a research result.
 
 Production has validated approved independent assignments, distinct task leases,
 overlapping admission/execution and terminal BT-009 publication. New rollouts still

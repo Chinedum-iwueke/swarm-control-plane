@@ -16,8 +16,8 @@ from app.api.routes.candidate_admission_schemas import (
     router as candidate_admission_schemas_router,
 )
 from app.api.routes.causal_pipelines import router as causal_pipelines_router
-from app.api.routes.controls import router as controls_router
 from app.api.routes.codex_auth import router as codex_auth_router
+from app.api.routes.controls import router as controls_router
 from app.api.routes.conversations import channel_router as channel_conversations_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.corpus import router as corpus_router
@@ -98,6 +98,7 @@ from app.api.routes.reference_data import router as reference_data_router
 from app.api.routes.research import router as research_router
 from app.api.routes.research_bridge import router as research_bridge_router
 from app.api.routes.research_programs import router as research_programs_router
+from app.api.routes.research_utilization import router as research_utilization_router
 from app.api.routes.retrieval import router as retrieval_router
 from app.api.routes.risk_budget_schemas import router as risk_budget_schemas_router
 from app.api.routes.risk_rules import router as risk_rules_router
@@ -138,8 +139,8 @@ __all__ = [
     "candidate_admission_schemas_router",
     "causal_pipelines_router",
     "channel_conversations_router",
-    "controls_router",
     "codex_auth_router",
+    "controls_router",
     "conversations_router",
     "corpus_router",
     "corpus_sync_router",
@@ -197,6 +198,7 @@ __all__ = [
     "research_bridge_router",
     "research_programs_router",
     "research_router",
+    "research_utilization_router",
     "retrieval_router",
     "risk_budget_schemas_router",
     "risk_rules_router",
