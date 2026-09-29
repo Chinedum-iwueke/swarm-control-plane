@@ -22,7 +22,8 @@ def test_replenisher_is_unprivileged_bounded_and_separate_from_lake_checkout():
 def test_replenisher_timer_is_persistent_and_bounded():
     timer = (ROOT / "systemd/invariance-swarm-disc010-replenisher.timer").read_text()
 
-    assert "OnUnitActiveSec=5min" in timer
+    assert "OnUnitActiveSec=1min" in timer
+    assert "RandomizedDelaySec=5s" in timer
     assert "Persistent=true" in timer
     assert "WantedBy=timers.target" in timer
 
@@ -50,3 +51,9 @@ def test_installer_requires_exact_deployed_source_and_root_owned_environment():
     assert "invariance-swarm-disc010-replenisher.timer" in installer
     assert "invariance-swarm-disc010-publisher.timer" in installer
     assert "/etc/invariance-swarm/disc010-orchestrator.token" in installer
+    assert "alpha-capacity-state.json" in installer
+    assert "(.jobs | length) == 0" in installer
+    assert "systemctl restart invariance-swarm-alpha-capacity-director.service" in installer
+    assert installer.index("(.jobs | length) == 0") < installer.index(
+        "systemctl restart invariance-swarm-alpha-capacity-director.service"
+    )

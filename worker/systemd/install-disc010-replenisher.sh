@@ -23,6 +23,8 @@ source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 native=/home/omenka/Projects/bulletproof_bt-production
 data_root=/home/omenka/Projects/bulletproof_bt/research_data
 control=/home/omenka/Projects/swarm-control-plane
+capacity_state=/home/omenka/.local/state/invariance-swarm/alpha-capacity-state.json
+command -v jq >/dev/null || { echo 'jq is required for safe capacity restart.' >&2; exit 1; }
 for file in \
   "$native/scripts/replenish_disc010_signal_screens.py" \
   "$native/scripts/queue_disc010_signal_screen.py" \
@@ -49,6 +51,15 @@ test -n "${SWARM_API_URL:-}" -a -n "${SWARM_ORCHESTRATOR_TOKEN:-}" || {
   exit 1
 }
 
+if test -f "$capacity_state" && ! jq -e '
+  (.jobs | length) == 0 and
+  (.worker_slots.running // 0) == 0 and
+  (.worker_slots.external_locked // 0) == 0
+' "$capacity_state" >/dev/null; then
+  echo 'Capacity work is active; refusing to restart the resident scheduler during installation.' >&2
+  exit 1
+fi
+
 install -d -o root -g root -m 0755 /etc/invariance-swarm
 install -d -o omenka -g omenka -m 0700 \
   /home/omenka/.local/state/invariance-swarm/disc010 \
@@ -70,6 +81,9 @@ install -o root -g root -m 0644 \
   "$source_dir/invariance-swarm-disc010-publisher.timer" \
   /etc/systemd/system/
 systemctl daemon-reload
+# The director imports its dispatch table at process start. Restart only after
+# the zero-active-work preflight so its resident code matches the pinned checkout.
+systemctl restart invariance-swarm-alpha-capacity-director.service
 systemctl enable --now \
   invariance-swarm-disc010-replenisher.timer \
   invariance-swarm-disc010-publisher.timer

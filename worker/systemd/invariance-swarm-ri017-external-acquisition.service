@@ -5,11 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+User=omenka
+Group=omenka
 WorkingDirectory=/home/omenka/Projects/swarm-control-plane
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/ri017_external_acquisition.py --registry backend/app/surveillance/approved_sources_v1.json --registry backend/app/surveillance/approved_external_sources_v1.json --state /var/lib/invariance-swarm/ri017/acquisition-state.json --api-url-file /etc/invariance-swarm/ri017-api-url --token-file /etc/invariance-swarm/ri017-orchestrator.token
+LoadCredential=ri017-api-url:/etc/invariance-swarm/ri017-api-url
+LoadCredential=ri017-orchestrator.token:/etc/invariance-swarm/ri017-orchestrator.token
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/ri017_external_acquisition.py --registry backend/app/surveillance/approved_sources_v1.json --registry backend/app/surveillance/approved_external_sources_v1.json --state /var/lib/invariance-swarm/ri017/acquisition-state.json --api-url-file ${CREDENTIALS_DIRECTORY}/ri017-api-url --token-file ${CREDENTIALS_DIRECTORY}/ri017-orchestrator.token
 UMask=0077
 Nice=15
 NoNewPrivileges=true
@@ -26,5 +28,4 @@ LockPersonality=true
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/invariance-swarm/ri017
-ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane /etc/invariance-swarm/ri017-api-url /etc/invariance-swarm/ri017-orchestrator.token
-
+ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane
