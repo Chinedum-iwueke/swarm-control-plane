@@ -6,8 +6,9 @@ that pass the existing governance and scientific gates.
 
 - Deterministic resource planning uses CPU, available RAM, a free-memory floor and
   measured per-worker estimate; it never allocates from CPU count alone.
-- With the current VM1 observation, two approved jobs receive six workers each. A
-  synthetic 24-worker host permits three eight-worker jobs.
+- With the current VM1 observation, two approved jobs receive six workers each or three
+  eligible jobs receive four workers each. A synthetic 24-worker host permits three
+  eight-worker jobs.
 - Unapproved execution, new code, capital/order work and sealed-OOS research are
   rejected explicitly.
 - An empty backtest queue falls through to eligible native signal, representation,
@@ -43,8 +44,9 @@ capacity accounting, systemd hardening, discovery-context projection, Mission Co
 and native Bulletproof behavior; Ruff and JavaScript syntax checks pass. Production runs
 control plane `6991b641bf6b14f03d9bad363a64f81d6b4f582b` and Bulletproof
 `da9f1d2850b707752f0059857932f97fb32b4bb9`. A fresh canonical snapshot observed a
-12-worker resource budget fully allocated to two six-worker DISC-010 screens, with a
-third assignment queued/replenished. Seven published families retained 56 evaluated,
+12-worker resource budget fully allocated to two six-worker DISC-010 screens. With the
+three-job production ceiling, three eligible jobs can instead receive four workers
+each. Seven published families retained 56 evaluated,
 zero invalid trials, zero candidates and unopened final OOS. No model, order, promotion
 or capital authority was changed.
 
