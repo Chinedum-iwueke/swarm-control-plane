@@ -2759,6 +2759,8 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             failed_task is not None
             and correction is not None
             and failed_stage == STRATEGY_CORRECTION_STAGES[-1]
+            and failed_task.failure.get("error_category")
+            == "independent_review_rejected"
         ):
             campaign.status = "running"
             campaign.completed_at = None
