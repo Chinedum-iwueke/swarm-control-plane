@@ -1373,6 +1373,25 @@ async function loadBacktests() {
 
 function renderBacktests() {
   const page = state.backtestPage || state.dashboard?.backtest_activity || { unavailable: true };
+  const utilization = state.dashboard?.research_utilization || { items: [], unavailable: true };
+  const capacity = utilization.items || [];
+  const workerBudget = capacity.reduce((sum, item) => sum + Number(item.worker_budget || 0), 0);
+  const activeWorkers = capacity.reduce((sum, item) => sum + Number(item.active_workers || 0), 0);
+  const pendingWork = capacity.reduce((sum, item) => sum + Number(item.queue_counts?.PENDING || 0), 0);
+  const lockedWork = capacity.reduce((sum, item) => sum + Number(item.queue_counts?.LOCKED || 0), 0);
+  document.getElementById("research-utilization-summary").innerHTML = [
+    [activeWorkers, `active workers / ${workerBudget} budget`],
+    [lockedWork, "running jobs"],
+    [pendingWork, "queued jobs"],
+    [capacity.filter((item) => item.fresh).length, `current machines / ${capacity.length}`],
+  ].map(([value, label]) => `<div class="machine-cell"><div><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(label)}</small></div></div>`).join("");
+  document.getElementById("research-utilization-items").innerHTML = capacity.length ? capacity.map((item) => {
+    const governed = item.work_kind_counts?.governed_alpha_assignment || {};
+    const screens = item.work_kind_counts?.disc010_signal_screen || {};
+    const jobs = (item.allocations || []).map((job) => `${humanize(job.item_type)} · ${job.workers} workers`).join(" · ");
+    return `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.machine)} · ${escapeHtml(humanize(item.state))}</strong><div class="entity-meta"><span>${item.active_workers} / ${item.worker_budget} workers</span><span>${governed.LOCKED || 0} governed running</span><span>${screens.LOCKED || 0} surveillance running</span><span>${item.queue_counts?.PENDING || 0} queued</span><span>${item.fresh ? "Current" : `Stale ${formatDuration(item.age_seconds)}`}</span><span class="mono">${shortHash(item.record_digest)}</span></div>${jobs ? `<p>${escapeHtml(jobs)}</p>` : ""}</div>${statusBadge(item.fresh && !["eligible_queue_empty", "resource_blocked"].includes(item.state) ? "healthy" : "warning")}</article>`;
+  }).join("") : empty(utilization.unavailable ? "Native capacity telemetry is unavailable." : "No native capacity snapshot has been published.");
+  document.getElementById("research-utilization-boundary").textContent = utilization.claim_boundary || "";
   const items = page.items || [];
   const container = document.getElementById("backtest-items");
   const expanded = new Set([...container.querySelectorAll("details[open]")].map((node) => node.closest("[data-backtest-id]").dataset.backtestId));

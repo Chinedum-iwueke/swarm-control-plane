@@ -92,7 +92,12 @@ from app.models.execution_telemetry import (
 )
 from app.models.factor_language import FactorExperimentProgram
 from app.models.falsification import MechanismEvaluation, MechanismPlan
-from app.models.fleet import FleetIncident, FleetIncidentEvent, MachineObservation
+from app.models.fleet import (
+    FleetIncident,
+    FleetIncidentEvent,
+    MachineObservation,
+    ResearchUtilizationSnapshot,
+)
 from app.models.governance import (
     ApprovalEvent,
     Artifact,
@@ -380,6 +385,7 @@ __all__ = [
     "ResearchReview",
     "ResearchSource",
     "ResearchTrial",
+    "ResearchUtilizationSnapshot",
     "RiskBudgetSchemaRegistry",
     "RiskRuleEvaluation",
     "RiskStressAssessment",

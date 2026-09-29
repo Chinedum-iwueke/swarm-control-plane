@@ -179,6 +179,17 @@ class RestrictedTelegramGateway:
                     f"{payload['service_key']} · {payload['indicator']}\n"
                     f"Owner: {payload['owner']}\n{payload['summary']}\n{detail}",
                 )
+            elif kind == "research_utilization_alert":
+                counts = payload.get("queue_counts") or {}
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Research capacity needs attention\n"
+                    f"{payload['machine']} · {payload['state']}\n"
+                    f"{payload['summary']}\n"
+                    f"Workers: {payload['active_workers']}/{payload['worker_budget']} · "
+                    f"queued={counts.get('PENDING', 0)} · locked={counts.get('LOCKED', 0)}\n"
+                    f"Snapshot: {payload['record_digest']}",
+                )
             elif kind == "alpha_campaign_update":
                 sent = await self._telegram.send(
                     self._settings.founder_chat_id,

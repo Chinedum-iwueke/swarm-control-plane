@@ -79,6 +79,7 @@ from app.api.routes import (
     research_bridge_router,
     research_programs_router,
     research_router,
+    research_utilization_router,
     retrieval_router,
     risk_budget_schemas_router,
     risk_rules_router,
@@ -188,6 +189,7 @@ app.include_router(research_router)
 app.include_router(research_bridge_router)
 app.include_router(retrieval_router)
 app.include_router(research_programs_router)
+app.include_router(research_utilization_router)
 app.include_router(runbook_packages_router)
 app.include_router(shadow_monitoring_schemas_router)
 app.include_router(candidate_admission_schemas_router)

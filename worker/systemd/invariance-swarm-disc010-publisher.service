@@ -9,7 +9,9 @@ User=root
 Group=root
 WorkingDirectory=/home/omenka/Projects/swarm-control-plane
 Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/invariance-swarm/disc010-replenisher.env
 ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/disc010_publish.py --output-root /home/omenka/.local/state/invariance-swarm/disc010/runs --state /home/omenka/.local/state/invariance-swarm/disc010/publisher-state.json --api-url-file /etc/invariance-swarm/disc010-api-url --token-file /etc/invariance-swarm/disc010-orchestrator.token
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/research_utilization_publish.py --database /home/omenka/.local/state/invariance-swarm/research-capacity.sqlite --state /home/omenka/.local/state/invariance-swarm/alpha-capacity-state.json --machine vm1-developer --control-commit ${DISC010_CONTROL_COMMIT} --bulletproof-commit ${DISC010_SOURCE_COMMIT} --api-url-file /etc/invariance-swarm/disc010-api-url --token-file /etc/invariance-swarm/disc010-orchestrator.token
 UMask=0077
 Nice=10
 NoNewPrivileges=true
@@ -26,4 +28,5 @@ LockPersonality=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/home/omenka/.local/state/invariance-swarm/disc010
 ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane
-
+ReadOnlyPaths=/home/omenka/.local/state/invariance-swarm/research-capacity.sqlite
+ReadOnlyPaths=/home/omenka/.local/state/invariance-swarm/alpha-capacity-state.json

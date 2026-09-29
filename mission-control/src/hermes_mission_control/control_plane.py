@@ -84,6 +84,14 @@ class ControlPlaneClient:
             "/v1/research/alpha-campaigns/backtests/activity",
             {"items": [], "counts": {}, "total": 0, "unavailable": True},
         )
+        research_utilization = await self._optional_object(
+            "/v1/research/utilization/current",
+            {
+                "items": [],
+                "claim_boundary": "No current native capacity snapshot is available.",
+                "unavailable": True,
+            },
+        )
         alpha_discovery = await self._optional_object(
             "/v1/research/alpha-discovery/overview",
             {
@@ -247,6 +255,7 @@ class ControlPlaneClient:
             "research_dataset_builds": dataset_builds,
             "alpha_campaigns": alpha_campaigns,
             "backtest_activity": backtest_activity,
+            "research_utilization": research_utilization,
             "alpha_discovery": alpha_discovery,
             "signal_surveillance": signal_surveillance,
             "evidence_dossiers": evidence_dossiers,

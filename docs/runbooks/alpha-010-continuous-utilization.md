@@ -47,19 +47,26 @@ data authority, shadow admission, orders and capital retain their existing appro
 
 ## Visibility and alerting
 
-Mission Control must show eligible, blocked, running and terminal counts by work kind;
-allocated workers; measured and reserved RAM; queue age; last productive completion;
-and explicit idle reason. Alert when eligible queue depth remains below two or every
-executor reports `no_work` while a mandate is active. A green daemon is not sufficient
-evidence of a productive loop.
+The native publisher reads the capacity database in SQLite read-only mode and binds its
+report to exact control-plane and Bulletproof commits. Hermes retains immutable
+snapshots with pending, locked, done and failed counts by work kind, exact running
+allocations, configured and active workers, measured RAM, last productive completion
+and an explicit scheduler state. Mission Control renders this separately from governed
+task stages and scientific receipts.
+
+Three consecutive two-minute observations in `eligible_queue_empty`, `work_queued` or
+`resource_blocked` create a founder notification and Telegram alert. A pending job is
+not called idle, a running fallback is not called a backtest, and a green daemon is not
+sufficient evidence of a productive loop. Utilization telemetry has no scientific,
+promotion, execution, order or capital authority.
 
 ## Rollout boundary
 
-The current source adds and tests the deterministic admission/allocation policy. It is
-not production activation. Production closure requires wiring authoritative queue
-projections into the policy, publishing its plan in Mission Control, deploying through
-the normal runbook, and observing at least two independently authorized jobs plus one
-safe fallback transition. Existing Bulletproof output directories remain untracked.
+The current source adds and tests deterministic admission/allocation, authoritative
+queue projections, Mission Control visibility and low-water alerts. It is not production
+activation. Production closure requires deploying through the normal runbook and
+observing at least two independently authorized jobs plus one safe fallback transition.
+Existing Bulletproof output directories remain untracked.
 
 The first fallback implementation is Bulletproof DISC-010 (PR 353). Its replenisher
 keeps up to three lower-priority screen assignments present while the native scheduler
