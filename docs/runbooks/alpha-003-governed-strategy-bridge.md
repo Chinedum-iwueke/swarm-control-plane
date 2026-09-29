@@ -18,9 +18,13 @@ publishes the immutable result.
 4. Bulletproof emits the native YAML/strategy bundle and passes schema, causality,
    leakage and independent specification review.
 5. Hermes verifies the qualification's complete DATA-002/003 lineage against the
-   campaign's admitted evidence before review or execution. A mismatch parks the
-   campaign for rebind, retires queued execution contracts, and requests a
-   cooperative stop from any active stale execution.
+   campaign's admitted evidence before review or execution. Multi-asset work must
+   also carry Bulletproof's file-backed, digest-bound proof that every admitted
+   instrument has a contiguous minute-bar overlap covering the immutable execution
+   window. A lineage mismatch parks the campaign for rebind. A missing, shortened,
+   or mutated overlap proof parks it for qualification at the current native commit.
+   Both conditions retire queued execution contracts and request a cooperative stop
+   from any active stale execution.
 6. The founder separately approves the qualified dataset digest, window, tier and
    finite grid.
 7. Bulletproof executes every declared variant with the classic engine, temporal

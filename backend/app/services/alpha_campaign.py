@@ -2005,6 +2005,22 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             "retired_execution_task_ids": [str(task.id) for task in retired],
         }
         return qualification_task
+    if not _qualification_overlap_admission_matches(campaign, source, qualification):
+        retired = _retire_stale_execution_tasks(
+            db,
+            campaign,
+            source,
+            qualification_task_id=qualification_task.id,
+        )
+        campaign.status = "needs_attention"
+        campaign.phase = "strategy_qualification"
+        campaign.next_action = "requalify_native_strategy_with_overlap_admission"
+        campaign.terminal_reason = {
+            "category": "qualification_overlap_admission_missing_or_invalid",
+            "qualification_task_id": str(qualification_task.id),
+            "retired_execution_task_ids": [str(task.id) for task in retired],
+        }
+        return qualification_task
     identities = [
         task_producer_identity(db, task) for task in (draft, qualification_task)
     ]
@@ -2425,6 +2441,60 @@ def _qualification_dataset_bindings_match(
     )
 
 
+def _qualification_overlap_admission_matches(
+    campaign: AlphaCampaign, source: dict, qualification: dict
+) -> bool:
+    """Require Bulletproof's file-backed overlap proof for multi-asset execution."""
+    bindings = _source_bindings(campaign, source)
+    if len(bindings) < 2:
+        return True
+    receipt = qualification.get("overlap_admission_receipt")
+    if not isinstance(receipt, dict):
+        return False
+    document = {key: value for key, value in receipt.items() if key != "record_digest"}
+    expected_bindings = [
+        {
+            "instrument": item["instruments"][0],
+            "dataset_build_id": str(item["dataset_build_id"]),
+            "dataset_digest": item["dataset_digest"],
+        }
+        for item in bindings
+        if len(item.get("instruments", [])) == 1
+    ]
+    if len(expected_bindings) != len(bindings):
+        return False
+    try:
+        admitted_start = datetime.fromisoformat(
+            str(receipt["admitted_start"]).replace("Z", "+00:00")
+        )
+        admitted_end = datetime.fromisoformat(
+            str(receipt["admitted_end"]).replace("Z", "+00:00")
+        )
+        window_start = datetime.fromisoformat(
+            str(campaign.specification["execution_window_start"]).replace("Z", "+00:00")
+        )
+        window_end = datetime.fromisoformat(
+            str(campaign.specification["execution_window_end"]).replace("Z", "+00:00")
+        )
+        minimum_days = int(receipt["minimum_contiguous_days"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    timestamps = (admitted_start, admitted_end, window_start, window_end)
+    if any(value.utcoffset() != timedelta(0) for value in timestamps):
+        return False
+    return (
+        receipt.get("schema_version") == "alpha-basket-overlap-admission-v1.0.0"
+        and receipt.get("authority") == "DATA-002/003"
+        and receipt.get("record_digest") == digest_document(document)
+        and receipt.get("dataset_bindings") == expected_bindings
+        and receipt.get("instruments")
+        == sorted(item["instrument"] for item in expected_bindings)
+        and minimum_days >= 365
+        and admitted_start <= window_start
+        and admitted_end >= window_end
+    )
+
+
 def _complete_independent_qualification(
     qualification: dict,
     *,
@@ -2769,10 +2839,10 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
     terminal = campaign.terminal_reason or {}
     execution = _current_execution_task(db, campaign)
-    if (
-        campaign.status == "needs_attention"
-        and terminal.get("category") == "qualification_dataset_binding_mismatch"
-    ):
+    if campaign.status == "needs_attention" and terminal.get("category") in {
+        "qualification_dataset_binding_mismatch",
+        "qualification_overlap_admission_missing_or_invalid",
+    }:
         queue = campaign.specification.get("research_queue", [])
         qualification_task_id = terminal.get("qualification_task_id")
         try:
