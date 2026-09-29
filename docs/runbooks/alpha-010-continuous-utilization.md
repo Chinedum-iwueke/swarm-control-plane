@@ -67,3 +67,9 @@ uses measured capacity. On the observed VM1 budget, two six-worker jobs may run 
 third remains queued. Eight workers remains a ceiling, not a promise. An approved
 backtest has priority over any pending screen; running immutable work is not rewritten
 or silently killed to manufacture utilization.
+
+Completed screen receipts are published idempotently into Hermes and become immutable
+input to the next ALPHA-004 cycle. Mission Control reports the canonical screen ledger;
+local output files remain untracked and are never pushed to Git. A survivor replenishes
+the hypothesis-question supply but does not approve code, open final OOS or promote a
+candidate.

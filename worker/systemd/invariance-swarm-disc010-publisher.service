@@ -1,0 +1,29 @@
+[Unit]
+Description=Publish immutable DISC-010 signal-screen receipts to Hermes
+After=network-online.target invariance-swarm-disc010-replenisher.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/omenka/Projects/swarm-control-plane
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python worker/scripts/disc010_publish.py --output-root /home/omenka/.local/state/invariance-swarm/disc010/runs --state /home/omenka/.local/state/invariance-swarm/disc010/publisher-state.json --api-url-file /etc/invariance-swarm/disc010-api-url --token-file /etc/invariance-swarm/disc010-orchestrator.token
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/home/omenka/.local/state/invariance-swarm/disc010
+ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane
+

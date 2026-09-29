@@ -27,11 +27,26 @@ def test_replenisher_timer_is_persistent_and_bounded():
     assert "WantedBy=timers.target" in timer
 
 
+def test_publisher_is_network_bounded_and_canonical():
+    unit = (ROOT / "systemd/invariance-swarm-disc010-publisher.service").read_text()
+    timer = (ROOT / "systemd/invariance-swarm-disc010-publisher.timer").read_text()
+
+    assert "worker/scripts/disc010_publish.py" in unit
+    assert "disc010-orchestrator.token" in unit
+    assert "NoNewPrivileges=true" in unit
+    assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6" in unit
+    assert "OnUnitActiveSec=2min" in timer
+    assert "Persistent=true" in timer
+
+
 def test_installer_requires_exact_deployed_source_and_root_owned_environment():
     installer = (ROOT / "systemd/install-disc010-replenisher.sh").read_text()
 
     assert 'test "$(id -u)" -eq 0' in installer
     assert 'git -C "$native" rev-parse HEAD' in installer
+    assert 'git -C "$control" rev-parse HEAD' in installer
     assert "/etc/invariance-swarm/disc010-replenisher.env" in installer
     assert "-o root -g root -m 0600" in installer
     assert "invariance-swarm-disc010-replenisher.timer" in installer
+    assert "invariance-swarm-disc010-publisher.timer" in installer
+    assert "/etc/invariance-swarm/disc010-orchestrator.token" in installer

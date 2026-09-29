@@ -495,6 +495,57 @@ def _recent_research_memory(db: Session, *, limit: int = 30) -> dict:
     }
 
 
+def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
+    """Expose authoritative pre-OOS screens to the next discovery cycle."""
+    records = db.scalars(
+        select(QuantitativeProducerReceipt)
+        .where(QuantitativeProducerReceipt.milestone == "DISC-010")
+        .order_by(QuantitativeProducerReceipt.registered_at.desc())
+        .limit(limit)
+    ).all()
+    screens = []
+    for record in records:
+        result = record.receipt.get("result", {})
+        trials = []
+        for trial in result.get("trials", []):
+            trials.append(
+                {
+                    "trial_digest": trial.get("trial_digest"),
+                    "contract": trial.get("trial_contract"),
+                    "status": trial.get("status"),
+                    "reason": trial.get("reason"),
+                    "exploration_effect": trial.get("exploration_effect"),
+                    "validation_effect": trial.get("validation_effect"),
+                    "validation_empirical_p_value": trial.get(
+                        "validation_empirical_p_value"
+                    ),
+                    "family_adjusted_discovery": trial.get(
+                        "family_adjusted_discovery"
+                    ),
+                    "direction_stable": trial.get("direction_stable"),
+                    "question_candidate": trial.get("question_candidate"),
+                }
+            )
+        screens.append(
+            {
+                "receipt_id": str(record.id),
+                "receipt_digest": record.receipt_digest,
+                "family_id": result.get("family_id"),
+                "basket": result.get("basket", []),
+                "research_timeframe": result.get("research_timeframe"),
+                "trials": trials,
+                "final_oos_opened": False,
+            }
+        )
+    return {
+        "screens": screens,
+        "claim_boundary": (
+            "A question_candidate may seed hypothesis generation, but cannot bypass "
+            "novelty, causal timing, data admission, independent review or sealed OOS gates."
+        ),
+    }
+
+
 def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[dict]:
     recent = {
         instrument
@@ -574,6 +625,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
             for item in attempts
         ],
         "recent_research_memory": research_memory,
+        "native_signal_surveillance": _recent_signal_surveillance(db),
         "execution_observations": [
             {
                 "venue": item.venue,

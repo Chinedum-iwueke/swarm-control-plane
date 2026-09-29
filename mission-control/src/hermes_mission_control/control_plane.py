@@ -94,6 +94,20 @@ class ControlPlaneClient:
                 "agents": [],
             },
         )
+        signal_surveillance = await self._optional_object(
+            "/v1/research/quantitative-receipts/signal-surveillance",
+            {
+                "counts": {
+                    "families": 0,
+                    "trials": 0,
+                    "evaluated": 0,
+                    "invalid": 0,
+                    "question_candidates": 0,
+                },
+                "items": [],
+                "claim_boundary": "No canonical DISC-010 receipt is registered.",
+            },
+        )
         evidence_dossiers = await self._optional_collection(
             "/v1/research/memory/dossiers"
         )
@@ -234,6 +248,7 @@ class ControlPlaneClient:
             "alpha_campaigns": alpha_campaigns,
             "backtest_activity": backtest_activity,
             "alpha_discovery": alpha_discovery,
+            "signal_surveillance": signal_surveillance,
             "evidence_dossiers": evidence_dossiers,
             "evidence_lifecycle_states": lifecycle_states,
             "blocked_artifact_register": blocked_artifacts,

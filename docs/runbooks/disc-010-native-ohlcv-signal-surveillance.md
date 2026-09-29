@@ -61,14 +61,39 @@ three active fallback screens, six workers each under the current memory estimat
 at queue priority 10. Approved BT-009 assignments retain priority 50. The scientific
 receipt is invariant to one-versus-eight worker execution.
 
+Each trial ledger entry retains its complete preregistered contract as well as the
+contract digest. Hermes recalculates that digest before registration. The VM1
+publisher scans only atomically completed `receipt.json` files, recovers registrations
+already present in Hermes, and maintains a mode-0600 local publication ledger. It does
+not publish partial output or grant strategy authority.
+
+Registered screens are projected into the next ALPHA-004 bounded context. Both
+survivors and null/invalid trials are included so the senior researcher can formulate
+or reject a new hypothesis without repeating the same search. A screen survivor is
+still only a question: normal novelty, timing, data admission, engineering,
+independent-review and sealed-OOS gates remain mandatory.
+
 Production uses a code-only Bulletproof checkout and a separate persistent lake. The
 service therefore pins both the exact code commit and an explicit read-only data root.
 It never assumes that a Git worktree owns the lake.
 
+Install after both merged checkouts are at the exact reviewed commits:
+
+```bash
+sudo bash worker/systemd/install-disc010-replenisher.sh \
+  <exact-control-plane-commit> \
+  <exact-bulletproof-commit>
+```
+
+The installer enables separate replenishment and publication timers. Mission Control
+shows registered families, evaluated/invalid trials, candidate questions and their
+closed-authority boundary under **Research -> Signal surveillance ledger**.
+
 ## Closure
 
 The source producer and queue/replenishment seam are implemented and locally verified.
-DISC-010 remains operationally open until Bulletproof PR 353 lands, the pinned service
-is deployed on VM1, at least two concurrent real-lake screens terminate, their receipts
-are registered through Hermes, and an accepted question (or an honest null family) is
+DISC-010 remains operationally open until Bulletproof PR 353 and control-plane PR 400
+land, the pinned services are deployed on VM1, the rebuilt API and Mission Control are
+deployed, at least two concurrent real-lake screens terminate, their receipts are
+registered through Hermes, and an accepted question (or an honest null family) is
 visible in Mission Control. Source completion is not production certification.

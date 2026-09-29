@@ -24,8 +24,14 @@ Status: source producer and scheduling seam implemented; production activation o
   alpha or profitability claim.
 - Hermes validates DISC-010 producer identity, full trial/candidate accounting and the
   closed strategy/promotion/execution authority boundary before registration.
+- Every registered trial retains its exact contract and must replay to the bound trial
+  digest. The VM1 publication bridge is idempotent across local-state loss and publishes
+  only complete canonical receipts.
+- Registered survivor, null and invalid trials enter the next ALPHA-004 context; Mission
+  Control renders the canonical ledger without implying OOS or promotion authority.
 
-Focused source verification: 17 policy tests, 47 receipt/external-evidence tests and 38
-native Bulletproof tests passed; Ruff passed. No production service has been installed
-and no real-lake DISC-010 receipt has yet been registered. No network, model, order,
+Focused source verification covers policy, receipt validation, publication replay,
+systemd hardening, discovery-context projection, Mission Control and native Bulletproof
+behavior; Ruff and JavaScript syntax checks pass. No production service has been
+installed and no real-lake DISC-010 receipt has yet been registered. No model, order,
 promotion or capital authority was changed.

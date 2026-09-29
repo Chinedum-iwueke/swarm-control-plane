@@ -30,6 +30,7 @@ from app.services.alpha_discovery import (
     _missing_admission_fields,
     _normalize_candidate_input,
     _recent_research_memory,
+    _recent_signal_surveillance,
     _recover_resumed_stage,
     _task,
     approve_mandate,
@@ -756,6 +757,54 @@ def test_recent_research_memory_exposes_duplicate_and_coverage_context():
         "log_return": 1,
         "spread": 1,
     }
+
+
+def test_recent_signal_surveillance_preserves_survivors_and_nulls():
+    record = SimpleNamespace(
+        id=uuid4(),
+        receipt_digest="c" * 64,
+        receipt={
+            "result": {
+                "family_id": "cross-asset-15m",
+                "basket": ["SOLUSDT", "ETHUSDT"],
+                "research_timeframe": "15m",
+                "trials": [
+                    {
+                        "trial_digest": "d" * 64,
+                        "trial_contract": {
+                            "trial_id": "sol-leads-eth",
+                            "predictor_instrument": "SOLUSDT",
+                            "target_instrument": "ETHUSDT",
+                        },
+                        "status": "evaluated",
+                        "reason": None,
+                        "exploration_effect": 0.001,
+                        "validation_effect": 0.0008,
+                        "validation_empirical_p_value": 0.01,
+                        "family_adjusted_discovery": True,
+                        "direction_stable": True,
+                        "question_candidate": True,
+                    },
+                    {
+                        "trial_digest": "e" * 64,
+                        "trial_contract": {"trial_id": "retained-null"},
+                        "status": "evaluated",
+                        "reason": None,
+                        "question_candidate": False,
+                    },
+                ],
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [record]
+
+    context = _recent_signal_surveillance(db)
+
+    assert len(context["screens"][0]["trials"]) == 2
+    assert context["screens"][0]["trials"][0]["question_candidate"] is True
+    assert context["screens"][0]["trials"][1]["question_candidate"] is False
+    assert context["screens"][0]["final_oos_opened"] is False
 
 
 def test_exploration_frontier_prefers_instruments_absent_from_recent_memory():

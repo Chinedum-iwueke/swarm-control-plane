@@ -11,6 +11,7 @@ from app.services.quantitative_receipt import (
     QuantitativeReceiptConflict,
     lake_inventory_summary,
     register_receipt,
+    signal_surveillance_summary,
 )
 
 
@@ -93,7 +94,20 @@ def disc010_receipt():
             "ohlcv_signal_surveillance_receipt"
         ),
     )
-    trial_digest = "1" * 64
+    trial_contract = {
+        "trial_id": "sol-leads-eth",
+        "predictor_instrument": "SOLUSDT",
+        "target_instrument": "ETHUSDT",
+        "predictor": "log_return",
+        "lookback_bars": 1,
+        "target_horizon_bars": 1,
+        "tail_quantile": 0.9,
+        "relation": "same_direction",
+        "minimum_support": 40,
+        "minimum_effect": 0.00001,
+        "parameters": {},
+    }
+    trial_digest = digest(trial_contract)
     value["result"] = {
         "schema_version": "disc010-signal-screen-receipt-v1.0.0",
         "family_id": "cross-asset-v1",
@@ -107,6 +121,7 @@ def disc010_receipt():
             {
                 "trial_id": "sol-leads-eth",
                 "trial_digest": trial_digest,
+                "trial_contract": trial_contract,
                 "status": "evaluated",
                 "family_adjusted_discovery": True,
                 "direction_stable": True,
@@ -129,7 +144,9 @@ def disc010_receipt():
     return value
 
 
-@pytest.mark.parametrize("mutation", [None, "oos", "promotion", "candidate"])
+@pytest.mark.parametrize(
+    "mutation", [None, "oos", "promotion", "candidate", "contract"]
+)
 def test_disc010_registration_preserves_research_only_boundary(mutation):
     value = disc010_receipt()
     if mutation == "oos":
@@ -138,6 +155,11 @@ def test_disc010_registration_preserves_research_only_boundary(mutation):
         value["result"]["promotion_authority"] = True
     elif mutation == "candidate":
         value["result"]["trials"][0]["direction_stable"] = False
+    elif mutation == "contract":
+        contract = value["result"]["trials"][0]["trial_contract"]
+        contract.pop("minimum_support")
+        value["result"]["trials"][0]["trial_digest"] = digest(contract)
+        value["result"]["question_candidate_digests"] = [digest(contract)]
     value["result_digest"] = digest(value["result"])
     value["receipt_digest"] = digest(
         {key: item for key, item in value.items() if key != "receipt_digest"}
@@ -151,6 +173,34 @@ def test_disc010_registration_preserves_research_only_boundary(mutation):
         record = register_receipt(db, payload(value))
         assert record.milestone == "DISC-010"
         assert record.receipt["result"]["final_oos_opened"] is False
+
+
+def test_signal_surveillance_summary_projects_candidate_semantics():
+    value = disc010_receipt()
+    record = SimpleNamespace(
+        id=uuid4(),
+        receipt_digest=value["receipt_digest"],
+        source_commit=value["source_commit"],
+        registered_at="2026-09-29T00:00:00Z",
+        receipt=value,
+    )
+    result = MagicMock()
+    result.all.return_value = [record]
+    db = MagicMock()
+    db.scalars.return_value = result
+
+    summary = signal_surveillance_summary(db)
+
+    assert summary["counts"] == {
+        "families": 1,
+        "trials": 1,
+        "evaluated": 1,
+        "invalid": 0,
+        "question_candidates": 1,
+    }
+    candidate = summary["items"][0]["question_candidates"][0]
+    assert candidate["contract"]["predictor_instrument"] == "SOLUSDT"
+    assert summary["items"][0]["final_oos_opened"] is False
 
 
 def test_registration_is_idempotent():
@@ -402,6 +452,7 @@ def test_routes_are_orchestrator_protected():
         "/v1/research/quantitative-receipts",
         "/v1/research/quantitative-receipts/{receipt_id}",
         "/v1/research/quantitative-receipts/lake-inventory",
+        "/v1/research/quantitative-receipts/signal-surveillance",
     }
 
 
