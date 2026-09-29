@@ -3,8 +3,9 @@ Description=Maintain bounded DISC-010 fallback research queue
 
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=1min
-RandomizedDelaySec=5s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+RandomizedDelaySec=2s
 Persistent=true
 Unit=invariance-swarm-disc010-replenisher.service
 

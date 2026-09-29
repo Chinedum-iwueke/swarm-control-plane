@@ -22,8 +22,9 @@ def test_replenisher_is_unprivileged_bounded_and_separate_from_lake_checkout():
 def test_replenisher_timer_is_persistent_and_bounded():
     timer = (ROOT / "systemd/invariance-swarm-disc010-replenisher.timer").read_text()
 
-    assert "OnUnitActiveSec=1min" in timer
-    assert "RandomizedDelaySec=5s" in timer
+    assert "OnUnitInactiveSec=15s" in timer
+    assert "AccuracySec=1s" in timer
+    assert "RandomizedDelaySec=2s" in timer
     assert "Persistent=true" in timer
     assert "WantedBy=timers.target" in timer
 
