@@ -543,6 +543,81 @@ def _execution_task(db: Session, campaign: AlphaCampaign, source: dict) -> Task 
     return None
 
 
+def _retire_stale_execution_tasks(
+    db: Session,
+    campaign: AlphaCampaign,
+    source: dict,
+    *,
+    qualification_task_id: UUID,
+) -> list[Task]:
+    """Retain but make unleaseable execution contracts with stale DATA evidence."""
+    retired: list[Task] = []
+    reason = (
+        "Execution contract superseded because its native strategy qualification "
+        "does not match the campaign's admitted DATA-002/003 evidence."
+    )
+    for stage in EXECUTION_STAGES:
+        task = db.scalar(
+            select(Task).where(
+                Task.task_number == _stage_task_number(campaign, source, stage)
+            )
+        )
+        if task is None or task.status in {"succeeded", "failed", "cancelled"}:
+            continue
+
+        approval = db.scalar(
+            select(TaskApproval).where(TaskApproval.task_id == task.id)
+        )
+        if approval is not None and approval.status in {"pending", "approved"}:
+            decide_task(
+                db,
+                approval,
+                actor="alpha-campaign-director",
+                reason=reason,
+                action="reject" if approval.status == "pending" else "revoke",
+            )
+
+        stamp = now()
+        task.cancel_requested_at = stamp
+        task.cancel_reason = reason
+        cooperative = task.status in {"leased", "in_progress", "running"}
+        if not cooperative:
+            from app.services.agent_context import discard_working_memory
+
+            task.status = "cancelled"
+            task.completed_at = stamp
+            clear_lease(task)
+            discard_working_memory(db, task.id)
+        append_task_event(
+            db,
+            task,
+            "task_cancellation_requested" if cooperative else "task_cancelled",
+            reason,
+            payload={
+                "cooperative": cooperative,
+                "campaign_id": str(campaign.id),
+                "qualification_task_id": str(qualification_task_id),
+                "retirement_category": "qualification_dataset_binding_mismatch",
+            },
+        )
+        retired.append(task)
+
+    if retired:
+        _append_event(
+            db,
+            campaign,
+            "stale_execution_contracts_retired",
+            "alpha-campaign-director",
+            {
+                "qualification_task_id": str(qualification_task_id),
+                "task_ids": [str(task.id) for task in retired],
+                "task_numbers": [task.task_number for task in retired],
+                "reason": "qualification_dataset_binding_mismatch",
+            },
+        )
+    return retired
+
+
 def _stage_contract(
     db: Session,
     campaign: AlphaCampaign,
@@ -1099,7 +1174,9 @@ def _retain_exhausted_strategy_engineering(
     """Retain a review-rejected strategy after its bounded correction budget ends."""
     queue = campaign.specification.get("research_queue", [])
     if campaign.hypothesis_count >= len(queue):
-        raise HTTPException(409, "Exhausted engineering has no current research question.")
+        raise HTTPException(
+            409, "Exhausted engineering has no current research question."
+        )
     source = queue[campaign.hypothesis_count]
     binding = _source_bindings(campaign, source)[0]
     question = " ".join(source["question"].split())
@@ -1913,12 +1990,19 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
         }
         return qualification_task
     if not _qualification_dataset_bindings_match(campaign, source, qualification):
+        retired = _retire_stale_execution_tasks(
+            db,
+            campaign,
+            source,
+            qualification_task_id=qualification_task.id,
+        )
         campaign.status = "needs_attention"
         campaign.phase = "strategy_qualification"
         campaign.next_action = "rebind_native_strategy_to_admitted_data_evidence"
         campaign.terminal_reason = {
             "category": "qualification_dataset_binding_mismatch",
             "qualification_task_id": str(qualification_task.id),
+            "retired_execution_task_ids": [str(task.id) for task in retired],
         }
         return qualification_task
     identities = [
@@ -2685,6 +2769,34 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     campaign.heartbeat_at = now()
     terminal = campaign.terminal_reason or {}
     execution = _current_execution_task(db, campaign)
+    if (
+        campaign.status == "needs_attention"
+        and terminal.get("category") == "qualification_dataset_binding_mismatch"
+    ):
+        queue = campaign.specification.get("research_queue", [])
+        qualification_task_id = terminal.get("qualification_task_id")
+        try:
+            qualification_uuid = UUID(str(qualification_task_id))
+        except (TypeError, ValueError):
+            qualification_uuid = None
+        if campaign.hypothesis_count < len(queue) and qualification_uuid is not None:
+            retired = _retire_stale_execution_tasks(
+                db,
+                campaign,
+                queue[campaign.hypothesis_count],
+                qualification_task_id=qualification_uuid,
+            )
+            if retired:
+                prior_ids = terminal.get("retired_execution_task_ids", [])
+                campaign.terminal_reason = {
+                    **terminal,
+                    "retired_execution_task_ids": sorted(
+                        {
+                            *(str(item) for item in prior_ids if isinstance(item, str)),
+                            *(str(task.id) for task in retired),
+                        }
+                    ),
+                }
     if (
         campaign.status == "needs_attention"
         and terminal.get("category") == "strategy_not_qualified"

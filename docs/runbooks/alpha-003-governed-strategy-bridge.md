@@ -17,12 +17,16 @@ publishes the immutable result.
 3. The founder approves the exact card digest.
 4. Bulletproof emits the native YAML/strategy bundle and passes schema, causality,
    leakage and independent specification review.
-5. The founder separately approves the qualified dataset digest, window, tier and
+5. Hermes verifies the qualification's complete DATA-002/003 lineage against the
+   campaign's admitted evidence before review or execution. A mismatch parks the
+   campaign for rebind, retires queued execution contracts, and requests a
+   cooperative stop from any active stale execution.
+6. The founder separately approves the qualified dataset digest, window, tier and
    finite grid.
-6. Bulletproof executes every declared variant with the classic engine, temporal
+7. Bulletproof executes every declared variant with the classic engine, temporal
    train/validation/test partitions, realistic costs and doubled-cost stress. Variant
    selection uses validation only.
-7. Positive, negative, invalid and failed evidence is retained. BT-009 publishes a
+8. Positive, negative, invalid and failed evidence is retained. BT-009 publishes a
    terminal result to Bulletproof memory and Hermes. The campaign advances to the
    next question unless the complete gate set yields a prospective shadow candidate.
 
@@ -37,6 +41,7 @@ tasks.
 ## Safety and rollback
 
 Neither approval grants capital, order, production-promotion or self-approval
-authority. Stop and disable the v2 service to halt new work. Existing tasks,
-approvals, native bundles, negative results and BT-009 evidence remain immutable.
-
+authority. Stop and disable the v2 service to halt new work. Stale execution tasks
+and approvals are retained in the audit history but made unleaseable when their
+qualification no longer matches admitted campaign evidence. Native bundles,
+negative results and BT-009 evidence remain immutable.

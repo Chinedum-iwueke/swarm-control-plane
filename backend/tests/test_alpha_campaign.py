@@ -581,6 +581,125 @@ def test_execution_task_prefers_repaired_successor():
     assert db.scalar.call_count == 1
 
 
+def test_stale_execution_contracts_are_retained_but_made_unleaseable(monkeypatch):
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    pending = SimpleNamespace(
+        id=uuid4(),
+        task_number=service._stage_task_number(record, source, "E2"),
+        status="pending_approval",
+        cancel_requested_at=None,
+        cancel_reason=None,
+        completed_at=None,
+    )
+    queued = SimpleNamespace(
+        id=uuid4(),
+        task_number=service._stage_task_number(record, source, "E"),
+        status="queued",
+        cancel_requested_at=None,
+        cancel_reason=None,
+        completed_at=None,
+    )
+    pending_approval = SimpleNamespace(status="pending")
+    approved_approval = SimpleNamespace(status="approved")
+    db = MagicMock()
+    db.scalar.side_effect = [pending, pending_approval, queued, approved_approval]
+    decide = MagicMock()
+    clear = MagicMock()
+    discard = MagicMock()
+    task_event = MagicMock()
+    campaign_event = MagicMock()
+    monkeypatch.setattr(service, "decide_task", decide)
+    monkeypatch.setattr(service, "clear_lease", clear)
+    monkeypatch.setattr("app.services.agent_context.discard_working_memory", discard)
+    monkeypatch.setattr(service, "append_task_event", task_event)
+    monkeypatch.setattr(service, "_append_event", campaign_event)
+    qualification_task_id = uuid4()
+
+    retired = service._retire_stale_execution_tasks(
+        db,
+        record,
+        source,
+        qualification_task_id=qualification_task_id,
+    )
+
+    assert retired == [pending, queued]
+    assert pending.status == "cancelled"
+    assert queued.status == "cancelled"
+    assert decide.call_args_list[0].kwargs["action"] == "reject"
+    assert decide.call_args_list[1].kwargs["action"] == "revoke"
+    assert clear.call_count == 2
+    assert discard.call_count == 2
+    assert task_event.call_count == 2
+    assert all(call.args[2] == "task_cancelled" for call in task_event.call_args_list)
+    campaign_event.assert_called_once()
+    payload = campaign_event.call_args.args[4]
+    assert payload["reason"] == "qualification_dataset_binding_mismatch"
+    assert payload["task_ids"] == [str(pending.id), str(queued.id)]
+
+
+def test_active_stale_execution_contract_requests_cooperative_stop(monkeypatch):
+    record = campaign()
+    source = record.specification["research_queue"][0]
+    running = SimpleNamespace(
+        id=uuid4(),
+        task_number=service._stage_task_number(record, source, "E2"),
+        status="running",
+        cancel_requested_at=None,
+        cancel_reason=None,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [running, None, None]
+    task_event = MagicMock()
+    monkeypatch.setattr(service, "append_task_event", task_event)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    retired = service._retire_stale_execution_tasks(
+        db,
+        record,
+        source,
+        qualification_task_id=uuid4(),
+    )
+
+    assert retired == [running]
+    assert running.status == "running"
+    assert running.cancel_requested_at is not None
+    task_event.assert_called_once()
+    assert task_event.call_args.args[2] == "task_cancellation_requested"
+    assert task_event.call_args.kwargs["payload"]["cooperative"] is True
+
+
+def test_reconcile_retires_stale_execution_from_parked_campaign(monkeypatch):
+    qualification_task_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="strategy_qualification",
+        next_action="rebind_native_strategy_to_admitted_data_evidence",
+        terminal_reason={
+            "category": "qualification_dataset_binding_mismatch",
+            "qualification_task_id": str(qualification_task_id),
+            "retired_execution_task_ids": [str(uuid4())],
+        },
+    )
+    newly_retired = SimpleNamespace(id=uuid4())
+    retire = MagicMock(return_value=[newly_retired])
+    db = MagicMock()
+    monkeypatch.setattr(service, "_retire_stale_execution_tasks", retire)
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+
+    service.reconcile_campaign(db, record)
+
+    retire.assert_called_once_with(
+        db,
+        record,
+        record.specification["research_queue"][0],
+        qualification_task_id=qualification_task_id,
+    )
+    assert str(newly_retired.id) in record.terminal_reason["retired_execution_task_ids"]
+    assert record.status == "needs_attention"
+    assert record.next_action == "rebind_native_strategy_to_admitted_data_evidence"
+
+
 def test_native_qualification_must_match_full_campaign_data_evidence():
     record = campaign()
     source = record.specification["research_queue"][0]
@@ -1167,9 +1286,21 @@ def test_reconciliation_recovers_strategy_engineering_rejection_into_correction(
     advance.assert_called_once_with(db, record)
 
 
-@pytest.mark.parametrize("mutation", [None, "claim", "dataset", "window", "digest"])
+@pytest.mark.parametrize(
+    "mutation", [None, "claim", "dataset", "window", "digest", "provenance"]
+)
 def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutation):
     record = campaign()
+    binding = record.specification["dataset_bindings"][0]
+    binding.update(
+        {
+            "catalog_digest": "1" * 64,
+            "manifest_digest": "2" * 64,
+            "producer_receipt_digest": "3" * 64,
+            "lake_governance_digest": "4" * 64,
+            "partition_digests": [binding["dataset_digest"]],
+        }
+    )
     frozen = {
         "dataset_build_id": str(uuid4()),
         "dataset_digest": DIGEST,
@@ -1250,7 +1381,26 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
         result["card"]["execution_window"]["end"] = "2027-01-01T00:00:00Z"
     elif mutation == "digest":
         result["card_digest"] = "c" * 64
-    db.scalar.side_effect = [draft, confirmation, qualification, None]
+    elif mutation == "provenance":
+        result["artifact_bundle"] = {
+            "engine_hypothesis_yaml": {
+                "immutable_contract": {
+                    "dataset_bindings": [
+                        {
+                            "instrument": "BTCUSDT",
+                            "dataset_build_id": binding["dataset_build_id"],
+                            "dataset_digest": binding["dataset_digest"],
+                            "catalog_digest": binding["catalog_digest"],
+                            "manifest_digest": binding["manifest_digest"],
+                            "producer_receipt_digest": "5" * 64,
+                            "lake_governance_digest": binding["lake_governance_digest"],
+                            "partition_digest": binding["dataset_digest"],
+                        }
+                    ]
+                }
+            }
+        }
+    db.scalar.side_effect = [draft, confirmation, qualification, None, None]
     create = MagicMock()
     monkeypatch.setattr(service, "_create_stage_task", create)
     monkeypatch.setattr(
@@ -1281,6 +1431,17 @@ def test_alpha003_compiler_boolean_cannot_authorize_execution(monkeypatch, mutat
     )
     monkeypatch.setattr(service, "create_route", route_create)
     assert service._advance_governed_pipeline(db, record) is qualification
+    if mutation == "provenance":
+        assert record.status == "needs_attention"
+        assert record.next_action == "rebind_native_strategy_to_admitted_data_evidence"
+        assert record.terminal_reason == {
+            "category": "qualification_dataset_binding_mismatch",
+            "qualification_task_id": str(qualification.id),
+            "retired_execution_task_ids": [],
+        }
+        create.assert_not_called()
+        route_create.assert_not_called()
+        return
     if mutation:
         assert record.status == "needs_attention"
         assert record.next_action == "repair_qualification_approval_binding"
