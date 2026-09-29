@@ -809,6 +809,41 @@ def test_recent_signal_surveillance_preserves_survivors_and_nulls():
     assert context["screens"][0]["final_oos_opened"] is False
 
 
+def test_recent_signal_surveillance_prioritizes_candidate_bearing_screens():
+    def record(index: int, *, candidate: bool):
+        return SimpleNamespace(
+            id=uuid4(),
+            receipt_digest=f"{index:064x}",
+            receipt={
+                "result": {
+                    "family_id": f"family-{index}",
+                    "basket": ["ASSETUSDT"],
+                    "research_timeframe": "5m",
+                    "trials": [
+                        {
+                            "trial_digest": f"{index + 100:064x}",
+                            "trial_contract": {"trial_id": f"trial-{index}"},
+                            "status": "evaluated",
+                            "question_candidate": candidate,
+                        }
+                    ],
+                }
+            },
+        )
+
+    records = [record(index, candidate=False) for index in range(20)]
+    survivor = record(99, candidate=True)
+    records.append(survivor)
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = records
+
+    context = _recent_signal_surveillance(db, limit=12)
+
+    assert len(context["screens"]) == 12
+    assert context["screens"][0]["receipt_id"] == str(survivor.id)
+    assert context["screens"][0]["trials"][0]["question_candidate"] is True
+
+
 def test_recent_external_surveillance_is_a_question_seed_not_evidence():
     publication = SimpleNamespace(
         id=uuid4(),

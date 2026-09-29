@@ -502,8 +502,19 @@ def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
         select(QuantitativeProducerReceipt)
         .where(QuantitativeProducerReceipt.milestone == "DISC-010")
         .order_by(QuantitativeProducerReceipt.registered_at.desc())
-        .limit(limit)
+        .limit(max(100, limit * 10))
     ).all()
+    candidate_records = []
+    null_records = []
+    for record in records:
+        trials = record.receipt.get("result", {}).get("trials", [])
+        target = (
+            candidate_records
+            if any(item.get("question_candidate") is True for item in trials)
+            else null_records
+        )
+        target.append(record)
+    records = [*candidate_records, *null_records][:limit]
     screens = []
     for record in records:
         result = record.receipt.get("result", {})
