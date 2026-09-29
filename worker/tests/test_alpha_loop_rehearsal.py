@@ -199,6 +199,7 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
         "Environment=SWARM_ENGINEERING_VIRTUALENV="
         "/home/omenka/Projects/bulletproof_bt/.venv" in unit
     )
+    assert "Environment=SWARM_ENGINEERING_TIMEOUT_SECONDS=7200" in unit
     assert (
         "ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime" in unit
     )

@@ -21,6 +21,12 @@ is eight, the window is 365 days, and capital/order authority is false. Producti
 G3 tasks require the exclusive `alpha-strategy-engineering` capability. Failed G2
 evidence remains immutable and is never rewritten or silently retried.
 
+The dedicated strategy engineer has a two-hour mission ceiling. Each task remains
+bounded by the smaller of that ceiling and its immutable
+`max_duration_seconds`; this leaves enough time for coding, the complete
+Bulletproof regression suite, and independent review while task heartbeats renew
+the shorter control-plane lease.
+
 Every unsuccessful rehearsal also writes a private structured manifest. Provider
 capacity is classified as retryable and distinguished from coding, validation, or
 independent-review rejection; the installer still refuses activation in every
