@@ -8,11 +8,12 @@
       "role": "connector-health-and-public-retrieval-reference",
       "enabled_capabilities": [
         "public-web",
-        "public-youtube-transcript",
+        "public-podcast-transcript",
         "public-rss",
         "public-scholarly-metadata"
       ],
       "disabled_capabilities": [
+        "public-youtube-transcript-until-source-contract",
         "browser-cookie-import",
         "account-login",
         "credentialed-social-access",

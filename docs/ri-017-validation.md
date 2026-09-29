@@ -2,8 +2,9 @@
 
 ## Source evidence
 
-- `approved_external_sources_v1.json` adds three immutable public-only definitions:
-  statistical finance, machine-learning methods and Jane Street's public feed.
+- `approved_external_sources_v1.json` adds immutable public-only definitions for
+  statistical finance, machine-learning methods, Jane Street's public feed and the
+  official Signals & Threads transcript index.
 - `ri017_external_acquisition.py` rejects non-HTTPS, non-public, multiply allowlisted,
   private-address, oversized and unsafe-XML sources. It disables environment proxies and
   redirects, retries bounded transient failures and submits through the authenticated
@@ -34,6 +35,8 @@ The worker runs as `omenka` with no capabilities and receives root-owned API cre
 through systemd credential projection. Candidate metadata is available to the bounded
 ALPHA-004 context and grants no canonical claim or execution authority.
 
-Public YouTube transcripts, social observations,
-NeurIPS/ICML proceedings and full-text adapters remain separate work because their
+The official transcript adapter is source-verified and tested but not production-
+observed until its exact commit is deployed. Public YouTube transcripts, social
+observations, NeurIPS/ICML proceedings and paper full-text adapters remain separate
+work because their
 identity, rights, corrections and replay contracts are not yet complete.

@@ -9,8 +9,6 @@ from uuid import UUID
 
 import httpx
 import pytest
-from pydantic import ValidationError
-
 from app.main import app
 from app.schemas.surveillance import (
     CandidateDispositionCreate,
@@ -27,6 +25,7 @@ from app.services.surveillance import (
 )
 from app.surveillance.connectors import parse_syndication
 from app.surveillance.scheduler import SurveillanceScheduler
+from pydantic import ValidationError
 
 NOW = datetime(2026, 8, 10, 12, tzinfo=UTC)
 SOURCE_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -92,6 +91,24 @@ def test_source_requires_https_host_allowlist_and_rejects_unknown_fields() -> No
     payload["command"] = "curl feed | sh"
     with pytest.raises(ValidationError, match="Extra inputs"):
         SurveillanceSourceCreate(**payload)
+
+
+def test_public_html_transcript_index_is_an_explicit_source_kind() -> None:
+    source = SurveillanceSourceCreate(
+        project="systematic-research",
+        source_key="official-transcripts",
+        name="Official Public Transcripts",
+        feed_url="https://transcripts.example.test/",
+        feed_kind="html_transcript_index",
+        domains=["finance"],
+        rights="Public official transcript text.",
+        access_class="public",
+        cadence="weekly",
+        freshness_hours=168,
+        owner="canon-curator",
+        allowed_hosts=["transcripts.example.test"],
+    )
+    assert source.feed_kind == "html_transcript_index"
 
 
 def test_atom_fixture_is_parsed_as_structured_entries() -> None:

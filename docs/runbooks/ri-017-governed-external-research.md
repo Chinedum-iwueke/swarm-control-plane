@@ -40,12 +40,15 @@ The isolated VM1 public-feed worker, expanded immutable source registry and hard
 six-hour timer are implemented. It submits to the existing RI-006 source, fetch,
 publication, correction/retraction, digest and Mission Control surfaces. The initial
 registry adds statistical-finance and ML-method arXiv feeds plus Jane Street's official
-public feed. It does not call an LLM and does not grant network access to existing
-ALPHA-004 Codex services.
+public feed. A bounded exact-host HTML adapter also retrieves the official Signals &
+Threads transcript pages, strips page chrome, caps per-page and aggregate bytes and
+submits transcript text through the same quarantine. It does not call an LLM and does
+not grant network access to existing ALPHA-004 Codex services.
 
-RI-017 remains operationally open until the exact commit is deployed and representative
-fetch/replay receipts are observed. Public YouTube transcripts, social sources,
-NeurIPS/ICML proceedings adapters and full text require separate exact-source, rights,
+RI-017 remains operationally open until the transcript adapter's exact commit is
+deployed and representative fetch/replay receipts are observed. Public YouTube
+transcripts, social sources, NeurIPS/ICML proceedings adapters and paper full text
+require separate exact-source, rights,
 correction and parser contracts; Agent Reach availability alone is not admission.
 
 Install on VM1 only after the reviewed commit is present:
