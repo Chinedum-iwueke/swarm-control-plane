@@ -28,6 +28,7 @@ from app.services.alpha_discovery import (
     _exploration_frontier,
     _focus_founder_context,
     _missing_admission_fields,
+    _new_signal_candidate,
     _normalize_candidate_input,
     _recent_external_surveillance,
     _recent_research_memory,
@@ -1340,6 +1341,92 @@ def test_duplicate_only_cycle_replenishes_without_waiting_for_cadence(monkeypatc
     new_cycle.assert_called_once_with(db, mandate)
     assert event.call_args.args[2] == "duplicate_only_cycle_replenished"
     assert event.call_args.args[3]["cadence_bypassed"] is True
+
+
+def test_new_signal_candidate_replenishes_without_opening_final_oos(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_until=moment + timedelta(days=1),
+        heartbeat_at=None,
+        cycle_count=1,
+        hypothesis_count=1,
+        trial_count=0,
+        budget={
+            "maximum_cycles": 10,
+            "maximum_hypotheses": 10,
+            "maximum_total_trials": 80,
+            "cadence_seconds": 3600,
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        campaign_id=None,
+        status="completed",
+        phase="complete",
+        next_action="schedule_next_discovery_cycle",
+        created_at=moment,
+        completed_at=moment,
+        heartbeat_at=None,
+        metrics={"generated": 1, "duplicated": 0, "accepted": 1},
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [cycle, None]
+    event = MagicMock()
+    new_cycle = MagicMock()
+    seed = {
+        "receipt_id": str(uuid4()),
+        "receipt_digest": "8" * 64,
+        "family_id": "disc010-family",
+        "trial_digests": ["9" * 64],
+        "final_oos_opened": False,
+    }
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._reconcile_data_admissions", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._recover_resumed_stage", lambda *_: False
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._next_founder_idea", lambda *_: None
+    )
+    monkeypatch.setattr(
+        "app.services.alpha_discovery._new_signal_candidate", lambda *_: seed
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
+
+    reconcile_mandate(db, mandate)
+
+    new_cycle.assert_called_once_with(db, mandate)
+    assert event.call_args.args[2] == "signal_candidate_replenished"
+    assert event.call_args.args[3]["signal_candidate"]["final_oos_opened"] is False
+    assert event.call_args.args[3]["authority"] == "question_seed_only"
+
+
+def test_new_signal_candidate_requires_closed_final_oos():
+    cycle = SimpleNamespace(created_at=datetime.now(UTC) - timedelta(hours=1))
+    record = SimpleNamespace(
+        id=uuid4(),
+        receipt_digest="8" * 64,
+        receipt={
+            "result": {
+                "family_id": "disc010-family",
+                "final_oos_opened": True,
+                "trials": [
+                    {
+                        "trial_digest": "9" * 64,
+                        "question_candidate": True,
+                    }
+                ],
+            }
+        },
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [record]
+
+    assert _new_signal_candidate(db, cycle) is None
 
 
 def test_mixed_rejection_does_not_bypass_research_cadence():

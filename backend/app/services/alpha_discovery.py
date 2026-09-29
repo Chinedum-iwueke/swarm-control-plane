@@ -547,6 +547,43 @@ def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
     }
 
 
+def _new_signal_candidate(
+    db: Session, cycle: AlphaDiscoveryCycle
+) -> dict | None:
+    """Return a newly registered pre-OOS question seed after this cycle began."""
+    records = db.scalars(
+        select(QuantitativeProducerReceipt)
+        .where(
+            QuantitativeProducerReceipt.milestone == "DISC-010",
+            QuantitativeProducerReceipt.registered_at > cycle.created_at,
+        )
+        .order_by(QuantitativeProducerReceipt.registered_at.desc())
+        .limit(50)
+    ).all()
+    for record in records:
+        result = record.receipt.get("result", {})
+        if result.get("final_oos_opened") is not False:
+            continue
+        candidates = [
+            item
+            for item in result.get("trials", [])
+            if item.get("question_candidate") is True
+        ]
+        if candidates:
+            return {
+                "receipt_id": str(record.id),
+                "receipt_digest": record.receipt_digest,
+                "family_id": result.get("family_id"),
+                "trial_digests": sorted(
+                    item["trial_digest"]
+                    for item in candidates
+                    if item.get("trial_digest")
+                ),
+                "final_oos_opened": False,
+            }
+    return None
+
+
 def _recent_external_surveillance(db: Session, *, limit: int = 20) -> dict:
     """Expose sanitized public-source metadata as question seeds, never evidence."""
     records = db.execute(
@@ -2345,6 +2382,20 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                     "generated": cycle.metrics.get("generated", 0),
                     "duplicated": cycle.metrics.get("duplicated", 0),
                     "cadence_bypassed": True,
+                },
+                cycle,
+            )
+            _new_cycle(db, mandate)
+        elif signal_candidate := _new_signal_candidate(db, cycle):
+            _event(
+                db,
+                mandate,
+                "signal_candidate_replenished",
+                {
+                    "previous_cycle_id": str(cycle.id),
+                    "signal_candidate": signal_candidate,
+                    "cadence_bypassed": True,
+                    "authority": "question_seed_only",
                 },
                 cycle,
             )
