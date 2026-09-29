@@ -1,0 +1,26 @@
+{
+  "schema_version": "external-provider-policy-v1.0.0",
+  "providers": [
+    {
+      "name": "agent-reach",
+      "upstream": "https://github.com/Panniantong/Agent-Reach",
+      "audited_commit": "a19a171fa980a0785849596492e0af4db800c82f",
+      "role": "connector-health-and-public-retrieval-reference",
+      "enabled_capabilities": [
+        "public-web",
+        "public-youtube-transcript",
+        "public-rss",
+        "public-scholarly-metadata"
+      ],
+      "disabled_capabilities": [
+        "browser-cookie-import",
+        "account-login",
+        "credentialed-social-access",
+        "system-package-install",
+        "arbitrary-shell",
+        "automatic-canonical-admission"
+      ],
+      "production_install_authority": false
+    }
+  ]
+}

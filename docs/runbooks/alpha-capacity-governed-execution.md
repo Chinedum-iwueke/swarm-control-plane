@@ -1,6 +1,6 @@
 # Capacity-governed parallel Bulletproof execution
 
-Status: local source verified; not activated in production.
+Status: activated and production exercised; continuous queue-depth control remains open.
 
 ## Ownership and budget
 
@@ -17,11 +17,10 @@ Pools use up to eight spawned workers, limited by actual variant count. Two sepa
 registered consumers allow different campaigns to enter the shared queue concurrently.
 Sequential dependencies within a campaign remain binding.
 
-The sample starts with 16 aggregate slots and two jobs, reserves two CPUs, checks
-host load and available RAM, and reserves an initial conservative 2 GiB per worker
-plus 8 GiB free headroom. Unconsumed startup reservations are accounted for before
-launching another job. This RAM estimate is not a calibrated capacity claim: use
-observed representative peak RSS to increase it before admitting larger universes.
+The production configuration targets 16 aggregate slots and two jobs, reserves two
+CPUs, checks host load and available RAM, and reserves 4.5 GiB per worker plus 8 GiB
+free headroom. That estimate follows measured one-year work near 4.1 GiB per worker.
+Unconsumed startup reservations are accounted for before launching another job.
 Missing memory telemetry stops admission. Memory pressure pauses/resumes whole groups.
 
 All native daemon and agent jobs sharing this budget must use the same ResearchDB
@@ -73,13 +72,16 @@ It reports queue counts, running/paused/external worker slots, job IDs and RSS.
 Idle agent heartbeats include bounded `research_capacity` metadata; running task
 heartbeats include capacity telemetry and stale/missing telemetry is explicit.
 Hermes' existing task/operation ledger remains authoritative for each assignment.
-No new dedicated Mission Control capacity chart is claimed by this change.
+Mission Control exposes backtest work, but dedicated queue-depth, safe-fallback and
+resource-allocation visibility remains part of ALPHA-010.
 
-Validate two approved independent assignments: see two distinct task leases and
+Production has validated approved independent assignments, distinct task leases,
+overlapping admission/execution and terminal BT-009 publication. New rollouts still
+validate two approved independent assignments: see two distinct task leases and
 native queue IDs, up to eight workers each, no duplicate launch while a child is
 starting, and two terminal BT-009 publications. Inspect slot/CPU/RAM ceilings and
-test pause/resume, restart, stale telemetry and lease cancellation before declaring
-operational closure. This production replay has not been performed.
+test pause/resume, restart, stale telemetry and lease cancellation. These receipts do
+not prove the queue is continuously replenished; ALPHA-010 owns that next boundary.
 
 Assignment SHA-256 and Linux PID/start identity bind queued work to a living lease
 wrapper. Dead owners or changed bytes fail closed; duplicate immutable submissions
