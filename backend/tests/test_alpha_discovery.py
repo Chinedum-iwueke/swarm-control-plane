@@ -168,8 +168,13 @@ def test_canonical_reconciliation_supersedes_only_other_weekly_mandates(monkeypa
     canonical = SimpleNamespace(
         id=uuid4(),
         mandate_digest=DIGEST,
+        mandate_key="ALPHA004-CANONICAL-TEST",
         status="active",
-        specification={"mandate_kind": "canonical_weekly"},
+        specification={
+            "mandate_kind": "canonical_weekly",
+            "authority": "no_capital_research",
+            "bulletproof_source_commit": "a" * 40,
+        },
         created_by="founder-operator",
     )
     prior = SimpleNamespace(
@@ -214,6 +219,14 @@ def test_canonical_reconciliation_supersedes_only_other_weekly_mandates(monkeypa
     assert thematic.status == "active"
     assert authority.call_args.args[1].decision_type == "research-program-charter"
     assert authority.call_args.args[1].action == "approve"
+    assert authority.call_args.args[1].scope == {
+        "authority": "no_capital_research",
+        "mandate_key": "ALPHA004-CANONICAL-TEST",
+        "bulletproof_source_commit": "a" * 40,
+        "capital": False,
+        "orders": False,
+        "shadow": False,
+    }
     assert event.call_count == 2
     assert event.call_args_list[-1].args[2] == "canonical_week_reconciled"
 

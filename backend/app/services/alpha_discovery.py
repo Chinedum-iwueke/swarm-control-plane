@@ -375,8 +375,11 @@ def canonicalize_mandates(
             object_id=str(mandate.id),
             object_digest=mandate.mandate_digest,
             scope={
-                "authority": "no_capital_research",
-                "mandate_digest": mandate.mandate_digest,
+                "authority": mandate.specification["authority"],
+                "mandate_key": mandate.mandate_key,
+                "bulletproof_source_commit": mandate.specification[
+                    "bulletproof_source_commit"
+                ],
                 "capital": False,
                 "orders": False,
                 "shadow": False,
