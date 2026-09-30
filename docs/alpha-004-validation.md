@@ -39,5 +39,24 @@ separately proves that CSI's component definition, available sources and falsifi
 notes survive catalog publication. These tests prove contracts and enforcement, not
 the quality of an LLM's future market judgment.
 
+## 2026-09-30 production reconciliation
+
+Canonical mandate `ALPHA004-CANONICAL-20260930` is active as mandate
+`dc0784e3-a778-4f8c-b6ae-41a3f5d79906`, digest
+`29f0403dc255062f61c583cb3c8070a688d292438671cefd718f283ccc065a03`.
+It binds Bulletproof commit `dc72d86ecfea3d9e2ab860b5fa949d03decbd552`, native
+admission receipt `d7787bd43004c1f07b7a94319e8b290525c39b1cbbd2e99690481d6502208bfd`,
+120 catalog-visible instruments, a maximum of 100 instruments per proposed
+hypothesis, and the primary window `2025-08-08T20:14:00Z` through
+`2026-08-08T20:14:00Z`. Six overlapping legacy weekly mandates were superseded;
+the API subsequently reported exactly one active canonical weekly mandate. The first
+new supervised intelligence cycle was created immediately. This is scheduler and
+authority evidence, not a claim that its pending question or a later signal is valid.
+
+Final source verification after the authority reconciliation corrections records all
+422 worker tests and the 62 focused alpha-discovery backend tests passing. VM2 ran
+control-plane commit `3e35151fef7520434f60dd8a842239ac6db08e9d` with a healthy
+API when the canonicalization receipt was produced.
+
 ALPHA-004 does not claim alpha, profitability, shadow readiness or capital
 authority. It makes the scientific loop continuous and observable.

@@ -79,26 +79,6 @@ parallel campaign capacity remains, the controller invokes another bounded
 intelligence, hypothesis and representation sequence immediately. The mandate
 objective and budgets remain the authority envelope.
 
-The senior researcher receives the exact native Bulletproof mechanism catalog in
-addition to citations, prior outcomes, signal screens and execution observations.
-Declared CSI components, indexes, proxies, gates and failure modes are reasoning
-material, not empirical facts. The LLM may propose adapting or falsifying them, but it
-cannot assert that CSI or another proxy is predictive, select it after viewing outcomes,
-or bypass native calculation and independent review.
-
-The representation scientist may propose 1-100 instruments by default, including
-cross-label baskets, and may select any supported complete-bar timeframe or admitted
-causal transformation. Its justification is model output. Deterministic catalog,
-common-window, liquidity, lineage, capacity and point-in-time validators decide whether
-the proposal can execute. Primary tests use the latest complete rolling 365 UTC days;
-up to 1,095 days requires a separately frozen survivor-validation contract.
-
-Low-watermark replenishment is deterministic orchestration, not LLM self-direction.
-When accepted or awaiting question depth drops below the approved threshold and
-parallel campaign capacity remains, the controller invokes another bounded
-intelligence, hypothesis and representation sequence immediately. The mandate
-objective and budgets remain the authority envelope.
-
 ## Evidence requirements
 
 Every invocation binds a source commit, role package, model/runtime identity, task
@@ -162,3 +142,20 @@ Signed producer receipts must be registered through the native Python/bootstrap 
 without reconstructing their JSON through `jq`; numeric reserialization changes the
 content digest and must fail closed. That is an evidence-integrity invariant, not an
 operator workaround.
+
+On 2026-09-30 the current reasoning contract entered production under canonical weekly
+mandate `dc0784e3-a778-4f8c-b6ae-41a3f5d79906`, digest `29f0403d...a03`.
+It exposes 120 DATA-002 catalog-visible instruments, permits a reasoned proposal of up
+to 100 members, binds the latest complete one-year window ending
+`2026-08-08T20:14:00Z`, and carries 50 native mechanism capabilities from exact
+Bulletproof commit `dc72d86...d552`. The underlying BTC admission explicitly includes
+CSI component, readiness, source, raw, percentile and bucket fields. Six legacy weekly
+mandates were superseded and one canonical mandate remained active. This proves the
+reasoning context and governance boundary are deployed; it does not prove that an LLM's
+asset choice, representation choice or mechanism proposal is economically correct.
+
+RI-017's same-day production manifest is `qualified` for every configured connector
+class: scholarly indexes, Atom/RSS, an official transcript feed, exact-DID public-social
+observations and official YouTube metadata. Those receipts broaden question-generation
+evidence but remain quarantined source material. They grant no equation, alpha,
+promotion, order or capital authority.

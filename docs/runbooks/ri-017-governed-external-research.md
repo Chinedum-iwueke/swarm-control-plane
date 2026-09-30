@@ -57,9 +57,17 @@ receipt counts plus immutable receipt digests. Operational status is `qualified`
 when every configured source produced a successful non-empty production receipt. This
 proves connector operation only, never scientific truth or source correctness.
 
-RI-017 remains operationally open for the expanded channels until this exact commit is
-deployed and the state manifest reports `qualified` with production receipt digests.
-Public YouTube transcripts and paper full text remain deliberately unimplemented;
+The 2026-09-30 VM1 production acquisition state is `qualified`. Its v1.1 manifest
+reports successful non-empty receipts for all configured classes: four Atom sources,
+two scholarly HTML indexes, one transcript source, one public-social source, one RSS
+source and one YouTube Atom metadata source. The added proceedings produced 100
+NeurIPS and 100 ICML entries; the exact-DID Bluesky source produced 16 observations;
+the official YouTube feed produced 15 metadata entries. Ten immutable receipt digests
+are retained in `/var/lib/invariance-swarm/ri017/acquisition-state.json`, and
+`unproven_channels` is empty.
+
+This closes the configured connector-operation proof, not scientific or transcript
+fidelity. Public YouTube transcripts and paper full text remain deliberately unimplemented;
 their identity, rights, correction and fidelity contracts require separate work.
 Agent Reach availability alone is not admission.
 
