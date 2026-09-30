@@ -591,6 +591,16 @@ class ControlPlaneClient:
             },
         )
 
+    async def resend_approval(self, task_id: str, reason: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/tasks/{task_id}/rearm-approval",
+            json={
+                "requested_by": "founder-mission-control",
+                "reason": reason,
+            },
+        )
+
     async def approve_mission(self, mission_id: str, reason: str) -> dict[str, Any]:
         return await self._request(
             "POST",

@@ -7,7 +7,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ApprovalEvent, EngineeringMission, Task, TaskApproval
+from app.models import (
+    ApprovalEvent,
+    EngineeringMission,
+    FounderNotification,
+    Task,
+    TaskApproval,
+)
 
 
 def task_plan_digest(document: dict) -> str:
@@ -128,9 +134,7 @@ def consume_task_approval(db: Session, task: Task, now: datetime) -> None:
     if not task.approval_required:
         return
     approval = db.scalar(
-        select(TaskApproval)
-        .where(TaskApproval.task_id == task.id)
-        .with_for_update()
+        select(TaskApproval).where(TaskApproval.task_id == task.id).with_for_update()
     )
     if approval is None or approval.status != "approved":
         raise HTTPException(status_code=409, detail="Task lacks an approved plan.")
@@ -182,9 +186,7 @@ def rearm_task_approval(db: Session, task: Task, reason: str) -> None:
         task.status = "queued"
         return
     approval = db.scalar(
-        select(TaskApproval)
-        .where(TaskApproval.task_id == task.id)
-        .with_for_update()
+        select(TaskApproval).where(TaskApproval.task_id == task.id).with_for_update()
     )
     if approval is None:
         raise HTTPException(status_code=409, detail="Task approval is missing.")
@@ -195,9 +197,23 @@ def rearm_task_approval(db: Session, task: Task, reason: str) -> None:
     approval.issued_at = None
     approval.expires_at = None
     approval.consumed_at = None
-    approval.updated_at = datetime.now(UTC)
+    rearmed_at = datetime.now(UTC)
+    approval.updated_at = rearmed_at
     task.status = "pending_approval"
-    append_approval_event(
+    prior_notifications = db.scalars(
+        select(FounderNotification)
+        .where(
+            FounderNotification.kind == "approval_required",
+            FounderNotification.entity_id == approval.id,
+            FounderNotification.state.in_(["pending", "waiting"]),
+        )
+        .with_for_update()
+    ).all()
+    for notification in prior_notifications:
+        notification.state = "superseded"
+        notification.superseded_at = rearmed_at
+        notification.updated_at = rearmed_at
+    requested = append_approval_event(
         db,
         approval,
         "approval_requested",
@@ -205,3 +221,6 @@ def rearm_task_approval(db: Session, task: Task, reason: str) -> None:
         reason,
         {"attempt_count": task.attempt_count},
     )
+    from app.services.founder_notifications import enqueue_approval_gate
+
+    enqueue_approval_gate(db, approval, task, generation=requested.id)

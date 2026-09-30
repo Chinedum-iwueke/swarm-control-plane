@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 from app.api.routes.tasks import rearm_expired_task_approval, resume_failed_task
 from app.schemas.task import TaskResumeRequest
+from app.services.governance import rearm_task_approval as rearm_approval_service
 from fastapi import HTTPException
 
 
@@ -79,6 +80,45 @@ def test_expired_approval_can_be_rearmed_without_new_task() -> None:
     rearm.assert_called_once_with(db, record, "Pilot delay.")
     assert response.task.id == record.id
     db.commit.assert_called_once_with()
+
+
+def test_rearm_enqueues_a_new_founder_notification_generation() -> None:
+    db = MagicMock()
+    record = task()
+    approval = SimpleNamespace(
+        id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+        status="consumed",
+        decided_by="founder",
+        decision_reason="prior decision",
+        nonce_digest="digest",
+        issued_at="issued",
+        expires_at="expires",
+        consumed_at="consumed",
+        updated_at=None,
+    )
+    stale_notification = SimpleNamespace(
+        state="pending",
+        superseded_at=None,
+        updated_at=None,
+    )
+    db.scalar.return_value = approval
+    db.scalars.return_value.all.return_value = [stale_notification]
+    requested = SimpleNamespace(id=42)
+
+    with (
+        patch(
+            "app.services.governance.append_approval_event",
+            return_value=requested,
+        ),
+        patch("app.services.founder_notifications.enqueue_approval_gate") as enqueue,
+    ):
+        rearm_approval_service(db, record, "Founder requested a fresh link.")
+
+    assert approval.status == "pending"
+    assert record.status == "pending_approval"
+    assert stale_notification.state == "superseded"
+    assert stale_notification.superseded_at is not None
+    enqueue.assert_called_once_with(db, approval, record, generation=42)
 
 
 def test_rearm_rejects_non_pending_task() -> None:

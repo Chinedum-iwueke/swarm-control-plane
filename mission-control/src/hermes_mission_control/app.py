@@ -290,6 +290,13 @@ def create_app(
         return await client.decide_approval(approval_id, action, payload)
 
     @app.post(
+        "/api/tasks/{task_id}/resend-approval",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def resend_approval(task_id: str, payload: ProposalDecision) -> dict:
+        return await client.resend_approval(task_id, payload.reason)
+
+    @app.post(
         "/api/missions/{mission_id}/approve",
         dependencies=[Depends(_mutation_intent)],
     )

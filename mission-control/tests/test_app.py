@@ -23,6 +23,7 @@ class FakeControlPlane:
         self.conversation_turns: list[tuple[str, str]] = []
         self.research_cycle_decision: tuple[str, str, str, str] | None = None
         self.approval_decision: Any = None
+        self.approval_resend: tuple[str, str] | None = None
         self.codex_auth_retry: tuple[str, dict] | None = None
 
     async def close(self) -> None:
@@ -75,6 +76,10 @@ class FakeControlPlane:
     async def decide_approval(self, approval_id, action, decision) -> dict:
         self.approval_decision = decision
         return {"id": approval_id, "status": f"{action}d", "reason": decision.reason}
+
+    async def resend_approval(self, task_id: str, reason: str) -> dict:
+        self.approval_resend = (task_id, reason)
+        return {"task": {"id": task_id, "status": "pending_approval"}}
 
     async def set_pause(self, **kwargs) -> dict:
         return kwargs
@@ -241,7 +246,7 @@ def test_dashboard_refresh_preserves_research_scroll_position(
 
     assert "function navigate(view, { resetScroll = true } = {})" in script
     assert 'if (resetScroll) window.scrollTo({ top: 0, behavior: "smooth" });' in script
-    assert 'navigate(state.activeView, { resetScroll: false });' in script
+    assert "navigate(state.activeView, { resetScroll: false });" in script
 
 
 def test_dashboard_reports_local_mission_control_presence(
@@ -335,6 +340,22 @@ def test_approval_center_binds_displayed_review_digest(
     assert 'name="digest_acknowledged"' in page
 
 
+def test_approval_resend_requests_a_fresh_notification(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    reason = "Founder requested a fresh approval review link from Mission Control."
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        accepted = client.post(
+            "/api/tasks/task-id/resend-approval",
+            headers={"X-Hermes-Intent": "founder-action"},
+            json={"reason": reason},
+        )
+
+    assert accepted.status_code == 200
+    assert fake.approval_resend == ("task-id", reason)
+
+
 def test_approval_dialog_surfaces_validation_and_request_failures(
     settings: MissionControlSettings,
 ) -> None:
@@ -346,8 +367,16 @@ def test_approval_dialog_surfaces_validation_and_request_failures(
     assert 'id="decision-error"' in page
     assert "Enter a decision reason of at least 10 characters." in script
     assert "Confirm that you reviewed the exact digest" in script
-    assert 'button.textContent = action === "approve" ? "Approving…" : "Rejecting…"' in script
-    assert 'showDecisionError(error.message || "The approval decision could not be recorded.")' in script
+    assert (
+        'button.textContent = action === "approve" ? "Approving…" : "Rejecting…"'
+        in script
+    )
+    assert (
+        'showDecisionError(error.message || "The approval decision could not be recorded.")'
+        in script
+    )
+    assert "Resend to Telegram" in script
+    assert "/resend-approval`" in script
 
 
 def test_approval_dialog_cancel_bypasses_decision_requirements(
@@ -364,8 +393,7 @@ def test_approval_dialog_cancel_bypasses_decision_requirements(
         in decision_dialog
     )
     assert (
-        'type="button" class="icon-button close" data-close-dialog'
-        in decision_dialog
+        'type="button" class="icon-button close" data-close-dialog' in decision_dialog
     )
     assert '<button value="cancel"' not in decision_dialog
 

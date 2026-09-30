@@ -35,6 +35,12 @@ Successful decisions append `approval_center_decision_receipt`. Its digest binds
 5. Record a decision reason and submit.
 6. Mission Control reloads the canonical state; decided entries expose the retained receipt.
 
+For a missed or expired Telegram handoff, select **Resend to Telegram** on the
+pending gate. Mission Control rearms the same immutable task and plan digest,
+records a new approval-request generation, and queues a fresh one-time Telegram
+review link. Telegram `/approvals` remains the channel-native way to request fresh
+links for every currently actionable gate.
+
 Review links contain only the approval identifier. They reopen a read-only review fetched from the control plane and never embed a token, action or digest.
 
 ## Failure and recovery
@@ -42,6 +48,7 @@ Review links contain only the approval identifier. They reopen a read-only revie
 - `approval-review-superseded`: reload the center and review the changed envelope; never retry the old digest.
 - `approval-not-actionable`: resolve the listed prerequisite, mission, state or duplicate-notification blocker.
 - duplicate submission: the approval state transition remains terminal and later attempts fail closed.
+- expired or used Telegram link: resend from Mission Control or send `/approvals` in Telegram; do not recreate the task.
 - API unavailable: no local decision is inferred or queued.
 
 The legacy `/v1/approvals` endpoint and Telegram digest-bound tokens remain compatible. Mission Control uses only the stricter approval-center decision route.

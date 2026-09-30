@@ -219,12 +219,20 @@ async def test_backtest_queue_filter_pagination_and_authentication(settings):
     def handler(request):
         assert request.method == "GET"
         assert request.url.path == "/v1/research/alpha-campaigns/backtests/activity"
-        assert dict(request.url.params) == {"category": "finished", "tier": "Tier3", "offset": "50", "limit": "50"}
+        assert dict(request.url.params) == {
+            "category": "finished",
+            "tier": "Tier3",
+            "offset": "50",
+            "limit": "50",
+        }
         assert request.headers["Authorization"].startswith("Bearer ")
         return httpx.Response(200, json={"items": [], "offset": 50, "total": 50})
+
     client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
     try:
-        result = await client.backtest_activity(category="finished", tier="Tier3", offset=50)
+        result = await client.backtest_activity(
+            category="finished", tier="Tier3", offset=50
+        )
         assert result["offset"] == 50
     finally:
         await client.close()
@@ -677,5 +685,39 @@ async def test_daily_research_decision_is_digest_bound(
             "decision": "approved",
             "rationale": "Founder approved the evidence-grounded question.",
             "decided_by": "founder-operator",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_resend_approval_rearms_the_exact_task(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"task": {"id": "task-id", "status": "pending_approval"}},
+        )
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.resend_approval(
+            "task-id",
+            "Founder requested a fresh approval review link from Mission Control.",
+        )
+    finally:
+        await client.close()
+
+    assert captured == {
+        "path": "/v1/tasks/task-id/rearm-approval",
+        "body": {
+            "requested_by": "founder-mission-control",
+            "reason": (
+                "Founder requested a fresh approval review link from Mission Control."
+            ),
         },
     }

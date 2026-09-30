@@ -3038,6 +3038,7 @@ def overview(db: Session) -> dict:
         .order_by(AlphaDiscoveryCycle.created_at.desc())
         .limit(100)
     ).all()
+    mandate_by_id = {item.id: item for item in mandates}
     founder_ideas = db.scalars(
         select(AlphaFounderResearchIdea)
         .order_by(AlphaFounderResearchIdea.created_at.desc())
@@ -3088,10 +3089,14 @@ def overview(db: Session) -> dict:
             "heartbeat_at": item.heartbeat_at,
         }
         for item in cycles
-        if item.status == "needs_attention"
-        or (
-            item.status == "running"
-            and (now() - item.heartbeat_at).total_seconds() > 300
+        if mandate_by_id.get(item.mandate_id) is not None
+        and mandate_by_id[item.mandate_id].status == "active"
+        and (
+            item.status == "needs_attention"
+            or (
+                item.status == "running"
+                and (now() - item.heartbeat_at).total_seconds() > 300
+            )
         )
     ]
     return {
@@ -3101,6 +3106,16 @@ def overview(db: Session) -> dict:
             {
                 "id": str(item.id),
                 "mandate_id": str(item.mandate_id),
+                "mandate_key": (
+                    mandate_by_id[item.mandate_id].mandate_key
+                    if item.mandate_id in mandate_by_id
+                    else "retained-history"
+                ),
+                "mandate_status": (
+                    mandate_by_id[item.mandate_id].status
+                    if item.mandate_id in mandate_by_id
+                    else "retained"
+                ),
                 "ordinal": item.ordinal,
                 "status": item.status,
                 "phase": item.phase,

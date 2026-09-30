@@ -1105,11 +1105,26 @@ function renderApprovals() {
         ${blockers.length ? `<div class="approval-blockers"><strong>Not ready</strong>${bulletList(blockers, "")}</div>` : ""}
         <div class="approval-state">${statusBadge(approval.status)}<span class="readiness readiness-${escapeHtml(readiness)}">${escapeHtml(humanize(readiness))}</span></div>
       </div>
-      <div class="approval-actions"><a class="secondary button-link" href="?view=approvals&amp;approval=${encodeURIComponent(approval.id)}">Review link</a>${approval.status === "pending" ? `<button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}" ${item.actionable ? "" : "disabled"}>Review & approve</button>` : `<button class="secondary" data-decision="review" data-id="${approval.id}">View receipt</button>`}</div>
+      <div class="approval-actions"><a class="secondary button-link" href="?view=approvals&amp;approval=${encodeURIComponent(approval.id)}">Review link</a>${approval.status === "pending" ? `<button class="secondary" data-resend-approval="${task.id}" ${item.actionable ? "" : "disabled"}>Resend to Telegram</button><button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}" ${item.actionable ? "" : "disabled"}>Review & approve</button>` : `<button class="secondary" data-decision="review" data-id="${approval.id}">View receipt</button>`}</div>
     </article>`;
   }).join("") : empty("No approval gates recorded.");
   document.querySelectorAll("[data-decision]").forEach((button) => {
     button.addEventListener("click", () => openDecision(button.dataset.id, button.dataset.decision));
+  });
+  document.querySelectorAll("[data-resend-approval]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await mutate(
+          `/api/tasks/${button.dataset.resendApproval}/resend-approval`,
+          { reason: "Founder requested a fresh approval review link from Mission Control." },
+          "A fresh Telegram approval link was queued.",
+        );
+        await loadDashboard();
+      } finally {
+        button.disabled = false;
+      }
+    });
   });
   if (requestedApproval && !state.requestedApprovalOpened) {
     const requested = items.find((item) => String(item.approval.id) === requestedApproval);
@@ -1554,7 +1569,8 @@ function renderResearch() {
   document.getElementById("alpha-discovery-mandates").innerHTML = (alphaDiscovery.mandates || []).length ? alphaDiscovery.mandates.map((mandate) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(mandate.mandate_key)} · v${escapeHtml(mandate.version)}</strong><div class="entity-meta"><span>${mandate.cycle_count} cycles</span><span>${mandate.hypothesis_count} hypotheses</span><span>${mandate.trial_count} trials</span><span>Expires ${formatDate(mandate.valid_until)}</span><span class="mono">${shortHash(mandate.mandate_digest)}</span></div><p>${escapeHtml(mandate.objective)}</p></div><div class="entity-side">${mandate.status === "awaiting_approval" ? `<button class="primary compact" data-alpha-mandate-approve="${mandate.id}">Approve week</button>` : ""}${statusBadge(mandate.status)}</div></article>`).join("") : empty("No bounded weekly research mandate has been registered.");
   document.getElementById("alpha-founder-ideas").innerHTML = (alphaDiscovery.founder_ideas || []).length ? alphaDiscovery.founder_ideas.map((idea) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(idea.idea)}</strong><div class="entity-meta"><span>${idea.constraints?.minimum_history_days || 365} day minimum</span><span>${idea.constraints?.maximum_variants || 8} variants maximum</span><span>${escapeHtml((idea.constraints?.universe_slices || []).join(" / "))}</span><span class="mono">${shortHash(idea.idea_digest)}</span></div></div>${statusBadge(idea.status)}</article>`).join("") : empty("No founder hypothesis is queued. Ask Hermes in chat to challenge and test an idea.");
   document.getElementById("alpha-discovery-agents").innerHTML = (alphaDiscovery.agents || []).length ? alphaDiscovery.agents.map((agent) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(agent.slug))}</strong><div class="entity-meta"><span>${escapeHtml(humanize(agent.status))}</span><span>Heartbeat ${relativeTime(agent.last_heartbeat_at)}</span></div></div>${statusBadge(agent.presence)}</article>`).join("") : empty("The supervised RI director and senior researcher have not been deployed.");
-  document.getElementById("alpha-discovery-cycles").innerHTML = (alphaDiscovery.cycles || []).length ? alphaDiscovery.cycles.slice(0, 12).map((cycle) => `<article class="entity-row"><div class="entity-primary"><strong>Cycle ${cycle.ordinal} · ${escapeHtml(humanize(cycle.phase))}</strong><div class="entity-meta"><span>Next: ${escapeHtml(humanize(cycle.next_action))}</span><span>${cycle.metrics?.generated || 0} generated</span><span>${cycle.metrics?.rejected || 0} rejected</span><span>Heartbeat ${relativeTime(cycle.heartbeat_at)}</span></div></div>${statusBadge(cycle.status)}</article>`).join("") : empty("No ALPHA-004 discovery cycle has started.");
+  const activeDiscoveryCycles = (alphaDiscovery.cycles || []).filter((cycle) => cycle.mandate_status === "active");
+  document.getElementById("alpha-discovery-cycles").innerHTML = activeDiscoveryCycles.length ? activeDiscoveryCycles.slice(0, 12).map((cycle) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(cycle.mandate_key || "Active mandate")} · cycle ${cycle.ordinal} · ${escapeHtml(humanize(cycle.phase))}</strong><div class="entity-meta"><span>Next: ${escapeHtml(humanize(cycle.next_action))}</span><span>${cycle.metrics?.generated || 0} generated</span><span>${cycle.metrics?.rejected || 0} rejected</span><span>Heartbeat ${relativeTime(cycle.heartbeat_at)}</span></div></div>${statusBadge(cycle.status)}</article>`).join("") : empty("No active ALPHA-004 discovery cycle has started.");
   const signalCounts = signalSurveillance.counts || {};
   const signalItems = signalSurveillance.items || [];
   document.getElementById("signal-surveillance-status").textContent = `${signalCounts.families || 0} families · ${signalCounts.question_candidates || 0} questions`;
