@@ -32,14 +32,14 @@ def test_workload_scopes_follow_role_package_task_types() -> None:
     ]
 
 
-def test_next_identity_version_uses_first_available_revision() -> None:
+def test_next_identity_version_is_monotonic() -> None:
     identities = [
         {"agent_id": "agent-a", "version": "1.0.0"},
         {"agent_id": "agent-a", "version": "1.0.2"},
         {"agent_id": "agent-b", "version": "1.0.1"},
     ]
 
-    assert next_identity_version(identities, "agent-a") == "1.0.1"
+    assert next_identity_version(identities, "agent-a") == "1.0.3"
 
 
 def test_existing_stricter_charter_covers_active_package() -> None:

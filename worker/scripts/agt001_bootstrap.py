@@ -35,10 +35,17 @@ def next_identity_version(identities: list[dict], agent_id: str) -> str:
     used = {
         item["version"] for item in identities if item["agent_id"] == agent_id
     }
-    revision = 0
-    while f"1.0.{revision}" in used:
-        revision += 1
-    return f"1.0.{revision}"
+    parsed = []
+    for version in used:
+        parts = version.split(".")
+        if len(parts) == 3 and all(part.isdigit() for part in parts):
+            parsed.append(tuple(int(part) for part in parts))
+    major, minor, patch = max(parsed, default=(1, 0, -1))
+    candidate = f"{major}.{minor}.{patch + 1}"
+    while candidate in used:
+        patch += 1
+        candidate = f"{major}.{minor}.{patch + 1}"
+    return candidate
 
 
 def charter_covers_package(charter: dict, agent: dict, package_manifest: dict) -> bool:
