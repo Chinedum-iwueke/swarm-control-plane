@@ -233,9 +233,9 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
     assert "systemctl enable invariance-swarm-alpha-strategy-engineer.service" in installer
     assert "systemctl restart invariance-swarm-alpha-strategy-engineer.service" in installer
-    assert "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-3" in installer
+    assert "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-5" in installer
     assert "invariance-swarm-alpha-strategy-engineer@${slot}.service" in installer
-    assert 'for slot in $(seq "$((replicas + 1))" 3)' in installer
+    assert 'for slot in $(seq "$((replicas + 1))" 5)' in installer
     assert "systemctl is-active --quiet" in installer
     assert "requirements/dev-py311.lock" in installer
     assert "bulletproof-validation-runtime=ready" in installer

@@ -8,9 +8,9 @@ test "$(id -u)" -eq 0 || {
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 environment=/etc/invariance-swarm/alpha-strategy-engineer.env
-replicas="${SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-3}"
-[[ "$replicas" =~ ^[1-3]$ ]] || {
-  echo "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS must be between 1 and 3." >&2
+replicas="${SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-5}"
+[[ "$replicas" =~ ^[1-5]$ ]] || {
+  echo "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS must be between 1 and 5." >&2
   exit 1
 }
 test -f "$environment" || {
@@ -136,7 +136,7 @@ for slot in $(seq 2 "$replicas"); do
   systemctl is-active --quiet \
     "invariance-swarm-alpha-strategy-engineer@${slot}.service"
 done
-for slot in $(seq "$((replicas + 1))" 3); do
+for slot in $(seq "$((replicas + 1))" 5); do
   systemctl disable --now \
     "invariance-swarm-alpha-strategy-engineer@${slot}.service" 2>/dev/null || true
 done

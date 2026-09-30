@@ -3,6 +3,8 @@ set -euo pipefail
 
 UNIT_NAME="invariance-swarm-worker.service"
 UNIT_DESTINATION="/etc/systemd/system/${UNIT_NAME}"
+REPLICA_UNIT_NAME="invariance-swarm-worker@.service"
+REPLICA_UNIT_DESTINATION="/etc/systemd/system/${REPLICA_UNIT_NAME}"
 REPOSITORY_ROOT="/home/omenka/Projects"
 WORKER_ROOT="${REPOSITORY_ROOT}/swarm-control-plane/worker"
 WORKSPACE_ROOT="${REPOSITORY_ROOT}/swarm-agent-workspaces"
@@ -19,9 +21,15 @@ SCRIPT_DIRECTORY="$(
   pwd
 )"
 UNIT_SOURCE="${SCRIPT_DIRECTORY}/${UNIT_NAME}"
+REPLICA_UNIT_SOURCE="${SCRIPT_DIRECTORY}/${REPLICA_UNIT_NAME}"
 
 enable_service=false
 start_service=false
+replicas="${SWARM_ENGINEERING_REPLICAS:-5}"
+[[ "${replicas}" =~ ^[1-5]$ ]] || {
+  printf 'SWARM_ENGINEERING_REPLICAS must be between 1 and 5.\n' >&2
+  exit 2
+}
 
 usage() {
   cat <<'EOF'
@@ -58,10 +66,12 @@ if ((EUID != 0)); then
   exit 1
 fi
 
-if [[ ! -f "${UNIT_SOURCE}" ]]; then
-  printf 'Unit file is missing: %s\n' "${UNIT_SOURCE}" >&2
-  exit 1
-fi
+for unit_source in "${UNIT_SOURCE}" "${REPLICA_UNIT_SOURCE}"; do
+  if [[ ! -f "${unit_source}" ]]; then
+    printf 'Unit file is missing: %s\n' "${unit_source}" >&2
+    exit 1
+  fi
+done
 if [[ ! -x "${WORKER_EXECUTABLE}" ]]; then
   printf 'Worker executable is missing: %s\n' "${WORKER_EXECUTABLE}" >&2
   exit 1
@@ -107,7 +117,7 @@ for repository in "${APPROVED_REPOSITORIES[@]}"; do
   fi
 done
 
-systemd-analyze verify "${UNIT_SOURCE}"
+systemd-analyze verify "${UNIT_SOURCE}" "${REPLICA_UNIT_SOURCE}"
 
 if [[ -L "${WORKSPACE_ROOT}" ]]; then
   printf 'Workspace root must not be a symlink: %s\n' \
@@ -121,14 +131,27 @@ for repository in "${APPROVED_REPOSITORIES[@]}"; do
 done
 
 install -o root -g root -m 0644 "${UNIT_SOURCE}" "${UNIT_DESTINATION}"
+install -o root -g root -m 0644 \
+  "${REPLICA_UNIT_SOURCE}" "${REPLICA_UNIT_DESTINATION}"
 systemctl daemon-reload
 
 if [[ "${enable_service}" == true ]]; then
   systemctl enable "${UNIT_NAME}"
+  for slot in $(seq 2 "${replicas}"); do
+    systemctl enable "invariance-swarm-worker@${slot}.service"
+  done
 fi
 if [[ "${start_service}" == true ]]; then
   systemctl start "${UNIT_NAME}"
+  for slot in $(seq 2 "${replicas}"); do
+    systemctl restart "invariance-swarm-worker@${slot}.service"
+  done
 fi
+
+for slot in $(seq "$((replicas + 1))" 5); do
+  systemctl disable --now "invariance-swarm-worker@${slot}.service" \
+    2>/dev/null || true
+done
 
 printf 'Installed %s.\n' "${UNIT_DESTINATION}"
 if [[ "${enable_service}" != true && "${start_service}" != true ]]; then

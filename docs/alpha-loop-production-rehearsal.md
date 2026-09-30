@@ -21,12 +21,16 @@ is eight, the window is 365 days, and capital/order authority is false. Producti
 G3 tasks require the exclusive `alpha-strategy-engineering` capability. Failed G2
 evidence remains immutable and is never rewritten or silently retried.
 
-The strategy-engineering runtime runs up to three replicas under one reviewed role,
+The strategy-engineering runtime runs up to five replicas under one reviewed role,
 package, charter and workload identity. Every replica acquires a distinct task lease
 and writes only to that task's disposable Git worktree; the canonical checkout stays
 read-only. Replicas may therefore engineer independent hypotheses concurrently without
 sharing patches or weakening digest-bound approval. The replica count is bounded to
-one through three by `SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS` and defaults to three.
+one through five by `SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS` and defaults to five.
+The general VM1 engineering role independently uses the same one-to-five replica
+contract through `SWARM_ENGINEERING_REPLICAS`. Capability, repository, risk and
+digest checks still decide which pool may lease each mission; concurrency never
+widens a task's authority.
 
 Each strategy engineer has a two-hour mission ceiling. Each task remains
 bounded by the smaller of that ceiling and its immutable
