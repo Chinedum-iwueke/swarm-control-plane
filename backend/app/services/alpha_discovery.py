@@ -5,6 +5,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from uuid import UUID
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -37,6 +38,7 @@ from app.schemas.alpha_discovery import (
     AlphaDataAdmissionRecovery,
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
+    AlphaMandateCanonicalization,
     AlphaPredictiveCandidate,
     AlphaRepresentationPlan,
     AlphaResearchMandateApproval,
@@ -70,6 +72,7 @@ CLAIM_BOUNDARY = (
     "its own evaluation or promote a candidate."
 )
 _TERMINAL_CYCLE = {"completed", "rejected", "needs_attention", "shadow_candidate"}
+_TERMINAL_CAMPAIGN = {"cancelled", "completed_no_candidate", "shadow_candidate"}
 _PREDICTIVE_TERMS = {
     "predict",
     "predicts",
@@ -113,6 +116,10 @@ _LIQUIDITY_FIELDS = {
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def _mandate_kind(mandate: AlphaResearchMandate) -> str:
+    return mandate.specification.get("mandate_kind", "canonical_weekly")
 
 
 def _event(
@@ -188,7 +195,8 @@ def _discovery_catalog(db: Session, payload: AlphaResearchMandateCreate) -> dict
         )
     result = record.receipt.get("result", {})
     if (
-        result.get("schema_version") not in {
+        result.get("schema_version")
+        not in {
             "data002-manifest-catalog-v1.0.0",
             "data002-manifest-catalog-v1.1.0",
         }
@@ -210,6 +218,17 @@ def register_mandate(
     if payload.valid_until <= now():
         raise HTTPException(422, "Research mandate must end in the future.")
     strategy_catalog = payload.strategy_catalog
+    if payload.mandate_kind == "thematic":
+        parent = db.scalar(
+            select(AlphaResearchMandate).where(
+                AlphaResearchMandate.mandate_digest == payload.parent_mandate_digest,
+                AlphaResearchMandate.status == "active",
+            )
+        )
+        if parent is None or _mandate_kind(parent) != "canonical_weekly":
+            raise HTTPException(
+                422, "Thematic mandate parent must be the active canonical week."
+            )
     if (
         strategy_catalog.source_commit != payload.bulletproof_source_commit
         or digest_document(
@@ -334,6 +353,97 @@ def approve_mandate(
     )
 
 
+def canonicalize_mandates(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    payload: AlphaMandateCanonicalization,
+) -> list[AlphaResearchMandate]:
+    """Retain one canonical weekly mandate without disturbing explicit themes."""
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before reconciliation.")
+    if mandate.status != "active" or _mandate_kind(mandate) != "canonical_weekly":
+        raise HTTPException(
+            409, "Canonical reconciliation requires an active weekly mandate."
+        )
+    decision = resolve_authority(
+        db,
+        AuthorityResolutionRequest(
+            actor=payload.actor,
+            decision_type="research-program-charter",
+            action="reconcile",
+            object_type="alpha-research-mandate",
+            object_id=str(mandate.id),
+            object_digest=mandate.mandate_digest,
+            scope={
+                "authority": "no_capital_research",
+                "mandate_digest": mandate.mandate_digest,
+                "capital": False,
+                "orders": False,
+                "shadow": False,
+            },
+            risk_level=0,
+            environment="internal",
+            requester=mandate.created_by,
+        ),
+        now=now(),
+    )
+    if payload.actor != "founder-operator":
+        delegation = (
+            db.get(AuthorityDelegation, decision.delegation_id)
+            if decision.delegation_id is not None
+            else None
+        )
+        scope = delegation.scope if delegation is not None else {}
+        if (
+            scope.get("mandate_approval") is not True
+            or scope.get("authority") != "no_capital_research"
+            or mandate.mandate_digest not in scope.get("mandate_digests", [])
+            or any(
+                scope.get(key) is not False for key in ("capital", "orders", "shadow")
+            )
+        ):
+            raise HTTPException(
+                403, "Delegation does not cover canonical reconciliation."
+            )
+    active = db.scalars(
+        select(AlphaResearchMandate)
+        .where(
+            AlphaResearchMandate.status == "active",
+            AlphaResearchMandate.id != mandate.id,
+        )
+        .order_by(AlphaResearchMandate.created_at)
+        .with_for_update()
+    ).all()
+    superseded = []
+    for item in active:
+        if _mandate_kind(item) != "canonical_weekly":
+            continue
+        item.status = "superseded"
+        item.heartbeat_at = now()
+        _event(
+            db,
+            item,
+            "mandate_superseded_by_canonical_week",
+            {
+                "canonical_mandate_id": str(mandate.id),
+                "canonical_mandate_digest": mandate.mandate_digest,
+                "reason": payload.reason,
+            },
+        )
+        superseded.append(item)
+    _event(
+        db,
+        mandate,
+        "canonical_week_reconciled",
+        {
+            "superseded_mandate_ids": [str(item.id) for item in superseded],
+            "thematic_mandates_preserved": True,
+            "reason": payload.reason,
+        },
+    )
+    return superseded
+
+
 def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
     inventory = []
     for index, item in enumerate(mandate.specification["dataset_bindings"]):
@@ -449,7 +559,9 @@ def _recent_research_memory(db: Session, *, limit: int = 30) -> dict:
     candidates = []
     for item in items:
         document = item.document if isinstance(item.document, dict) else {}
-        data = document.get("data", {}) if isinstance(document.get("data"), dict) else {}
+        data = (
+            document.get("data", {}) if isinstance(document.get("data"), dict) else {}
+        )
         instruments = data.get("instruments") or [data.get("instrument")]
         instruments = [str(value) for value in instruments if value]
         timeframe = data.get("research_timeframe")
@@ -531,9 +643,7 @@ def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
                     "validation_empirical_p_value": trial.get(
                         "validation_empirical_p_value"
                     ),
-                    "family_adjusted_discovery": trial.get(
-                        "family_adjusted_discovery"
-                    ),
+                    "family_adjusted_discovery": trial.get("family_adjusted_discovery"),
                     "direction_stable": trial.get("direction_stable"),
                     "question_candidate": trial.get("question_candidate"),
                 }
@@ -558,9 +668,7 @@ def _recent_signal_surveillance(db: Session, *, limit: int = 12) -> dict:
     }
 
 
-def _new_signal_candidate(
-    db: Session, cycle: AlphaDiscoveryCycle
-) -> dict | None:
+def _new_signal_candidate(db: Session, cycle: AlphaDiscoveryCycle) -> dict | None:
     """Return a newly registered pre-OOS question seed after this cycle began."""
     records = db.scalars(
         select(QuantitativeProducerReceipt)
@@ -599,7 +707,10 @@ def _recent_external_surveillance(db: Session, *, limit: int = 20) -> dict:
     """Expose sanitized public-source metadata as question seeds, never evidence."""
     records = db.execute(
         select(SurveillancePublication, SurveillanceSource)
-        .join(SurveillanceSource, SurveillancePublication.source_id == SurveillanceSource.id)
+        .join(
+            SurveillanceSource,
+            SurveillancePublication.source_id == SurveillanceSource.id,
+        )
         .where(SurveillancePublication.project == "systematic-research")
         .where(SurveillancePublication.publication_status != "retracted")
         .where(SurveillanceSource.is_enabled.is_(True))
@@ -623,7 +734,11 @@ def _recent_external_surveillance(db: Session, *, limit: int = 20) -> dict:
                 "fetch_receipt_digest": publication.provenance.get(
                     "fetch_receipt_digest"
                 ),
-                "trust_class": "public_metadata_question_seed",
+                "trust_class": (
+                    "social_observation_only"
+                    if getattr(source, "feed_kind", None) == "public_social_search"
+                    else "public_metadata_question_seed"
+                ),
             }
             for publication, source in records
         ],
@@ -670,6 +785,40 @@ def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[
         }
         for item in selected
     ]
+
+
+def _mechanism_primitive_catalog(mandate: AlphaResearchMandate) -> dict:
+    primitives = []
+    for capability in mandate.specification["strategy_catalog"]["capabilities"]:
+        contract = capability.get("research_contract") or {}
+        primitives.append(
+            {
+                "hypothesis_id": capability["hypothesis_id"],
+                "title": capability["title"],
+                "hypothesis_family": capability["hypothesis_family"],
+                "description": capability["description"],
+                "market_mechanism": contract.get("market_mechanism"),
+                "required_indicators": contract.get("required_indicators", []),
+                "indicator_defaults": contract.get("indicator_defaults", {}),
+                "csi": contract.get("csi", {}),
+                "gates": contract.get("gates", []),
+                "mechanism_definition": contract.get("mechanism_definition", {}),
+                "data_requirements": contract.get("data_requirements", {}),
+                "falsification_criteria": contract.get("falsification_criteria", []),
+                "expected_failure_modes": contract.get("expected_failure_modes", []),
+                "reuse_blockers": capability["reuse_blockers"],
+                "contract_digest": capability["contract_digest"],
+                "research_contract_digest": capability.get("research_contract_digest"),
+            }
+        )
+    return {
+        "primitives": primitives,
+        "claim_boundary": (
+            "A primitive is a falsifiable prior design from the pinned Bulletproof "
+            "catalog. It may seed, condition or rival a question, but is not a true "
+            "market state, reusable edge or automatic trading gate without new evidence."
+        ),
+    }
 
 
 def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
@@ -730,6 +879,7 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
         "datasets": _dataset_inventory(mandate),
         "lake_catalog": catalog,
         "strategy_catalog": mandate.specification["strategy_catalog"],
+        "mechanism_primitive_catalog": _mechanism_primitive_catalog(mandate),
         "research_constraints": {
             "minimum_liquidity_usd": mandate.specification["minimum_liquidity_usd"],
             "liquidity_measurement_fields": sorted(_LIQUIDITY_FIELDS),
@@ -750,6 +900,22 @@ def _bounded_context(db: Session, mandate: AlphaResearchMandate) -> dict:
                 catalog_binding.get("maximum_assets_per_hypothesis", 1)
                 if catalog_binding
                 else 1
+            ),
+            "large_basket_threshold": (
+                catalog_binding.get("large_basket_threshold", 20)
+                if catalog_binding
+                else 20
+            ),
+            "large_basket_policy": (
+                catalog_binding.get(
+                    "large_basket_policy",
+                    "point_in_time_overlap_liquidity_and_compute_admission",
+                )
+                if catalog_binding
+                else "point_in_time_overlap_liquidity_and_compute_admission"
+            ),
+            "historical_window_policy": mandate.specification.get(
+                "historical_window_policy"
             ),
             "catalog_visibility_is_not_execution_admission": True,
             "new_code_requires_explicit_approval": True,
@@ -848,7 +1014,10 @@ def retry_invalid_discovery_stage(
 ) -> AlphaDiscoveryCycle:
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before stage recovery.")
-    if mandate.status != "active" or not mandate.valid_from <= now() < mandate.valid_until:
+    if (
+        mandate.status != "active"
+        or not mandate.valid_from <= now() < mandate.valid_until
+    ):
         raise HTTPException(409, "Stage recovery requires an active mandate.")
     cycle = db.scalar(
         select(AlphaDiscoveryCycle)
@@ -900,8 +1069,7 @@ def retry_invalid_discovery_stage(
         ),
     }
     recovery = (
-        invalid_stages.get(cycle.next_action)
-        or failed_stages.get(cycle.next_action)
+        invalid_stages.get(cycle.next_action) or failed_stages.get(cycle.next_action)
         if cycle.status == "needs_attention"
         else None
     )
@@ -923,7 +1091,9 @@ def retry_invalid_discovery_stage(
             "stage": stage,
         }.items()
     ):
-        raise HTTPException(409, "The retained stage contract no longer matches the cycle.")
+        raise HTTPException(
+            409, "The retained stage contract no longer matches the cycle."
+        )
     recovery_context = deepcopy(contract.get("context", {}))
     if stage == "representation" and not failed_recovery:
         rejection = db.scalar(
@@ -995,7 +1165,10 @@ def recover_data_admission(
 ) -> AlphaDiscoveryCycle:
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before admission recovery.")
-    if mandate.status != "active" or not mandate.valid_from <= now() < mandate.valid_until:
+    if (
+        mandate.status != "active"
+        or not mandate.valid_from <= now() < mandate.valid_until
+    ):
         raise HTTPException(409, "Admission recovery requires an active mandate.")
     cycle = db.get(AlphaDiscoveryCycle, payload.expected_cycle_id)
     if cycle is None or cycle.mandate_id != mandate.id:
@@ -1017,7 +1190,9 @@ def recover_data_admission(
         or admission.status != "failed"
         or cycle.status != "rejected"
     ):
-        raise HTTPException(409, "Admission recovery ledger is not the expected failure.")
+        raise HTTPException(
+            409, "Admission recovery ledger is not the expected failure."
+        )
     task = db.get(Task, payload.expected_task_id)
     contract = task.input_contract if task is not None else {}
     catalog = mandate.specification.get("discovery_catalog", {})
@@ -1030,7 +1205,9 @@ def recover_data_admission(
         or contract.get("source_commit")
         != mandate.specification.get("bulletproof_source_commit")
     ):
-        raise HTTPException(409, "Successful admission task does not match frozen scope.")
+        raise HTTPException(
+            409, "Successful admission task does not match frozen scope."
+        )
     prior_failure = admission.failure
     admission.status = "queued"
     admission.failure = {}
@@ -1276,11 +1453,17 @@ def _candidate_reasons(
     founder_constraints = cycle.context.get("founder_research_idea", {}).get(
         "constraints", {}
     )
+    catalog_policy = mandate.specification.get("discovery_catalog", {})
+    maximum_assets = int(catalog_policy.get("maximum_assets_per_hypothesis", 128))
+    if len(candidate.data.instruments) > maximum_assets:
+        reasons.append("mandate_maximum_assets_exceeded")
     if founder_constraints:
         maximum_variants = int(founder_constraints.get("maximum_variants", 8))
         minimum_history_days = int(founder_constraints.get("minimum_history_days", 365))
         minimum_instruments = int(founder_constraints.get("minimum_instruments", 1))
-        maximum_instruments = int(founder_constraints.get("maximum_instruments", 8))
+        maximum_instruments = int(
+            founder_constraints.get("maximum_instruments", maximum_assets)
+        )
         if candidate.parameter_budget.maximum_variants > maximum_variants:
             reasons.append("founder_variant_budget_exceeded")
         if candidate.data.minimum_history_observations < minimum_history_days * 1440:
@@ -1394,11 +1577,6 @@ def _candidate_reasons(
             (candidate.data.venue, instrument)
             for instrument in candidate.data.instruments
         }
-        maximum_assets = int(
-            mandate.specification.get("discovery_catalog", {}).get(
-                "maximum_assets_per_hypothesis", 1
-            )
-        )
         if (
             catalog.get("discovery_authority") is True
             and requested
@@ -1540,9 +1718,7 @@ def _normalize_candidate_input(
     changes: list[str] = []
     allowed_pairs = {
         (str(item["object_id"]), item["content_digest"])
-        for item in cycle.context.get("research_intelligence", {}).get(
-            "citations", []
-        )
+        for item in cycle.context.get("research_intelligence", {}).get("citations", [])
     }
     object_ids = normalized.get("evidence_object_ids")
     digests = normalized.get("evidence_digests")
@@ -1553,9 +1729,7 @@ def _normalize_candidate_input(
             normalized["evidence_object_ids"] = [item[0] for item in replayable]
             normalized["evidence_digests"] = [item[1] for item in replayable]
             changes.append("discarded_non_replayable_evidence_pairs")
-    constraints = cycle.context.get("founder_research_idea", {}).get(
-        "constraints", {}
-    )
+    constraints = cycle.context.get("founder_research_idea", {}).get("constraints", {})
     minimum = int(constraints.get("minimum_history_days", 0)) * 1440
     data = normalized.get("data")
     if (
@@ -1589,9 +1763,7 @@ def _materialize_candidates(
             normalized_candidate, deterministic_normalizations = (
                 _normalize_candidate_input(raw_candidate, cycle)
             )
-            representation_plan = normalized_candidate.pop(
-                "representation_plan", None
-            )
+            representation_plan = normalized_candidate.pop("representation_plan", None)
             candidate = AlphaPredictiveCandidate.model_validate(normalized_candidate)
             assured_equations = []
             for equation in candidate.equations:
@@ -1632,6 +1804,18 @@ def _materialize_candidates(
                     ),
                     None,
                 ),
+                "large_basket_governance": {
+                    "required": len(candidate.data.instruments)
+                    >= mandate.specification.get("discovery_catalog", {}).get(
+                        "large_basket_threshold", 20
+                    ),
+                    "policy": mandate.specification.get("discovery_catalog", {}).get(
+                        "large_basket_policy",
+                        "point_in_time_overlap_liquidity_and_compute_admission",
+                    ),
+                    "selection_is_pre_outcome": True,
+                    "content_admission_required_before_execution": True,
+                },
             }
         except ValidationError as exc:
             candidate = None
@@ -1701,9 +1885,7 @@ def _ensure_data_admission_task(
     if catalog is None:
         raise HTTPException(409, "Candidate has no founder-approved discovery catalog.")
     data = candidate.document["data"]
-    shared_fields = {
-        field for field in data["required_fields"] if "__" not in field
-    }
+    shared_fields = {field for field in data["required_fields"] if "__" not in field}
     assets = [
         {
             "venue": data["venue"],
@@ -2272,28 +2454,56 @@ def _duplicate_only_cycle(cycle: AlphaDiscoveryCycle) -> bool:
     )
 
 
-def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
-    moment = now()
-    mandate.heartbeat_at = moment
-    if mandate.status != "active":
-        return
-    if moment >= mandate.valid_until:
-        mandate.status = "expired"
-        _event(db, mandate, "mandate_expired", {"expired_at": moment.isoformat()})
-        return
-    cycle = db.scalar(
-        select(AlphaDiscoveryCycle)
-        .where(AlphaDiscoveryCycle.mandate_id == mandate.id)
-        .order_by(AlphaDiscoveryCycle.ordinal.desc())
-        .limit(1)
-    )
-    if cycle is None:
-        _new_cycle(db, mandate, _next_founder_idea(db, mandate))
-        return
-    cycle.heartbeat_at = moment
-    if cycle.campaign_id:
+def _question_pipeline_state(
+    db: Session, mandate: AlphaResearchMandate
+) -> tuple[int, int]:
+    cycles = db.scalars(
+        select(AlphaDiscoveryCycle).where(AlphaDiscoveryCycle.mandate_id == mandate.id)
+    ).all()
+    active_cycle_ids = []
+    for cycle in cycles:
+        if cycle.campaign_id is None:
+            continue
         campaign = db.get(AlphaCampaign, cycle.campaign_id)
-        if campaign and campaign.status == "shadow_candidate":
+        if campaign is not None and campaign.status not in _TERMINAL_CAMPAIGN:
+            active_cycle_ids.append(cycle.id)
+    if not active_cycle_ids:
+        return 0, 0
+    depth = (
+        db.scalar(
+            select(func.count())
+            .select_from(AlphaDiscoveryCandidate)
+            .where(
+                AlphaDiscoveryCandidate.cycle_id.in_(active_cycle_ids),
+                AlphaDiscoveryCandidate.disposition.in_(
+                    ["accepted", "awaiting_data_admission"]
+                ),
+            )
+        )
+        or 0
+    )
+    return int(depth), len(active_cycle_ids)
+
+
+def _mandate_budget_exhausted(mandate: AlphaResearchMandate) -> bool:
+    return (
+        mandate.cycle_count >= mandate.budget["maximum_cycles"]
+        or mandate.hypothesis_count >= mandate.budget["maximum_hypotheses"]
+        or mandate.trial_count >= mandate.budget["maximum_total_trials"]
+    )
+
+
+def _reconcile_campaign_cycle(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    cycle: AlphaDiscoveryCycle,
+    moment: datetime,
+) -> None:
+    campaign = db.get(AlphaCampaign, cycle.campaign_id)
+    if campaign is None:
+        return
+    if campaign.status == "shadow_candidate":
+        if cycle.status != "shadow_candidate":
             cycle.status = "shadow_candidate"
             cycle.phase = "complete"
             cycle.next_action = "founder_shadow_review"
@@ -2306,51 +2516,119 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                 {"campaign_id": str(campaign.id)},
                 cycle,
             )
-        elif campaign and campaign.status == "completed_no_candidate":
-            if cycle.status != "completed":
-                cycle.status = "completed"
-                cycle.phase = "complete"
-                cycle.next_action = "schedule_next_discovery_cycle"
-                cycle.completed_at = moment
-                mandate.hypothesis_count += campaign.hypothesis_count
-                mandate.trial_count += campaign.trial_count
-                _event(
-                    db,
-                    mandate,
-                    "campaign_completed_without_candidate",
-                    {
-                        "campaign_id": str(campaign.id),
-                        "hypotheses": campaign.hypothesis_count,
-                        "trials": campaign.trial_count,
-                    },
-                    cycle,
-                )
-        elif campaign and campaign.status == "needs_attention":
-            cycle.status = "needs_attention"
-            cycle.next_action = campaign.next_action
-        elif campaign and campaign.status == "cancelled":
-            if cycle.status != "rejected":
-                cycle.status = "rejected"
-                cycle.phase = "complete"
-                cycle.next_action = "schedule_next_discovery_cycle"
-                cycle.completed_at = moment
-                _event(
-                    db,
-                    mandate,
-                    "campaign_cancelled_without_candidate",
-                    {
-                        "campaign_id": str(campaign.id),
-                        "terminal_reason": campaign.terminal_reason,
-                        "hypotheses": campaign.hypothesis_count,
-                        "trials": campaign.trial_count,
-                    },
-                    cycle,
-                )
-        if campaign is None or campaign.status not in {
-            "cancelled",
-            "completed_no_candidate",
-        }:
+    elif campaign.status == "completed_no_candidate":
+        if cycle.status != "completed":
+            cycle.status = "completed"
+            cycle.phase = "complete"
+            cycle.next_action = "schedule_next_discovery_cycle"
+            cycle.completed_at = moment
+            mandate.hypothesis_count += campaign.hypothesis_count
+            mandate.trial_count += campaign.trial_count
+            _event(
+                db,
+                mandate,
+                "campaign_completed_without_candidate",
+                {
+                    "campaign_id": str(campaign.id),
+                    "hypotheses": campaign.hypothesis_count,
+                    "trials": campaign.trial_count,
+                },
+                cycle,
+            )
+    elif campaign.status == "cancelled":
+        if cycle.status != "rejected":
+            cycle.status = "rejected"
+            cycle.phase = "complete"
+            cycle.next_action = "schedule_next_discovery_cycle"
+            cycle.completed_at = moment
+            _event(
+                db,
+                mandate,
+                "campaign_cancelled_without_candidate",
+                {
+                    "campaign_id": str(campaign.id),
+                    "terminal_reason": campaign.terminal_reason,
+                    "hypotheses": campaign.hypothesis_count,
+                    "trials": campaign.trial_count,
+                },
+                cycle,
+            )
+    elif campaign.status == "needs_attention":
+        cycle.status = "needs_attention"
+        cycle.phase = "campaign"
+        cycle.next_action = campaign.next_action
+    elif cycle.status == "needs_attention":
+        cycle.status = "running"
+        cycle.phase = "campaign"
+        cycle.next_action = "await_bounded_bulletproof_results"
+
+
+def _reconcile_campaign_cycles(
+    db: Session, mandate: AlphaResearchMandate, moment: datetime
+) -> set[UUID]:
+    cycles = db.scalars(
+        select(AlphaDiscoveryCycle)
+        .where(
+            AlphaDiscoveryCycle.mandate_id == mandate.id,
+            AlphaDiscoveryCycle.campaign_id.is_not(None),
+        )
+        .order_by(AlphaDiscoveryCycle.ordinal)
+    ).all()
+    reconciled = set()
+    for cycle in cycles:
+        _reconcile_campaign_cycle(db, mandate, cycle, moment)
+        reconciled.add(cycle.id)
+    return reconciled
+
+
+def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
+    moment = now()
+    mandate.heartbeat_at = moment
+    if mandate.status != "active":
+        return
+    if moment >= mandate.valid_until:
+        mandate.status = "expired"
+        _event(db, mandate, "mandate_expired", {"expired_at": moment.isoformat()})
+        return
+    reconciled_cycles = _reconcile_campaign_cycles(db, mandate, moment)
+    if mandate.status != "active":
+        return
+    cycle = db.scalar(
+        select(AlphaDiscoveryCycle)
+        .where(AlphaDiscoveryCycle.mandate_id == mandate.id)
+        .order_by(AlphaDiscoveryCycle.ordinal.desc())
+        .limit(1)
+    )
+    if cycle is None:
+        _new_cycle(db, mandate, _next_founder_idea(db, mandate))
+        return
+    if cycle.campaign_id is not None and cycle.id not in reconciled_cycles:
+        _reconcile_campaign_cycle(db, mandate, cycle, moment)
+        if mandate.status != "active":
             return
+    cycle.heartbeat_at = moment
+    pipeline_depth, active_campaigns = _question_pipeline_state(db, mandate)
+    if cycle.campaign_id and cycle.status not in _TERMINAL_CYCLE:
+        if _mandate_budget_exhausted(mandate):
+            return
+        low_watermark = mandate.budget.get("question_queue_low_watermark", 2)
+        maximum_parallel = mandate.budget.get("maximum_parallel_campaigns", 1)
+        if pipeline_depth < low_watermark and active_campaigns < maximum_parallel:
+            _event(
+                db,
+                mandate,
+                "question_queue_low_watermark_replenished",
+                {
+                    "pipeline_depth": pipeline_depth,
+                    "low_watermark": low_watermark,
+                    "active_campaigns": active_campaigns,
+                    "maximum_parallel_campaigns": maximum_parallel,
+                    "cadence_bypassed": True,
+                },
+                cycle,
+            )
+            _new_cycle(db, mandate)
+        return
     if _reconcile_data_admissions(db, mandate, cycle):
         return
     _recover_resumed_stage(db, mandate, cycle)
@@ -2365,11 +2643,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                 "completed" if cycle.status == "completed" else cycle.status
             )
         elapsed = (moment - (cycle.completed_at or cycle.created_at)).total_seconds()
-        if (
-            mandate.cycle_count >= mandate.budget["maximum_cycles"]
-            or mandate.hypothesis_count >= mandate.budget["maximum_hypotheses"]
-            or mandate.trial_count >= mandate.budget["maximum_total_trials"]
-        ):
+        if _mandate_budget_exhausted(mandate):
             mandate.status = "completed"
             _event(
                 db,
@@ -2411,7 +2685,28 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                 cycle,
             )
             _new_cycle(db, mandate)
-        elif elapsed >= mandate.budget["cadence_seconds"]:
+        elif pipeline_depth < mandate.budget.get(
+            "question_queue_low_watermark", 2
+        ) and active_campaigns < mandate.budget.get("maximum_parallel_campaigns", 1):
+            _event(
+                db,
+                mandate,
+                "question_queue_low_watermark_replenished",
+                {
+                    "pipeline_depth": pipeline_depth,
+                    "low_watermark": mandate.budget.get(
+                        "question_queue_low_watermark", 2
+                    ),
+                    "active_campaigns": active_campaigns,
+                    "maximum_parallel_campaigns": mandate.budget.get(
+                        "maximum_parallel_campaigns", 1
+                    ),
+                    "cadence_bypassed": True,
+                },
+                cycle,
+            )
+            _new_cycle(db, mandate)
+        elif elapsed >= mandate.budget["cadence_seconds"] and active_campaigns == 0:
             _new_cycle(db, mandate)
         return
     intelligence = db.get(Task, cycle.intelligence_task_id)

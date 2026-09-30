@@ -24,6 +24,18 @@ promotion. Existing independent BT-009 evaluation remains authoritative.
 New strategy code still creates an explicitly approved engineering mission. A
 shadow candidate pauses the mandate for founder review.
 
+Only one active `canonical_weekly` mandate directs the general loop. An explicitly
+scoped `thematic` mandate may coexist only when it names the canonical mandate digest
+as its parent. Canonicalization supersedes older general weekly mandates without
+deleting their evidence or disturbing thematic children.
+
+The primary historical window is the complete rolling 365 UTC days ending immediately
+after the newest gap-free DATA-002 cataloged 1-minute bar. Wall-clock time and older
+source-campaign windows are not silently substituted. A survivor may receive
+a separate immutable deep-validation contract covering up to 1,095 recent historical
+days only after primary-window survival, independent review and an explicit follow-up
+contract.
+
 ## Candidate admission
 
 Candidates must name a predictor, future target, horizon, direction, causal
@@ -33,6 +45,19 @@ content digests must replay against the cycle context. Instructions, vague topic
 descriptive statements, missing requested columns, missing volume/depth evidence,
 weak liquidity scope and semantic
 duplicates are retained as rejected candidates.
+
+New mandates allow up to 100 instruments per hypothesis by default (hard schema
+ceiling 128). The representation scientist may retain one instrument, mix historical
+stable/volatile labels, or select a 30-100 member basket when breadth,
+diversification or cross-sectional estimation is causal to the question. Large baskets
+still require point-in-time membership, common-window, liquidity, DATA-002/003 content
+admission and compute-capacity checks.
+
+The bounded context includes a typed mechanism-primitive catalog extracted from the
+exact native Bulletproof contracts. It includes declared CSI components and sources,
+other registered indicators, gates, failure modes and falsification criteria. These
+are prior designs an agent may adapt, challenge or reject. Catalog membership never
+turns CSI, an index, a proxy or another mechanism into a proven signal.
 
 Source replay makes an equation locatable and explainable. RI-014D automatically
 requests exact, cached assurance when a candidate needs it. Campaign use requires
@@ -50,10 +75,17 @@ invented, weaker or source-mismatched receipts are rejected from the campaign.
    then install their three systemd services. The representation identity must expose
    only `data-representation` and `market-data-read` capabilities.
 4. Run `worker/scripts/alpha004_mandate.py` on VM1. Inspect the exact dataset,
-   window, universe and budget in Mission Control, then approve the mandate.
+   recent 365-day window, universe ceiling and budget in Mission Control, then approve
+   the mandate. Run `alpha004_canonicalize.py` against the selected active digest to
+   supersede overlapping legacy weekly mandates.
 5. Confirm the VM2 director and all three VM1 ALPHA-004 agents are active. Mission
    Control must report fresh heartbeats, `representation_selection` as a visible phase,
    the representation task ID/count, a running cycle and no unexplained stall.
+
+The controller measures accepted or awaiting-data-admission depth across all active
+campaigns. Below `question_queue_low_watermark`, it starts another bounded cycle while
+`maximum_parallel_campaigns` permits. The one-hour cadence is only an idle fallback;
+terminal negative, invalid, failed and duplicate-only cycles replenish immediately.
 
 ## Failure and rollback
 

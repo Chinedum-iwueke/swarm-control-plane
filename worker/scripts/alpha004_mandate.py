@@ -23,6 +23,43 @@ BINDING_KEYS = {
 }
 
 
+def parse_catalog_timestamp(value: object) -> datetime:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value) / 1000 if float(value) > 10_000_000_000 else float(value)
+        return datetime.fromtimestamp(seconds, tz=UTC)
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("catalog timestamps must include a timezone")
+        return parsed.astimezone(UTC)
+    raise ValueError("catalog timestamp is not an ISO-8601 string or Unix epoch")
+
+
+def recent_catalog_window(
+    catalog: dict, *, venues: set[str]
+) -> tuple[datetime, datetime]:
+    complete_ends = []
+    for item in catalog.get("one_year_coverage_candidates", []):
+        if (
+            item.get("venue") not in venues
+            or item.get("timeframe") != "1m"
+            or item.get("fetch_status") != "success"
+            or int(item.get("missing_rows") or 0) != 0
+            or not item.get("last_ts")
+        ):
+            continue
+        complete_ends.append(
+            parse_catalog_timestamp(item["last_ts"]) + timedelta(minutes=1)
+        )
+    if not complete_ends:
+        raise RuntimeError(
+            "The DATA-002 catalog has no timestamped, gap-free one-year panel for "
+            "the requested venues; no mandate was written."
+        )
+    window_end = max(complete_ends).replace(second=0, microsecond=0)
+    return window_end - timedelta(days=365), window_end
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -33,6 +70,15 @@ def main() -> int:
         ),
     )
     parser.add_argument("--minimum-liquidity-usd", type=float, default=1_000_000)
+    parser.add_argument("--maximum-assets-per-hypothesis", type=int, default=100)
+    parser.add_argument("--question-queue-low-watermark", type=int, default=12)
+    parser.add_argument("--maximum-parallel-campaigns", type=int, default=3)
+    parser.add_argument(
+        "--mandate-kind",
+        choices=("canonical_weekly", "thematic"),
+        default="canonical_weekly",
+    )
+    parser.add_argument("--parent-mandate-digest")
     parser.add_argument("--mandate-key")
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--source-campaign-id")
@@ -68,8 +114,20 @@ def main() -> int:
             parser.error(
                 "Window timestamps require a timezone, for example 2025-05-01T00:00:00Z."
             )
-        if end - start < timedelta(days=365):
-            parser.error("The continuous research window must span at least 365 days.")
+        if end - start != timedelta(days=365):
+            parser.error(
+                "The primary continuous research window must span exactly 365 days."
+            )
+    if not 1 <= args.maximum_assets_per_hypothesis <= 128:
+        parser.error("--maximum-assets-per-hypothesis must be between 1 and 128.")
+    if not 2 <= args.question_queue_low_watermark <= 100:
+        parser.error("--question-queue-low-watermark must be between 2 and 100.")
+    if not 1 <= args.maximum_parallel_campaigns <= 8:
+        parser.error("--maximum-parallel-campaigns must be between 1 and 8.")
+    if args.mandate_kind == "thematic" and not args.parent_mandate_digest:
+        parser.error("Thematic mandates require --parent-mandate-digest.")
+    if args.mandate_kind == "canonical_weekly" and args.parent_mandate_digest:
+        parser.error("Canonical mandates cannot declare --parent-mandate-digest.")
     if args.bulletproof_source_commit and not re.fullmatch(
         r"[0-9a-f]{40}", args.bulletproof_source_commit
     ):
@@ -168,6 +226,15 @@ def main() -> int:
                 "No immutable no-authority manifest catalog covers the requested discovery venues."
             )
         moment = datetime.now(UTC)
+        if args.window_end:
+            window_end = datetime.fromisoformat(args.window_end.replace("Z", "+00:00"))
+            window_start = datetime.fromisoformat(
+                args.window_start.replace("Z", "+00:00")
+            )
+        else:
+            window_start, window_end = recent_catalog_window(
+                catalog, venues=set(args.discovery_venues)
+            )
         payload = {
             "mandate_key": args.mandate_key or f"ALPHA004-WEEK-{moment:%Y%m%d}",
             "version": args.version,
@@ -175,10 +242,20 @@ def main() -> int:
             "valid_from": moment.isoformat(),
             "valid_until": (moment + timedelta(days=7)).isoformat(),
             "bulletproof_source_commit": source_commit,
-            "execution_window_start": args.window_start
-            or specification["execution_window_start"],
-            "execution_window_end": args.window_end
-            or specification["execution_window_end"],
+            "execution_window_start": window_start.isoformat(),
+            "execution_window_end": window_end.isoformat(),
+            "historical_window_policy": {
+                "primary_policy": "latest_complete_utc_year",
+                "primary_duration_days": 365,
+                "deep_validation_max_days": 1095,
+                "deep_validation_requires": [
+                    "primary_window_survivor",
+                    "independent_review_complete",
+                    "explicit_followup_contract",
+                ],
+            },
+            "mandate_kind": args.mandate_kind,
+            "parent_mandate_digest": args.parent_mandate_digest,
             "dataset_bindings": bindings,
             "discovery_catalog": {
                 "producer_receipt_id": catalog["receipt_id"],
@@ -186,7 +263,11 @@ def main() -> int:
                 "source_commit": catalog["source_commit"],
                 "allowed_venues": sorted(set(args.discovery_venues)),
                 "selection_policy": "point_in_time_pre_outcome",
-                "maximum_assets_per_hypothesis": 8,
+                "maximum_assets_per_hypothesis": args.maximum_assets_per_hypothesis,
+                "large_basket_threshold": 20,
+                "large_basket_policy": (
+                    "point_in_time_overlap_liquidity_and_compute_admission"
+                ),
             },
             "strategy_catalog": strategy_catalog,
             "allowed_venues": specification["allowed_venues"],
@@ -200,14 +281,15 @@ def main() -> int:
                 "maximum_candidates_per_cycle": 5,
                 "cadence_seconds": 3600,
                 "maximum_consecutive_failures": 5,
+                "question_queue_low_watermark": args.question_queue_low_watermark,
+                "maximum_parallel_campaigns": args.maximum_parallel_campaigns,
             },
             "created_by": "founder-operator",
         }
         created = client.post("/v1/research/alpha-discovery/mandates", json=payload)
         if created.is_error:
             raise RuntimeError(
-                "Mandate registration failed "
-                f"({created.status_code}): {created.text}"
+                f"Mandate registration failed ({created.status_code}): {created.text}"
             )
         print(json.dumps(created.json(), indent=2, sort_keys=True))
     return 0

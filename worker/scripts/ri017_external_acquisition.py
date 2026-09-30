@@ -21,13 +21,16 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-CONNECTOR_VERSION = "ri017-public-syndication-v1.1.0"
+CONNECTOR_VERSION = "ri017-public-syndication-v1.2.0"
 MAX_BYTES = 2_000_000
 MAX_ENTRIES = 100
 MAX_TRANSCRIPT_INDEX_BYTES = 3_000_000
 MAX_TRANSCRIPT_BYTES = 500_000
 MAX_TRANSCRIPT_TOTAL_BYTES = 10_000_000
 MAX_TRANSCRIPTS = 50
+MAX_SCHOLARLY_PAGES = 100
+MAX_SCHOLARLY_INDEX_BYTES = 5_000_000
+MAX_SCHOLARLY_TOTAL_BYTES = 20_000_000
 
 
 def atomic_json(path: Path, document: dict) -> None:
@@ -90,7 +93,9 @@ def _reject_nonpublic_resolution(host: str) -> None:
     for value in addresses:
         address = ipaddress.ip_address(value)
         if not address.is_global:
-            raise ValueError(f"approved source resolved outside public address space: {host}")
+            raise ValueError(
+                f"approved source resolved outside public address space: {host}"
+            )
 
 
 def _parse_time(value: str) -> datetime:
@@ -106,6 +111,8 @@ def _parse_time(value: str) -> datetime:
 
 def _text(item: ET.Element, name: str) -> str:
     node = item.find(f"{{*}}{name}")
+    if node is None:
+        node = item.find(f".//{{*}}{name}")
     return "" if node is None else " ".join("".join(node.itertext()).split())
 
 
@@ -118,9 +125,7 @@ def parse_syndication(content: bytes, *, allowed_host: str) -> list[dict]:
     for item in nodes[:MAX_ENTRIES]:
         link_node = item.find("{*}link")
         link = (
-            ""
-            if link_node is None
-            else (link_node.get("href") or link_node.text or "")
+            "" if link_node is None else (link_node.get("href") or link_node.text or "")
         ).strip()
         parsed = urlparse(link)
         if parsed.scheme != "https" or not parsed.hostname:
@@ -262,6 +267,90 @@ class _TranscriptEpisodeParser(HTMLParser):
         }
 
 
+class _ScholarlyIndexParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.links: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        href = dict(attrs).get("href") or ""
+        is_neurips = href.endswith("-Abstract-Conference.html")
+        is_pmlr = bool(re.search(r"/v[0-9]+/[a-z0-9-]+\.html$", href))
+        if (is_neurips or is_pmlr) and href not in self.links:
+            self.links.append(href)
+
+
+class _ScholarlyPageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.metadata: dict[str, list[str]] = {}
+        self._abstract_depth = 0
+        self._abstract_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = set((values.get("class") or "").split())
+        if tag == "p" and "paper-abstract" in classes:
+            self._abstract_depth = 1
+            return
+        if self._abstract_depth and tag == "p":
+            self._abstract_depth += 1
+        if tag != "meta":
+            return
+        name = (values.get("name") or values.get("property") or "").lower()
+        content = " ".join((values.get("content") or "").split())
+        if name and content:
+            self.metadata.setdefault(name, []).append(content)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._abstract_depth and tag == "p":
+            self._abstract_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        value = " ".join(data.split())
+        if self._abstract_depth and value:
+            self._abstract_parts.append(value)
+
+    def entry(self, *, canonical_url: str) -> dict | None:
+        def first(*names: str) -> str:
+            return next(
+                (self.metadata[name][0] for name in names if self.metadata.get(name)),
+                "",
+            )
+
+        title = first("citation_title", "og:title")
+        abstract = first(
+            "citation_abstract", "description", "og:description"
+        ) or " ".join(self._abstract_parts)
+        published = first(
+            "citation_publication_date", "citation_date", "article:published_time"
+        )
+        if not title or not abstract or not published:
+            return None
+        try:
+            published_at = _parse_time(published)
+        except (TypeError, ValueError):
+            year = re.search(r"(?:19|20)[0-9]{2}", published)
+            if year is None:
+                return None
+            published_at = datetime(int(year.group()), 1, 1, tzinfo=UTC)
+        return {
+            "external_id": first("citation_doi") or canonical_url[:500],
+            "title": title[:1000],
+            "abstract": abstract[:50_000],
+            "canonical_url": canonical_url,
+            "published_at": published_at.isoformat(),
+            "updated_at": None,
+            "doi": (first("citation_doi") or None),
+            "authors": self.metadata.get("citation_author", [])[:100],
+            "status": "published",
+            "corrects_external_id": None,
+            "retracts_external_id": None,
+        }
+
+
 def _public_get(client: httpx.Client, url: str, *, max_bytes: int) -> httpx.Response:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
@@ -308,9 +397,90 @@ def fetch_transcript_index(source: dict) -> tuple[int, list[dict]]:
     return index.status_code, entries
 
 
+def fetch_scholarly_index(source: dict) -> tuple[int, list[dict]]:
+    base = source["feed_url"]
+    allowed_host = source["allowed_hosts"][0]
+    entries: list[dict] = []
+    total_bytes = 0
+    with httpx.Client(
+        timeout=20,
+        follow_redirects=False,
+        trust_env=False,
+        headers={"Accept": "text/html"},
+    ) as client:
+        index = _public_get(client, base, max_bytes=MAX_SCHOLARLY_INDEX_BYTES)
+        if index.status_code >= 400:
+            return index.status_code, []
+        parser = _ScholarlyIndexParser()
+        parser.feed(index.text)
+        for path in parser.links[:MAX_SCHOLARLY_PAGES]:
+            url = urljoin(base, path)
+            if urlparse(url).hostname != allowed_host:
+                continue
+            response = _public_get(client, url, max_bytes=MAX_TRANSCRIPT_BYTES)
+            if response.status_code >= 400:
+                continue
+            total_bytes += len(response.content)
+            if total_bytes > MAX_SCHOLARLY_TOTAL_BYTES:
+                break
+            page = _ScholarlyPageParser()
+            page.feed(response.text)
+            entry = page.entry(canonical_url=url)
+            if entry is not None:
+                entries.append(entry)
+    return index.status_code, entries
+
+
+def fetch_public_social_search(source: dict) -> tuple[int, list[dict]]:
+    with httpx.Client(
+        timeout=20,
+        follow_redirects=False,
+        trust_env=False,
+        headers={"Accept": "application/json"},
+    ) as client:
+        response = _public_get(client, source["feed_url"], max_bytes=MAX_BYTES)
+    if response.status_code >= 400:
+        return response.status_code, []
+    document = response.json()
+    posts = document.get("posts")
+    if posts is None:
+        posts = [item.get("post", {}) for item in document.get("feed", [])]
+    entries = []
+    for item in posts[:MAX_ENTRIES]:
+        record = item.get("record", {})
+        author = item.get("author", {})
+        uri = str(item.get("uri", ""))
+        text = " ".join(str(record.get("text", "")).split())
+        created_at = record.get("createdAt")
+        handle = str(author.get("handle", ""))
+        rkey = uri.rsplit("/", 1)[-1]
+        if not uri.startswith("at://") or not text or not created_at or not handle:
+            continue
+        entries.append(
+            {
+                "external_id": uri[:500],
+                "title": text[:300],
+                "abstract": text[:50_000],
+                "canonical_url": f"https://bsky.app/profile/{handle}/post/{rkey}",
+                "published_at": _parse_time(created_at).isoformat(),
+                "updated_at": None,
+                "doi": None,
+                "authors": [handle[:300]],
+                "status": "published",
+                "corrects_external_id": None,
+                "retracts_external_id": None,
+            }
+        )
+    return response.status_code, entries
+
+
 def fetch_source(source: dict) -> tuple[int, list[dict]]:
     if source["feed_kind"] == "html_transcript_index":
         return fetch_transcript_index(source)
+    if source["feed_kind"] == "html_scholarly_index":
+        return fetch_scholarly_index(source)
+    if source["feed_kind"] == "public_social_search":
+        return fetch_public_social_search(source)
     parsed = urlparse(source["feed_url"])
     host = parsed.hostname or ""
     _reject_nonpublic_resolution(host)
@@ -384,6 +554,7 @@ def acquire(
             {
                 "source_key": source["source_key"],
                 "status": receipt["status"],
+                "entry_count": receipt["entry_count"],
                 "new_count": receipt["new_count"],
                 "duplicate_count": receipt["duplicate_count"],
                 "rejected_count": receipt["rejected_count"],
@@ -391,10 +562,56 @@ def acquire(
                 "connector_error": error,
             }
         )
+    feed_kinds = sorted({source["feed_kind"] for source in definitions})
+    channel_coverage = {
+        kind: {
+            "expected_source_count": sum(
+                1 for source in definitions if source["feed_kind"] == kind
+            ),
+            "successful_receipt_count": sum(
+                1
+                for item, source in zip(outcomes, definitions, strict=True)
+                if source["feed_kind"] == kind and item["status"] == "succeeded"
+            ),
+            "nonempty_receipt_count": sum(
+                1
+                for item, source in zip(outcomes, definitions, strict=True)
+                if source["feed_kind"] == kind
+                and item["status"] == "succeeded"
+                and item["entry_count"] > 0
+            ),
+            "entry_count": sum(
+                item["entry_count"]
+                for item, source in zip(outcomes, definitions, strict=True)
+                if source["feed_kind"] == kind and item["status"] == "succeeded"
+            ),
+        }
+        for kind in feed_kinds
+    }
+    unproven_channels = [
+        kind
+        for kind, coverage in channel_coverage.items()
+        if coverage["successful_receipt_count"] != coverage["expected_source_count"]
+        or coverage["nonempty_receipt_count"] != coverage["expected_source_count"]
+    ]
     state = {
-        "schema_version": "ri017-acquisition-state-v1.0.0",
+        "schema_version": "ri017-acquisition-state-v1.1.0",
         "completed_at": datetime.now(UTC).isoformat(),
         "sources": outcomes,
+        "channel_coverage": channel_coverage,
+        "operational_qualification": {
+            "status": "qualified" if not unproven_channels else "not_qualified",
+            "unproven_channels": unproven_channels,
+            "receipt_digests": sorted(
+                item["receipt_digest"] for item in outcomes if item["receipt_digest"]
+            ),
+            "claim_boundary": (
+                "Qualification proves bounded retrieval, parsing and immutable API "
+                "receipts for configured public channels only. It does not prove "
+                "scientific truth, full-paper ingestion, YouTube transcript fidelity, "
+                "or trading authority."
+            ),
+        },
         "authority": {
             "scientific": False,
             "execution": False,

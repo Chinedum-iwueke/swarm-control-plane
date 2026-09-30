@@ -3,8 +3,9 @@
 ## Source evidence
 
 - `approved_external_sources_v1.json` adds immutable public-only definitions for
-  statistical finance, machine-learning methods, Jane Street's public feed and the
-  official Signals & Threads transcript index.
+  statistical finance, machine-learning methods, Jane Street's public feed, the
+  official Signals & Threads transcript index, official NeurIPS/ICML proceedings,
+  one immutable-DID public Bluesky feed and Jane Street YouTube metadata.
 - `ri017_external_acquisition.py` rejects non-HTTPS, non-public, multiply allowlisted,
   private-address, oversized and unsafe-XML sources. It disables environment proxies and
   redirects, retries bounded transient failures and submits through the authenticated
@@ -22,8 +23,8 @@
 
 ## Verification
 
-- 79 focused backend discovery, external-policy and surveillance tests pass.
-- 20 focused worker, systemd, utilization and skill-improvement tests pass.
+- 166 focused backend discovery, campaign and surveillance tests pass.
+- 35 focused worker mandate, contract, connector and systemd tests pass.
 - Ruff, shell syntax and diff hygiene pass.
 - A read-only live connector smoke fetched 100 entries from each of the three new feeds.
   This is connectivity/parser evidence only; no production API state was mutated.
@@ -44,6 +45,13 @@ metadata can later enter the bounded ALPHA-004 reasoning context as a question s
 neither transcript text nor model commentary receives canonical claim, execution,
 promotion, order or capital authority.
 
-Public YouTube transcripts, social observations, NeurIPS/ICML proceedings and paper
-full-text adapters remain separate work because their identity, rights, corrections and
-replay contracts are not yet complete.
+The expanded source set is source-complete but not yet production-qualified. A local
+read-only smoke obtained records from the official NeurIPS and ICML proceedings, the
+exact-DID public Bluesky author feed and Jane Street YouTube Atom metadata. This does
+not replace production API receipts. Deployment must produce a v1.1 acquisition state
+whose per-channel expected, successful and non-empty counts agree and whose status is
+`qualified`. ArXiv timed out from the development host during the same smoke, so no
+whole-registry operational claim is made yet.
+
+Public YouTube transcripts and paper full text remain outside the implemented claim.
+YouTube metadata, publisher abstracts and social observations are question seeds only.

@@ -58,6 +58,47 @@ representation, but it may not tune those choices against targets or held-out re
 The native compiler validates parameters, materializes complete bars, aligns panels,
 and exposes fields only at their decision timestamps.
 
+The senior researcher receives the exact native Bulletproof mechanism catalog in
+addition to citations, prior outcomes, signal screens and execution observations.
+Declared CSI components, indexes, proxies, gates and failure modes are reasoning
+material, not empirical facts. The LLM may propose adapting or falsifying them, but it
+cannot assert that CSI or another proxy is predictive, select it after viewing outcomes,
+or bypass native calculation and independent review.
+
+The representation scientist may propose 1-100 instruments by default, including
+cross-label baskets, and may select any supported complete-bar timeframe or admitted
+causal transformation. Its justification is model output. Deterministic catalog,
+common-window, liquidity, lineage, capacity and point-in-time validators decide whether
+the proposal can execute. Primary tests use 365 UTC days ending immediately after the
+newest gap-free DATA-002 cataloged minute; up to 1,095 days requires a separately
+frozen survivor-validation contract.
+
+Low-watermark replenishment is deterministic orchestration, not LLM self-direction.
+When accepted or awaiting question depth drops below the approved threshold and
+parallel campaign capacity remains, the controller invokes another bounded
+intelligence, hypothesis and representation sequence immediately. The mandate
+objective and budgets remain the authority envelope.
+
+The senior researcher receives the exact native Bulletproof mechanism catalog in
+addition to citations, prior outcomes, signal screens and execution observations.
+Declared CSI components, indexes, proxies, gates and failure modes are reasoning
+material, not empirical facts. The LLM may propose adapting or falsifying them, but it
+cannot assert that CSI or another proxy is predictive, select it after viewing outcomes,
+or bypass native calculation and independent review.
+
+The representation scientist may propose 1-100 instruments by default, including
+cross-label baskets, and may select any supported complete-bar timeframe or admitted
+causal transformation. Its justification is model output. Deterministic catalog,
+common-window, liquidity, lineage, capacity and point-in-time validators decide whether
+the proposal can execute. Primary tests use the latest complete rolling 365 UTC days;
+up to 1,095 days requires a separately frozen survivor-validation contract.
+
+Low-watermark replenishment is deterministic orchestration, not LLM self-direction.
+When accepted or awaiting question depth drops below the approved threshold and
+parallel campaign capacity remains, the controller invokes another bounded
+intelligence, hypothesis and representation sequence immediately. The mandate
+objective and budgets remain the authority envelope.
+
 ## Evidence requirements
 
 Every invocation binds a source commit, role package, model/runtime identity, task

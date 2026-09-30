@@ -27,6 +27,29 @@ class AlphaResearchBudget(StrictModel):
     maximum_candidates_per_cycle: int = Field(ge=2, le=20)
     cadence_seconds: int = Field(ge=60, le=86_400)
     maximum_consecutive_failures: int = Field(ge=1, le=20)
+    question_queue_low_watermark: int = Field(default=12, ge=2, le=100)
+    maximum_parallel_campaigns: int = Field(default=3, ge=1, le=8)
+
+
+class AlphaHistoricalWindowPolicy(StrictModel):
+    primary_policy: Literal["latest_complete_utc_year"] = "latest_complete_utc_year"
+    primary_duration_days: Literal[365] = 365
+    deep_validation_max_days: int = Field(default=1095, ge=365, le=1095)
+    deep_validation_requires: list[
+        Literal[
+            "primary_window_survivor",
+            "independent_review_complete",
+            "explicit_followup_contract",
+        ]
+    ] = Field(
+        default_factory=lambda: [
+            "primary_window_survivor",
+            "independent_review_complete",
+            "explicit_followup_contract",
+        ],
+        min_length=3,
+        max_length=3,
+    )
 
 
 class AlphaDiscoveryCatalogBinding(StrictModel):
@@ -37,7 +60,11 @@ class AlphaDiscoveryCatalogBinding(StrictModel):
         min_length=1, max_length=2
     )
     selection_policy: Literal["point_in_time_pre_outcome"] = "point_in_time_pre_outcome"
-    maximum_assets_per_hypothesis: int = Field(default=8, ge=1, le=20)
+    maximum_assets_per_hypothesis: int = Field(default=100, ge=1, le=128)
+    large_basket_threshold: int = Field(default=20, ge=2, le=100)
+    large_basket_policy: Literal[
+        "point_in_time_overlap_liquidity_and_compute_admission"
+    ] = "point_in_time_overlap_liquidity_and_compute_admission"
 
 
 class AlphaReusableStrategy(StrictModel):
@@ -47,7 +74,7 @@ class AlphaReusableStrategy(StrictModel):
     hypothesis_family: str = Field(pattern=_KEY, max_length=180)
     strategy: str = Field(pattern=_KEY, max_length=180)
     input_mode: Literal["single_instrument", "aligned_basket"]
-    maximum_instruments: int = Field(ge=1, le=20)
+    maximum_instruments: int = Field(ge=1, le=128)
     signal_timeframes: list[str] = Field(min_length=1, max_length=20)
     variant_count: int = Field(ge=1, le=1_000_000)
     logging_requirements: list[str] = Field(max_length=200)
@@ -77,13 +104,9 @@ class AlphaStrategyCapabilityCatalog(StrictModel):
         identities = [item.hypothesis_id for item in self.capabilities]
         if len(identities) != len(set(identities)):
             raise ValueError("strategy capability identities must be unique")
-        if (
-            self.schema_version == "alpha-strategy-capability-catalog-v1.1.0"
-            and any(
-                item.research_contract is None
-                or item.research_contract_digest is None
-                for item in self.capabilities
-            )
+        if self.schema_version == "alpha-strategy-capability-catalog-v1.1.0" and any(
+            item.research_contract is None or item.research_contract_digest is None
+            for item in self.capabilities
         ):
             raise ValueError(
                 "v1.1 strategy capabilities require immutable research semantics"
@@ -100,14 +123,17 @@ class AlphaResearchMandateCreate(StrictModel):
     bulletproof_source_commit: str = Field(pattern=_COMMIT)
     execution_window_start: datetime
     execution_window_end: datetime
-    dataset_bindings: list[AlphaDatasetBinding] = Field(min_length=1, max_length=20)
+    dataset_bindings: list[AlphaDatasetBinding] = Field(min_length=1, max_length=256)
     discovery_catalog: AlphaDiscoveryCatalogBinding | None = None
     strategy_catalog: AlphaStrategyCapabilityCatalog
     allowed_venues: list[Literal["bybit", "binance"]] = Field(
         min_length=1, max_length=2
     )
-    allowed_instruments: list[str] = Field(min_length=1, max_length=50)
+    allowed_instruments: list[str] = Field(min_length=1, max_length=256)
     minimum_liquidity_usd: float = Field(ge=0, le=10_000_000_000)
+    historical_window_policy: AlphaHistoricalWindowPolicy | None = None
+    mandate_kind: Literal["canonical_weekly", "thematic"] = "canonical_weekly"
+    parent_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
     budget: AlphaResearchBudget
     created_by: str = Field(pattern=_KEY, max_length=150)
     authority: Literal["no_capital_research"] = "no_capital_research"
@@ -136,6 +162,18 @@ class AlphaResearchMandateCreate(StrictModel):
             )
         if self.execution_window_end <= self.execution_window_start:
             raise ValueError("execution window must be increasing")
+        if self.historical_window_policy is not None:
+            duration = self.execution_window_end - self.execution_window_start
+            if duration != timedelta(
+                days=self.historical_window_policy.primary_duration_days
+            ):
+                raise ValueError(
+                    "the primary execution window must be the exact latest complete year"
+                )
+        if self.mandate_kind == "thematic" and self.parent_mandate_digest is None:
+            raise ValueError("thematic mandates require a canonical parent digest")
+        if self.mandate_kind == "canonical_weekly" and self.parent_mandate_digest:
+            raise ValueError("canonical mandates cannot declare a parent mandate")
         normalized = [item.upper() for item in self.allowed_instruments]
         if len(normalized) != len(set(normalized)):
             raise ValueError("allowed instruments must be unique")
@@ -143,6 +181,12 @@ class AlphaResearchMandateCreate(StrictModel):
 
 
 class AlphaResearchMandateApproval(StrictModel):
+    expected_mandate_digest: str = Field(pattern=_DIGEST)
+    actor: str = Field(pattern=_KEY, max_length=150)
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class AlphaMandateCanonicalization(StrictModel):
     expected_mandate_digest: str = Field(pattern=_DIGEST)
     actor: str = Field(pattern=_KEY, max_length=150)
     reason: str = Field(min_length=10, max_length=2000)
@@ -178,8 +222,8 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
     conversation_id: uuid.UUID | None = None
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
-    minimum_instruments: int = Field(default=1, ge=1, le=8)
-    maximum_instruments: int = Field(default=8, ge=1, le=8)
+    minimum_instruments: int = Field(default=1, ge=1, le=128)
+    maximum_instruments: int = Field(default=100, ge=1, le=128)
     universe_selection_policy: Literal["preregistered_point_in_time"] = (
         "preregistered_point_in_time"
     )
@@ -212,7 +256,7 @@ class AlphaDiscoveryDataRequirement(StrictModel):
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
     timeframe: Literal["1m"]
-    instruments: list[str] = Field(default_factory=list, max_length=20)
+    instruments: list[str] = Field(default_factory=list, max_length=128)
     research_timeframe: str = Field(
         default="1m",
         pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$",
@@ -220,7 +264,7 @@ class AlphaDiscoveryDataRequirement(StrictModel):
     resampling_policy: Literal["left_closed_left_labeled_complete_bars"] = (
         _RESAMPLING_POLICY
     )
-    required_fields: list[str] = Field(min_length=1, max_length=50)
+    required_fields: list[str] = Field(min_length=1, max_length=1024)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
 
@@ -281,7 +325,7 @@ class AlphaRepresentationTransformation(StrictModel):
         "ratio",
         "cross_sectional_rank",
     ]
-    input_fields: list[str] = Field(min_length=1, max_length=20)
+    input_fields: list[str] = Field(min_length=1, max_length=128)
     parameters: dict[str, float | int] = Field(default_factory=dict)
     fit_policy: Literal["stateless", "train_only"]
     rationale: str = Field(min_length=20, max_length=2000)
@@ -294,9 +338,10 @@ class AlphaRepresentationTransformation(StrictModel):
             expected = set() if self.operation == "identity" else {"periods"}
             if set(self.parameters) != expected:
                 raise ValueError(f"{self.operation} parameters are invalid")
-            if self.operation != "identity" and not 1 <= int(
-                self.parameters["periods"]
-            ) <= 10_000:
+            if (
+                self.operation != "identity"
+                and not 1 <= int(self.parameters["periods"]) <= 10_000
+            ):
                 raise ValueError("return periods are outside the bounded range")
         elif self.operation == "fractional_difference":
             if len(self.input_fields) != 1 or set(self.parameters) != {
@@ -319,7 +364,9 @@ class AlphaRepresentationTransformation(StrictModel):
             if len(self.input_fields) != 2 or self.parameters:
                 raise ValueError(f"{self.operation} requires two inputs")
         elif len(self.input_fields) < 2 or self.parameters:
-            raise ValueError("cross-sectional rank requires multiple unparameterized inputs")
+            raise ValueError(
+                "cross-sectional rank requires multiple unparameterized inputs"
+            )
         return self
 
 
@@ -328,16 +375,16 @@ class AlphaRepresentationPlan(StrictModel):
     candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     venue: Literal["bybit", "binance"]
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
-    instruments: list[str] = Field(min_length=1, max_length=20)
+    instruments: list[str] = Field(min_length=1, max_length=128)
     basket_members: list[AlphaRepresentationBasketMember] = Field(
-        min_length=1, max_length=20
+        min_length=1, max_length=128
     )
     source_timeframe: Literal["1m"]
     research_timeframe: str = Field(
         pattern=r"^(?:[1-9][0-9]{0,3}m|[1-9][0-9]{0,2}h|[1-9][0-9]{0,2}d)$"
     )
     resampling_policy: Literal["left_closed_left_labeled_complete_bars"]
-    required_fields: list[str] = Field(min_length=1, max_length=50)
+    required_fields: list[str] = Field(min_length=1, max_length=1024)
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
     transformations: list[AlphaRepresentationTransformation] = Field(
@@ -363,9 +410,13 @@ class AlphaRepresentationPlan(StrictModel):
         members = [item.instrument for item in self.basket_members]
         if members != self.instruments:
             raise ValueError("basket member order must match instruments")
-        primaries = [item.instrument for item in self.basket_members if item.role == "primary"]
+        primaries = [
+            item.instrument for item in self.basket_members if item.role == "primary"
+        ]
         if primaries != [self.instrument]:
-            raise ValueError("the declared instrument must be the sole primary basket member")
+            raise ValueError(
+                "the declared instrument must be the sole primary basket member"
+            )
         available = {
             f"{instrument}__{field}"
             for instrument in self.instruments

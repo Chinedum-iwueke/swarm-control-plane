@@ -159,9 +159,7 @@ class AlphaDiscoveryExecutor:
                             {
                                 "phase": contract.stage,
                                 "cycle_id": contract.cycle_id,
-                                "elapsed_seconds": round(
-                                    time.monotonic() - started, 3
-                                ),
+                                "elapsed_seconds": round(time.monotonic() - started, 3),
                             }
                         )
         finally:
@@ -176,7 +174,7 @@ class AlphaDiscoveryExecutor:
                 contract.stage,
                 json.loads(output_path.read_text(encoding="utf-8")),
             )
-            if len(json.dumps(output, separators=(",", ":"))) > 15_000:
+            if len(json.dumps(output, separators=(",", ":"))) > 100_000:
                 raise AlphaDiscoveryError(
                     "Discovery output exceeds the bounded task result."
                 )
@@ -316,13 +314,13 @@ def _schema(stage: str) -> dict:
                             "instruments": {
                                 "type": "array",
                                 "minItems": 1,
-                                "maxItems": 20,
+                                "maxItems": 128,
                                 "items": {"type": "string"},
                             },
                             "basket_members": {
                                 "type": "array",
                                 "minItems": 1,
-                                "maxItems": 20,
+                                "maxItems": 128,
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
@@ -404,7 +402,7 @@ def _schema(stage: str) -> dict:
                                         "input_fields": {
                                             "type": "array",
                                             "minItems": 1,
-                                            "maxItems": 20,
+                                            "maxItems": 128,
                                             "items": {
                                                 "type": "string",
                                                 "pattern": (
@@ -587,7 +585,7 @@ def _schema(stage: str) -> dict:
                 "instruments": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 20,
+                    "maxItems": 128,
                     "items": {
                         "type": "string",
                         "pattern": "^[A-Z0-9_-]+$",
@@ -605,7 +603,7 @@ def _schema(stage: str) -> dict:
                 "required_fields": {
                     **string_array,
                     "minItems": 1,
-                    "maxItems": 50,
+                    "maxItems": 1024,
                 },
                 "minimum_history_observations": {
                     "type": "integer",
@@ -713,6 +711,10 @@ scientifically defensible underexplored instruments, cross-asset mechanisms and 
 consideration. The exploration_frontier is a rotating set of catalog-visible starting points, not a forced universe:
 never add an asset merely for diversity, and retain a single-asset design when it is the smallest causally sufficient
 basket. If only one candidate is defensible, emit that one rather than fabricate another.
+Read mechanism_primitive_catalog as a typed inventory of prior mechanisms, indicators, proxies and failure modes.
+CSI, crowding, funding, basis, open-interest, liquidity and related primitives may seed a new mechanism, conditional
+gate or rival explanation, but catalog presence is never evidence that a primitive predicts returns. Preserve its
+contract digest, distinguish enriched inputs from OHLCV fallbacks, and propose direct falsification when adapting it.
 Domain and cluster keys must use lowercase letters, digits and hyphens, never underscores.
 Read research_constraints before choosing data requirements. Include the actual liquidity measurement
 fields required to enforce the mandate's liquidity floor, not merely predictor fields.
@@ -725,6 +727,10 @@ Universe selection must happen before outcome evaluation; retain rejected altern
 because it produced the best result. The instruments array is the preregistered hypothesis-specific basket and must
 include the primary instrument. The source timeframe is always 1m. Select any whole-minute/hour/day research_timeframe
 appropriate to the causal question and bind left-closed, left-labeled, complete-bar resampling without future data.
+The mandate may permit up to 100 assets. Do not default to a small basket merely because it is easier to describe:
+use a 30-100 asset basket when cross-sectional breadth, diversification, common-factor estimation or portfolio-level
+conditioning is causally material. Large baskets must still have point-in-time membership, common-window coverage,
+liquidity, selected-panel admission and compute admission before execution; never choose their membership by outcome.
 The lake_catalog describes physical inventory, not execution permission or continuous coverage. Historical
 stable/volatile labels are optional hints: reason about hypothesis-specific cross-group baskets rather than
 restricting proposals to those labels or BTC. Do not invent missing catalog assets. When discovery_authority is
@@ -733,7 +739,9 @@ only datasets listed as admitted may enter execution. Catalog visibility never e
 {stage_guidance}
 For the representation stage, do not change candidate questions, predictors, targets, horizons, directions,
 mechanisms, parameter budgets, or evidence. Return exactly one plan for every supplied raw candidate. Select the
-smallest causally sufficient point-in-time basket and timeframe before any outcome evaluation. You may cross legacy
+causally sufficient point-in-time basket and timeframe before any outcome evaluation. Prefer parsimony when the
+mechanism is genuinely single-asset, but preserve a large basket when breadth, diversification, factor estimation,
+or cross-sectional ranking is part of the frozen question. You may cross legacy
 stable/volatile groups when the mechanism requires it, but every asset must exist in the supplied lake catalog or
 admitted dataset inventory. Explain the chosen transformation and retain plausible rejected alternatives. The
 source remains 1m and all aggregation must be left-closed, left-labeled, complete-bar resampling. Assign every

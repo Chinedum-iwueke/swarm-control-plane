@@ -10,6 +10,7 @@ from app.schemas.alpha_discovery import (
     AlphaDiscoveryCatalogBinding,
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
+    AlphaMandateCanonicalization,
     AlphaPredictiveCandidate,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
@@ -27,6 +28,7 @@ from app.services.alpha_discovery import (
     _ensure_data_admission_task,
     _exploration_frontier,
     _focus_founder_context,
+    _mechanism_primitive_catalog,
     _missing_admission_fields,
     _new_signal_candidate,
     _normalize_candidate_input,
@@ -36,6 +38,7 @@ from app.services.alpha_discovery import (
     _recover_resumed_stage,
     _task,
     approve_mandate,
+    canonicalize_mandates,
     reconcile_mandate,
     recover_data_admission,
     recover_discovery_grounding,
@@ -161,6 +164,57 @@ def test_delegation_cannot_approve_a_different_mandate_digest(monkeypatch):
     assert mandate.status == "awaiting_approval"
 
 
+def test_canonical_reconciliation_supersedes_only_other_weekly_mandates(monkeypatch):
+    canonical = SimpleNamespace(
+        id=uuid4(),
+        mandate_digest=DIGEST,
+        status="active",
+        specification={"mandate_kind": "canonical_weekly"},
+        created_by="founder-operator",
+    )
+    prior = SimpleNamespace(
+        id=uuid4(),
+        mandate_digest="b" * 64,
+        status="active",
+        specification={"mandate_kind": "canonical_weekly"},
+        heartbeat_at=None,
+    )
+    thematic = SimpleNamespace(
+        id=uuid4(),
+        mandate_digest="c" * 64,
+        status="active",
+        specification={
+            "mandate_kind": "thematic",
+            "parent_mandate_digest": DIGEST,
+        },
+        heartbeat_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [prior, thematic]
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.resolve_authority",
+        lambda *args, **kwargs: SimpleNamespace(delegation_id=None),
+    )
+
+    superseded = canonicalize_mandates(
+        db,
+        canonical,
+        AlphaMandateCanonicalization(
+            expected_mandate_digest=DIGEST,
+            actor="founder-operator",
+            reason="Retain one canonical weekly charter and preserve explicit themes.",
+        ),
+    )
+
+    assert superseded == [prior]
+    assert prior.status == "superseded"
+    assert thematic.status == "active"
+    assert event.call_count == 2
+    assert event.call_args_list[-1].args[2] == "canonical_week_reconciled"
+
+
 def test_founder_context_focus_keeps_named_asset_and_strategy_only():
     context = {
         "lake_catalog": {
@@ -241,13 +295,9 @@ def test_candidate_normalization_is_outcome_blind_and_constraint_only():
     cycle = SimpleNamespace(
         context={
             "research_intelligence": {
-                "citations": [
-                    {"object_id": str(evidence_id), "content_digest": DIGEST}
-                ]
+                "citations": [{"object_id": str(evidence_id), "content_digest": DIGEST}]
             },
-            "founder_research_idea": {
-                "constraints": {"minimum_history_days": 365}
-            },
+            "founder_research_idea": {"constraints": {"minimum_history_days": 365}},
         }
     )
 
@@ -371,7 +421,7 @@ def test_founder_universe_hints_default_to_all_eligible_without_expanding_mandat
     assert payload.universe_slices == ["all_eligible"]
     assert payload.universe_selection_policy == "preregistered_point_in_time"
     assert payload.minimum_instruments == 1
-    assert payload.maximum_instruments == 8
+    assert payload.maximum_instruments == 100
     legacy = payload.model_copy(update={"universe_slices": ["stable", "volatile"]})
     assert legacy.universe_slices == ["stable", "volatile"]
 
@@ -548,7 +598,9 @@ def test_failed_data_admission_recovery_reuses_exact_successful_task(monkeypatch
     assert event.call_args.args[2] == "selected_panel_admission_recovered"
 
 
-def test_invalid_representation_retry_supersedes_output_without_rewriting_history(monkeypatch):
+def test_invalid_representation_retry_supersedes_output_without_rewriting_history(
+    monkeypatch,
+):
     moment = datetime.now(UTC)
     mandate = SimpleNamespace(
         id=uuid4(),
@@ -620,13 +672,13 @@ def test_invalid_representation_retry_supersedes_output_without_rewriting_histor
             "do not inspect outcomes or silently weaken the research question",
         ],
     }
-    assert create_task.call_args.kwargs["task_number"].startswith(
-        "A4-example-001-R-R"
-    )
+    assert create_task.call_args.kwargs["task_number"].startswith("A4-example-001-R-R")
     assert event.call_args.args[2] == "invalid_discovery_stage_superseded"
 
 
-def test_failed_intelligence_retry_creates_successor_without_rewriting_history(monkeypatch):
+def test_failed_intelligence_retry_creates_successor_without_rewriting_history(
+    monkeypatch,
+):
     moment = datetime.now(UTC)
     mandate = SimpleNamespace(
         id=uuid4(),
@@ -684,12 +736,8 @@ def test_failed_intelligence_retry_creates_successor_without_rewriting_history(m
     assert cycle.next_action == "await_recovered_intelligence"
     assert cycle.intelligence_task_id == replacement.id
     assert previous.status == "failed"
-    assert create_task.call_args.args[4] == {
-        "research_intelligence": {"citations": []}
-    }
-    assert create_task.call_args.kwargs["task_number"].startswith(
-        "A4-example-001-I-R"
-    )
+    assert create_task.call_args.args[4] == {"research_intelligence": {"citations": []}}
+    assert create_task.call_args.kwargs["task_number"].startswith("A4-example-001-I-R")
     assert event.call_args.args[2] == "failed_discovery_stage_superseded"
 
 
@@ -979,26 +1027,30 @@ def test_representation_group_claim_must_be_catalog_evidenced():
         "venue": "bybit",
         "instrument": "BTCUSDT",
         "instruments": ["BTCUSDT"],
-        "basket_members": [{
-            "instrument": "BTCUSDT",
-            "role": "primary",
-            "legacy_groups": ["volatile"],
-            "selection_rationale": "The point-in-time label is part of the proposed state.",
-        }],
+        "basket_members": [
+            {
+                "instrument": "BTCUSDT",
+                "role": "primary",
+                "legacy_groups": ["volatile"],
+                "selection_rationale": "The point-in-time label is part of the proposed state.",
+            }
+        ],
         "source_timeframe": "1m",
         "research_timeframe": "5m",
         "resampling_policy": "left_closed_left_labeled_complete_bars",
         "required_fields": ["ts", "close", "volume"],
         "minimum_history_observations": 525600,
         "liquidity_floor_usd": 1000000,
-        "transformations": [{
-            "output_field": "btc_return",
-            "operation": "log_return",
-            "input_fields": ["BTCUSDT__close"],
-            "parameters": {"periods": 1},
-            "fit_policy": "stateless",
-            "rationale": "Returns remove price-level scale from the predictor.",
-        }],
+        "transformations": [
+            {
+                "output_field": "btc_return",
+                "operation": "log_return",
+                "input_fields": ["BTCUSDT__close"],
+                "parameters": {"periods": 1},
+                "fit_policy": "stateless",
+                "rationale": "Returns remove price-level scale from the predictor.",
+            }
+        ],
         "transformation_rationale": "Five-minute bars match the proposed causal horizon.",
         "rejected_alternatives": ["Raw price levels preserve an avoidable trend."],
         "selection_data_boundary": "metadata_predictors_only_no_targets",
@@ -1006,12 +1058,14 @@ def test_representation_group_claim_must_be_catalog_evidenced():
     }
     context = {
         "lake_catalog": {
-            "membership_records": [{
-                "venue": "bybit",
-                "instrument": "BTCUSDT",
-                "group": "stable",
-                "available": True,
-            }]
+            "membership_records": [
+                {
+                    "venue": "bybit",
+                    "instrument": "BTCUSDT",
+                    "group": "stable",
+                    "available": True,
+                }
+            ]
         }
     }
     with pytest.raises(ValueError, match="not catalog-evidenced"):
@@ -1057,9 +1111,10 @@ def test_representation_plan_rejects_outcome_selection_and_unsafe_fractional_dif
         "outcome_data_consulted": False,
     }
     represented, _ = _apply_representation_plans([raw], [plan])
-    assert represented[0]["representation_plan"]["transformations"][0][
-        "parameters"
-    ]["d"] == 0.4
+    assert (
+        represented[0]["representation_plan"]["transformations"][0]["parameters"]["d"]
+        == 0.4
+    )
 
     plan["outcome_data_consulted"] = True
     with pytest.raises(ValidationError, match="outcome_data_consulted"):
@@ -1318,7 +1373,47 @@ def test_completed_campaign_accounting_is_idempotent(monkeypatch):
 
     assert mandate.hypothesis_count == 1
     assert mandate.trial_count == 8
-    event.assert_not_called()
+    event.assert_called_once()
+    assert event.call_args.args[2] == "question_queue_low_watermark_replenished"
+    new_cycle.assert_called_once_with(db, mandate)
+
+
+def test_low_watermark_never_exceeds_approved_cycle_budget(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        valid_until=moment + timedelta(days=1),
+        heartbeat_at=None,
+        cycle_count=3,
+        hypothesis_count=0,
+        trial_count=0,
+        budget={
+            "maximum_cycles": 3,
+            "maximum_hypotheses": 100,
+            "maximum_total_trials": 500,
+            "cadence_seconds": 3600,
+            "question_queue_low_watermark": 12,
+            "maximum_parallel_campaigns": 3,
+        },
+    )
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        campaign_id=uuid4(),
+        status="running",
+        phase="campaign",
+        next_action="await_bounded_bulletproof_results",
+        heartbeat_at=None,
+    )
+    campaign = SimpleNamespace(id=cycle.campaign_id, status="running")
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    db.get.return_value = campaign
+    new_cycle = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._new_cycle", new_cycle)
+
+    reconcile_mandate(db, mandate)
+
     new_cycle.assert_not_called()
 
 
@@ -1582,6 +1677,34 @@ def test_strategy_catalog_v11_requires_semantic_contracts():
     assert result.capabilities[0].research_contract["parameter_grid"] == {
         "lookback": [30, 60]
     }
+
+
+def test_mechanism_catalog_preserves_csi_without_granting_truth_authority():
+    capability = strategy_catalog()["capabilities"][0]
+    capability["research_contract"] = {
+        "market_mechanism": "crowding conditioned displacement",
+        "csi": {
+            "components": [
+                {"name": "funding_pct", "weight": 0.35},
+                {"name": "oi_z", "weight": 0.25},
+            ]
+        },
+        "data_requirements": {"sources_available": ["funding", "oi"]},
+        "falsification_criteria": ["CSI must add value beyond volatility."],
+    }
+    result = _mechanism_primitive_catalog(
+        SimpleNamespace(
+            specification={"strategy_catalog": {"capabilities": [capability]}}
+        )
+    )
+
+    primitive = result["primitives"][0]
+    assert primitive["market_mechanism"] == "crowding conditioned displacement"
+    assert [item["name"] for item in primitive["csi"]["components"]] == [
+        "funding_pct",
+        "oi_z",
+    ]
+    assert "not a true market state" in result["claim_boundary"]
 
 
 def candidate(**changes):

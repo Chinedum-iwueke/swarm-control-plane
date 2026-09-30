@@ -92,6 +92,16 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
                     "receipt_digest": "c" * 64,
                     "source_commit": "d" * 40,
                     "venue_scope": ["binance", "bybit"],
+                    "one_year_coverage_candidates": [
+                        {
+                            "venue": "bybit",
+                            "instrument": "BTCUSDT",
+                            "timeframe": "1m",
+                            "fetch_status": "success",
+                            "missing_rows": 0,
+                            "last_ts": "2026-09-29T23:59:00Z",
+                        }
+                    ],
                     "execution_authority": False,
                 },
             )
@@ -133,8 +143,28 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
             "source_commit": "d" * 40,
             "allowed_venues": ["binance", "bybit"],
             "selection_policy": "point_in_time_pre_outcome",
-            "maximum_assets_per_hypothesis": 8,
+            "maximum_assets_per_hypothesis": 100,
+            "large_basket_threshold": 20,
+            "large_basket_policy": (
+                "point_in_time_overlap_liquidity_and_compute_admission"
+            ),
         }
+        assert payload["historical_window_policy"] == {
+            "primary_policy": "latest_complete_utc_year",
+            "primary_duration_days": 365,
+            "deep_validation_max_days": 1095,
+            "deep_validation_requires": [
+                "primary_window_survivor",
+                "independent_review_complete",
+                "explicit_followup_contract",
+            ],
+        }
+        start = module.datetime.fromisoformat(payload["execution_window_start"])
+        end = module.datetime.fromisoformat(payload["execution_window_end"])
+        assert end - start == module.timedelta(days=365)
+        assert end.isoformat() == "2026-09-30T00:00:00+00:00"
+        assert payload["budget"]["question_queue_low_watermark"] == 12
+        assert payload["budget"]["maximum_parallel_campaigns"] == 3
         posted.append(payload)
         return httpx.Response(201, json={"status": "awaiting_approval"})
 
@@ -190,3 +220,34 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         with pytest.raises(RuntimeError, match="no mandate was written"):
             module.main()
         assert posted == []
+
+
+def test_recent_catalog_window_uses_latest_complete_bar_not_wall_clock():
+    script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
+    spec = importlib.util.spec_from_file_location("mandate_window", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    catalog = {
+        "one_year_coverage_candidates": [
+            {
+                "venue": "bybit",
+                "timeframe": "1m",
+                "fetch_status": "success",
+                "missing_rows": 0,
+                "last_ts": 1_798_675_140_000,
+            },
+            {
+                "venue": "binance",
+                "timeframe": "1m",
+                "fetch_status": "success",
+                "missing_rows": 1,
+                "last_ts": "2099-01-01T00:00:00Z",
+            },
+        ]
+    }
+
+    start, end = module.recent_catalog_window(catalog, venues={"binance", "bybit"})
+
+    assert end - start == module.timedelta(days=365)
+    assert end.second == 0
+    assert end.microsecond == 0

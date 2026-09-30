@@ -113,6 +113,31 @@ def test_public_html_transcript_index_is_an_explicit_source_kind() -> None:
     assert SurveillanceSource.__table__.c.feed_kind.type.length >= len(source.feed_kind)
 
 
+@pytest.mark.parametrize(
+    "feed_kind",
+    ["html_scholarly_index", "public_social_search", "youtube_atom"],
+)
+def test_external_connector_kinds_fit_schema_and_persistence_contract(
+    feed_kind,
+) -> None:
+    source = SurveillanceSourceCreate(
+        project="systematic-research",
+        source_key=f"source-{feed_kind}",
+        name="External source",
+        feed_url="https://feeds.example.test/",
+        feed_kind=feed_kind,
+        domains=["finance"],
+        rights="Public metadata only.",
+        access_class="public",
+        cadence="weekly",
+        freshness_hours=168,
+        owner="canon-curator",
+        allowed_hosts=["feeds.example.test"],
+    )
+    assert source.feed_kind == feed_kind
+    assert SurveillanceSource.__table__.c.feed_kind.type.length >= len(feed_kind)
+
+
 def test_atom_fixture_is_parsed_as_structured_entries() -> None:
     content = b"""<?xml version='1.0'?>
     <feed xmlns='http://www.w3.org/2005/Atom'><entry>

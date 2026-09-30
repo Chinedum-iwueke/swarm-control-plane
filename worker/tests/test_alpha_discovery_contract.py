@@ -130,9 +130,7 @@ def test_alpha_discovery_contract_and_fixed_workflow():
 
 
 def test_alpha_data_admission_fixed_workflow_is_allowlisted():
-    workflow = WorkflowLoader(Path("worker/workflows")).load(
-        "alpha-data-admission"
-    )
+    workflow = WorkflowLoader(Path("worker/workflows")).load("alpha-data-admission")
 
     assert workflow.task_type == "alpha_data_admission"
     assert workflow.steps == []
@@ -243,7 +241,7 @@ def test_hypothesis_schema_requires_pre_outcome_basket_and_safe_resampling():
     )
     properties = data["properties"]
     assert properties["timeframe"]["enum"] == ["1m"]
-    assert properties["instruments"]["maxItems"] == 20
+    assert properties["instruments"]["maxItems"] == 128
     assert properties["resampling_policy"]["enum"] == [
         "left_closed_left_labeled_complete_bars"
     ]
@@ -269,9 +267,12 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
     }.issubset(required)
     assert plan["properties"]["source_timeframe"]["enum"] == ["1m"]
     assert plan["properties"]["outcome_data_consulted"]["const"] is False
-    assert "fractional_difference" in plan["properties"]["transformations"][
-        "items"
-    ]["properties"]["operation"]["enum"]
+    assert (
+        "fractional_difference"
+        in plan["properties"]["transformations"]["items"]["properties"]["operation"][
+            "enum"
+        ]
+    )
     parameters = plan["properties"]["transformations"]["items"]["properties"][
         "parameters"
     ]

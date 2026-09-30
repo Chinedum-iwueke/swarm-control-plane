@@ -15,12 +15,14 @@ from app.schemas.alpha_discovery import (
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaFounderResearchIdeaResponse,
+    AlphaMandateCanonicalization,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
     AlphaResearchMandateResponse,
 )
 from app.services.alpha_discovery import (
     approve_mandate,
+    canonicalize_mandates,
     overview,
     queue_founder_idea,
     reconcile_mandate,
@@ -129,6 +131,22 @@ def approve(
     return serialize_mandate(mandate)
 
 
+@router.post("/mandates/{mandate_id}/canonicalize")
+def canonicalize(
+    mandate_id: UUID,
+    payload: AlphaMandateCanonicalization,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = _locked(db, mandate_id)
+    superseded = canonicalize_mandates(db, mandate, payload)
+    db.commit()
+    return {
+        "canonical_mandate": serialize_mandate(mandate),
+        "superseded_mandate_ids": [str(item.id) for item in superseded],
+        "thematic_mandates_preserved": True,
+    }
+
+
 @router.post(
     "/mandates/{mandate_id}/reconcile", response_model=AlphaResearchMandateResponse
 )
@@ -172,9 +190,7 @@ def retry_invalid_stage(
         "phase": cycle.phase,
         "next_action": cycle.next_action,
         "representation_task_id": (
-            str(cycle.representation_task_id)
-            if cycle.representation_task_id
-            else None
+            str(cycle.representation_task_id) if cycle.representation_task_id else None
         ),
     }
 

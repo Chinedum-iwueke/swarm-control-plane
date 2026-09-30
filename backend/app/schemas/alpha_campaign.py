@@ -49,12 +49,12 @@ class AlphaCampaignCreate(StrictModel):
     project: Literal["bulletproof-bt"]
     objective: str = Field(min_length=20, max_length=4000)
     discovery_portfolio_id: uuid.UUID
-    dataset_bindings: list[AlphaDatasetBinding] = Field(min_length=1, max_length=20)
+    dataset_bindings: list[AlphaDatasetBinding] = Field(min_length=1, max_length=256)
     bulletproof_source_commit: str = Field(pattern=_COMMIT)
     allowed_venues: list[Literal["bybit", "binance"]] = Field(
         min_length=1, max_length=2
     )
-    allowed_instruments: list[str] = Field(min_length=1, max_length=50)
+    allowed_instruments: list[str] = Field(min_length=1, max_length=256)
     budget: AlphaCampaignBudget
     created_by: str = Field(pattern=_KEY, max_length=150)
     authority: Literal["no_capital"] = "no_capital"
@@ -120,10 +120,20 @@ class AlphaGateReport(StrictModel):
 
     @model_validator(mode="after")
     def consistent(self):
-        if self.execution_class == "commissioning" and self.qualification_authority is not False:
-            raise ValueError("commissioning evidence cannot have qualification authority")
-        if self.execution_class == "qualification" and self.qualification_authority is False:
-            raise ValueError("qualification evidence must retain qualification authority")
+        if (
+            self.execution_class == "commissioning"
+            and self.qualification_authority is not False
+        ):
+            raise ValueError(
+                "commissioning evidence cannot have qualification authority"
+            )
+        if (
+            self.execution_class == "qualification"
+            and self.qualification_authority is False
+        ):
+            raise ValueError(
+                "qualification evidence must retain qualification authority"
+            )
         required = (
             self.truth_certified,
             self.point_in_time_valid,

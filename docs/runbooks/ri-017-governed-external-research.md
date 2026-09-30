@@ -45,11 +45,23 @@ Threads transcript pages, strips page chrome, caps per-page and aggregate bytes 
 submits transcript text through the same quarantine. It does not call an LLM and does
 not grant network access to existing ALPHA-004 Codex services.
 
-RI-017 remains operationally open until the transcript adapter's exact commit is
-deployed and representative fetch/replay receipts are observed. Public YouTube
-transcripts, social sources, NeurIPS/ICML proceedings adapters and paper full text
-require separate exact-source, rights,
-correction and parser contracts; Agent Reach availability alone is not admission.
+The registry also contains official NeurIPS 2025 and ICML 2025 proceedings indexes,
+one exact-DID public Bluesky author feed as observation-only social input, and Jane
+Street's public YouTube Atom feed. The proceedings adapter retains publisher metadata
+and abstracts, not PDFs or full paper bodies. The Bluesky adapter does not search the
+open network or infer identity endorsement. The YouTube adapter retains metadata and
+descriptions; it does not claim transcript acquisition.
+
+Every acquisition state includes per-channel expected, successful and non-empty
+receipt counts plus immutable receipt digests. Operational status is `qualified` only
+when every configured source produced a successful non-empty production receipt. This
+proves connector operation only, never scientific truth or source correctness.
+
+RI-017 remains operationally open for the expanded channels until this exact commit is
+deployed and the state manifest reports `qualified` with production receipt digests.
+Public YouTube transcripts and paper full text remain deliberately unimplemented;
+their identity, rights, correction and fidelity contracts require separate work.
+Agent Reach availability alone is not admission.
 
 Install on VM1 only after the reviewed commit is present:
 
