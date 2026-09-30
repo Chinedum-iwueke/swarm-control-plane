@@ -21,7 +21,14 @@ is eight, the window is 365 days, and capital/order authority is false. Producti
 G3 tasks require the exclusive `alpha-strategy-engineering` capability. Failed G2
 evidence remains immutable and is never rewritten or silently retried.
 
-The dedicated strategy engineer has a two-hour mission ceiling. Each task remains
+The strategy-engineering runtime runs up to three replicas under one reviewed role,
+package, charter and workload identity. Every replica acquires a distinct task lease
+and writes only to that task's disposable Git worktree; the canonical checkout stays
+read-only. Replicas may therefore engineer independent hypotheses concurrently without
+sharing patches or weakening digest-bound approval. The replica count is bounded to
+one through three by `SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS` and defaults to three.
+
+Each strategy engineer has a two-hour mission ceiling. Each task remains
 bounded by the smaller of that ceiling and its immutable
 `max_duration_seconds`; this leaves enough time for coding, the complete
 Bulletproof regression suite, and independent review while task heartbeats renew

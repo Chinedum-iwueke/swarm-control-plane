@@ -8,6 +8,11 @@ test "$(id -u)" -eq 0 || {
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 environment=/etc/invariance-swarm/alpha-strategy-engineer.env
+replicas="${SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-3}"
+[[ "$replicas" =~ ^[1-3]$ ]] || {
+  echo "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS must be between 1 and 3." >&2
+  exit 1
+}
 test -f "$environment" || {
   echo "Register the alpha strategy engineer first: $environment" >&2
   exit 1
@@ -118,8 +123,21 @@ jq -e '
 install -o root -g root -m 0644 \
   "$source_dir/invariance-swarm-alpha-strategy-engineer.service" \
   /etc/systemd/system/
+install -o root -g root -m 0644 \
+  "$source_dir/invariance-swarm-alpha-strategy-engineer@.service" \
+  /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable invariance-swarm-alpha-strategy-engineer.service
 systemctl restart invariance-swarm-alpha-strategy-engineer.service
 systemctl is-active --quiet invariance-swarm-alpha-strategy-engineer.service
-echo "Production-parity rehearsal passed; dedicated alpha strategy engineer installed."
+for slot in $(seq 2 "$replicas"); do
+  systemctl enable "invariance-swarm-alpha-strategy-engineer@${slot}.service"
+  systemctl restart "invariance-swarm-alpha-strategy-engineer@${slot}.service"
+  systemctl is-active --quiet \
+    "invariance-swarm-alpha-strategy-engineer@${slot}.service"
+done
+for slot in $(seq "$((replicas + 1))" 3); do
+  systemctl disable --now \
+    "invariance-swarm-alpha-strategy-engineer@${slot}.service" 2>/dev/null || true
+done
+echo "Production-parity rehearsal passed; ${replicas} alpha strategy engineer replicas installed."

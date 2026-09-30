@@ -206,6 +206,16 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     assert "MemoryDenyWriteExecute=true" not in unit
     assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" in unit
 
+    replica_unit = (
+        ROOT / "systemd/invariance-swarm-alpha-strategy-engineer@.service"
+    ).read_text(encoding="utf-8")
+    assert "engineer replica %i" in replica_unit
+    assert (
+        "EnvironmentFile=/etc/invariance-swarm/alpha-strategy-engineer.env"
+        in replica_unit
+    )
+    assert "ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces" in replica_unit
+
     installer = (
         ROOT / "systemd/install-alpha-strategy-engineer.sh"
     ).read_text(encoding="utf-8")
@@ -223,6 +233,9 @@ def test_dedicated_role_and_installer_require_production_parity_rehearsal():
     assert "AF_UNIX AF_INET AF_INET6 AF_NETLINK" in installer
     assert "systemctl enable invariance-swarm-alpha-strategy-engineer.service" in installer
     assert "systemctl restart invariance-swarm-alpha-strategy-engineer.service" in installer
+    assert "SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-3" in installer
+    assert "invariance-swarm-alpha-strategy-engineer@${slot}.service" in installer
+    assert 'for slot in $(seq "$((replicas + 1))" 3)' in installer
     assert "systemctl is-active --quiet" in installer
     assert "requirements/dev-py311.lock" in installer
     assert "bulletproof-validation-runtime=ready" in installer
