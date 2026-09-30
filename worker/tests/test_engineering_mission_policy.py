@@ -158,6 +158,9 @@ def test_prompt_forbids_push_merge_and_deploy() -> None:
     prompt = EngineeringMissionExecutor._coding_prompt(contract())
     assert "Do not push, merge, deploy" in prompt
     assert "Allowed paths" in prompt
+    assert "Run focused tests" in prompt
+    assert "do not run the repository's complete test suite" in prompt
+    assert "governed outer validator" in prompt
 
 
 def test_retry_prompt_includes_prior_failure_without_expanding_authority() -> None:
