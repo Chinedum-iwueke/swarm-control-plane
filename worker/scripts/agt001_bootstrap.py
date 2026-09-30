@@ -120,12 +120,13 @@ def main() -> int:
             response.raise_for_status(); charter = response.json(); charters.append(charter); created["charters"] += 1
         if charter["status"] != "active":
             charter = client.post(f"/v1/agent-governance/charters/{charter['id']}/activate", json={"activated_by": "founder-operator"}).raise_for_status().json()
+        authority_manifest = charter["manifest"]
         for capability in pm["required_capabilities"]:
             current = next((item for item in grants if item["agent_id"] == agent["id"] and item["charter_id"] == charter["id"] and item["package_id"] == package["id"] and item["capability"] == capability and item["status"] == "active" and datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > datetime.now(UTC)), None)
             if current: continue
             payload = {"agent_id": agent["id"], "charter_id": charter["id"], "package_id": package["id"], "capability": capability,
                 "machine": agent["machine"], "task_types": pm["task_types"], "repositories": pm["repository_profile"]["repositories"],
-                "risk_ceiling": manifest["risk_ceiling"], "accountable_owner": "company-operations", "granted_by": "founder-operator",
+                "risk_ceiling": min(pm["risk_ceiling"], authority_manifest["risk_ceiling"]), "accountable_owner": authority_manifest["accountable_owner"], "granted_by": "founder-operator",
                 "reason": f"AGT-001 active package {package['manifest_digest']}", "expires_at": (datetime.now(UTC) + timedelta(days=365)).isoformat()}
             created_grant = client.post("/v1/agent-governance/grants", json=payload).raise_for_status().json()
             grants.append(created_grant); created["grants"] += 1
@@ -154,7 +155,7 @@ def main() -> int:
                     "version": next_identity_version(identities, agent["id"]),
                     "audience": "invariance-control-plane",
                     "scopes": workload_scopes(pm),
-                    "accountable_owner": manifest["accountable_owner"],
+                    "accountable_owner": authority_manifest["accountable_owner"],
                     "expires_at": (
                         datetime.now(UTC) + timedelta(days=365)
                     ).isoformat(),
