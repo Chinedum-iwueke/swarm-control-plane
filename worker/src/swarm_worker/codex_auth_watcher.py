@@ -95,7 +95,7 @@ class CodexRuntime:
             result = subprocess.run(
                 [
                     "/usr/bin/flock",
-                    "-x",
+                    "-s",
                     str(self.lock),
                     str(self.binary),
                     "exec",

@@ -90,7 +90,7 @@ class AlphaDiscoveryExecutor:
         credential_lock_path.chmod(0o600)
         while True:
             try:
-                fcntl.flock(credential_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(credential_lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
                 await heartbeat(

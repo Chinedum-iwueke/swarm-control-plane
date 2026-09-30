@@ -271,7 +271,7 @@ async def test_codex_subprocess_survives_temporary_heartbeat_outage(
 
 
 @pytest.mark.asyncio
-async def test_codex_subprocess_serializes_shared_credential_refresh(
+async def test_codex_subprocesses_share_credential_read_lock(
     tmp_path: Path,
 ) -> None:
     codex_home = tmp_path / "codex-home"
@@ -331,7 +331,7 @@ async def test_codex_subprocess_serializes_shared_credential_refresh(
 
     assert first_result.success is True
     assert second_result.success is True
-    assert any(
+    assert not any(
         event.get("current_step") == "codex_credential_wait"
         for event in heartbeat_events
     )

@@ -281,7 +281,7 @@ class EngineeringMissionExecutor:
         try:
             while True:
                 try:
-                    fcntl.flock(credential_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(credential_lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
                     break
                 except BlockingIOError:
                     remaining = deadline - time.monotonic()

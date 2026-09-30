@@ -28,6 +28,13 @@ The shared VM1 Codex runtime is supervised by
 engineering. `codex login status` alone is not accepted as proof because a locally
 present session can still have a rejected server-side credential.
 
+Normal discovery, representation, engineering, review and health-probe invocations
+hold a shared credential-read lock, so bounded agent work may execute concurrently.
+Device login and any credential mutation retain an exclusive writer lock and wait for
+all active readers to finish. This reader/writer boundary prevents authentication
+rotation underneath a running task without turning the shared VM1 Codex identity into
+a global single-worker bottleneck.
+
 On a confirmed authentication rejection the watcher opens one durable recovery
 incident, starts the official device-authorization flow and publishes only the OpenAI
 verification URL, short-lived device code and expiry through Mission Control and the

@@ -108,6 +108,9 @@ exist as direct children of `SWARM_REPOSITORY_ROOT`.
 Engineering missions additionally require the dedicated Codex identity and
 setup described in `docs/runbooks/m4-engineering-missions.md`. They produce a
 local patch and PR bundle; they do not push, merge, or deploy.
+Codex-backed task executions share a credential-read lock and can run in
+parallel. Device authentication and credential mutation take the exclusive
+writer lock, so login recovery waits for active tasks without serializing them.
 
 ## Commands
 

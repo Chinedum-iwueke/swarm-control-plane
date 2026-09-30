@@ -44,8 +44,29 @@ def test_probe_requires_real_exec_and_classifies_auth_failure(
 
     assert not result.healthy
     assert result.authentication_failed
-    assert any("exec" in command for command in calls)
+    probe = next(command for command in calls if "exec" in command)
+    assert probe[0:2] == ["/usr/bin/flock", "-s"]
     assert all(marker.lower() == marker for marker in AUTH_FAILURES)
+
+
+def test_device_login_keeps_exclusive_credential_lock(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls = []
+
+    class Process:
+        stdout = None
+
+    def popen(command, **kwargs):
+        calls.append(command)
+        return Process()
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    runtime = CodexRuntime(Path("/usr/bin/codex"), tmp_path, "gpt-test")
+
+    runtime.begin_device_login()
+
+    assert calls[0][0:2] == ["/usr/bin/flock", "-x"]
 
 
 def test_safe_summary_does_not_echo_named_token_fields() -> None:
