@@ -154,6 +154,15 @@ mandates were superseded and one canonical mandate remained active. This proves 
 reasoning context and governance boundary are deployed; it does not prove that an LLM's
 asset choice, representation choice or mechanism proposal is economically correct.
 
+The first observed canonical replenishment made that boundary concrete. The researcher
+proposed a BTC positioning question and an RPLUS volatility-compression question. The
+representation scientist chose complete 4h and 6h clocks, log returns and past-only
+realized-volatility windows, rejected decorative fractional differentiation, and
+rejected extra basket members where they were not causally necessary. Deterministic
+gates admitted the RPLUS panel, created a bounded campaign, and emitted low-watermark
+event sequence 15 before starting the next cycle. The LLM did not open data, calculate
+the association, admit the panel or decide promotion.
+
 RI-017's same-day production manifest is `qualified` for every configured connector
 class: scholarly indexes, Atom/RSS, an official transcript feed, exact-DID public-social
 observations and official YouTube metadata. Those receipts broaden question-generation

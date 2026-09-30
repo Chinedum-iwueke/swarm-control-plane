@@ -50,8 +50,15 @@ admission receipt `d7787bd43004c1f07b7a94319e8b290525c39b1cbbd2e99690481d6502208
 hypothesis, and the primary window `2025-08-08T20:14:00Z` through
 `2026-08-08T20:14:00Z`. Six overlapping legacy weekly mandates were superseded;
 the API subsequently reported exactly one active canonical weekly mandate. The first
-new supervised intelligence cycle was created immediately. This is scheduler and
-authority evidence, not a claim that its pending question or a later signal is valid.
+new supervised intelligence cycle was created immediately. Its first empty result
+replenished from a sealed-OOS DISC-010 question receipt without waiting for cadence.
+The following cycle generated two questions and retained one RPLUS volatility-
+compression candidate after representation and data admission. It created campaign
+`336700b9-d3ea-4dd6-8a45-7b4e81a69b7d`. Event sequence 15 then recorded
+`question_queue_low_watermark_replenished` with pipeline depth 2, low watermark 12,
+one active campaign, maximum parallel campaigns 3 and `cadence_bypassed: true`; cycle
+three began in the same transaction. This is scheduler and authority evidence, not a
+claim that the pending question or a later signal is valid.
 
 Final source verification after the authority reconciliation corrections records all
 422 worker tests and the 62 focused alpha-discovery backend tests passing. VM2 ran
