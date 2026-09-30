@@ -1301,6 +1301,51 @@ def _scope_budget_correction(task: Task) -> dict | None:
     }
 
 
+def _validation_runtime_correction(task: Task) -> dict | None:
+    """Recognize a completed-suite worker shutdown without masking test failures."""
+    failure = getattr(task, "failure", {})
+    if (
+        getattr(task, "status", None) != "failed"
+        or failure.get("error_category") != "step_failed"
+        or failure.get("failed_step") != "run-tests"
+        or failure.get("retryable") is not True
+    ):
+        return None
+    evidence = failure.get("execution_evidence")
+    summary = evidence.get("summary") if isinstance(evidence, dict) else None
+    diagnostic = (
+        summary.get("failure_diagnostic") if isinstance(summary, dict) else None
+    )
+    stdout = diagnostic.get("stdout_tail") if isinstance(diagnostic, dict) else None
+    if not isinstance(stdout, str) or not all(
+        marker in stdout
+        for marker in (
+            "[100%]",
+            "scripts/queue_alpha_capacity_assignment.py:63: SystemExit",
+            "SystemExit: 143",
+        )
+    ):
+        return None
+    finding = {
+        "severity": "medium",
+        "message": (
+            "The validation worker was terminated by its prior per-step runtime "
+            "boundary after the suite reached 100%. Revalidate the unchanged "
+            "scientific contract under the corrected bounded runtime; do not "
+            "weaken, remove, or bypass any test or gate."
+        ),
+    }
+    return {
+        "rejected_task_id": str(task.id),
+        "rejected_plan_digest": task.plan_digest,
+        "review_summary": "Validation infrastructure ended after suite completion.",
+        "latest_findings": [finding],
+        "cumulative_findings": [finding],
+        "artifact_paths": [],
+        "disposition": "revalidate_after_bounded_worker_timeout",
+    }
+
+
 def _legacy_strategy_engineering_task(
     db: Session, campaign: AlphaCampaign, source: dict
 ) -> Task | None:
@@ -1786,6 +1831,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
             correction := (
                 _independent_review_correction(engineering)
                 or _scope_budget_correction(engineering)
+                or _validation_runtime_correction(engineering)
             )
         ) is not None and (
             current_stage := engineering.task_number.rsplit("-", 1)[-1]
@@ -2922,6 +2968,7 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
             (
                 _independent_review_correction(failed_task)
                 or _scope_budget_correction(failed_task)
+                or _validation_runtime_correction(failed_task)
             )
             if failed_task is not None
             else None
