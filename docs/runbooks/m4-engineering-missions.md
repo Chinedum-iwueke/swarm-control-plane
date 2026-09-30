@@ -34,6 +34,7 @@ Set or retain:
 SWARM_CODEX_HOME=/etc/invariance-swarm/codex-worker
 SWARM_CODEX_MODEL=gpt-5.6-sol
 SWARM_ENGINEERING_TIMEOUT_SECONDS=1800
+SWARM_ENGINEERING_VALIDATION_TIMEOUT_SECONDS=2400
 ```
 
 The credential is not copied into validation subprocesses. Keep it readable

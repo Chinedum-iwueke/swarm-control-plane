@@ -31,6 +31,11 @@ class WorkerSettings(BaseSettings):
     swarm_codex_home: Path = Path("/etc/invariance-swarm/codex-worker")
     swarm_codex_model: str = "gpt-5.6-sol"
     swarm_engineering_timeout_seconds: float = 1800.0
+    swarm_engineering_validation_timeout_seconds: float = Field(
+        default=2400.0,
+        gt=0,
+        le=7200,
+    )
     swarm_engineering_virtualenv: Path | None = None
     request_timeout_seconds: float = 30.0
 
