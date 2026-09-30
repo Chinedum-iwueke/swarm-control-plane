@@ -60,6 +60,35 @@ def recent_catalog_window(
     return window_end - timedelta(days=365), window_end
 
 
+def repository_head(repository: str) -> str:
+    return subprocess.run(
+        ["git", "-C", repository, "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def eligible_catalog_instruments(catalog: dict, *, venues: set[str]) -> list[str]:
+    instruments = {
+        str(item["instrument"]).upper()
+        for item in catalog.get("one_year_coverage_candidates", [])
+        if item.get("venue") in venues
+        and item.get("instrument")
+        and item.get("timeframe") == "1m"
+        and item.get("fetch_status") == "success"
+        and int(item.get("missing_rows") or 0) == 0
+        and item.get("first_ts")
+        and item.get("last_ts")
+    }
+    if not instruments:
+        raise RuntimeError(
+            "The DATA-002 catalog has no gap-free one-year instruments for the "
+            "requested venues; no mandate was written."
+        )
+    return sorted(instruments)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -169,6 +198,12 @@ def main() -> int:
         source_commit = (
             args.bulletproof_source_commit or specification["bulletproof_source_commit"]
         )
+        checked_out_commit = repository_head(args.bulletproof_repository)
+        if checked_out_commit != source_commit:
+            raise RuntimeError(
+                "The Bulletproof checkout does not match the exact requested source "
+                "commit; no strategy catalog or mandate was written."
+            )
         strategy_catalog = json.loads(
             subprocess.run(
                 [
@@ -235,6 +270,9 @@ def main() -> int:
             window_start, window_end = recent_catalog_window(
                 catalog, venues=set(args.discovery_venues)
             )
+        allowed_instruments = eligible_catalog_instruments(
+            catalog, venues=set(args.discovery_venues)
+        )
         payload = {
             "mandate_key": args.mandate_key or f"ALPHA004-WEEK-{moment:%Y%m%d}",
             "version": args.version,
@@ -270,8 +308,8 @@ def main() -> int:
                 ),
             },
             "strategy_catalog": strategy_catalog,
-            "allowed_venues": specification["allowed_venues"],
-            "allowed_instruments": specification["allowed_instruments"],
+            "allowed_venues": sorted(set(args.discovery_venues)),
+            "allowed_instruments": allowed_instruments,
             "minimum_liquidity_usd": args.minimum_liquidity_usd,
             "budget": {
                 "maximum_cycles": 42,

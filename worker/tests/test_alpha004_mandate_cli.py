@@ -99,6 +99,16 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
                             "timeframe": "1m",
                             "fetch_status": "success",
                             "missing_rows": 0,
+                            "first_ts": "2025-09-30T00:00:00Z",
+                            "last_ts": "2026-09-29T23:59:00Z",
+                        },
+                        {
+                            "venue": "binance",
+                            "instrument": "ETHUSDT",
+                            "timeframe": "1m",
+                            "fetch_status": "success",
+                            "missing_rows": 0,
+                            "first_ts": "2025-09-30T00:00:00Z",
                             "last_ts": "2026-09-29T23:59:00Z",
                         }
                     ],
@@ -165,6 +175,8 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         assert end.isoformat() == "2026-09-30T00:00:00+00:00"
         assert payload["budget"]["question_queue_low_watermark"] == 12
         assert payload["budget"]["maximum_parallel_campaigns"] == 3
+        assert payload["allowed_venues"] == ["binance", "bybit"]
+        assert payload["allowed_instruments"] == ["BTCUSDT", "ETHUSDT"]
         posted.append(payload)
         return httpx.Response(201, json={"status": "awaiting_approval"})
 
@@ -201,13 +213,17 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         "claim_boundary": "Native implementation inventory only; no alpha is inferred.",
         "catalog_digest": "f" * 64,
     }
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args=args[0], returncode=0, stdout=json.dumps(strategy_catalog), stderr=""
-        ),
-    )
+    def run(command, **kwargs):
+        stdout = (
+            "b" * 40 + "\n"
+            if command[:3] == ["git", "-C", "/home/omenka/Projects/bulletproof_bt"]
+            else json.dumps(strategy_catalog)
+        )
+        return subprocess.CompletedProcess(
+            args=command, returncode=0, stdout=stdout, stderr=""
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", run)
     arguments = [str(script), "--bulletproof-source-commit", "b" * 40]
     if fresh_receipt:
         arguments.extend(["--producer-receipt-id", fresh])
