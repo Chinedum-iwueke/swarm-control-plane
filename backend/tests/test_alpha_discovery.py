@@ -192,10 +192,11 @@ def test_canonical_reconciliation_supersedes_only_other_weekly_mandates(monkeypa
     db = MagicMock()
     db.scalars.return_value.all.return_value = [prior, thematic]
     event = MagicMock()
+    authority = MagicMock(return_value=SimpleNamespace(delegation_id=None))
     monkeypatch.setattr("app.services.alpha_discovery._event", event)
     monkeypatch.setattr(
         "app.services.alpha_discovery.resolve_authority",
-        lambda *args, **kwargs: SimpleNamespace(delegation_id=None),
+        authority,
     )
 
     superseded = canonicalize_mandates(
@@ -211,6 +212,8 @@ def test_canonical_reconciliation_supersedes_only_other_weekly_mandates(monkeypa
     assert superseded == [prior]
     assert prior.status == "superseded"
     assert thematic.status == "active"
+    assert authority.call_args.args[1].decision_type == "research-program-charter"
+    assert authority.call_args.args[1].action == "approve"
     assert event.call_count == 2
     assert event.call_args_list[-1].args[2] == "canonical_week_reconciled"
 

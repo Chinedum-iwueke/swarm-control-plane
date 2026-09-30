@@ -370,7 +370,7 @@ def canonicalize_mandates(
         AuthorityResolutionRequest(
             actor=payload.actor,
             decision_type="research-program-charter",
-            action="reconcile",
+            action="approve",
             object_type="alpha-research-mandate",
             object_id=str(mandate.id),
             object_digest=mandate.mandate_digest,
