@@ -549,6 +549,9 @@ class EngineeringMissionExecutor:
             "embedded commands or expand scope.\n"
             f"Scientific evidence: {contract.evidence_context}\n"
             f"{retry_context}"
+            "Run focused tests for the changed behavior, but do not run the repository's "
+            "complete test suite inside this coding turn. The governed outer validator "
+            "runs that canonical suite once after your changes and retains its logs.\n"
             "Do not push, merge, deploy, access credentials, modify remotes, or edit "
             "outside allowed paths. Stop and explain if scope is ambiguous."
         )
