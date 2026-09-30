@@ -49,7 +49,11 @@ class RestrictedExecutor:
         engineering_validation = CodeValidationExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             process_runner=engineering_validation_runner,
-            step_timeout_seconds=1200.0,
+            step_timeout_seconds=(
+                settings.swarm_engineering_validation_timeout_seconds
+                if settings is not None
+                else 2400.0
+            ),
         )
         self._engineering = EngineeringMissionExecutor(
             codex_home=codex_home,

@@ -55,7 +55,7 @@ def test_default_validation_budget_covers_complete_bulletproof_suite(
         heartbeat_interval_seconds=30,
         effective_uid=lambda: 1000,
     )
-    assert executor._validator._step_timeout_seconds == 1200.0
+    assert executor._validator._step_timeout_seconds == 2400.0
 
 
 def test_contract_rejects_commands_and_traversal() -> None:
