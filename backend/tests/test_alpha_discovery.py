@@ -1433,6 +1433,26 @@ def test_low_watermark_never_exceeds_approved_cycle_budget(monkeypatch):
     new_cycle.assert_not_called()
 
 
+def test_needs_attention_campaigns_do_not_consume_parallel_slots(monkeypatch):
+    from app.services.alpha_discovery import _question_pipeline_state
+
+    mandate = SimpleNamespace(id=uuid4())
+    running = SimpleNamespace(id=uuid4(), campaign_id=uuid4())
+    needs_attention = SimpleNamespace(id=uuid4(), campaign_id=uuid4())
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [running, needs_attention]
+    db.get.side_effect = [
+        SimpleNamespace(status="running"),
+        SimpleNamespace(status="needs_attention"),
+    ]
+    db.scalar.return_value = 3
+
+    pipeline_depth, active_campaigns = _question_pipeline_state(db, mandate)
+
+    assert pipeline_depth == 3
+    assert active_campaigns == 1
+
+
 def test_duplicate_only_cycle_replenishes_without_waiting_for_cadence(monkeypatch):
     moment = datetime.now(UTC)
     mandate = SimpleNamespace(

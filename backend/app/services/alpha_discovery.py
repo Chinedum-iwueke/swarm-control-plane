@@ -73,6 +73,7 @@ CLAIM_BOUNDARY = (
 )
 _TERMINAL_CYCLE = {"completed", "rejected", "needs_attention", "shadow_candidate"}
 _TERMINAL_CAMPAIGN = {"cancelled", "completed_no_candidate", "shadow_candidate"}
+_PARALLEL_SLOT_CAMPAIGN = {"running"}
 _PREDICTIVE_TERMS = {
     "predict",
     "predicts",
@@ -2468,7 +2469,7 @@ def _question_pipeline_state(
         if cycle.campaign_id is None:
             continue
         campaign = db.get(AlphaCampaign, cycle.campaign_id)
-        if campaign is not None and campaign.status not in _TERMINAL_CAMPAIGN:
+        if campaign is not None and campaign.status in _PARALLEL_SLOT_CAMPAIGN:
             active_cycle_ids.append(cycle.id)
     if not active_cycle_ids:
         return 0, 0
