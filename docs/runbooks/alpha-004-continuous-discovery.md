@@ -70,6 +70,11 @@ invented, weaker or source-mismatched receipts are rejected from the campaign.
 1. Deploy through migration `a0d6e8f92b51` and rebuild the VM2 API. Assert both
    `/v1/research/alpha-discovery/mandates` and
    `/v1/research/scientific-fidelity/assurance/overview` exist in OpenAPI first.
+   After every API-image rebuild, restart both
+   `invariance-swarm-alpha-discovery-director.service` and
+   `invariance-swarm-alpha-campaign-director.service`. These services run persistent
+   containers from the API image; recreating only `swarm-api` leaves their old code
+   resident and can silently preserve stale queue or campaign behavior.
 2. Install `invariance-swarm-alpha-discovery-director.service` on VM2.
 3. Bootstrap the `intelligence`, `researcher` and `representation` profiles on VM1,
    then install their three systemd services. The representation identity must expose
