@@ -5,6 +5,11 @@ The deterministic control plane, Bulletproof engine and canonical evidence remai
 authoritative. LLM output is a proposal, transcription, implementation draft or review;
 it is never a backtest result, risk decision, promotion decision or order instruction.
 
+The companion [Agent Workflow and Feedback-Loop Atlas](book-xi-agent-workflow-atlas.md)
+places these invocations inside every control, knowledge, research, capacity, ML/RL,
+shadow, live and operational loop. The atlas also defines nested-state truth so a
+parent campaign label cannot be mistaken for an active backtest.
+
 | Runtime | Invocation | Real role | Writable scope | Required downstream authority |
 | --- | --- | --- | --- | --- |
 | Founder planner | `worker/src/swarm_worker/planner/engine.py` | Turns a founder conversation into a bounded decision brief or proposal | Structured response only | Digest-safe founder approval before execution |

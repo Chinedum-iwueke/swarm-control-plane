@@ -124,6 +124,7 @@ Start with:
 - [Scientific executor](docs/runbooks/alpha-002-scientific-executor.md)
 - [EXEC2 Lagos bootstrap](docs/runbooks/exec2-lagos-host-bootstrap.md)
 - [LLM runtime register](docs/book-xi-llm-runtime-register.md)
+- [Agent workflow and feedback-loop atlas](docs/book-xi-agent-workflow-atlas.md)
 
 Some older milestone documents describe the system at the time they were
 written. Validation records are historical evidence, not a substitute for
