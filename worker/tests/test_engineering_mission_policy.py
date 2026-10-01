@@ -172,6 +172,8 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "zero-valued returns as directionally neutral" in prompt
     assert "real compiler and evaluator" in prompt
     assert "must not rewrite the frozen production contract" in prompt
+    assert "trace the exact predictor, target, direction and horizon" in prompt
+    assert "exercise execute_registered" in prompt
 
 
 def test_non_alpha_prompt_does_not_add_strategy_specific_requirements() -> None:
@@ -185,6 +187,18 @@ def test_review_prompt_respects_read_only_validator_boundary() -> None:
 
     assert "outer validator is the separate authority" in prompt
     assert "read-only review inability is not itself a product finding" in prompt
+
+
+def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:
+    alpha_contract = contract().model_copy(update={"milestone_id": "ALPHA-003"})
+
+    prompt = EngineeringMissionExecutor._review_prompt(alpha_contract)
+
+    assert "question predictor/target/direction/horizon" in prompt
+    assert "actual strategy consumption" in prompt
+    assert "exact catalog/manifest/producer/governance/partition" in prompt
+    assert "real execute_registered compiler/evaluator path" in prompt
+    assert "positive/test-open, negative, invalid and failed" in prompt
 
 
 def test_retry_prompt_includes_prior_failure_without_expanding_authority() -> None:
