@@ -35,6 +35,7 @@ from app.services.alpha_discovery import (
     _recent_external_surveillance,
     _recent_research_memory,
     _recent_signal_surveillance,
+    _reconcile_campaign_cycle,
     _recover_resumed_stage,
     _task,
     approve_mandate,
@@ -1332,6 +1333,26 @@ def test_cancelled_campaign_releases_mandate_for_next_cycle(monkeypatch):
     assert cycle.completed_at is not None
     assert event.call_args.args[2] == "campaign_cancelled_without_candidate"
     new_cycle.assert_called_once_with(db, mandate, queued)
+
+
+def test_running_campaign_reconciliation_refreshes_cycle_heartbeat():
+    previous = datetime.now(UTC) - timedelta(minutes=10)
+    moment = datetime.now(UTC)
+    cycle = SimpleNamespace(
+        campaign_id=uuid4(),
+        status="running",
+        phase="campaign",
+        next_action="await_bounded_bulletproof_results",
+        heartbeat_at=previous,
+    )
+    campaign = SimpleNamespace(status="running")
+    db = MagicMock()
+    db.get.return_value = campaign
+
+    _reconcile_campaign_cycle(db, SimpleNamespace(), cycle, moment)
+
+    assert cycle.heartbeat_at == moment
+    assert cycle.status == "running"
 
 
 def test_completed_campaign_accounting_is_idempotent(monkeypatch):

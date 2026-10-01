@@ -2506,6 +2506,7 @@ def _reconcile_campaign_cycle(
     campaign = db.get(AlphaCampaign, cycle.campaign_id)
     if campaign is None:
         return
+    cycle.heartbeat_at = moment
     if campaign.status == "shadow_candidate":
         if cycle.status != "shadow_candidate":
             cycle.status = "shadow_candidate"
