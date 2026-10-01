@@ -1694,6 +1694,28 @@ def test_mandate_counter_projection_accounts_for_cancelled_and_shadow_campaigns(
     }
 
 
+def test_reconcile_all_repairs_counter_projection_before_scheduling(monkeypatch):
+    from app.services import alpha_discovery as service
+
+    mandate = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [mandate]
+    repair = MagicMock()
+    reconcile = MagicMock()
+    monkeypatch.setattr(service, "reconstruct_mandate_counters", repair)
+    monkeypatch.setattr(service, "reconcile_mandate", reconcile)
+
+    assert service.reconcile_all(db) == [mandate]
+    repair.assert_called_once_with(
+        db,
+        mandate,
+        actor="alpha-discovery-director",
+        reason="Continuous immutable terminal-event projection reconciliation.",
+        apply=True,
+    )
+    reconcile.assert_called_once_with(db, mandate)
+
+
 def binding():
     return {
         "dataset_build_id": uuid4(),

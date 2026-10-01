@@ -2983,14 +2983,14 @@ def reconstruct_mandate_counters(
         "mandate_digest": mandate.mandate_digest,
         "actor": actor,
         "reason": reason,
-        "applied": apply,
+        "applied": apply and before != after,
         "before": before,
         "after": after,
         "completed_cycle_ids": projection["completed_cycle_ids"],
         "duplicate_completion_events": projection["duplicate_completion_events"],
     }
     report["report_digest"] = digest_document(report)
-    if apply:
+    if apply and before != after:
         mandate.cycle_count = int(after["cycle_count"])
         mandate.hypothesis_count = int(after["hypothesis_count"])
         mandate.trial_count = int(after["trial_count"])
@@ -3011,6 +3011,13 @@ def reconcile_all(db: Session) -> list[AlphaResearchMandate]:
         .with_for_update(skip_locked=True)
     ).all()
     for mandate in mandates:
+        reconstruct_mandate_counters(
+            db,
+            mandate,
+            actor="alpha-discovery-director",
+            reason="Continuous immutable terminal-event projection reconciliation.",
+            apply=True,
+        )
         reconcile_mandate(db, mandate)
     return mandates
 
