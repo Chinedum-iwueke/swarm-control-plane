@@ -155,6 +155,10 @@ def create_app(
         }
         return result
 
+    @app.get("/api/tasks/{task_id}")
+    async def task_detail(task_id: str) -> dict:
+        return await client.task_detail(task_id)
+
     @app.post("/api/research/scientific-fidelity/adjudications")
     async def scientific_adjudication(request: Request) -> dict:
         return await client.adjudicate_scientific_representation(await request.json())

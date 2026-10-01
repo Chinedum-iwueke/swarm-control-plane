@@ -37,6 +37,31 @@ router = APIRouter(
 )
 
 
+def _compact_task_payload(item: dict) -> dict:
+    contract = item["input_contract"] or {}
+    result = item["result"] or {}
+    failure = item["failure"] or {}
+    item["input_contract"] = {
+        key: contract[key]
+        for key in ("workflow", "milestone_id")
+        if key in contract
+    }
+    item["expected_outputs"] = []
+    item["acceptance_criteria"] = []
+    item["approval_policy"] = {}
+    item["result"] = {
+        key: result[key]
+        for key in ("success", "workflow", "base_commit")
+        if key in result
+    }
+    item["failure"] = {
+        key: failure[key]
+        for key in ("category", "error_category", "message")
+        if key in failure
+    }
+    return item
+
+
 @router.post(
     "",
     response_model=TaskResponse,
@@ -82,6 +107,7 @@ def list_tasks(
     task_status: Annotated[str | None, Query(alias="status")] = None,
     project: str | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    compact: bool = False,
 ) -> list[TaskResponse]:
     statement = select(Task)
 
@@ -93,7 +119,10 @@ def list_tasks(
 
     tasks = db.scalars(statement.order_by(Task.created_at.desc()).limit(limit)).all()
 
-    return [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+    serialized = [serialize_task(task) for task in tasks]
+    if compact:
+        serialized = [_compact_task_payload(item) for item in serialized]
+    return [TaskResponse.model_validate(item) for item in serialized]
 
 
 @router.post(

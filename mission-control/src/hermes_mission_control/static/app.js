@@ -1765,8 +1765,16 @@ function bindEntityButtons() {
   });
 }
 
-function openTask(id) {
-  const task = state.dashboard.tasks.find((item) => String(item.id) === String(id));
+async function openTask(id) {
+  const summary = state.dashboard.tasks.find((item) => String(item.id) === String(id));
+  if (!summary) return;
+  let task = summary;
+  try {
+    const detail = await request(`/api/tasks/${encodeURIComponent(id)}`);
+    task = detail.task || summary;
+  } catch (error) {
+    toast(`Full task evidence is unavailable: ${error.message}`);
+  }
   if (!task) return;
   const artifacts = (state.dashboard.artifacts || []).filter((item) => item.task_id === task.id);
   openInspector("Task", task.title, `

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -43,246 +44,234 @@ class ControlPlaneClient:
         )
 
     async def dashboard(self) -> dict[str, Any]:
-        health = await self._request("GET", "/health", authenticated=False)
-        tasks = await self._request("GET", "/v1/tasks", params={"limit": 100})
-        agents = await self._request("GET", "/v1/agents")
-        approvals = await self._request("GET", "/v1/approvals")
-        approval_center = await self._optional_object(
-            "/v1/approval-center",
-            {
-                "generated_at": None,
-                "counts": {"pending": 0, "actionable": 0, "blocked": 0, "decided": 0},
-                "items": [],
-            },
-        )
-        artifacts = await self._request("GET", "/v1/artifacts", params={"limit": 100})
-        scopes = await self._request("GET", "/v1/control/scopes")
-        deployments = await self._request("GET", "/v1/packages/deployments")
-        proposals = await self._request("GET", "/v1/proposals")
-        missions = await self._request("GET", "/v1/missions")
-        research_programs = await self._request("GET", "/v1/research-programs")
-        research_cycles = await self._request("GET", "/v1/research-programs/cycles")
-        research_domains = await self._optional_collection("/v1/research/domains")
-        intelligence_runs = await self._optional_collection(
-            "/v1/research/intelligence/runs"
-        )
-        domain_readiness = await self._optional_collection(
-            "/v1/research/curricula/readiness"
-        )
-        memory_exports = await self._optional_collection("/v1/research/memory-exports")
-        operational_notes = await self._optional_collection("/v1/operational-notes")
-        dataset_manifests = await self._optional_collection(
-            "/v1/research/data-contracts/manifests"
-        )
-        dataset_builds = await self._optional_collection(
-            "/v1/research/data-contracts/builds"
-        )
-        alpha_campaigns = await self._optional_collection(
-            "/v1/research/alpha-campaigns"
-        )
-        backtest_activity = await self._optional_object(
-            "/v1/research/alpha-campaigns/backtests/activity",
-            {"items": [], "counts": {}, "total": 0, "unavailable": True},
-        )
-        research_utilization = await self._optional_object(
-            "/v1/research/utilization/current",
-            {
-                "items": [],
-                "claim_boundary": "No current native capacity snapshot is available.",
-                "unavailable": True,
-            },
-        )
-        alpha_discovery = await self._optional_object(
-            "/v1/research/alpha-discovery/overview",
-            {
-                "mandates": [],
-                "cycles": [],
-                "throughput": {},
-                "stalls": [],
-                "agents": [],
-            },
-        )
-        signal_surveillance = await self._optional_object(
-            "/v1/research/quantitative-receipts/signal-surveillance",
-            {
-                "counts": {
-                    "families": 0,
-                    "trials": 0,
-                    "evaluated": 0,
-                    "invalid": 0,
-                    "question_candidates": 0,
+        fetches = {
+            "health": self._request("GET", "/health", authenticated=False),
+            "tasks": self._request(
+                "GET", "/v1/tasks", params={"limit": 100, "compact": True}
+            ),
+            "agents": self._request("GET", "/v1/agents"),
+            "approvals": self._request(
+                "GET", "/v1/approvals", params={"status": "pending"}
+            ),
+            "approval_center": self._optional_object(
+                "/v1/approval-center",
+                {
+                    "generated_at": None,
+                    "counts": {
+                        "pending": 0,
+                        "actionable": 0,
+                        "blocked": 0,
+                        "decided": 0,
+                    },
+                    "items": [],
                 },
-                "items": [],
-                "claim_boundary": "No canonical DISC-010 receipt is registered.",
-            },
-        )
-        evidence_dossiers = await self._optional_collection(
-            "/v1/research/memory/dossiers"
-        )
-        lifecycle_states = await self._optional_items(
-            "/v1/research/evidence/lifecycle/objects"
-        )
-        blocked_artifacts = await self._optional_object(
-            "/v1/research/ingestion/recoveries/blocked-artifacts",
-            {"total": 0, "counts_by_classification": {}, "items": []},
-        )
-        fleet_health = await self._optional_object(
-            "/v1/fleet/health", {"generated_at": None, "machines": []}
-        )
-        observability = await self._optional_object(
-            "/v1/observability/overview",
-            {
-                "generated_at": None,
-                "catalog": None,
-                "summary": {},
-                "services": [],
-                "alerts": [],
-            },
-        )
-        execution_telemetry = await self._optional_object(
-            "/v1/execution/overview",
-            {
-                "generated_at": None,
-                "environment": None,
-                "venues": [],
-                "counts": {"current": 0, "stale": 0, "degraded": 0},
-                "claim_boundary": "No canonical venue replay has been published.",
-            },
-        )
-        authority = await self._optional_object(
-            "/v1/authority/overview",
-            {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
-        )
-        codex_auth_recoveries = await self._optional_collection(
-            "/v1/codex-auth/recoveries"
-        )
-        agent_charters = await self._optional_collection(
-            "/v1/agent-governance/charters"
-        )
-        agent_grants = await self._optional_collection("/v1/agent-governance/grants")
-        workload_identities = await self._optional_object(
-            "/v1/workload-identities/overview",
-            {
-                "enforcement_active": False,
-                "identities": [],
-                "active_secret_policies": 0,
-                "active_emergency_grants": 0,
-                "expiring_credentials": 0,
-            },
-        )
-        institutional_lifecycles = await self._optional_object(
-            "/v1/lifecycles/projections", {"items": [], "count": 0}
-        )
-        lifecycle_consequences = await self._optional_object(
-            "/v1/lifecycle-consequences", {"items": [], "count": 0}
-        )
-        operations = await self._optional_collection("/v1/operations")
-        operation_summary = await self._optional_object(
-            "/v1/operations/summary",
-            {
-                "generated_at": None,
-                "counts": {},
-                "active_total": 0,
-                "terminal_total": 0,
-            },
-        )
-        surveillance_sources = await self._optional_collection(
-            "/v1/research/surveillance/sources"
-        )
-        surveillance_candidates = await self._optional_collection(
-            "/v1/research/surveillance/candidates"
-        )
-        surveillance_digests = await self._optional_collection(
-            "/v1/research/surveillance/digests"
-        )
-        scientific_review_queue = await self._optional_collection(
-            "/v1/research/scientific-fidelity/review-queue"
-        )
-        scientific_benchmarks = await self._optional_collection(
-            "/v1/research/scientific-fidelity/benchmarks"
-        )
-        mathematics_capabilities = await self._optional_collection(
-            "/v1/research/scientific-fidelity/mathematics/capabilities"
-        )
-        scientific_assurance = await self._optional_object(
-            "/v1/research/scientific-fidelity/assurance/overview",
-            {
-                "counts": {},
-                "requests": [],
-                "receipts": [],
-                "claim_boundary": "Scientific assurance service is unavailable.",
-            },
-        )
-        intelligence_evaluation = await self._optional_object(
-            "/v1/research/intelligence-evaluation/readiness",
-            {
-                "status": "not_demonstrated",
-                "domains": {},
-                "limitations": ["evaluation_service_unavailable"],
-            },
-        )
-        derived_state = await self._optional_object(
-            "/v1/research/derived-state/status",
-            {
-                "corpus_epoch": None,
-                "pending_changes": 0,
-                "retrieval": {"stale": True},
-                "graph": {"stale": True},
-                "current": False,
-                "latest_run": None,
-                "claim_boundary": "Derived-state service is unavailable.",
-            },
-        )
-        return {
-            "health": health,
-            "tasks": tasks,
-            "agents": agents,
-            "approvals": approvals,
-            "approval_center": approval_center,
-            "artifacts": artifacts,
-            "control_scopes": scopes,
-            "package_deployments": deployments,
-            "proposals": proposals,
-            "missions": missions,
-            "research_programs": research_programs,
-            "research_cycles": research_cycles,
-            "research_domains": research_domains,
-            "research_intelligence_runs": intelligence_runs,
-            "research_domain_readiness": domain_readiness,
-            "research_memory_exports": memory_exports,
-            "operational_notes": operational_notes,
-            "research_dataset_manifests": dataset_manifests,
-            "research_dataset_builds": dataset_builds,
-            "alpha_campaigns": alpha_campaigns,
-            "backtest_activity": backtest_activity,
-            "research_utilization": research_utilization,
-            "alpha_discovery": alpha_discovery,
-            "signal_surveillance": signal_surveillance,
-            "evidence_dossiers": evidence_dossiers,
-            "evidence_lifecycle_states": lifecycle_states,
-            "blocked_artifact_register": blocked_artifacts,
-            "fleet_health": fleet_health,
-            "observability": observability,
-            "execution_telemetry": execution_telemetry,
-            "authority": authority,
-            "codex_auth_recoveries": codex_auth_recoveries,
-            "agent_charters": agent_charters,
-            "agent_capability_grants": agent_grants,
-            "workload_identities": workload_identities,
-            "institutional_lifecycles": institutional_lifecycles,
-            "lifecycle_consequences": lifecycle_consequences,
-            "operations": operations,
-            "operation_summary": operation_summary,
-            "surveillance_sources": surveillance_sources,
-            "surveillance_candidates": surveillance_candidates,
-            "surveillance_digests": surveillance_digests,
-            "scientific_review_queue": scientific_review_queue,
-            "scientific_benchmarks": scientific_benchmarks,
-            "mathematics_capabilities": mathematics_capabilities,
-            "scientific_assurance": scientific_assurance,
-            "intelligence_evaluation": intelligence_evaluation,
-            "derived_state": derived_state,
+            ),
+            "artifacts": self._request(
+                "GET", "/v1/artifacts", params={"limit": 100}
+            ),
+            "control_scopes": self._request("GET", "/v1/control/scopes"),
+            "package_deployments": self._request("GET", "/v1/packages/deployments"),
+            "proposals": self._request("GET", "/v1/proposals"),
+            "missions": self._request("GET", "/v1/missions"),
+            "research_programs": self._request("GET", "/v1/research-programs"),
+            "research_cycles": self._request("GET", "/v1/research-programs/cycles"),
+            "research_domains": self._optional_collection("/v1/research/domains"),
+            "research_intelligence_runs": self._optional_collection(
+                "/v1/research/intelligence/runs"
+            ),
+            "research_domain_readiness": self._optional_collection(
+                "/v1/research/curricula/readiness"
+            ),
+            "research_memory_exports": self._optional_collection(
+                "/v1/research/memory-exports"
+            ),
+            "operational_notes": self._optional_collection("/v1/operational-notes"),
+            "research_dataset_manifests": self._optional_collection(
+                "/v1/research/data-contracts/manifests"
+            ),
+            "research_dataset_builds": self._optional_collection(
+                "/v1/research/data-contracts/builds"
+            ),
+            "alpha_campaigns": self._optional_collection(
+                "/v1/research/alpha-campaigns"
+            ),
+            "backtest_activity": self._optional_object(
+                "/v1/research/alpha-campaigns/backtests/activity",
+                {"items": [], "counts": {}, "total": 0, "unavailable": True},
+            ),
+            "research_utilization": self._optional_object(
+                "/v1/research/utilization/current",
+                {
+                    "items": [],
+                    "claim_boundary": (
+                        "No current native capacity snapshot is available."
+                    ),
+                    "unavailable": True,
+                },
+            ),
+            "alpha_discovery": self._optional_object(
+                "/v1/research/alpha-discovery/overview",
+                {
+                    "mandates": [],
+                    "cycles": [],
+                    "throughput": {},
+                    "stalls": [],
+                    "agents": [],
+                },
+            ),
+            "signal_surveillance": self._optional_object(
+                "/v1/research/quantitative-receipts/signal-surveillance",
+                {
+                    "counts": {
+                        "families": 0,
+                        "trials": 0,
+                        "evaluated": 0,
+                        "invalid": 0,
+                        "question_candidates": 0,
+                    },
+                    "items": [],
+                    "claim_boundary": "No canonical DISC-010 receipt is registered.",
+                },
+            ),
+            "evidence_dossiers": self._optional_collection(
+                "/v1/research/memory/dossiers"
+            ),
+            "evidence_lifecycle_states": self._optional_items(
+                "/v1/research/evidence/lifecycle/objects"
+            ),
+            "blocked_artifact_register": self._optional_object(
+                "/v1/research/ingestion/recoveries/blocked-artifacts",
+                {"total": 0, "counts_by_classification": {}, "items": []},
+            ),
+            "fleet_health": self._optional_object(
+                "/v1/fleet/health", {"generated_at": None, "machines": []}
+            ),
+            "observability": self._optional_object(
+                "/v1/observability/overview",
+                {
+                    "generated_at": None,
+                    "catalog": None,
+                    "summary": {},
+                    "services": [],
+                    "alerts": [],
+                },
+            ),
+            "execution_telemetry": self._optional_object(
+                "/v1/execution/overview",
+                {
+                    "generated_at": None,
+                    "environment": None,
+                    "venues": [],
+                    "counts": {"current": 0, "stale": 0, "degraded": 0},
+                    "claim_boundary": "No canonical venue replay has been published.",
+                },
+            ),
+            "authority": self._optional_object(
+                "/v1/authority/overview",
+                {"policy": None, "delegations": [], "exceptions": [], "expired": {}},
+            ),
+            "codex_auth_recoveries": self._optional_collection(
+                "/v1/codex-auth/recoveries"
+            ),
+            "agent_charters": self._optional_collection(
+                "/v1/agent-governance/charters"
+            ),
+            "agent_capability_grants": self._optional_collection(
+                "/v1/agent-governance/grants"
+            ),
+            "workload_identities": self._optional_object(
+                "/v1/workload-identities/overview",
+                {
+                    "enforcement_active": False,
+                    "identities": [],
+                    "active_secret_policies": 0,
+                    "active_emergency_grants": 0,
+                    "expiring_credentials": 0,
+                },
+            ),
+            "institutional_lifecycles": self._optional_object(
+                "/v1/lifecycles/projections", {"items": [], "count": 0}
+            ),
+            "lifecycle_consequences": self._optional_object(
+                "/v1/lifecycle-consequences", {"items": [], "count": 0}
+            ),
+            "operations": self._optional_collection("/v1/operations"),
+            "surveillance_sources": self._optional_collection(
+                "/v1/research/surveillance/sources"
+            ),
+            "surveillance_candidates": self._optional_collection(
+                "/v1/research/surveillance/candidates"
+            ),
+            "surveillance_digests": self._optional_collection(
+                "/v1/research/surveillance/digests"
+            ),
+            "scientific_review_queue": self._optional_collection(
+                "/v1/research/scientific-fidelity/review-queue"
+            ),
+            "scientific_benchmarks": self._optional_collection(
+                "/v1/research/scientific-fidelity/benchmarks"
+            ),
+            "mathematics_capabilities": self._optional_collection(
+                "/v1/research/scientific-fidelity/mathematics/capabilities"
+            ),
+            "scientific_assurance": self._optional_object(
+                "/v1/research/scientific-fidelity/assurance/overview",
+                {
+                    "counts": {},
+                    "requests": [],
+                    "receipts": [],
+                    "claim_boundary": "Scientific assurance service is unavailable.",
+                },
+            ),
+            "intelligence_evaluation": self._optional_object(
+                "/v1/research/intelligence-evaluation/readiness",
+                {
+                    "status": "not_demonstrated",
+                    "domains": {},
+                    "limitations": ["evaluation_service_unavailable"],
+                },
+            ),
+            "derived_state": self._optional_object(
+                "/v1/research/derived-state/status",
+                {
+                    "corpus_epoch": None,
+                    "pending_changes": 0,
+                    "retrieval": {"stale": True},
+                    "graph": {"stale": True},
+                    "current": False,
+                    "latest_run": None,
+                    "claim_boundary": "Derived-state service is unavailable.",
+                },
+            ),
         }
+        values = await asyncio.gather(*fetches.values())
+        result = dict(zip(fetches, values, strict=True))
+        counts: dict[str, int] = {}
+        for operation in result["operations"]:
+            state = operation.get("state", "unknown")
+            counts[state] = counts.get(state, 0) + 1
+        result["operation_summary"] = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "counts": counts,
+            "active_total": sum(
+                counts.get(state, 0)
+                for state in (
+                    "queued",
+                    "waiting_approval",
+                    "running",
+                    "blocked",
+                    "stalled",
+                )
+            ),
+            "terminal_total": sum(
+                counts.get(state, 0)
+                for state in ("succeeded", "failed", "cancelled")
+            ),
+        }
+        return result
+
+    async def task_detail(self, task_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/v1/tasks/{task_id}")
 
     async def adjudicate_scientific_representation(
         self, payload: dict[str, Any]

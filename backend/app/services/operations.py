@@ -87,6 +87,9 @@ def canonical_digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+_OPERATION_NOT_LOADED = object()
+
+
 def upsert_operation(
     db: Session,
     payload: OperationWrite,
@@ -95,11 +98,14 @@ def upsert_operation(
     event_type: str = "progress",
     now: datetime | None = None,
     commit: bool = True,
+    existing: Operation | None | object = _OPERATION_NOT_LOADED,
 ) -> Operation:
     observed_at = now or datetime.now(UTC)
-    operation = db.scalar(
-        select(Operation).where(Operation.operation_key == payload.operation_key)
-    )
+    operation = existing
+    if operation is _OPERATION_NOT_LOADED:
+        operation = db.scalar(
+            select(Operation).where(Operation.operation_key == payload.operation_key)
+        )
     previous = None
     if operation is None:
         operation = Operation(
@@ -182,6 +188,12 @@ def reconcile_task_operations(
 ) -> int:
     observed_at = now or datetime.now(UTC)
     tasks = list(db.scalars(select(Task).order_by(Task.created_at)).all())
+    operations = {
+        operation.operation_key: operation
+        for operation in db.scalars(
+            select(Operation).where(Operation.operation_key.like("task:%"))
+        ).all()
+    }
     changed = 0
     for task in tasks:
         state, phase = _task_state(task, observed_at, stall_after_seconds)
@@ -218,11 +230,8 @@ def reconcile_task_operations(
             },
             input_digest=task.plan_digest,
         )
-        before = db.scalar(
-            select(Operation.record_digest).where(
-                Operation.operation_key == payload.operation_key
-            )
-        )
+        existing = operations.get(payload.operation_key)
+        before = existing.record_digest if existing is not None else None
         operation = upsert_operation(
             db,
             payload,
@@ -230,7 +239,9 @@ def reconcile_task_operations(
             event_type="reconciled",
             now=observed_at,
             commit=False,
+            existing=existing,
         )
+        operations[payload.operation_key] = operation
         changed += int(before != operation.record_digest)
     db.commit()
     return changed

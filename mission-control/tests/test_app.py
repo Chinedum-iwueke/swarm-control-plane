@@ -43,6 +43,9 @@ class FakeControlPlane:
             "execution_telemetry": {"venues": []},
         }
 
+    async def task_detail(self, task_id: str) -> dict:
+        return {"task": {"id": task_id, "input_contract": {"full": True}}, "events": []}
+
     async def create_intake(self, payload) -> dict:
         self.intake = payload
         return {"id": "task-id"}
@@ -258,6 +261,16 @@ def test_dashboard_reports_local_mission_control_presence(
     assert dashboard["mission_control"]["machine"] == "mac-founder-control"
     assert dashboard["mission_control"]["presence"] == "online"
     assert dashboard["mission_control"]["observed_at"]
+
+
+def test_task_detail_is_loaded_on_demand(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.get("/api/tasks/task-id")
+
+    assert response.status_code == 200
+    assert response.json()["task"]["input_contract"] == {"full": True}
 
 
 def test_execution_workspace_is_environment_explicit_and_digest_safe(

@@ -212,6 +212,32 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["research_utilization"]["items"] == []
     assert result["alpha_discovery"]["mandates"] == []
     assert result["scientific_assurance"]["counts"]["verified"] == 1
+    task_request = next(
+        request for request in seen if request.url.path == "/v1/tasks"
+    )
+    assert dict(task_request.url.params) == {"limit": "100", "compact": "true"}
+    approval_request = next(
+        request for request in seen if request.url.path == "/v1/approvals"
+    )
+    assert dict(approval_request.url.params) == {"status": "pending"}
+    assert not any(
+        request.url.path == "/v1/operations/summary" for request in seen
+    )
+
+
+@pytest.mark.asyncio
+async def test_task_detail_is_loaded_separately(settings) -> None:
+    def handler(request):
+        assert request.url.path == "/v1/tasks/123"
+        return httpx.Response(200, json={"task": {"id": "123"}, "events": []})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.task_detail("123")
+    finally:
+        await client.close()
+
+    assert result == {"task": {"id": "123"}, "events": []}
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.schemas.operation import OperationWrite
-from app.services.operations import _task_state
+from app.services.operations import _task_state, upsert_operation
 from pydantic import ValidationError
 
 
@@ -140,3 +140,47 @@ def test_terminal_task_state_is_determinate() -> None:
         "failed",
         "failed",
     )
+
+
+def test_operation_upsert_uses_preloaded_record_without_per_row_lookup() -> None:
+    from app.models.operation import Operation
+
+    existing = Operation(
+        operation_key="task:one",
+        kind="old",
+        title="Old task",
+        project="old",
+        owner_type="task",
+        state="running",
+        phase="execution",
+        progress_mode="indeterminate",
+        heartbeat_at=datetime.now(UTC),
+        cancellable=False,
+        retryable=False,
+        links={},
+        detail={},
+        record_digest="0" * 64,
+    )
+    payload = OperationWrite(
+        operation_key="task:one",
+        kind="engineering_mission",
+        title="Current task",
+        project="bulletproof_bt",
+        owner_type="task",
+        state="running",
+        phase="execution",
+        input_digest="a" * 64,
+    )
+    db = MagicMock()
+
+    result = upsert_operation(
+        db,
+        payload,
+        actor="test-reconciler",
+        existing=existing,
+        commit=False,
+    )
+
+    assert result is existing
+    assert result.title == "Current task"
+    db.scalar.assert_not_called()
