@@ -56,7 +56,11 @@ from app.services.evaluator_routing import (
     validated_alpha_strategy_reviews,
 )
 from app.services.evaluator_routing import append_event as append_evaluation_event
-from app.services.governance import consume_task_approval, decide_task
+from app.services.governance import (
+    append_approval_event,
+    consume_task_approval,
+    decide_task,
+)
 from app.services.graph import digest_document
 from app.services.tasks import (
     append_task_event,
@@ -80,6 +84,14 @@ STRATEGY_ENGINEERING_STAGE = "G3"
 STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8", "G9")
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 EXECUTION_STAGES = ("E2", "E")
+STRATEGY_ENGINEERING_ALLOWED_PATHS = (
+    "research/hypotheses",
+    "src/bt/strategy",
+    "docs/hypotheses",
+    "tests",
+    "src/bt/governance/alpha_strategy_pipeline.py",
+    "scripts/run_alpha_research_assignment.py",
+)
 TRUSTED_DATASET_BINDING_FIELDS = (
     "dataset_build_id",
     "dataset_digest",
@@ -917,14 +929,7 @@ def _create_strategy_engineering_task(
             )
         )
         + question,
-        "allowed_paths": [
-            "research/hypotheses",
-            "src/bt/strategy",
-            "docs/hypotheses",
-            "tests",
-            "src/bt/governance/alpha_strategy_pipeline.py",
-            "scripts/run_alpha_research_assignment.py",
-        ],
+        "allowed_paths": list(STRATEGY_ENGINEERING_ALLOWED_PATHS),
         "evidence_context": json.dumps(evidence, sort_keys=True, allow_nan=False),
         "context_paths": STRATEGY_ENGINEERING_CONTEXT_PATHS,
         "acceptance_criteria": [
@@ -979,13 +984,22 @@ def _create_strategy_engineering_task(
             expected_outputs=["patch", "validation", "review", "pr_bundle"],
             acceptance_criteria=executable_contract["acceptance_criteria"],
             approval_policy={
-                "kind": "explicit",
+                "kind": "bounded_hypothesis_engineering",
+                "founder_approval_exempt": True,
                 "campaign_digest": campaign.campaign_digest,
                 "engineering_requirement": requirement,
                 "research_context": contract["research_context"],
                 "correction_feedback": correction_feedback,
+                "retained_gates": [
+                    "bounded_scope",
+                    "deterministic_validation",
+                    "independent_strategy_review",
+                    "independent_causality_leakage_review",
+                    "founder_shadow_admission",
+                    "founder_capital_authority",
+                ],
             },
-            approval_required=True,
+            approval_required=False,
             required_capabilities=[
                 "alpha-strategy-engineering",
                 "git",
@@ -998,6 +1012,94 @@ def _create_strategy_engineering_task(
     )
     persist_new_task(db, task)
     return task
+
+
+def _is_bounded_hypothesis_engineering_task(task: Task) -> bool:
+    contract = task.input_contract if isinstance(task.input_contract, dict) else {}
+    try:
+        evidence = json.loads(contract.get("evidence_context", "{}"))
+        authority = evidence.get("authority", {})
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        task.project == "bulletproof_bt"
+        and task.task_type == "engineering_mission"
+        and task.created_by == "alpha-campaign-director"
+        and task.risk_level <= 1
+        and contract.get("workflow") == "engineering-mission"
+        and contract.get("milestone_id") == "ALPHA-003"
+        and set(contract.get("allowed_paths", []))
+        <= set(STRATEGY_ENGINEERING_ALLOWED_PATHS)
+        and "alpha-strategy-engineering" in task.required_capabilities
+        and authority.get("capital") is False
+        and authority.get("orders") is False
+        and authority.get("production_promotion") is False
+        and authority.get("self_approval") is False
+    )
+
+
+def _release_legacy_hypothesis_engineering_approval(
+    db: Session, task: Task
+) -> bool:
+    """Queue a previously approval-gated task under the narrow ALPHA-003 policy."""
+    if (
+        getattr(task, "approval_required", False) is not True
+        or task.status != "pending_approval"
+    ):
+        return False
+    if not _is_bounded_hypothesis_engineering_task(task):
+        return False
+    approval = db.scalar(
+        select(TaskApproval).where(TaskApproval.task_id == task.id).with_for_update()
+    )
+    if approval is None or approval.status != "pending":
+        return False
+    moment = datetime.now(UTC)
+    reason = (
+        "Founder-authorized bounded hypothesis-spec engineering exemption; independent "
+        "review and every capital, order, promotion, and external engineering gate remain."
+    )
+    approval.status = "revoked"
+    approval.decided_by = "alpha-campaign-authority-policy"
+    approval.decision_reason = reason
+    approval.updated_at = moment
+    append_approval_event(
+        db,
+        approval,
+        "approval_requirement_waived",
+        "alpha-campaign-authority-policy",
+        reason,
+        {"task_id": str(task.id), "plan_digest": task.plan_digest},
+    )
+    notifications = db.scalars(
+        select(FounderNotification)
+        .where(
+            FounderNotification.kind == "approval_required",
+            FounderNotification.entity_id == approval.id,
+            FounderNotification.state.in_(["pending", "waiting"]),
+        )
+        .with_for_update()
+    ).all()
+    for notification in notifications:
+        notification.state = "superseded"
+        notification.superseded_at = moment
+        notification.updated_at = moment
+    task.approval_required = False
+    task.status = "queued"
+    task.approval_policy = {
+        **(task.approval_policy or {}),
+        "kind": "bounded_hypothesis_engineering",
+        "founder_approval_exempt": True,
+        "policy_transition_at": moment.isoformat(),
+    }
+    append_task_event(
+        db,
+        task,
+        "approval_requirement_waived",
+        "Bounded hypothesis engineering queued under the founder-authorized exemption.",
+        payload={"plan_digest": task.plan_digest, "approval_id": str(approval.id)},
+    )
+    return True
 
 
 def _selected_panel_admission_evidence(
@@ -1859,6 +1961,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                     "correction_stage": next_stage,
                 },
             )
+        _release_legacy_hypothesis_engineering_approval(db, engineering)
         campaign.phase = "strategy_engineering"
         if engineering.status == "pending_approval":
             campaign.next_action = "founder_strategy_engineering_approval"

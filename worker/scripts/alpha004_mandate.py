@@ -89,6 +89,38 @@ def eligible_catalog_instruments(catalog: dict, *, venues: set[str]) -> list[str
     return sorted(instruments)
 
 
+def compatible_campaign_bindings(
+    campaigns: list[dict],
+    *,
+    source_commit: str,
+    source_campaign_id: str | None = None,
+) -> list[dict]:
+    """Return the deterministic admitted panel union for one native engine commit."""
+    compatible = []
+    for campaign in campaigns:
+        specification = campaign.get("specification", {})
+        if specification.get("bulletproof_source_commit") != source_commit:
+            continue
+        if source_campaign_id and campaign.get("id") != source_campaign_id:
+            continue
+        for item in specification.get("dataset_bindings", []):
+            binding = {key: value for key, value in item.items() if key in BINDING_KEYS}
+            if set(binding) != BINDING_KEYS:
+                continue
+            compatible.append(binding)
+    unique: dict[str, dict] = {}
+    for binding in compatible:
+        identity = json.dumps(binding, sort_keys=True, separators=(",", ":"))
+        unique.setdefault(identity, binding)
+    bindings = [unique[key] for key in sorted(unique)]
+    if not bindings:
+        raise RuntimeError(
+            "No complete admitted real-data bindings match the pinned native engine "
+            "commit; no mandate was written."
+        )
+    return bindings
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -185,19 +217,25 @@ def main() -> int:
         if source is None:
             raise RuntimeError("No admitted real-data campaign can seed the mandate.")
         specification = source["specification"]
-        bindings = [
-            {key: value for key, value in item.items() if key in BINDING_KEYS}
-            for item in specification["dataset_bindings"]
-        ]
+        source_commit = (
+            args.bulletproof_source_commit or specification["bulletproof_source_commit"]
+        )
         if args.producer_receipt_id:
+            bindings = [
+                {key: value for key, value in item.items() if key in BINDING_KEYS}
+                for item in specification["dataset_bindings"]
+            ]
             if len(bindings) != 1:
                 raise RuntimeError(
                     "An explicit producer receipt requires exactly one dataset binding."
                 )
             bindings[0]["producer_receipt_id"] = str(args.producer_receipt_id)
-        source_commit = (
-            args.bulletproof_source_commit or specification["bulletproof_source_commit"]
-        )
+        else:
+            bindings = compatible_campaign_bindings(
+                campaigns,
+                source_commit=source_commit,
+                source_campaign_id=args.source_campaign_id,
+            )
         checked_out_commit = repository_head(args.bulletproof_repository)
         if checked_out_commit != source_commit:
             raise RuntimeError(

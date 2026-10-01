@@ -2514,11 +2514,17 @@ def _reconcile_campaign_cycle(
             cycle.next_action = "founder_shadow_review"
             cycle.completed_at = moment
             mandate.status = "paused_for_shadow_review"
+            mandate.hypothesis_count += campaign.hypothesis_count
+            mandate.trial_count += campaign.trial_count
             _event(
                 db,
                 mandate,
                 "shadow_candidate_reached",
-                {"campaign_id": str(campaign.id)},
+                {
+                    "campaign_id": str(campaign.id),
+                    "hypotheses": campaign.hypothesis_count,
+                    "trials": campaign.trial_count,
+                },
                 cycle,
             )
     elif campaign.status == "completed_no_candidate":
@@ -2546,6 +2552,8 @@ def _reconcile_campaign_cycle(
             cycle.phase = "complete"
             cycle.next_action = "schedule_next_discovery_cycle"
             cycle.completed_at = moment
+            mandate.hypothesis_count += campaign.hypothesis_count
+            mandate.trial_count += campaign.trial_count
             _event(
                 db,
                 mandate,
@@ -2895,7 +2903,11 @@ def mandate_counter_projection(
         if event.event_type == "cycle_started" and cycle_id:
             started_cycles.add(cycle_id)
             continue
-        if event.event_type != "campaign_completed_without_candidate" or not cycle_id:
+        if event.event_type not in {
+            "campaign_completed_without_candidate",
+            "campaign_cancelled_without_candidate",
+            "shadow_candidate_reached",
+        } or not cycle_id:
             continue
         if cycle_id in completed_cycles:
             duplicate_completion_events += 1

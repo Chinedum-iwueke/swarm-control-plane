@@ -8,6 +8,66 @@ import httpx
 import pytest
 
 
+def test_compatible_campaign_bindings_unions_and_deduplicates_same_commit():
+    script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
+    spec = importlib.util.spec_from_file_location("mandate_binding_union", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    first = {
+        "dataset_build_id": "11111111-1111-4111-8111-111111111111",
+        "catalog_id": "22222222-2222-4222-8222-222222222222",
+        "lake_governance_snapshot_id": "33333333-3333-4333-8333-333333333333",
+        "producer_receipt_id": "44444444-4444-4444-8444-444444444444",
+        "dataset_key": "bybit-btcusdt-perp-1m",
+        "partition_digests": ["1" * 64],
+        "evidence_class": "live_exchange_history",
+        "research_principal": "alpha-research-runner",
+    }
+    second = {
+        **first,
+        "dataset_build_id": "55555555-5555-4555-8555-555555555555",
+        "producer_receipt_id": "66666666-6666-4666-8666-666666666666",
+        "dataset_key": "binance-ethusdt-perp-1m",
+        "partition_digests": ["2" * 64],
+    }
+    campaigns = [
+        {
+            "id": "first",
+            "specification": {
+                "bulletproof_source_commit": "a" * 40,
+                "dataset_bindings": [first],
+            },
+        },
+        {
+            "id": "second",
+            "specification": {
+                "bulletproof_source_commit": "a" * 40,
+                "dataset_bindings": [first, second],
+            },
+        },
+        {
+            "id": "other-commit",
+            "specification": {
+                "bulletproof_source_commit": "b" * 40,
+                "dataset_bindings": [second],
+            },
+        },
+    ]
+
+    result = module.compatible_campaign_bindings(
+        campaigns, source_commit="a" * 40
+    )
+
+    assert len(result) == 2
+    assert {item["dataset_key"] for item in result} == {
+        "bybit-btcusdt-perp-1m",
+        "binance-ethusdt-perp-1m",
+    }
+    assert module.compatible_campaign_bindings(
+        campaigns, source_commit="a" * 40, source_campaign_id="first"
+    ) == [first]
+
+
 @pytest.mark.parametrize(
     "arguments,message",
     [

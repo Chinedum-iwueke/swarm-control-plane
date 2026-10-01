@@ -18,11 +18,17 @@ A founder approves one digest-bound mandate for at most seven days. The mandate
 may authorize only historical no-capital research against its exact dataset,
 window, instrument universe and trial budget. It replaces per-hypothesis card and
 execution approvals inside that envelope. It never authorizes strategy code
-changes, expanded data, self-evaluation, shadow admission, orders, capital or live
-promotion. Existing independent BT-009 evaluation remains authoritative.
+changes outside the bounded ALPHA-003 hypothesis implementation allowlist, expanded
+data, self-evaluation, shadow admission, orders, capital or live promotion. Existing
+independent BT-009 evaluation remains authoritative.
 
-New strategy code still creates an explicitly approved engineering mission. A
-shadow candidate pauses the mandate for founder review.
+Native hypothesis YAML, strategy modules, tests and the two named integration surfaces
+may be generated without a second founder click when the task is created by the
+campaign director, risk is at most one, its evidence explicitly denies capital,
+orders, promotion and self-approval, and its paths remain inside the ALPHA-003
+allowlist. Deterministic validation plus independent specification and
+causality/leakage reviews remain mandatory. Every other engineering mission remains
+approval-gated. A shadow candidate pauses the mandate for founder review.
 
 Only one active `canonical_weekly` mandate directs the general loop. An explicitly
 scoped `thematic` mandate may coexist only when it names the canonical mandate digest
@@ -91,6 +97,14 @@ The controller measures accepted or awaiting-data-admission depth across all act
 campaigns. Below `question_queue_low_watermark`, it starts another bounded cycle while
 `maximum_parallel_campaigns` permits. The one-hour cadence is only an idle fallback;
 terminal negative, invalid, failed and duplicate-only cycles replenish immediately.
+
+Mandate accounting is reconstructed from immutable cycle-start and terminal campaign
+events. Completed, cancelled/invalid and shadow-candidate campaigns each debit their
+hypothesis and trial counts exactly once; active engineering is exposed as in flight
+and is not misreported as completed testing. A new mandate unions every complete,
+admitted dataset binding from campaigns pinned to its exact Bulletproof commit rather
+than inheriting only the first BTC binding. The broad catalog remains discovery-only:
+the selected panel still requires point-in-time DATA-002/003 admission before a run.
 
 ## Failure and rollback
 

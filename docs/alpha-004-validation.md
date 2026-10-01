@@ -9,7 +9,10 @@ Source validation demonstrates:
 - predictive, falsifiability, evidence, equation, DATA-002/003 and duplicate gates;
 - DISC-009 allocation and ALPHA/BT-009 campaign replenishment;
 - mandate-scoped removal of redundant hypothesis and execution approvals;
-- continued explicit approval for code, expanded data, shadow and capital actions;
+- bounded approval-free ALPHA-003 hypothesis implementation with strict path,
+  risk, authority, deterministic-validation and independent-review gates;
+- continued explicit approval for engineering outside that envelope, expanded data,
+  shadow and capital actions;
 - negative, invalid and failed attempt feedback into later discovery context;
 - hypothesis-specific multi-instrument Bybit/Binance baskets and arbitrary
   whole-minute/hour/day research timeframes, bounded by immutable catalog and
@@ -23,6 +26,10 @@ Source validation demonstrates:
 - low-watermark replenishment across up to three active campaigns; and
 - a typed native mechanism catalog, including CSI components and provenance, exposed
   as falsifiable prior designs rather than assumed signals.
+- immutable exactly-once accounting for completed, cancelled/invalid and shadow
+  terminal campaigns; and
+- deterministic union of compatible admitted dataset bindings at the pinned native
+  engine commit, without treating catalog visibility as execution admission.
 
 Targeted source tests cover existing campaign compatibility, portfolio admission,
 mandate bounds, delegation requirements, predictive rejection and equation

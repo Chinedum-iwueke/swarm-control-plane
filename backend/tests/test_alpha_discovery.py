@@ -1665,6 +1665,35 @@ def test_mandate_counter_projection_deduplicates_terminal_cycle_evidence():
     }
 
 
+def test_mandate_counter_projection_accounts_for_cancelled_and_shadow_campaigns():
+    from app.services.alpha_discovery import mandate_counter_projection
+
+    cancelled = uuid4()
+    shadow = uuid4()
+    events = [
+        SimpleNamespace(event_type="cycle_started", cycle_id=cancelled, payload={}),
+        SimpleNamespace(
+            event_type="campaign_cancelled_without_candidate",
+            cycle_id=cancelled,
+            payload={"hypotheses": 2, "trials": 7},
+        ),
+        SimpleNamespace(event_type="cycle_started", cycle_id=shadow, payload={}),
+        SimpleNamespace(
+            event_type="shadow_candidate_reached",
+            cycle_id=shadow,
+            payload={"hypotheses": 1, "trials": 8},
+        ),
+    ]
+
+    assert mandate_counter_projection(events) == {
+        "cycle_count": 2,
+        "hypothesis_count": 3,
+        "trial_count": 15,
+        "completed_cycle_ids": sorted([str(cancelled), str(shadow)]),
+        "duplicate_completion_events": 0,
+    }
+
+
 def binding():
     return {
         "dataset_build_id": uuid4(),

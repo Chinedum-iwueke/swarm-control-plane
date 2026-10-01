@@ -483,7 +483,8 @@ flowchart TB
     Freeze[Freeze question, data build,<br/>window, tier and variant budget]
     Card[Hypothesis card]
     Known{Native strategy exists?}
-    Engineer[Approval-gated strategy engineering]
+    Engineer[Bounded hypothesis engineering<br/>inside weekly mandate]
+    ExternalEngineer[Other code change<br/>founder approval required]
     Bundle[Native YAML, strategy and tests]
     SpecReview[Independent specification review]
     CausalReview[Independent causality and leakage review]
@@ -498,7 +499,8 @@ flowchart TB
 
     Freeze --> Card --> Known
     Known -->|yes| Bundle
-    Known -->|no| Engineer --> Bundle
+    Known -->|no, bounded ALPHA-003 scope| Engineer --> Bundle
+    Known -->|no, outside bounded scope| ExternalEngineer --> Bundle
     Bundle --> SpecReview
     Bundle --> CausalReview
     SpecReview --> Qualify
@@ -512,6 +514,15 @@ Positive, negative, invalid and failed results are successful retained research
 outcomes. Only the classic native engine calculates results. See
 `alpha-003-governed-strategy-bridge.md` and
 `bt-009-governed-research-bridge.md`.
+
+The weekly mandate removes the redundant click only for campaign-director tasks that
+implement an admitted hypothesis inside the exact YAML, strategy, test and named
+integration allowlist, at risk zero or one and with no capital, order, promotion or
+self-approval authority. Existing pending approvals that satisfy the same predicate
+are immutably revoked as obsolete and their unchanged tasks are queued. Independent
+specification and causality/leakage review still decide whether the bundle can reach
+qualification. Ordinary engineering, expanded paths/data, shadow admission and every
+capital action remain founder-gated.
 
 ### A6. Independent evaluator routing and correction
 

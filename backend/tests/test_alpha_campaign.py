@@ -1902,7 +1902,10 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     assert task is persisted[0]
     assert task.project == "bulletproof_bt"
     assert task.task_type == "engineering_mission"
-    assert task.approval_required is True
+    assert task.approval_required is False
+    assert task.status == "queued"
+    assert task.approval_policy["kind"] == "bounded_hypothesis_engineering"
+    assert task.approval_policy["founder_approval_exempt"] is True
     assert task.required_capabilities == [
         "alpha-strategy-engineering",
         "git",
@@ -1955,6 +1958,93 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         document = dict(task.input_contract, evidence_context=bad_evidence)
         with pytest.raises(ValidationError):
             ProposalEngineeringMissionContract.model_validate(document)
+
+
+def test_legacy_strategy_engineering_approval_is_narrowly_waived(monkeypatch):
+    task = SimpleNamespace(
+        id=uuid4(),
+        project="bulletproof_bt",
+        task_type="engineering_mission",
+        created_by="alpha-campaign-director",
+        risk_level=1,
+        required_capabilities=["alpha-strategy-engineering", "git", "python"],
+        input_contract={
+            "workflow": "engineering-mission",
+            "milestone_id": "ALPHA-003",
+            "allowed_paths": list(service.STRATEGY_ENGINEERING_ALLOWED_PATHS),
+            "evidence_context": json.dumps(
+                {
+                    "authority": {
+                        "capital": False,
+                        "orders": False,
+                        "production_promotion": False,
+                        "self_approval": False,
+                    }
+                }
+            ),
+        },
+        approval_required=True,
+        status="pending_approval",
+        approval_policy={"kind": "explicit"},
+        plan_digest="1" * 64,
+        attempt_count=0,
+    )
+    approval = SimpleNamespace(
+        id=uuid4(),
+        status="pending",
+        decided_by=None,
+        decision_reason=None,
+        updated_at=None,
+    )
+    notification = SimpleNamespace(
+        state="pending", superseded_at=None, updated_at=None
+    )
+    db = MagicMock()
+    db.scalar.return_value = approval
+    db.scalars.return_value.all.return_value = [notification]
+    approval_events = []
+    task_events = []
+    monkeypatch.setattr(
+        service,
+        "append_approval_event",
+        lambda *args, **kwargs: approval_events.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        service,
+        "append_task_event",
+        lambda *args, **kwargs: task_events.append((args, kwargs)),
+    )
+
+    assert service._release_legacy_hypothesis_engineering_approval(db, task)
+    assert task.status == "queued"
+    assert task.approval_required is False
+    assert task.approval_policy["kind"] == "bounded_hypothesis_engineering"
+    assert approval.status == "revoked"
+    assert notification.state == "superseded"
+    assert approval_events[0][0][2] == "approval_requirement_waived"
+    assert task_events[0][0][2] == "approval_requirement_waived"
+
+
+def test_strategy_engineering_waiver_rejects_external_engineering():
+    task = SimpleNamespace(
+        approval_required=True,
+        status="pending_approval",
+        project="bulletproof_bt",
+        task_type="engineering_mission",
+        created_by="founder-planner",
+        risk_level=1,
+        required_capabilities=["git", "python"],
+        input_contract={
+            "workflow": "engineering-mission",
+            "milestone_id": "OTHER",
+            "allowed_paths": ["src"],
+            "evidence_context": "{}",
+        },
+    )
+
+    assert not service._release_legacy_hypothesis_engineering_approval(
+        MagicMock(), task
+    )
 
 
 def test_independent_review_failure_materializes_new_correction_task(monkeypatch):
