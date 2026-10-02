@@ -66,7 +66,9 @@ def serialize_backtest(
         "campaign_id": contract.get("campaign_id"),
         "campaign_phase": campaign.phase if campaign else None,
         "outcome": attempt.get("outcome") or trial.get("result_disposition"),
-        "trial_count": attempt.get("trial_count") if attempt else (1 if trial else None),
+        "trial_count": attempt.get("trial_count")
+        if attempt
+        else (1 if trial else None),
         "failure_stage": attempt.get("failure_stage"),
         "disposition": summary.get("disposition"),
         "failed_gates": gates.get("failed_gates", []),
@@ -134,7 +136,10 @@ def overview(
     tier: str = "all",
 ) -> dict:
     # This is a custody projection, never a quantitative evaluator or scheduler.
+    # Draft, qualification and engineering tasks share the alpha task type but are
+    # not backtests. Only the governed execution stage may enter this projection.
     predicate = Task.task_type.in_(["alpha_research_execution", "research_experiment"])
+    predicate &= Task.input_contract["stage"].astext == "execute"
     counts = dict(
         db.execute(
             select(Task.status, func.count()).where(predicate).group_by(Task.status)

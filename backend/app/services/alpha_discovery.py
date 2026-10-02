@@ -352,6 +352,49 @@ def approve_mandate(
         "mandate_approved",
         {"reason": payload.reason, "expires_at": mandate.valid_until.isoformat()},
     )
+    if _mandate_kind(mandate) == "canonical_weekly":
+        _supersede_other_canonical_mandates(
+            db,
+            mandate,
+            reason=f"Atomic activation: {payload.reason}",
+        )
+
+
+def _supersede_other_canonical_mandates(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    *,
+    reason: str,
+) -> list[AlphaResearchMandate]:
+    """Enforce one active canonical week while retaining thematic mandates."""
+    active = db.scalars(
+        select(AlphaResearchMandate)
+        .where(
+            AlphaResearchMandate.status == "active",
+            AlphaResearchMandate.id != mandate.id,
+        )
+        .order_by(AlphaResearchMandate.created_at)
+        .with_for_update()
+    ).all()
+    superseded = []
+    moment = now()
+    for item in active:
+        if _mandate_kind(item) != "canonical_weekly":
+            continue
+        item.status = "superseded"
+        item.heartbeat_at = moment
+        _event(
+            db,
+            item,
+            "mandate_superseded_by_canonical_week",
+            {
+                "canonical_mandate_id": str(mandate.id),
+                "canonical_mandate_digest": mandate.mandate_digest,
+                "reason": reason,
+            },
+        )
+        superseded.append(item)
+    return superseded
 
 
 def canonicalize_mandates(
@@ -409,32 +452,7 @@ def canonicalize_mandates(
             raise HTTPException(
                 403, "Delegation does not cover canonical reconciliation."
             )
-    active = db.scalars(
-        select(AlphaResearchMandate)
-        .where(
-            AlphaResearchMandate.status == "active",
-            AlphaResearchMandate.id != mandate.id,
-        )
-        .order_by(AlphaResearchMandate.created_at)
-        .with_for_update()
-    ).all()
-    superseded = []
-    for item in active:
-        if _mandate_kind(item) != "canonical_weekly":
-            continue
-        item.status = "superseded"
-        item.heartbeat_at = now()
-        _event(
-            db,
-            item,
-            "mandate_superseded_by_canonical_week",
-            {
-                "canonical_mandate_id": str(mandate.id),
-                "canonical_mandate_digest": mandate.mandate_digest,
-                "reason": payload.reason,
-            },
-        )
-        superseded.append(item)
+    superseded = _supersede_other_canonical_mandates(db, mandate, reason=payload.reason)
     _event(
         db,
         mandate,
@@ -2903,11 +2921,15 @@ def mandate_counter_projection(
         if event.event_type == "cycle_started" and cycle_id:
             started_cycles.add(cycle_id)
             continue
-        if event.event_type not in {
-            "campaign_completed_without_candidate",
-            "campaign_cancelled_without_candidate",
-            "shadow_candidate_reached",
-        } or not cycle_id:
+        if (
+            event.event_type
+            not in {
+                "campaign_completed_without_candidate",
+                "campaign_cancelled_without_candidate",
+                "shadow_candidate_reached",
+            }
+            or not cycle_id
+        ):
             continue
         if cycle_id in completed_cycles:
             duplicate_completion_events += 1
@@ -3136,6 +3158,10 @@ def overview(db: Session) -> dict:
                     mandate_by_id[item.mandate_id].status
                     if item.mandate_id in mandate_by_id
                     else "retained"
+                ),
+                "actionable": (
+                    item.mandate_id in mandate_by_id
+                    and mandate_by_id[item.mandate_id].status == "active"
                 ),
                 "ordinal": item.ordinal,
                 "status": item.status,

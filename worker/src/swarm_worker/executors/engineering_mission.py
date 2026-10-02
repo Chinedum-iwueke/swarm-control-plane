@@ -541,7 +541,13 @@ class EngineeringMissionExecutor:
             "YAML, native strategy and runner; prove that any materialized representation "
             "fields are consumed at causal decision timestamps; bind every admitted "
             "digest exactly; exercise execute_registered without mocking its compiler or "
-            "evaluator; and retain every declared metric and terminal outcome.\n"
+            "evaluator; and retain every declared metric and terminal outcome. Invalid "
+            "or inadmissible rows must not contaminate later rolling, lagged or cutoff "
+            "state, and native/evaluator state transitions must be parity-tested. Every "
+            "declared representation output must either be semantically validated and "
+            "consumed or be rejected from the contract. Runner tests must prove distinct "
+            "per-variant artifacts and explicit positive/test-open, negative, invalid "
+            "and failed terminal paths.\n"
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )

@@ -95,6 +95,45 @@ def test_founder_can_approve_exact_research_mandate(monkeypatch):
     assert mandate.approved_by == "founder-operator"
 
 
+def test_canonical_approval_atomically_supersedes_prior_week_but_not_theme(
+    monkeypatch,
+):
+    mandate = mandate_for_approval()
+    prior = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        specification={"mandate_kind": "canonical_weekly"},
+        heartbeat_at=None,
+    )
+    thematic = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        specification={"mandate_kind": "thematic"},
+        heartbeat_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [prior, thematic]
+    monkeypatch.setattr(
+        "app.services.alpha_discovery.resolve_authority",
+        lambda *args, **kwargs: SimpleNamespace(delegation_id=None),
+    )
+    monkeypatch.setattr("app.services.alpha_discovery._event", MagicMock())
+
+    approve_mandate(
+        db,
+        mandate,
+        AlphaResearchMandateApproval(
+            expected_mandate_digest=DIGEST,
+            actor="founder-operator",
+            reason="Approve the replacement canonical week.",
+        ),
+    )
+
+    assert mandate.status == "active"
+    assert prior.status == "superseded"
+    assert thematic.status == "active"
+
+
 def test_exact_no_capital_delegation_can_approve_research_mandate(monkeypatch):
     mandate = mandate_for_approval()
     delegation_id = uuid4()

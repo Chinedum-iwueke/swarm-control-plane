@@ -173,3 +173,10 @@ def test_pagination_and_heartbeat_receipt_are_read_only():
     }
     db.commit.assert_not_called()
     db.add.assert_not_called()
+    count_query = str(
+        db.execute.call_args_list[0]
+        .args[0]
+        .compile(compile_kwargs={"literal_binds": True})
+    )
+    assert "input_contract" in count_query
+    assert "execute" in count_query

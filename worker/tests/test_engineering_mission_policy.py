@@ -174,6 +174,9 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "must not rewrite the frozen production contract" in prompt
     assert "trace the exact predictor, target, direction and horizon" in prompt
     assert "exercise execute_registered" in prompt
+    assert "must not contaminate later rolling" in prompt
+    assert "semantically validated and consumed" in prompt
+    assert "distinct per-variant artifacts" in prompt
 
 
 def test_non_alpha_prompt_does_not_add_strategy_specific_requirements() -> None:
