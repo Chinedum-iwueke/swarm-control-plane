@@ -2163,7 +2163,18 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
     evidence = json.loads(task.input_contract["evidence_context"])
     assert task is persisted[0]
     assert "dataset_binding" not in evidence
-    assert evidence["dataset_bindings"] == record.specification["dataset_bindings"]
+    assert len(evidence["dataset_bindings"]) == len(
+        record.specification["dataset_bindings"]
+    )
+    for compact, original in zip(
+        evidence["dataset_bindings"], record.specification["dataset_bindings"]
+    ):
+        assert "output_columns" not in compact
+        if "output_columns" in original:
+            assert compact["output_columns_count"] == len(original["output_columns"])
+            assert compact["output_columns_digest"] == service.digest_document(
+                original["output_columns"]
+            )
     assert evidence["independent_review_correction"] == correction
     assert len(evidence) <= 20
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
