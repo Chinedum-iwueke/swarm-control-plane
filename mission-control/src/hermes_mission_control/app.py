@@ -79,6 +79,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        warm_dashboard = getattr(client, "warm_dashboard", None)
+        if warm_dashboard is not None:
+            warm_dashboard()
         yield
         await client.close()
 

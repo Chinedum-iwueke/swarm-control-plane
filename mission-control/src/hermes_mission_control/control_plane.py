@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,9 +34,19 @@ class ControlPlaneClient:
             timeout=settings.request_timeout_seconds,
             transport=transport,
         )
+        self._dashboard_cache: dict[str, Any] | None = None
+        self._dashboard_refresh_task: asyncio.Task[dict[str, Any]] | None = None
 
     async def close(self) -> None:
+        if self._dashboard_refresh_task and not self._dashboard_refresh_task.done():
+            self._dashboard_refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._dashboard_refresh_task
         await self._client.aclose()
+
+    def warm_dashboard(self) -> None:
+        """Populate the first dashboard snapshot without delaying app startup."""
+        self._ensure_dashboard_refresh()
 
     async def backtest_activity(self, *, category="all", tier="all", offset=0) -> dict:
         return await self._request(
@@ -44,6 +56,40 @@ class ControlPlaneClient:
         )
 
     async def dashboard(self) -> dict[str, Any]:
+        if self._dashboard_cache is None:
+            snapshot = await self._ensure_dashboard_refresh()
+            return copy.deepcopy(snapshot)
+
+        snapshot = copy.deepcopy(self._dashboard_cache)
+        self._ensure_dashboard_refresh()
+        return snapshot
+
+    def _ensure_dashboard_refresh(self) -> asyncio.Task[dict[str, Any]]:
+        if (
+            self._dashboard_refresh_task is None
+            or self._dashboard_refresh_task.done()
+        ):
+            self._dashboard_refresh_task = asyncio.create_task(
+                self._refresh_dashboard_cache()
+            )
+            self._dashboard_refresh_task.add_done_callback(
+                self._consume_background_refresh_error
+            )
+        return self._dashboard_refresh_task
+
+    @staticmethod
+    def _consume_background_refresh_error(
+        task: asyncio.Task[dict[str, Any]],
+    ) -> None:
+        if not task.cancelled():
+            task.exception()
+
+    async def _refresh_dashboard_cache(self) -> dict[str, Any]:
+        snapshot = await self._load_dashboard()
+        self._dashboard_cache = snapshot
+        return snapshot
+
+    async def _load_dashboard(self) -> dict[str, Any]:
         fetches = {
             "health": self._request("GET", "/health", authenticated=False),
             "tasks": self._request(

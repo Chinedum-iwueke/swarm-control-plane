@@ -596,6 +596,10 @@ function openIntake(kind) {
 async function loadDashboard() {
   setLoading(true);
   try {
+    if (!state.demo) {
+      document.getElementById("health").textContent = "Mission Control online · loading current state";
+      document.getElementById("health-dot").classList.add("ok");
+    }
     state.dashboard = state.demo ? demoDashboard() : await request("/api/dashboard");
     if (state.demo) loadDemoConversation();
     document.getElementById("health").textContent = state.demo ? "Demo isolated" : "Control plane online";

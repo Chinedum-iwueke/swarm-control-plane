@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -238,6 +239,35 @@ async def test_task_detail_is_loaded_separately(settings) -> None:
         await client.close()
 
     assert result == {"task": {"id": "123"}, "events": []}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_returns_cached_snapshot_while_refreshing(settings) -> None:
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(lambda _: None))
+    refresh_started = asyncio.Event()
+    release_refresh = asyncio.Event()
+    calls = 0
+
+    async def load_dashboard():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {"generation": 1}
+        refresh_started.set()
+        await release_refresh.wait()
+        return {"generation": 2}
+
+    client._load_dashboard = load_dashboard  # type: ignore[method-assign]
+    try:
+        assert await client.dashboard() == {"generation": 1}
+        assert await client.dashboard() == {"generation": 1}
+        await refresh_started.wait()
+        release_refresh.set()
+        assert client._dashboard_refresh_task is not None
+        await client._dashboard_refresh_task
+        assert await client.dashboard() == {"generation": 2}
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
