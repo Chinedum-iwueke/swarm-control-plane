@@ -291,7 +291,8 @@ class ControlPlaneClient:
             ),
         }
         values = await asyncio.gather(*fetches.values())
-        result = dict(zip(fetches, values, strict=True))
+        # Mission Control supports the Mac's Python 3.9; zip(strict=...) is 3.10+.
+        result = dict(zip(fetches, values))
         counts: dict[str, int] = {}
         for operation in result["operations"]:
             state = operation.get("state", "unknown")
