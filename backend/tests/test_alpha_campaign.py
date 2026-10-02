@@ -2175,6 +2175,9 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
             assert compact["output_columns_digest"] == service.digest_document(
                 original["output_columns"]
             )
+            assert set(compact["relevant_output_columns"]) <= set(
+                original["output_columns"]
+            )
     assert evidence["independent_review_correction"] == correction
     assert len(evidence) <= 20
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
@@ -2227,6 +2230,66 @@ def test_strategy_correction_compacts_unbounded_review_history(monkeypatch):
     assert retained["retained_history_count"] == 60
     assert retained["retained_history_digest"] == service.digest_document(cumulative)
     assert len(task.input_contract["evidence_context"]) <= 48_000
+    ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
+def test_initial_multi_asset_engineering_compacts_catalog_column_inventory(
+    monkeypatch,
+):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=[f"ASSET{index}USDT" for index in range(11)],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
+    source = record.specification["research_queue"][0]
+    source["instrument"] = "ASSET0USDT"
+    source["representation_plan"] = {
+        "transformations": [
+            {"input_fields": ["ASSET0USDT__close"], "output_field": "return_1h"}
+        ]
+    }
+    bindings = []
+    for index, instrument in enumerate(record.specification["allowed_instruments"]):
+        bindings.append(
+            {
+                "dataset_build_id": str(uuid4()),
+                "dataset_digest": f"{index % 10}" * 64,
+                "instruments": [instrument],
+                "output_columns": ["ts", "close", "quote_volume"]
+                + [f"unused_feature_{column}" for column in range(150)],
+            }
+        )
+    db = MagicMock()
+    monkeypatch.setattr(service, "_source_bindings", lambda *_: bindings)
+    monkeypatch.setattr(service, "_research_context", lambda *_: {})
+    monkeypatch.setattr(service, "persist_new_task", lambda *_: None)
+
+    task = service._create_strategy_engineering_task(
+        db,
+        record,
+        source,
+        {"category": "exact_strategy_unavailable"},
+    )
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    assert len(task.input_contract["evidence_context"]) <= 48_000
+    assert len(evidence["dataset_bindings"]) == 11
+    assert evidence["dataset_bindings"][0]["relevant_output_columns"] == [
+        "ts",
+        "close",
+        "quote_volume",
+    ]
+    assert all(
+        "output_columns" not in binding for binding in evidence["dataset_bindings"]
+    )
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
@@ -2391,6 +2454,7 @@ def test_selected_panel_correction_removes_legacy_binding_idempotently(monkeypat
     assert compact_binding["output_columns_digest"] == service.digest_document(
         output_columns
     )
+    assert set(compact_binding["relevant_output_columns"]) <= set(output_columns)
     assert len(evidence) <= 20
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 

@@ -883,6 +883,46 @@ def _create_strategy_engineering_task(
         "engineering_requirement": requirement,
         "authority": campaign.specification["authority_boundary"],
     }
+    binding_context = json.dumps(
+        {
+            "question": question,
+            "discovery_candidate": candidate_document,
+            "representation_plan": source.get("representation_plan"),
+        },
+        sort_keys=True,
+        allow_nan=False,
+    )
+    compact_bindings = []
+    core_columns = {
+        "ts",
+        "symbol",
+        "canonical_symbol",
+        "exchange",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "quote_volume",
+    }
+    for item in evidence["dataset_bindings"]:
+        compact = dict(item)
+        output_columns = compact.pop("output_columns", None)
+        if isinstance(output_columns, list):
+            relevant = [
+                column
+                for column in output_columns
+                if column in core_columns
+                or f'"{column}"' in binding_context
+                or f"__{column}" in binding_context
+            ]
+            compact["output_columns_count"] = len(output_columns)
+            compact["output_columns_digest"] = digest_document(output_columns)
+            compact["relevant_output_columns"] = relevant
+        compact_bindings.append(compact)
+    evidence["dataset_bindings"] = compact_bindings
+    if "dataset_binding" in evidence:
+        evidence["dataset_binding"] = compact_bindings[0]
     if selected_panel_admission is not None:
         # Multi-panel discovery candidates are admitted after their initial
         # representation is written. Prefer this compact, digest-bound final
@@ -896,15 +936,6 @@ def _create_strategy_engineering_task(
         # selected-panel handoff has already replaced dataset_binding, making the
         # singular instrument alias the remaining redundant field.
         evidence.pop("dataset_binding", None)
-        compact_bindings = []
-        for item in evidence["dataset_bindings"]:
-            compact = dict(item)
-            output_columns = compact.pop("output_columns", None)
-            if isinstance(output_columns, list):
-                compact["output_columns_count"] = len(output_columns)
-                compact["output_columns_digest"] = digest_document(output_columns)
-            compact_bindings.append(compact)
-        evidence["dataset_bindings"] = compact_bindings
         if selected_panel_admission is not None:
             evidence.pop("instrument", None)
         evidence["independent_review_correction"] = correction_feedback

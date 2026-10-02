@@ -4,12 +4,21 @@ import argparse
 import json
 import time
 
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
 from app.models.alpha_campaign import AlphaCampaign
 from app.services.alpha_campaign import reconcile_campaign
+
+
+def _error_detail(exc: Exception):
+    return (
+        exc.errors(include_input=False)
+        if isinstance(exc, ValidationError)
+        else str(exc)[:2000]
+    )
 
 
 def run_once() -> dict:
@@ -20,12 +29,36 @@ def run_once() -> dict:
             .order_by(AlphaCampaign.created_at)
             .with_for_update(skip_locked=True)
         ).all()
+        failures = []
         for campaign in campaigns:
-            reconcile_campaign(db, campaign)
+            try:
+                with db.begin_nested():
+                    reconcile_campaign(db, campaign)
+            except (
+                HTTPException,
+                KeyError,
+                TypeError,
+                ValidationError,
+                ValueError,
+            ) as exc:
+                failure = {
+                    "campaign_id": str(campaign.id),
+                    "error": type(exc).__name__,
+                    "detail": _error_detail(exc),
+                }
+                failures.append(failure)
+                print(
+                    json.dumps(
+                        {"event": "alpha_campaign_reconciliation_failed", **failure},
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
         db.commit()
         result = {
             "event": "alpha_campaign_reconciliation_complete",
             "active_campaigns": len(campaigns),
+            "failed_campaigns": failures,
             "campaigns": [
                 {
                     "id": str(item.id),
@@ -51,17 +84,12 @@ def main() -> int:
         try:
             run_once()
         except Exception as exc:
-            detail = (
-                exc.errors(include_input=False)
-                if isinstance(exc, ValidationError)
-                else str(exc)[:2000]
-            )
             print(
                 json.dumps(
                     {
                         "event": "alpha_campaign_reconciliation_failed",
                         "error": type(exc).__name__,
-                        "detail": detail,
+                        "detail": _error_detail(exc),
                     },
                     sort_keys=True,
                 ),
