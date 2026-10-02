@@ -1996,9 +1996,7 @@ def test_legacy_strategy_engineering_approval_is_narrowly_waived(monkeypatch):
         decision_reason=None,
         updated_at=None,
     )
-    notification = SimpleNamespace(
-        state="pending", superseded_at=None, updated_at=None
-    )
+    notification = SimpleNamespace(state="pending", superseded_at=None, updated_at=None)
     db = MagicMock()
     db.scalar.return_value = approval
     db.scalars.return_value.all.return_value = [notification]
@@ -2168,6 +2166,56 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
     assert evidence["dataset_bindings"] == record.specification["dataset_bindings"]
     assert evidence["independent_review_correction"] == correction
     assert len(evidence) <= 20
+    ProposalEngineeringMissionContract.model_validate(task.input_contract)
+
+
+def test_strategy_correction_compacts_unbounded_review_history(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.specification.update(
+        allowed_instruments=["BTCUSDT"],
+        execution_window_start="2025-05-01T00:00:00Z",
+        execution_window_end="2026-05-01T00:00:00Z",
+        authority_boundary={
+            "capital": False,
+            "orders": False,
+            "production_promotion": False,
+            "self_approval": False,
+        },
+    )
+    source = record.specification["research_queue"][0]
+    source["instrument"] = "BTCUSDT"
+    db = MagicMock()
+    db.scalar.return_value = None
+    monkeypatch.setattr(service, "_research_context", lambda *_: {})
+    monkeypatch.setattr(service, "persist_new_task", lambda *_: None)
+    latest = [{"severity": "high", "message": "latest unresolved finding"}]
+    cumulative = [
+        {"severity": "high", "message": f"historical finding {index} " + "x" * 900}
+        for index in range(60)
+    ]
+    correction = {
+        "review_summary": "bounded correction",
+        "latest_findings": latest,
+        "cumulative_findings": cumulative,
+    }
+
+    task = service._create_strategy_engineering_task(
+        db,
+        record,
+        source,
+        {"category": "exact_strategy_unavailable"},
+        stage="G9",
+        correction_feedback=correction,
+        parent_task_id=uuid4(),
+    )
+
+    evidence = json.loads(task.input_contract["evidence_context"])
+    retained = evidence["independent_review_correction"]
+    assert retained["cumulative_findings"] == latest
+    assert retained["retained_history_count"] == 60
+    assert retained["retained_history_digest"] == service.digest_document(cumulative)
+    assert len(task.input_contract["evidence_context"]) <= 48_000
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 

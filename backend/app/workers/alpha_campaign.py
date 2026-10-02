@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
@@ -50,11 +51,17 @@ def main() -> int:
         try:
             run_once()
         except Exception as exc:
+            detail = (
+                exc.errors(include_input=False)
+                if isinstance(exc, ValidationError)
+                else str(exc)[:2000]
+            )
             print(
                 json.dumps(
                     {
                         "event": "alpha_campaign_reconciliation_failed",
                         "error": type(exc).__name__,
+                        "detail": detail,
                     },
                     sort_keys=True,
                 ),

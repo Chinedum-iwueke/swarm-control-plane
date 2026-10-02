@@ -908,6 +908,22 @@ def _create_strategy_engineering_task(
                 compact_bindings.append(compact)
             evidence["dataset_bindings"] = compact_bindings
         evidence["independent_review_correction"] = correction_feedback
+        encoded_evidence = json.dumps(evidence, sort_keys=True, allow_nan=False)
+        if len(encoded_evidence) > 46_000:
+            # Prior task records retain the complete review chain. Successor tasks
+            # need the latest unresolved findings plus an immutable custody link,
+            # not an ever-growing copy of every historical review message.
+            cumulative = correction_feedback.get("cumulative_findings", [])
+            compact_feedback = dict(correction_feedback)
+            compact_feedback["cumulative_findings"] = correction_feedback.get(
+                "latest_findings", []
+            )
+            compact_feedback["retained_history_count"] = len(cumulative)
+            compact_feedback["retained_history_digest"] = digest_document(cumulative)
+            compact_feedback["review_summary"] = str(
+                correction_feedback.get("review_summary", "")
+            )[:1000]
+            evidence["independent_review_correction"] = compact_feedback
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
     contract = {
@@ -1038,9 +1054,7 @@ def _is_bounded_hypothesis_engineering_task(task: Task) -> bool:
     )
 
 
-def _release_legacy_hypothesis_engineering_approval(
-    db: Session, task: Task
-) -> bool:
+def _release_legacy_hypothesis_engineering_approval(db: Session, task: Task) -> bool:
     """Queue a previously approval-gated task under the narrow ALPHA-003 policy."""
     if (
         getattr(task, "approval_required", False) is not True
