@@ -404,12 +404,15 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "source rows independently pass timestamp" in prompt
     assert "distinguish rolling bars from inter-bar gaps" in prompt
     assert "every frozen purge and embargo" in prompt
+    assert "aggregate gates over the exact frozen window" in prompt
     assert "genuine treated-versus-control or model interaction effect" in prompt
     assert "fail closed for unmatched treated observations" in prompt
     assert "prove poor-match rejection" in prompt
     assert "exact estimand rather than a pooled proxy" in prompt
     assert "canonical engine accounting evidence" in prompt
     assert "Retain invalid decision-row evidence" in prompt
+    assert "validate missing provenance and representation identity" in prompt
+    assert "distinguish row-level fields from aggregate evaluation metrics" in prompt
     assert "exact parameter tuple, evidence identity" in prompt
 
 
@@ -453,6 +456,7 @@ def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:
     assert "local approximations" in prompt
     assert "missing frozen purge/embargo boundaries" in prompt
     assert "drop invalid decision-row evidence" in prompt
+    assert "latest-bar substitutions" in prompt
 
 
 def test_retry_prompt_includes_prior_failure_without_expanding_authority() -> None:
