@@ -85,9 +85,27 @@ exec .venv/bin/python scripts/operator_control.py pause \
 
 Agent pause uses `--scope agent --key vm1-developer-coder`.
 
-Resume uses the same command with `resume` and a reason. Pause prevents new
-leases at the control-plane transaction. It does not revoke an active lease;
-use systemd stop for a graceful active-task cancellation and release.
+Resume uses the same command with `resume` and a reason. The production VM1
+drain synchronizer projects this audited global state into Bulletproof. A pause
+therefore prevents new control-plane leases, DISC-010 replenishment, and native
+capacity launches. Work already running is allowed to finish and queued work is
+preserved unchanged. Resume reopens admission without rewriting evidence.
+
+Mission Control exposes the same operation under **Command -> Governance ->
+Control state**. Its Pause button is a drain control, not a cancellation or a
+trading kill switch. Deterministic live risk and kill controls remain separate.
+
+Inspect the synchronized VM1 state:
+
+```bash
+sudo bash -c '
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+cd /home/omenka/Projects/swarm-control-plane
+exec worker/.venv/bin/python worker/scripts/alpha_autonomy_control.py status
+'
+```
 
 ## Metrics and Alerts
 

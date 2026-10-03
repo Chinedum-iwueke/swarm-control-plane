@@ -999,9 +999,29 @@ function renderProposals() {
 
 function renderControls() {
   const scopes = state.dashboard.control_scopes || [];
-  document.getElementById("controls").innerHTML = scopes.length ? scopes.map((scope) => `
+  const globalScope = scopes.find((scope) => scope.scope_type === "global" && scope.scope_key === "all");
+  const paused = Boolean(globalScope?.is_paused);
+  const autonomyControl = `<div class="control-row"><div><strong>Autonomous research</strong><div class="entity-meta">${escapeHtml(paused ? "Drain paused: no new work starts; active work may finish." : "Active: new discovery, engineering, and native research may start.")}</div></div><div class="entity-side">${statusBadge(paused ? "paused" : "active")}<button class="${paused ? "secondary" : "danger"} compact" data-autonomy-control="${paused ? "resume" : "pause"}">${paused ? "Resume" : "Pause"}</button></div></div>`;
+  const scopeRows = scopes.length ? scopes.map((scope) => `
     <div class="control-row"><div><strong>${escapeHtml(scope.scope_type)} · ${escapeHtml(scope.scope_key)}</strong><div class="entity-meta">${escapeHtml(scope.reason || "No restriction")}</div></div>${statusBadge(scope.is_paused ? "paused" : "active")}</div>
-  `).join("") : `<div class="control-row"><strong>Global execution</strong>${statusBadge("active")}</div>`;
+  `).join("") : "";
+  const container = document.getElementById("controls");
+  container.innerHTML = autonomyControl + scopeRows;
+  container.querySelector("[data-autonomy-control]")?.addEventListener("click", async (event) => {
+    if (state.demo) return toast("Actions are disabled in demonstration mode.");
+    const action = event.currentTarget.dataset.autonomyControl;
+    const explanation = action === "pause"
+      ? "Pause new autonomous work after allowing active work to finish."
+      : "Resume governed autonomous research admission.";
+    const reason = window.prompt(`${explanation}\n\nReason:`);
+    if (!reason || reason.trim().length < 10) return toast("A reason of at least 10 characters is required.");
+    await mutate(
+      `/api/control/${action}`,
+      { scope_type: "global", scope_key: "all", reason: reason.trim() },
+      action === "pause" ? "Autonomous research is draining." : "Autonomous research resumed."
+    );
+    await loadDashboard();
+  });
 }
 
 function renderMissions() {

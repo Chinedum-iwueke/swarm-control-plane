@@ -1,0 +1,25 @@
+[Unit]
+Description=Synchronize audited autonomy drain state to VM1 native research
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omenka
+Group=omenka
+WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
+EnvironmentFile=/etc/invariance-swarm/pilot-operator.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python scripts/alpha_autonomy_control.py watch --state /home/omenka/.local/state/invariance-swarm/alpha-autonomy-drain.json --poll-seconds 5
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadOnlyPaths=/home/omenka/Projects/swarm-control-plane
+ReadWritePaths=/home/omenka/.local/state/invariance-swarm
+
+[Install]
+WantedBy=multi-user.target
