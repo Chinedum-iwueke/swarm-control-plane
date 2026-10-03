@@ -263,6 +263,35 @@ def test_dashboard_reports_local_mission_control_presence(
     assert dashboard["mission_control"]["observed_at"]
 
 
+def test_autonomy_drain_control_requires_founder_intent(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    payload = {
+        "scope_type": "global",
+        "scope_key": "all",
+        "reason": "Drain while the local authoring runtime is maintained.",
+    }
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        script = client.get("/static/app.js").text
+        denied = client.post("/api/control/pause", json=payload)
+        accepted = client.post(
+            "/api/control/pause",
+            headers={"X-Hermes-Intent": "founder-action"},
+            json=payload,
+        )
+
+    assert "Drain paused: no new work starts; active work may finish." in script
+    assert denied.status_code == 403
+    assert accepted.status_code == 200
+    assert accepted.json() == {
+        "paused": True,
+        "scope_type": "global",
+        "scope_key": "all",
+        "reason": payload["reason"],
+    }
+
+
 def test_task_detail_is_loaded_on_demand(
     settings: MissionControlSettings,
 ) -> None:
