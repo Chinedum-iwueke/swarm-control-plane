@@ -18,6 +18,7 @@ from app.schemas.alpha_discovery import (
     AlphaStrategyCapabilityCatalog,
 )
 from app.services.alpha_discovery import (
+    _active_parallel_instrument_sets,
     _apply_representation_plans,
     _bounded_context,
     _candidate_enters_novelty_memory,
@@ -51,6 +52,69 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_active_parallel_instrument_sets_are_normalized() -> None:
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [
+        SimpleNamespace(
+            document={"data": {"instruments": ["SOLUSDT", "BTCUSDT"]}}
+        ),
+        SimpleNamespace(document={"data": {"instrument": "TIAUSDT"}}),
+        SimpleNamespace(document={"data": {"instruments": []}}),
+    ]
+
+    result = _active_parallel_instrument_sets(
+        db,
+        mandate_id=uuid4(),
+        exclude_cycle_id=uuid4(),
+    )
+
+    assert result == {("BTCUSDT", "SOLUSDT"), ("TIAUSDT",)}
+
+
+def test_candidate_gate_rejects_an_instrument_set_already_running_in_parallel():
+    value, object_id = candidate()
+    value.data.instrument = "tiausdt"
+    value.data.instruments = ["tiausdt"]
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        context={
+            "research_intelligence": {
+                "citations": [
+                    {"object_id": str(object_id), "content_digest": DIGEST}
+                ]
+            },
+            "datasets": [
+                {
+                    "binding_index": 0,
+                    "venue": "bybit",
+                    "instruments": ["tiausdt"],
+                    "timeframe": "1m",
+                    "rows": 10_000,
+                    "output_columns": [
+                        "timestamp",
+                        "close",
+                        "funding_rate",
+                        "volume",
+                    ],
+                }
+            ],
+        },
+    )
+    mandate = SimpleNamespace(
+        id=uuid4(),
+        specification={"minimum_liquidity_usd": 0},
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [
+        SimpleNamespace(document={"data": {"instrument": "TIAUSDT"}})
+    ]
+
+    reasons, binding_index = _candidate_reasons(value, cycle, mandate, [], db)
+
+    assert reasons == ["parallel_instrument_set_saturated"]
+    assert binding_index == 0
 
 
 def test_cross_sectional_rank_binds_one_asset_specific_output():

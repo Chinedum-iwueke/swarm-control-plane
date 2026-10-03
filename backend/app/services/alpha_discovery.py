@@ -1479,6 +1479,19 @@ def _candidate_reasons(
     maximum_assets = int(catalog_policy.get("maximum_assets_per_hypothesis", 128))
     if len(candidate.data.instruments) > maximum_assets:
         reasons.append("mandate_maximum_assets_exceeded")
+    mandate_id = getattr(mandate, "id", None)
+    cycle_id = getattr(cycle, "id", None)
+    if db is not None and mandate_id is not None and cycle_id is not None:
+        active_instrument_sets = _active_parallel_instrument_sets(
+            db,
+            mandate_id=mandate_id,
+            exclude_cycle_id=cycle_id,
+        )
+        instrument_set = tuple(
+            sorted({instrument.upper() for instrument in candidate.data.instruments})
+        )
+        if instrument_set and instrument_set in active_instrument_sets:
+            reasons.append("parallel_instrument_set_saturated")
     if founder_constraints:
         maximum_variants = int(founder_constraints.get("maximum_variants", 8))
         minimum_history_days = int(founder_constraints.get("minimum_history_days", 365))
@@ -1636,6 +1649,39 @@ def _candidate_reasons(
     if any(_question_similarity(question, item) >= 0.8 for item in normalized_prior):
         reasons.append("semantic_duplicate_prior_question")
     return sorted(set(reasons)), binding_index
+
+
+def _active_parallel_instrument_sets(
+    db: Session,
+    *,
+    mandate_id: UUID,
+    exclude_cycle_id: UUID,
+) -> set[tuple[str, ...]]:
+    candidates = db.scalars(
+        select(AlphaDiscoveryCandidate)
+        .join(
+            AlphaDiscoveryCycle,
+            AlphaDiscoveryCycle.id == AlphaDiscoveryCandidate.cycle_id,
+        )
+        .join(AlphaCampaign, AlphaCampaign.id == AlphaDiscoveryCycle.campaign_id)
+        .where(
+            AlphaDiscoveryCycle.mandate_id == mandate_id,
+            AlphaDiscoveryCycle.id != exclude_cycle_id,
+            AlphaCampaign.status.in_(_PARALLEL_SLOT_CAMPAIGN),
+            AlphaDiscoveryCandidate.disposition == "accepted",
+        )
+    ).all()
+    instrument_sets = set()
+    for item in candidates:
+        document = item.document if isinstance(item.document, dict) else {}
+        data = document.get("data", {}) if isinstance(document, dict) else {}
+        instruments = data.get("instruments") or [data.get("instrument")]
+        normalized = tuple(
+            sorted({str(value).upper() for value in instruments if value})
+        )
+        if normalized:
+            instrument_sets.add(normalized)
+    return instrument_sets
 
 
 def _question_similarity(first: str, second: str) -> float:
