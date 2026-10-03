@@ -611,6 +611,10 @@ async def test_policy_rejection_releases_before_start(
     ]
     assert not api.requests["fail"]
     assert not api.requests["complete"]
+    assert api.requests["release"][0].message == (
+        "Restricted worker released task before start: "
+        "RepositoryNotAllowed. not allowed"
+    )
 
 
 @pytest.mark.asyncio

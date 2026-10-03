@@ -367,6 +367,7 @@ class WorkerService:
                     lease_token=lease_token,
                     category=type(exc).__name__,
                     phase="policy_release",
+                    detail=str(exc),
                 )
             except Exception as exc:  # noqa: BLE001 - injected policy boundary
                 return await self._release_or_lease_lost(
@@ -612,7 +613,10 @@ class WorkerService:
         lease_token: str,
         category: str,
         phase: str,
+        detail: str | None = None,
     ) -> ReleasedOutcome | LeaseLostOutcome:
+        safe_detail = " ".join((detail or "").split())[:600]
+        diagnostic = f" {safe_detail}" if safe_detail else ""
         try:
             await api.release_task(
                 task_id,
@@ -620,7 +624,7 @@ class WorkerService:
                     lease_token=lease_token,
                     message=(
                         "Restricted worker released task before start: "
-                        f"{category[:100]}."
+                        f"{category[:100]}.{diagnostic}"
                     ),
                 ),
             )

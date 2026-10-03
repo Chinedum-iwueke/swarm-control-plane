@@ -3240,6 +3240,41 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         except (TypeError, ValueError):
             failed_task_id = None
         failed_task = db.get(Task, failed_task_id) if failed_task_id else None
+        failed_task_status = getattr(failed_task, "status", None)
+        if (
+            terminal.get("category") == "governed_pipeline_task_failed"
+            and failed_task is not None
+            and failed_task_status
+            in {
+            "pending_approval",
+            "queued",
+            "leased",
+            "in_progress",
+            "running",
+            "succeeded",
+            }
+        ):
+            prior_terminal_reason = dict(campaign.terminal_reason)
+            campaign.status = "running"
+            campaign.phase = "recovery"
+            campaign.next_action = "reconcile_recovered_pipeline_task"
+            campaign.completed_at = None
+            campaign.terminal_reason = {}
+            _append_event(
+                db,
+                campaign,
+                "pipeline_task_resume_reconciled",
+                "alpha-campaign-director",
+                {
+                    "task_id": str(failed_task.id),
+                    "task_number": getattr(
+                        failed_task, "task_number", terminal.get("task_number")
+                    ),
+                    "task_status": failed_task_status,
+                    "prior_terminal_reason": prior_terminal_reason,
+                },
+            )
+            return
         representation_failure = (
             _invalid_representation_contract(campaign, failed_task)
             if failed_task is not None

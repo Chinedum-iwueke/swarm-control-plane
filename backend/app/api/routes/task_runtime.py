@@ -467,13 +467,18 @@ def release_task(
     )
 
     previous_status = task.status
+    leased_attempt_number = task.attempt_count
+    attempt_consumed = previous_status == "running"
+    effective_attempt_count = (
+        task.attempt_count if attempt_consumed else max(0, task.attempt_count - 1)
+    )
     if task.cancel_requested_at is not None:
         task.status = "cancelled"
         task.completed_at = now
     else:
-        task.status = "queued" if task.attempt_count < task.max_attempts else "failed"
-    if task.status == "queued":
-        rearm_task_approval(db, task, "A new approval is required after lease release.")
+        task.status = (
+            "queued" if effective_attempt_count < task.max_attempts else "failed"
+        )
 
     if task.status == "failed":
         task.failure = {
@@ -491,8 +496,14 @@ def release_task(
         payload={
             "previous_status": previous_status,
             "resulting_status": task.status,
+            "leased_attempt_number": leased_attempt_number,
+            "attempt_consumed": attempt_consumed,
         },
     )
+
+    task.attempt_count = effective_attempt_count
+    if task.status == "queued":
+        rearm_task_approval(db, task, "A new approval is required after lease release.")
 
     if task.status in {"queued", "pending_approval"}:
         append_task_event(

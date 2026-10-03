@@ -2740,6 +2740,53 @@ def test_reconcile_recovers_scope_budget_failure_to_g6(monkeypatch):
     advance.assert_called_once_with(db, record)
 
 
+def test_reconcile_recovers_resumed_governed_pipeline_task(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.status = "needs_attention"
+    record.phase = "complete"
+    record.next_action = "operator_review"
+    record.completed_at = datetime.now(UTC)
+    task_id = uuid4()
+    terminal = {
+        "category": "governed_pipeline_task_failed",
+        "task_id": str(task_id),
+        "task_number": f"A3-{record.id.hex[:8]}-001-G4",
+        "failure": {"reason": "lease_released"},
+    }
+    record.terminal_reason = terminal
+    resumed = SimpleNamespace(
+        id=task_id,
+        status="running",
+        task_number=terminal["task_number"],
+    )
+    db = MagicMock()
+    db.get.return_value = resumed
+    event = MagicMock()
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    monkeypatch.setattr(service, "_append_event", event)
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.phase == "recovery"
+    assert record.next_action == "reconcile_recovered_pipeline_task"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+    event.assert_called_once_with(
+        db,
+        record,
+        "pipeline_task_resume_reconciled",
+        "alpha-campaign-director",
+        {
+            "task_id": str(task_id),
+            "task_number": terminal["task_number"],
+            "task_status": "running",
+            "prior_terminal_reason": terminal,
+        },
+    )
+
+
 def test_reconcile_recovers_diff_line_budget_failure_to_g6(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
