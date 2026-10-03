@@ -1257,6 +1257,117 @@ def _requires_admission_handoff_recovery(task: Task) -> bool:
     )
 
 
+def _invalid_representation_contract(campaign: AlphaCampaign, task: Task) -> str | None:
+    """Identify immutable representation plans that cannot encode their question."""
+    failure = getattr(task, "failure", {})
+    if (
+        getattr(task, "status", None) != "failed"
+        or failure.get("error_category") != "executor_ExecutionPolicyError"
+        or failure.get("detail") != "Coding agent produced no changes."
+    ):
+        return None
+    queue = campaign.specification.get("research_queue", [])
+    if campaign.hypothesis_count >= len(queue):
+        return None
+    plan = queue[campaign.hypothesis_count].get("representation_plan", {})
+    for transform in plan.get("transformations", []):
+        if transform.get("operation") != "cross_sectional_rank":
+            continue
+        inputs = transform.get("input_fields", [])
+        parameters = transform.get("parameters", {})
+        target_index = parameters.get("target_index")
+        if (
+            set(parameters) != {"target_index"}
+            or not isinstance(target_index, int)
+            or isinstance(target_index, bool)
+            or not 0 <= target_index < len(inputs)
+        ):
+            return (
+                "The immutable cross_sectional_rank representation does not bind its "
+                "single output to one target input. Averaging a complete row of "
+                "percentile ranks is mechanically constant and loses asset identity."
+            )
+    return None
+
+
+def _retain_invalid_representation_contract(
+    db: Session,
+    campaign: AlphaCampaign,
+    task: Task,
+    finding: str,
+) -> None:
+    """Retain a pre-execution invalid result and advance without operator repair."""
+    queue = campaign.specification.get("research_queue", [])
+    source = queue[campaign.hypothesis_count]
+    binding = _source_bindings(campaign, source)[0]
+    question = " ".join(source["question"].split())
+    failure_digest = digest_document(
+        {
+            "task_id": str(task.id),
+            "task_number": task.task_number,
+            "plan_digest": task.plan_digest,
+            "representation_plan": source.get("representation_plan"),
+            "finding": finding,
+        }
+    )
+    record_attempt(
+        db,
+        campaign,
+        AlphaCampaignAttemptCreate(
+            attempt_key=f"representation-contract-invalid-{task.id}",
+            expected_campaign_digest=campaign.campaign_digest,
+            question=question,
+            question_digest=digest_document({"question": question}),
+            source_candidate_id=source["source_candidate_id"],
+            source_candidate_digest=source["source_candidate_digest"],
+            hypothesis_id=f"representation-invalid-{source['source_candidate_id']}",
+            hypothesis_digest=digest_document(
+                {
+                    "campaign_digest": campaign.campaign_digest,
+                    "source_candidate_digest": source["source_candidate_digest"],
+                    "representation_failure_digest": failure_digest,
+                }
+            ),
+            dataset_build_id=binding["dataset_build_id"],
+            dataset_digest=binding["dataset_digest"],
+            trial_count=0,
+            outcome="invalid",
+            gate_report={
+                "truth_certified": False,
+                "point_in_time_valid": False,
+                "reproducible": False,
+                "out_of_sample_evaluated": False,
+                "cost_stress_evaluated": False,
+                "selection_bias_audited": False,
+                "independent_review_complete": True,
+                "required_trade_logging_complete": False,
+                "execution_class": None,
+                "qualification_authority": False,
+                "shadow_eligible": False,
+                "production_eligible": False,
+                "capital_authority": False,
+                "failed_gates": [finding],
+            },
+            evidence_digests=sorted({task.plan_digest, failure_digest}),
+            produced_by="bulletproof_bt",
+            source_commit=campaign.specification["bulletproof_source_commit"],
+        ),
+    )
+    _append_event(
+        db,
+        campaign,
+        "representation_contract_invalid_retained",
+        "alpha-campaign-director",
+        {
+            "task_id": str(task.id),
+            "task_number": task.task_number,
+            "failure_digest": failure_digest,
+            "outcome": "invalid",
+            "finding": finding,
+        },
+    )
+
+
 def _independent_review_correction(task: Task) -> dict | None:
     if task.status != "failed" or task.failure.get("error_category") != (
         "independent_review_rejected"
@@ -3129,6 +3240,19 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
         except (TypeError, ValueError):
             failed_task_id = None
         failed_task = db.get(Task, failed_task_id) if failed_task_id else None
+        representation_failure = (
+            _invalid_representation_contract(campaign, failed_task)
+            if failed_task is not None
+            else None
+        )
+        if failed_task is not None and representation_failure is not None:
+            campaign.status = "running"
+            campaign.completed_at = None
+            campaign.terminal_reason = {}
+            _retain_invalid_representation_contract(
+                db, campaign, failed_task, representation_failure
+            )
+            return
         correction = (
             (
                 _independent_review_correction(failed_task)

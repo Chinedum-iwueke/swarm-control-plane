@@ -12,6 +12,7 @@ from app.schemas.alpha_discovery import (
     AlphaFounderResearchIdeaCreate,
     AlphaMandateCanonicalization,
     AlphaPredictiveCandidate,
+    AlphaRepresentationTransformation,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
     AlphaStrategyCapabilityCatalog,
@@ -50,6 +51,28 @@ from pydantic import ValidationError
 
 DIGEST = "a" * 64
 COMMIT = "b" * 40
+
+
+def test_cross_sectional_rank_binds_one_asset_specific_output():
+    value = AlphaRepresentationTransformation(
+        output_field="eth_rank",
+        operation="cross_sectional_rank",
+        input_fields=["btc_return", "eth_return", "sol_return"],
+        parameters={"target_index": 1},
+        fit_policy="stateless",
+        rationale="Retain ETH's point-in-time percentile without losing asset identity.",
+    )
+    assert value.parameters == {"target_index": 1}
+
+    with pytest.raises(ValidationError, match="target_index"):
+        AlphaRepresentationTransformation(
+            output_field="constant_mean_rank",
+            operation="cross_sectional_rank",
+            input_fields=["btc_return", "eth_return", "sol_return"],
+            parameters={},
+            fit_policy="stateless",
+            rationale="This ambiguous aggregate rank must be rejected deterministically.",
+        )
 
 
 def mandate_for_approval():

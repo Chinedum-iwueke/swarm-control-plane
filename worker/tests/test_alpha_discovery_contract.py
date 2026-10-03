@@ -282,6 +282,7 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
         "window",
         "d",
         "weight_threshold",
+        "target_index",
     }
     assert parameters["properties"]["periods"] == {
         "type": ["number", "null"],
@@ -336,6 +337,8 @@ def test_representation_prompt_forbids_semantic_and_outcome_changes():
     assert "plausible rejected alternatives" in prompt
     assert "0 < d < 0.5" in prompt
     assert "one-observation rolling window is invalid" in prompt
+    assert "target_index" in prompt
+    assert "mechanically constant" in prompt
     assert "Stable and volatile labels are descriptive" in prompt
     assert "metadata, never mandatory partitions" in prompt
     assert "instrument-qualified canonical panel columns" in prompt

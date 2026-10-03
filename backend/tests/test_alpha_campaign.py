@@ -2502,6 +2502,82 @@ def test_no_change_failure_without_admission_handoff_creates_successor(monkeypat
     assert "correction_feedback" not in kwargs
 
 
+def test_ambiguous_cross_sectional_rank_is_a_typed_representation_failure():
+    record = campaign()
+    record.specification["research_queue"][0]["representation_plan"] = {
+        "transformations": [
+            {
+                "operation": "cross_sectional_rank",
+                "input_fields": ["btc_return", "eth_return", "sol_return"],
+                "parameters": {},
+            }
+        ]
+    }
+    task = SimpleNamespace(
+        status="failed",
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Coding agent produced no changes.",
+        },
+    )
+
+    finding = service._invalid_representation_contract(record, task)
+
+    assert "mechanically constant" in finding
+    record.specification["research_queue"][0]["representation_plan"][
+        "transformations"
+    ][0]["parameters"] = {"target_index": 1}
+    assert service._invalid_representation_contract(record, task) is None
+
+
+def test_reconcile_retains_invalid_representation_and_advances_without_operator(
+    monkeypatch,
+):
+    failed_id = uuid4()
+    record = campaign(
+        status="needs_attention",
+        phase="complete",
+        next_action="operator_review",
+        completed_at=datetime.now(UTC),
+        terminal_reason={
+            "category": "governed_pipeline_task_failed",
+            "task_id": str(failed_id),
+        },
+    )
+    record.specification["research_queue"][0]["representation_plan"] = {
+        "transformations": [
+            {
+                "operation": "cross_sectional_rank",
+                "input_fields": ["btc_return", "eth_return", "sol_return"],
+                "parameters": {},
+            }
+        ]
+    }
+    failed = SimpleNamespace(
+        id=failed_id,
+        status="failed",
+        task_number=f"A3-{record.id.hex[:8]}-001-G6",
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Coding agent produced no changes.",
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = failed
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    retain = MagicMock()
+    monkeypatch.setattr(service, "_retain_invalid_representation_contract", retain)
+
+    service.reconcile_campaign(db, record)
+
+    retain.assert_called_once()
+    assert retain.call_args.args[:3] == (db, record, failed)
+    assert "mechanically constant" in retain.call_args.args[3]
+    assert record.status == "running"
+    assert record.completed_at is None
+    assert record.terminal_reason == {}
+
+
 def test_correction_review_failure_carries_findings_into_next_stage(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"

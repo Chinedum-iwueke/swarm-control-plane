@@ -363,10 +363,18 @@ class AlphaRepresentationTransformation(StrictModel):
         elif self.operation in {"spread", "ratio"}:
             if len(self.input_fields) != 2 or self.parameters:
                 raise ValueError(f"{self.operation} requires two inputs")
-        elif len(self.input_fields) < 2 or self.parameters:
-            raise ValueError(
-                "cross-sectional rank requires multiple unparameterized inputs"
-            )
+        elif self.operation == "cross_sectional_rank":
+            if len(self.input_fields) < 2 or set(self.parameters) != {
+                "target_index"
+            }:
+                raise ValueError(
+                    "cross-sectional rank requires multiple inputs and one target_index"
+                )
+            target_index = int(self.parameters["target_index"])
+            if not 0 <= target_index < len(self.input_fields):
+                raise ValueError(
+                    "cross-sectional rank target_index is outside its input list"
+                )
         return self
 
 
@@ -388,7 +396,7 @@ class AlphaRepresentationPlan(StrictModel):
     minimum_history_observations: int = Field(ge=500, le=100_000_000)
     liquidity_floor_usd: float = Field(ge=0, le=10_000_000_000)
     transformations: list[AlphaRepresentationTransformation] = Field(
-        min_length=1, max_length=30
+        min_length=1, max_length=256
     )
     transformation_rationale: str = Field(min_length=20, max_length=4000)
     rejected_alternatives: list[str] = Field(min_length=1, max_length=20)

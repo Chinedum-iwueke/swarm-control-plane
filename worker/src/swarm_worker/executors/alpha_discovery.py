@@ -368,7 +368,7 @@ def _schema(stage: str) -> dict:
                             "transformations": {
                                 "type": "array",
                                 "minItems": 1,
-                                "maxItems": 30,
+                                "maxItems": 256,
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
@@ -419,6 +419,7 @@ def _schema(stage: str) -> dict:
                                                 "window",
                                                 "d",
                                                 "weight_threshold",
+                                                "target_index",
                                             ],
                                             "properties": {
                                                 "periods": {
@@ -440,6 +441,11 @@ def _schema(stage: str) -> dict:
                                                     "type": ["number", "null"],
                                                     "minimum": 1e-8,
                                                     "maximum": 0.1,
+                                                },
+                                                "target_index": {
+                                                    "type": ["integer", "null"],
+                                                    "minimum": 0,
+                                                    "maximum": 127,
                                                 },
                                             },
                                         },
@@ -755,6 +761,10 @@ bind d and its truncation threshold before validation/test outcomes, and retain 
 alternatives. Use rolling normalization or volatility only when the mechanism requires local scaling. Cross-asset
 spreads, ratios, and ranks must name all causal inputs. Never select assets, timeframe, transformation, d, window, or
 missingness policy by comparing target returns, backtest PnL, held-out metrics, or downstream promotion outcomes.
+Each cross_sectional_rank transformation produces the percentile rank of exactly one named input. Set target_index
+to that input's zero-based position in input_fields and emit a separate ordered output for every asset whose rank is
+used downstream. Never average all ranks in a complete cross-section: that value is mechanically constant and loses
+asset identity.
 Rolling z-score and realized-volatility windows must contain between 2 and 100000 completed research bars; a
 one-observation rolling window is invalid and must be represented with another declared operation or retained for
 the governed evaluator when the native transformation language cannot express it without changing the hypothesis.
