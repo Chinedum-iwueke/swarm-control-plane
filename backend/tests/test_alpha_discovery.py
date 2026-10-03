@@ -20,6 +20,7 @@ from app.schemas.alpha_discovery import (
 from app.services.alpha_discovery import (
     _active_parallel_instrument_sets,
     _apply_representation_plans,
+    _automatically_correct_invalid_representation,
     _bounded_context,
     _candidate_enters_novelty_memory,
     _candidate_reasons,
@@ -39,6 +40,7 @@ from app.services.alpha_discovery import (
     _recent_signal_surveillance,
     _reconcile_campaign_cycle,
     _recover_resumed_stage,
+    _retire_superseded_invalid_cycles,
     _task,
     approve_mandate,
     canonicalize_mandates,
@@ -57,9 +59,7 @@ COMMIT = "b" * 40
 def test_active_parallel_instrument_sets_are_normalized() -> None:
     db = MagicMock()
     db.scalars.return_value.all.return_value = [
-        SimpleNamespace(
-            document={"data": {"instruments": ["SOLUSDT", "BTCUSDT"]}}
-        ),
+        SimpleNamespace(document={"data": {"instruments": ["SOLUSDT", "BTCUSDT"]}}),
         SimpleNamespace(document={"data": {"instrument": "TIAUSDT"}}),
         SimpleNamespace(document={"data": {"instruments": []}}),
     ]
@@ -81,9 +81,7 @@ def test_candidate_gate_rejects_an_instrument_set_already_running_in_parallel():
         id=uuid4(),
         context={
             "research_intelligence": {
-                "citations": [
-                    {"object_id": str(object_id), "content_digest": DIGEST}
-                ]
+                "citations": [{"object_id": str(object_id), "content_digest": DIGEST}]
             },
             "datasets": [
                 {
@@ -824,6 +822,89 @@ def test_invalid_representation_retry_supersedes_output_without_rewriting_histor
     }
     assert create_task.call_args.kwargs["task_number"].startswith("A4-example-001-R-R")
     assert event.call_args.args[2] == "invalid_discovery_stage_superseded"
+
+
+def test_invalid_representation_is_automatically_corrected_with_bounded_feedback(
+    monkeypatch,
+):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), budget={"maximum_candidates_per_cycle": 5})
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        ordinal=3,
+        representation_task_id=None,
+        status="needs_attention",
+        phase="representation_selection",
+        next_action="review_invalid_representation_output",
+        completed_at=moment,
+        heartbeat_at=moment,
+    )
+    previous = SimpleNamespace(
+        id=uuid4(),
+        task_number="A4-example-003-R",
+        result={"summary": {"invalid": True}},
+        input_contract={"context": {"raw_candidates": [{"candidate_key": "frozen"}]}},
+    )
+    replacement = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    db.scalar.return_value = 0
+    create_task = MagicMock(return_value=replacement)
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._task", create_task)
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+
+    assert _automatically_correct_invalid_representation(
+        db,
+        mandate,
+        cycle,
+        previous,
+        "basket member order must match instruments",
+    )
+
+    assert cycle.status == "running"
+    assert cycle.representation_task_id == replacement.id
+    assert cycle.next_action == "await_recovered_representation"
+    context = create_task.call_args.args[4]
+    assert context["raw_candidates"] == [{"candidate_key": "frozen"}]
+    assert (
+        context["recovery_feedback"]["validation_error"]
+        == "basket member order must match instruments"
+    )
+    assert create_task.call_args.kwargs["task_number"] == "A4-example-003-R-A1"
+    assert event.call_args.args[2] == "invalid_representation_automatically_superseded"
+
+
+def test_superseded_invalid_cycle_is_terminalized_without_erasing_evidence(
+    monkeypatch,
+):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4())
+    newest = SimpleNamespace(id=uuid4(), ordinal=5)
+    stale = SimpleNamespace(
+        id=uuid4(),
+        ordinal=3,
+        status="needs_attention",
+        phase="representation_selection",
+        next_action="review_invalid_representation_output",
+        completed_at=None,
+        heartbeat_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [stale]
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+
+    _retire_superseded_invalid_cycles(db, mandate, newest, moment)
+
+    assert stale.status == "rejected"
+    assert stale.phase == "complete"
+    assert stale.next_action == "schedule_next_discovery_cycle"
+    assert event.call_args.args[2] == (
+        "invalid_discovery_cycle_superseded_by_replenishment"
+    )
+    assert event.call_args.args[3]["retained_next_action"] == (
+        "review_invalid_representation_output"
+    )
 
 
 def test_failed_intelligence_retry_creates_successor_without_rewriting_history(

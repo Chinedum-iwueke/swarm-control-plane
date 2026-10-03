@@ -74,6 +74,7 @@ CLAIM_BOUNDARY = (
 _TERMINAL_CYCLE = {"completed", "rejected", "needs_attention", "shadow_candidate"}
 _TERMINAL_CAMPAIGN = {"cancelled", "completed_no_candidate", "shadow_candidate"}
 _PARALLEL_SLOT_CAMPAIGN = {"running"}
+_MAX_AUTOMATIC_REPRESENTATION_CORRECTIONS = 2
 _PREDICTIVE_TERMS = {
     "predict",
     "predicts",
@@ -1178,6 +1179,120 @@ def retry_invalid_discovery_stage(
         cycle,
     )
     return cycle
+
+
+def _automatically_correct_invalid_representation(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    cycle: AlphaDiscoveryCycle,
+    previous: Task,
+    detail: str,
+) -> bool:
+    """Create a bounded successor for a structurally invalid representation."""
+    correction_count = int(
+        db.scalar(
+            select(func.count(AlphaDiscoveryEvent.id)).where(
+                AlphaDiscoveryEvent.cycle_id == cycle.id,
+                AlphaDiscoveryEvent.event_type
+                == "invalid_representation_automatically_superseded",
+            )
+        )
+        or 0
+    )
+    if correction_count >= _MAX_AUTOMATIC_REPRESENTATION_CORRECTIONS:
+        return False
+    contract = previous.input_contract or {}
+    recovery_context = deepcopy(contract.get("context", {}))
+    recovery_context["recovery_feedback"] = {
+        "previous_task_id": str(previous.id),
+        "validation_error": detail[:2000],
+        "correction_requirements": [
+            "preserve the frozen hypothesis and metadata-only selection boundary",
+            "return one complete schema-valid plan for every frozen candidate",
+            "preserve instruments and basket members in the same declared order",
+            "use only catalog-evidenced membership labels and declared operations",
+            "do not inspect outcomes or silently weaken the research question",
+        ],
+    }
+    replacement = _task(
+        db,
+        mandate,
+        cycle,
+        "representation",
+        recovery_context,
+        task_number=f"{previous.task_number}-A{correction_count + 1}",
+    )
+    cycle.representation_task_id = replacement.id
+    cycle.status = "running"
+    cycle.phase = "representation_selection"
+    cycle.next_action = "await_recovered_representation"
+    cycle.completed_at = None
+    cycle.heartbeat_at = now()
+    _event(
+        db,
+        mandate,
+        "invalid_representation_automatically_superseded",
+        {
+            "stage": "representation",
+            "previous_task_id": str(previous.id),
+            "previous_result_digest": digest_document(previous.result or {}),
+            "validation_feedback_digest": digest_document(
+                recovery_context["recovery_feedback"]
+            ),
+            "replacement_task_id": str(replacement.id),
+            "correction_ordinal": correction_count + 1,
+            "maximum_corrections": _MAX_AUTOMATIC_REPRESENTATION_CORRECTIONS,
+            "authority": "bounded_no_capital_contract_correction",
+        },
+        cycle,
+    )
+    return True
+
+
+def _retire_superseded_invalid_cycles(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    newest_cycle: AlphaDiscoveryCycle,
+    moment: datetime,
+) -> None:
+    """Remove false operator stalls after a newer cycle has replenished the queue."""
+    newest_ordinal = getattr(newest_cycle, "ordinal", None)
+    if not isinstance(newest_ordinal, int):
+        return
+    superseded = db.scalars(
+        select(AlphaDiscoveryCycle).where(
+            AlphaDiscoveryCycle.mandate_id == mandate.id,
+            AlphaDiscoveryCycle.ordinal < newest_ordinal,
+            AlphaDiscoveryCycle.campaign_id.is_(None),
+            AlphaDiscoveryCycle.status == "needs_attention",
+            AlphaDiscoveryCycle.next_action.in_(
+                {
+                    "review_invalid_intelligence_output",
+                    "review_invalid_hypothesis_output",
+                    "review_invalid_representation_output",
+                }
+            ),
+        )
+    ).all()
+    for cycle in superseded:
+        retained_next_action = cycle.next_action
+        cycle.status = "rejected"
+        cycle.phase = "complete"
+        cycle.next_action = "schedule_next_discovery_cycle"
+        cycle.completed_at = moment
+        cycle.heartbeat_at = moment
+        _event(
+            db,
+            mandate,
+            "invalid_discovery_cycle_superseded_by_replenishment",
+            {
+                "retained_next_action": retained_next_action,
+                "successor_cycle_id": str(newest_cycle.id),
+                "successor_ordinal": newest_cycle.ordinal,
+                "authority": "no_capital_queue_reconciliation",
+            },
+            cycle,
+        )
 
 
 def recover_data_admission(
@@ -2679,6 +2794,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     if cycle is None:
         _new_cycle(db, mandate, _next_founder_idea(db, mandate))
         return
+    _retire_superseded_invalid_cycles(db, mandate, cycle, moment)
     if cycle.campaign_id is not None and cycle.id not in reconciled_cycles:
         _reconcile_campaign_cycle(db, mandate, cycle, moment)
         if mandate.status != "active":
@@ -2901,15 +3017,20 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             cycle.context,
         )
     except (ValidationError, ValueError) as exc:
-        cycle.status = "needs_attention"
-        cycle.next_action = "review_invalid_representation_output"
+        detail = str(exc)[:2000]
         _event(
             db,
             mandate,
             "representation_output_rejected",
-            {"task_id": str(representation.id), "detail": str(exc)[:2000]},
+            {"task_id": str(representation.id), "detail": detail},
             cycle,
         )
+        if _automatically_correct_invalid_representation(
+            db, mandate, cycle, representation, detail
+        ):
+            return
+        cycle.status = "needs_attention"
+        cycle.next_action = "review_invalid_representation_output"
         return
     cycle.representation_brief = representation_brief
     records = _materialize_candidates(db, mandate, cycle, represented)
