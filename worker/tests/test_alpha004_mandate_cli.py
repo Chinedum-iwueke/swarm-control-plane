@@ -68,6 +68,37 @@ def test_compatible_campaign_bindings_unions_and_deduplicates_same_commit():
     ) == [first]
 
 
+def test_explicit_admission_selects_matching_partition_from_basket() -> None:
+    script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
+    spec = importlib.util.spec_from_file_location("mandate_explicit_binding", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    receipt_id = module.UUID("77777777-7777-4777-8777-777777777777")
+    bindings = [
+        {
+            "dataset_build_id": f"{index}" * 8 + "-1111-4111-8111-111111111111",
+            "catalog_id": "22222222-2222-4222-8222-222222222222",
+            "lake_governance_snapshot_id": "33333333-3333-4333-8333-333333333333",
+            "producer_receipt_id": "44444444-4444-4444-8444-444444444444",
+            "dataset_key": f"panel-{index}",
+            "partition_digests": [str(index) * 64],
+            "evidence_class": "live_exchange_history",
+            "research_principal": "alpha-research-runner",
+        }
+        for index in (1, 2)
+    ]
+
+    result = module.binding_for_explicit_admission(
+        {"dataset_bindings": bindings},
+        {"dataset_digest": "2" * 64},
+        receipt_id,
+    )
+
+    assert len(result) == 1
+    assert result[0]["dataset_key"] == "panel-2"
+    assert result[0]["producer_receipt_id"] == str(receipt_id)
+
+
 @pytest.mark.parametrize(
     "arguments,message",
     [

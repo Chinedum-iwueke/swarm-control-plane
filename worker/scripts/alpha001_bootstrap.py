@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -16,6 +17,39 @@ def call(client: httpx.Client, method: str, path: str, payload: dict | None = No
             f"{method} {path} failed ({response.status_code}): {response.text}"
         )
     return response.json()
+
+
+def historical_binding(client: httpx.Client, dataset_digest: str) -> dict | None:
+    """Recover exact catalog/governance IDs from prior immutable campaign custody."""
+    campaigns = call(client, "GET", "/v1/research/alpha-campaigns?limit=200")
+    mandates = call(client, "GET", "/v1/research/alpha-discovery/mandates")
+    matches: dict[tuple[str, str, str], dict] = {}
+    for custodian in [*campaigns, *mandates]:
+        for binding in custodian.get("specification", {}).get("dataset_bindings", []):
+            if dataset_digest not in binding.get("partition_digests", []):
+                continue
+            identity = (
+                str(binding.get("catalog_id", "")),
+                str(binding.get("lake_governance_snapshot_id", "")),
+                str(binding.get("dataset_key", "")),
+            )
+            if all(identity):
+                matches.setdefault(identity, binding)
+    if len(matches) > 1:
+        raise RuntimeError(
+            "Multiple immutable catalog/governance bindings exist for the panel; "
+            "refusing ambiguous recovery."
+        )
+    return next(iter(matches.values()), None)
+
+
+def catalog_instrument_matches(value: object, instrument: str) -> bool:
+    tokens = {
+        token.upper()
+        for token in re.split(r"[^A-Za-z0-9]+", str(value))
+        if token
+    }
+    return instrument.upper() in tokens
 
 
 def select_bindings(
@@ -43,9 +77,28 @@ def select_bindings(
                 partition["content_digest"] == dataset_digest
                 and partition["layer"] == "curated"
                 and partition["venue_id"].lower() == venue
-                and partition["instrument_id"].upper() == instrument
+                and catalog_instrument_matches(partition["instrument_id"], instrument)
             ):
                 matches.append((catalog, partition))
+    prior_binding = None
+    if not matches:
+        prior_binding = historical_binding(client, dataset_digest)
+        if prior_binding is not None:
+            catalog = call(
+                client,
+                "GET",
+                f"/v1/research/market-data-catalog/snapshots/{prior_binding['catalog_id']}",
+            )
+            partitions = [
+                item
+                for item in catalog["catalog"]["partitions"]
+                if item["content_digest"] == dataset_digest
+                and item["layer"] == "curated"
+                and item["venue_id"].lower() == venue
+                and catalog_instrument_matches(item["instrument_id"], instrument)
+                and item["dataset_key"] == prior_binding["dataset_key"]
+            ]
+            matches = [(catalog, item) for item in partitions]
     if len(matches) != 1:
         raise RuntimeError(
             f"Expected one immutable catalog partition for the panel; found {len(matches)}."
@@ -67,6 +120,8 @@ def select_bindings(
         ),
         None,
     )
+    if lake is None and prior_binding is not None:
+        lake = {"id": prior_binding["lake_governance_snapshot_id"]}
     if lake is None:
         raise RuntimeError(
             "No DATA-003 snapshot grants the bounded alpha runner read access."

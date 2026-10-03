@@ -121,6 +121,23 @@ def compatible_campaign_bindings(
     return bindings
 
 
+def binding_for_explicit_admission(
+    specification: dict, admission: dict, receipt_id: UUID
+) -> list[dict]:
+    candidates = [
+        {key: value for key, value in item.items() if key in BINDING_KEYS}
+        for item in specification.get("dataset_bindings", [])
+        if admission["dataset_digest"] in item.get("partition_digests", [])
+    ]
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "An explicit producer receipt must match exactly one immutable "
+            "source-campaign partition."
+        )
+    candidates[0]["producer_receipt_id"] = str(receipt_id)
+    return candidates
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -221,15 +238,14 @@ def main() -> int:
             args.bulletproof_source_commit or specification["bulletproof_source_commit"]
         )
         if args.producer_receipt_id:
-            bindings = [
-                {key: value for key, value in item.items() if key in BINDING_KEYS}
-                for item in specification["dataset_bindings"]
-            ]
-            if len(bindings) != 1:
-                raise RuntimeError(
-                    "An explicit producer receipt requires exactly one dataset binding."
-                )
-            bindings[0]["producer_receipt_id"] = str(args.producer_receipt_id)
+            receipt_response = client.get(
+                f"/v1/research/quantitative-receipts/{args.producer_receipt_id}"
+            )
+            receipt_response.raise_for_status()
+            explicit_admission = receipt_response.json()
+            bindings = binding_for_explicit_admission(
+                specification, explicit_admission, args.producer_receipt_id
+            )
         else:
             bindings = compatible_campaign_bindings(
                 campaigns,
