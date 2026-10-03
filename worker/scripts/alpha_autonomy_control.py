@@ -77,11 +77,24 @@ def client() -> httpx.Client:
     )
 
 
-def synchronize(http: httpx.Client, state_path: Path) -> dict:
+def project_pause_marker(marker_path: Path, *, paused: bool) -> None:
+    marker_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if paused:
+        marker_path.touch(mode=0o600, exist_ok=True)
+        os.chmod(marker_path, 0o600)
+    else:
+        marker_path.unlink(missing_ok=True)
+
+
+def synchronize(
+    http: httpx.Client, state_path: Path, marker_path: Path | None = None
+) -> dict:
     response = http.get("/v1/control/scopes")
     response.raise_for_status()
     document = drain_document(response.json())
     atomic_json(state_path, document)
+    if marker_path is not None:
+        project_pause_marker(marker_path, paused=document["paused"])
     return document
 
 
@@ -94,6 +107,11 @@ def main() -> int:
         default=Path("/home/omenka/.local/state/invariance-swarm/alpha-autonomy-drain.json"),
     )
     parser.add_argument("--poll-seconds", type=float, default=5.0)
+    parser.add_argument(
+        "--marker",
+        type=Path,
+        default=Path("/home/omenka/.local/state/invariance-swarm/alpha-autonomy.paused"),
+    )
     parser.add_argument("--reason")
     parser.add_argument("--actor", default="founder-operator")
     args = parser.parse_args()
@@ -121,12 +139,18 @@ def main() -> int:
             response.raise_for_status()
 
         if args.action != "watch":
-            print(json.dumps(synchronize(http, args.state), indent=2, sort_keys=True))
+            print(
+                json.dumps(
+                    synchronize(http, args.state, args.marker),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
 
         while True:
             try:
-                document = synchronize(http, args.state)
+                document = synchronize(http, args.state, args.marker)
                 print(
                     json.dumps(
                         {

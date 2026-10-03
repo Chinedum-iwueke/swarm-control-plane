@@ -2,6 +2,7 @@
 Description=Bulletproof bounded OHLCV signal-screen replenisher
 After=invariance-swarm-alpha-capacity-director.service
 Requires=invariance-swarm-alpha-capacity-director.service
+ConditionPathExists=!/home/omenka/.local/state/invariance-swarm/alpha-autonomy.paused
 
 [Service]
 Type=oneshot

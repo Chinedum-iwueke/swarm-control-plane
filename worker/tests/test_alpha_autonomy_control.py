@@ -36,3 +36,12 @@ def test_drain_document_projects_audited_global_pause() -> None:
     assert document["mode"] == "drain"
     assert document["new_control_plane_leases_blocked"] is True
     assert document["new_native_jobs_blocked"] is True
+
+
+def test_pause_marker_follows_projected_state(tmp_path) -> None:
+    marker = tmp_path / "autonomy.paused"
+    control.project_pause_marker(marker, paused=True)
+    assert marker.is_file()
+    assert marker.stat().st_mode & 0o777 == 0o600
+    control.project_pause_marker(marker, paused=False)
+    assert not marker.exists()

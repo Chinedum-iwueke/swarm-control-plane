@@ -10,7 +10,7 @@ Group=omenka
 WorkingDirectory=/home/omenka/Projects/swarm-control-plane/worker
 EnvironmentFile=/etc/invariance-swarm/pilot-operator.env
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python scripts/alpha_autonomy_control.py watch --state /home/omenka/.local/state/invariance-swarm/alpha-autonomy-drain.json --poll-seconds 5
+ExecStart=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin/python scripts/alpha_autonomy_control.py watch --state /home/omenka/.local/state/invariance-swarm/alpha-autonomy-drain.json --marker /home/omenka/.local/state/invariance-swarm/alpha-autonomy.paused --poll-seconds 5
 Restart=always
 RestartSec=5
 UMask=0077
