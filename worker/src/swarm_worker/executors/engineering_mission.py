@@ -120,6 +120,7 @@ class EngineeringMissionExecutor:
 
         changed = self._changed_paths(workspace)
         self._enforce_scope(contract, changed, workspace)
+        steps = [coder]
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return self._result(
@@ -128,46 +129,6 @@ class EngineeringMissionExecutor:
                 workspace,
                 started,
                 [coder],
-                False,
-                "workflow_timeout",
-                heartbeat_failures=heartbeat_failures,
-            )
-        bounded_workflow = workflow.model_copy(
-            update={
-                "timeout_seconds": max(1, min(workflow.timeout_seconds, int(remaining)))
-            }
-        )
-        validation = await self._validator.execute(
-            task=task,
-            workflow=bounded_workflow,
-            workspace=workspace,
-            heartbeat=heartbeat,
-        )
-        heartbeat_failures.extend(
-            validation.heartbeat_failures[
-                : self._MAX_HEARTBEAT_FAILURES - len(heartbeat_failures)
-            ]
-        )
-        steps = [coder, *validation.steps]
-        if not validation.success:
-            return self._result(
-                task,
-                workflow,
-                workspace,
-                started,
-                steps,
-                False,
-                heartbeat_failures=heartbeat_failures,
-            )
-
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return self._result(
-                task,
-                workflow,
-                workspace,
-                started,
-                steps,
                 False,
                 "workflow_timeout",
                 heartbeat_failures=heartbeat_failures,
@@ -240,6 +201,45 @@ class EngineeringMissionExecutor:
                 steps,
                 False,
                 "independent_review_rejected" if review.success else None,
+                heartbeat_failures=heartbeat_failures,
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return self._result(
+                task,
+                workflow,
+                workspace,
+                started,
+                steps,
+                False,
+                "workflow_timeout",
+                heartbeat_failures=heartbeat_failures,
+            )
+        bounded_workflow = workflow.model_copy(
+            update={
+                "timeout_seconds": max(1, min(workflow.timeout_seconds, int(remaining)))
+            }
+        )
+        validation = await self._validator.execute(
+            task=task,
+            workflow=bounded_workflow,
+            workspace=workspace,
+            heartbeat=heartbeat,
+        )
+        heartbeat_failures.extend(
+            validation.heartbeat_failures[
+                : self._MAX_HEARTBEAT_FAILURES - len(heartbeat_failures)
+            ]
+        )
+        steps.extend(validation.steps)
+        if not validation.success:
+            return self._result(
+                task,
+                workflow,
+                workspace,
+                started,
+                steps,
+                False,
                 heartbeat_failures=heartbeat_failures,
             )
         bundle = self._create_bundle(contract, changed, workspace)

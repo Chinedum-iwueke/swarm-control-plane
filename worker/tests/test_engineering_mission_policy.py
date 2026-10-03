@@ -45,6 +45,21 @@ class FakeGit:
         return CommandResult(tuple(args), 0, "one\n", "")
 
 
+def successful_step(name: str) -> StepExecutionResult:
+    moment = datetime.now(timezone.utc)
+    return StepExecutionResult(
+        name=name,
+        success=True,
+        return_code=0,
+        started_at=moment,
+        ended_at=moment,
+        duration_seconds=0.1,
+        timed_out=False,
+        stdout_log=f"logs/{name}.stdout.log",
+        stderr_log=f"logs/{name}.stderr.log",
+    )
+
+
 def test_default_validation_budget_covers_complete_bulletproof_suite(
     tmp_path: Path,
 ) -> None:
@@ -56,6 +71,71 @@ def test_default_validation_budget_covers_complete_bulletproof_suite(
         effective_uid=lambda: 1000,
     )
     assert executor._validator._step_timeout_seconds == 2400.0
+
+
+@pytest.mark.asyncio
+async def test_independent_review_precedes_expensive_outer_validation(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    workspace = SimpleNamespace(
+        repository=tmp_path,
+        artifacts=artifacts,
+        logs=tmp_path,
+    )
+
+    class Validator:
+        async def execute(self, **_kwargs):
+            events.append("validation")
+            return SimpleNamespace(
+                success=True,
+                heartbeat_failures=[],
+                steps=[successful_step("run-tests")],
+            )
+
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=3600,
+        heartbeat_interval_seconds=1,
+        validation_executor=Validator(),
+        effective_uid=lambda: 1000,
+    )
+
+    async def run_codex(*, name, **_kwargs):
+        events.append(name)
+        return successful_step(name)
+
+    executor._run_codex = run_codex
+    executor._changed_paths = lambda _workspace: ["docs/change.md"]
+    executor._enforce_scope = lambda *_args: None
+    executor._review_approved = lambda _path: True
+    executor._create_bundle = lambda *_args: successful_step("create-pr-bundle")
+    executor._result = lambda *args, **_kwargs: args[4]
+    workflow = SimpleNamespace(
+        task_type="engineering_mission",
+        name="engineering-mission",
+        timeout_seconds=3600,
+        model_copy=lambda **_kwargs: workflow,
+    )
+    task = SimpleNamespace(input_contract=contract().model_dump(), prior_failure=None)
+
+    result = await executor.execute(
+        task=task,
+        workflow=workflow,
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+    )
+
+    assert events == ["coding-agent", "independent-review", "validation"]
+    assert [item.name for item in result] == [
+        "coding-agent",
+        "independent-review",
+        "run-tests",
+        "create-pr-bundle",
+    ]
 
 
 def test_contract_rejects_commands_and_traversal() -> None:
