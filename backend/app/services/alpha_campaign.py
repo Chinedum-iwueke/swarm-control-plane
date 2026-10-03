@@ -999,6 +999,7 @@ def _create_strategy_engineering_task(
             "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
             "Runner integration tests invoke execute_registered and verify trusted evidence binding plus per-variant artifact retention; source-text assertions are insufficient.",
             "Deterministic tests exercise positive or test-open selection, negative, invalid and failed terminal outcome paths.",
+            "Before coding, window/timeframe arithmetic proves every production minimum-history and support threshold is achievable without lowering frozen gates in tests.",
             "Every immutable catalog, manifest, producer, governance and partition digest exactly matches its admitted source evidence.",
             "No capital, order, promotion or self-approval authority is introduced.",
         ],
