@@ -1930,6 +1930,7 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
         "scripts/run_alpha_research_assignment.py",
     ]
     assert task.input_contract["base_ref"] == COMMIT
+    assert task.input_contract["max_diff_lines"] == 2400
     import json
 
     evidence = json.loads(task.input_contract["evidence_context"])
@@ -2644,6 +2645,43 @@ def test_reconcile_recovers_scope_budget_failure_to_g6(monkeypatch):
         failure={
             "error_category": "executor_ExecutionPolicyError",
             "detail": "Changed-file budget exceeded.",
+        },
+    )
+    db = MagicMock()
+    db.get.return_value = failed
+    monkeypatch.setattr(service, "_current_execution_task", lambda *_: None)
+    monkeypatch.setattr(service, "_consume_execution_task", lambda *_: False)
+    advance = MagicMock(return_value=None)
+    monkeypatch.setattr(service, "_advance_governed_pipeline", advance)
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+
+    service.reconcile_campaign(db, record)
+
+    assert record.status == "running"
+    assert record.phase == "strategy_engineering"
+    assert record.next_action == "create_review_bound_strategy_correction"
+    assert record.terminal_reason == {}
+    advance.assert_called_once_with(db, record)
+
+
+def test_reconcile_recovers_diff_line_budget_failure_to_g6(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    record.status = "needs_attention"
+    failed_id = uuid4()
+    record.terminal_reason = {
+        "category": "governed_pipeline_task_failed",
+        "task_id": str(failed_id),
+    }
+    failed = SimpleNamespace(
+        id=failed_id,
+        status="failed",
+        task_number=f"A3-{record.id.hex[:8]}-001-G5",
+        plan_digest="a" * 64,
+        input_contract={"evidence_context": "{}"},
+        failure={
+            "error_category": "executor_ExecutionPolicyError",
+            "detail": "Diff-line budget exceeded.",
         },
     )
     db = MagicMock()

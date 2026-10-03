@@ -998,7 +998,11 @@ def _create_strategy_engineering_task(
             "The requested change exceeds the bounded file or diff budget.",
         ],
         "max_files_changed": 12,
-        "max_diff_lines": 1800,
+        # A complete strategy bundle includes the immutable card, YAML, native
+        # implementation, runner integration, and deterministic terminal-path
+        # tests. Keep it tightly path/file bounded while allowing that evidence
+        # to fit without forcing scientific omissions during review correction.
+        "max_diff_lines": 2400,
         "max_duration_seconds": 7200,
         "engineering_requirement": requirement,
         "research_context": research_context,
@@ -1403,10 +1407,13 @@ def _retain_exhausted_strategy_engineering(
 
 def _scope_budget_correction(task: Task) -> dict | None:
     """Return bounded correction evidence for an otherwise valid oversized patch."""
+    failure = getattr(task, "failure", {})
+    detail = failure.get("detail")
     if (
         task.status != "failed"
-        or task.failure.get("error_category") != "executor_ExecutionPolicyError"
-        or task.failure.get("detail") != "Changed-file budget exceeded."
+        or failure.get("error_category") != "executor_ExecutionPolicyError"
+        or detail
+        not in {"Changed-file budget exceeded.", "Diff-line budget exceeded."}
     ):
         return None
     prior_findings: list[dict] = []
@@ -1426,11 +1433,21 @@ def _scope_budget_correction(task: Task) -> dict | None:
                 and item.get("severity") in {"low", "medium", "high"}
                 and isinstance(item.get("message"), str)
             ]
+    budget_description = (
+        "immutable 12-file engineering budget"
+        if detail == "Changed-file budget exceeded."
+        else "immutable 2,400-line strategy engineering budget"
+    )
+    review_summary = (
+        "Engineering output exceeded the bounded changed-file scope."
+        if detail == "Changed-file budget exceeded."
+        else "Engineering output exceeded the bounded strategy diff scope."
+    )
     finding = {
         "severity": "medium",
         "message": (
-            "The rejected patch exceeded the immutable 12-file engineering budget. "
-            "Consolidate the correction within 12 changed files without removing "
+            f"The rejected patch exceeded the {budget_description}. "
+            "Consolidate the correction within that bound without removing "
             "scientific behavior, tests, evidence bindings, or retained findings."
         ),
     }
@@ -1440,7 +1457,7 @@ def _scope_budget_correction(task: Task) -> dict | None:
     return {
         "rejected_task_id": str(task.id),
         "rejected_plan_digest": task.plan_digest,
-        "review_summary": "Engineering output exceeded the bounded changed-file scope.",
+        "review_summary": review_summary,
         "latest_findings": [finding],
         "cumulative_findings": cumulative,
         "artifact_paths": [],
