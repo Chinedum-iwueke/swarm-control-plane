@@ -366,11 +366,11 @@ def _supersede_other_canonical_mandates(
     *,
     reason: str,
 ) -> list[AlphaResearchMandate]:
-    """Enforce one active canonical week while retaining thematic mandates."""
-    active = db.scalars(
+    """Enforce one current canonical week while retaining thematic mandates."""
+    replaceable = db.scalars(
         select(AlphaResearchMandate)
         .where(
-            AlphaResearchMandate.status == "active",
+            AlphaResearchMandate.status.in_({"active", "awaiting_approval"}),
             AlphaResearchMandate.id != mandate.id,
         )
         .order_by(AlphaResearchMandate.created_at)
@@ -378,7 +378,7 @@ def _supersede_other_canonical_mandates(
     ).all()
     superseded = []
     moment = now()
-    for item in active:
+    for item in replaceable:
         if _mandate_kind(item) != "canonical_weekly":
             continue
         item.status = "superseded"

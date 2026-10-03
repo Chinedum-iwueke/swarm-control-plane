@@ -105,6 +105,12 @@ def test_canonical_approval_atomically_supersedes_prior_week_but_not_theme(
         specification={"mandate_kind": "canonical_weekly"},
         heartbeat_at=None,
     )
+    stale_request = SimpleNamespace(
+        id=uuid4(),
+        status="awaiting_approval",
+        specification={"mandate_kind": "canonical_weekly"},
+        heartbeat_at=None,
+    )
     thematic = SimpleNamespace(
         id=uuid4(),
         status="active",
@@ -112,7 +118,7 @@ def test_canonical_approval_atomically_supersedes_prior_week_but_not_theme(
         heartbeat_at=None,
     )
     db = MagicMock()
-    db.scalars.return_value.all.return_value = [prior, thematic]
+    db.scalars.return_value.all.return_value = [prior, stale_request, thematic]
     monkeypatch.setattr(
         "app.services.alpha_discovery.resolve_authority",
         lambda *args, **kwargs: SimpleNamespace(delegation_id=None),
@@ -131,6 +137,7 @@ def test_canonical_approval_atomically_supersedes_prior_week_but_not_theme(
 
     assert mandate.status == "active"
     assert prior.status == "superseded"
+    assert stale_request.status == "superseded"
     assert thematic.status == "active"
 
 
