@@ -29,7 +29,7 @@ EXEC2_FLEET_MANIFEST = (
 def test_versioned_package_and_workflow_digest_verify() -> None:
     package = load_role_package(MANIFEST, WORKFLOWS)
     assert package.manifest.name == "vm1-engineering-worker"
-    assert package.manifest.version == "1.0.4"
+    assert package.manifest.version == "1.0.5"
     assert len(package.manifest_digest) == 64
 
 
@@ -61,7 +61,7 @@ def test_alpha_executor_package_is_no_capital_and_single_purpose() -> None:
 
 def test_alpha_strategy_engineer_has_exclusive_engineering_capability() -> None:
     package = load_role_package(ALPHA_ENGINEER_MANIFEST, WORKFLOWS)
-    assert package.manifest.version == "1.0.3"
+    assert package.manifest.version == "1.0.4"
     assert package.manifest.task_types == ["engineering_mission"]
     assert package.manifest.required_capabilities == [
         "alpha-strategy-engineering",

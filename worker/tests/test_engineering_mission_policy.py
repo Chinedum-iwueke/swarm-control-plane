@@ -1,8 +1,10 @@
 import asyncio
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -15,7 +17,12 @@ from swarm_worker.executors.code_validation import (
 from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
 from swarm_worker.models import StepExecutionResult
 from swarm_worker.policy import EngineeringMissionContract
-from swarm_worker.workspace import CommandResult
+from swarm_worker.workspace import (
+    CommandResult,
+    TaskWorkspace,
+    WorkspaceMetadata,
+    WorkspacePlan,
+)
 
 
 def contract() -> EngineeringMissionContract:
@@ -187,8 +194,6 @@ def test_scope_check_does_not_stage_workspace_changes(tmp_path: Path) -> None:
 def test_patch_includes_untracked_files_without_writing_git_objects(
     tmp_path: Path,
 ) -> None:
-    import subprocess
-
     repository = tmp_path / "repository"
     repository.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
@@ -234,6 +239,129 @@ def test_patch_includes_untracked_files_without_writing_git_objects(
     )
 
 
+def test_alpha_correction_inherits_matching_parent_patch(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "worker@example.invalid"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Worker Test"], cwd=source, check=True
+    )
+    (source / "docs").mkdir()
+    (source / "docs" / "strategy.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=source, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    root = tmp_path / "workspaces"
+    parent_id = uuid4()
+    parent_dir = root / f"A3-example-001-G4-{parent_id}" / "attempt-1"
+    (parent_dir / "artifacts").mkdir(parents=True)
+    parent_metadata = WorkspaceMetadata(
+        task_id=parent_id,
+        task_number="A3-example-001-G4",
+        attempt_number=1,
+        repository="bulletproof_bt",
+        source_repository=source,
+        workspace_repository=parent_dir / "repository",
+        base_ref=base,
+        resolved_base_commit=base,
+        created_at=datetime.now(timezone.utc),
+    )
+    (parent_dir / "metadata.json").write_text(
+        parent_metadata.model_dump_json(), encoding="utf-8"
+    )
+    (parent_dir / "artifacts" / "changes.patch").write_text(
+        "diff --git a/docs/strategy.md b/docs/strategy.md\n"
+        "index df967b9..9264b47 100644\n"
+        "--- a/docs/strategy.md\n"
+        "+++ b/docs/strategy.md\n"
+        "@@ -1 +1 @@\n"
+        "-base\n"
+        "+inherited\n",
+        encoding="utf-8",
+    )
+
+    current_id = uuid4()
+    current_dir = root / f"A3-example-001-G5-{current_id}" / "attempt-1"
+    repository = current_dir / "repository"
+    subprocess.run(
+        ["git", "worktree", "add", "--detach", str(repository), base],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    (current_dir / "logs").mkdir()
+    (current_dir / "artifacts").mkdir()
+    current_metadata = WorkspaceMetadata(
+        task_id=current_id,
+        task_number="A3-example-001-G5",
+        attempt_number=1,
+        repository="bulletproof_bt",
+        source_repository=source,
+        workspace_repository=repository,
+        base_ref=base,
+        resolved_base_commit=base,
+        created_at=datetime.now(timezone.utc),
+    )
+    workspace = TaskWorkspace(
+        plan=WorkspacePlan(
+            task_id=current_id,
+            task_number="A3-example-001-G5",
+            attempt_number=1,
+            repository="bulletproof_bt",
+            source_repository=source,
+            attempt_directory=current_dir,
+            workspace_repository=repository,
+            logs_directory=current_dir / "logs",
+            artifacts_directory=current_dir / "artifacts",
+            metadata_path=current_dir / "metadata.json",
+            base_ref=base,
+            resolved_base_commit=base,
+        ),
+        metadata=current_metadata,
+    )
+    task = SimpleNamespace(
+        parent_task_id=parent_id,
+        task_number="A3-example-001-G5",
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="test",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        effective_uid=lambda: 1000,
+    )
+
+    inherited = executor._inherit_parent_patch(
+        task,
+        contract().model_copy(update={"milestone_id": "ALPHA-003"}),
+        workspace,
+    )
+
+    assert inherited is True
+    assert (repository / "docs" / "strategy.md").read_text() == "inherited\n"
+    assert (current_dir / "inherited-parent-patch.json").is_file()
+    assert (
+        executor._inherit_parent_patch(
+            task,
+            contract().model_copy(update={"milestone_id": "ALPHA-003"}),
+            workspace,
+        )
+        is True
+    )
+
+
 def test_prompt_forbids_push_merge_and_deploy() -> None:
     prompt = EngineeringMissionExecutor._coding_prompt(contract())
     assert "Do not push, merge, deploy" in prompt
@@ -257,6 +385,18 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "must not contaminate later rolling" in prompt
     assert "semantically validated and consumed" in prompt
     assert "distinct per-variant artifacts" in prompt
+
+
+def test_alpha_correction_prompt_marks_inherited_patch_untrusted() -> None:
+    alpha_contract = contract().model_copy(update={"milestone_id": "ALPHA-003"})
+
+    prompt = EngineeringMissionExecutor._coding_prompt(
+        alpha_contract, inherited_parent_patch=True
+    )
+
+    assert "retained patch has been applied" in prompt
+    assert "untrusted starting material" in prompt
+    assert "has no acceptance authority" in prompt
 
 
 def test_non_alpha_prompt_does_not_add_strategy_specific_requirements() -> None:
