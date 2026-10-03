@@ -392,7 +392,8 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "typed retained invalid/failed outcome" in prompt
     assert "zero-valued returns as directionally neutral" in prompt
     assert "real compiler and evaluator" in prompt
-    assert "must not rewrite the frozen production contract" in prompt
+    assert "must not rewrite or reuse the frozen production registration" in prompt
+    assert "separate immutable test contract and identity" in prompt
     assert "trace the exact predictor, target, direction and horizon" in prompt
     assert "warmup-only or rejected-only runs" in prompt
     assert "exercise execute_registered" in prompt
@@ -404,9 +405,12 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "distinguish rolling bars from inter-bar gaps" in prompt
     assert "every frozen purge and embargo" in prompt
     assert "genuine treated-versus-control or model interaction effect" in prompt
+    assert "fail closed for unmatched treated observations" in prompt
+    assert "prove poor-match rejection" in prompt
     assert "exact estimand rather than a pooled proxy" in prompt
     assert "canonical engine accounting evidence" in prompt
     assert "Retain invalid decision-row evidence" in prompt
+    assert "exact parameter tuple, evidence identity" in prompt
 
 
 def test_alpha_correction_prompt_marks_inherited_patch_untrusted() -> None:
