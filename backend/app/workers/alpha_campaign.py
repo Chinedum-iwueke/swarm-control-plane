@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 
 from app.db.session import SessionLocal
 from app.models.alpha_campaign import AlphaCampaign
+from app.models.alpha_discovery import AlphaDiscoveryCycle, AlphaResearchMandate
 from app.services.alpha_campaign import reconcile_campaign
 
 _AUTO_RECOVERABLE_ATTENTION_CATEGORIES = {
@@ -31,6 +32,18 @@ def _error_detail(exc: Exception):
 
 def run_once() -> dict:
     with SessionLocal() as db:
+        active_mandate_campaign = (
+            select(AlphaDiscoveryCycle.id)
+            .join(
+                AlphaResearchMandate,
+                AlphaResearchMandate.id == AlphaDiscoveryCycle.mandate_id,
+            )
+            .where(
+                AlphaDiscoveryCycle.campaign_id == AlphaCampaign.id,
+                AlphaResearchMandate.status == "active",
+            )
+            .exists()
+        )
         campaigns = db.scalars(
             select(AlphaCampaign)
             .where(
@@ -43,6 +56,7 @@ def run_once() -> dict:
                                 _AUTO_RECOVERABLE_ATTENTION_CATEGORIES
                             )
                         )
+                        & active_mandate_campaign
                     ),
                 )
             )
@@ -77,7 +91,10 @@ def run_once() -> dict:
         db.commit()
         result = {
             "event": "alpha_campaign_reconciliation_complete",
-            "active_campaigns": len(campaigns),
+            "active_campaigns": sum(
+                item.status == "running" for item in campaigns
+            ),
+            "reconciled_campaigns": len(campaigns),
             "failed_campaigns": failures,
             "campaigns": [
                 {

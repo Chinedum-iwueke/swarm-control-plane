@@ -98,5 +98,6 @@ def test_recoverable_attention_campaign_is_reconciled_without_operator_post(
     assert session.committed
     assert result["failed_campaigns"] == []
     assert result["active_campaigns"] == 1
+    assert result["reconciled_campaigns"] == 1
     assert recovery.status == "running"
     assert recovery.next_action == "create_review_bound_strategy_correction"
