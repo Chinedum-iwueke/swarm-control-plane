@@ -81,7 +81,17 @@ CLAIM_BOUNDARY = (
     "capital allocation, production promotion or self-approval."
 )
 STRATEGY_ENGINEERING_STAGE = "G3"
-STRATEGY_CORRECTION_STAGES = ("G4", "G5", "G6", "G7", "G8", "G9")
+STRATEGY_CORRECTION_STAGES = (
+    "G4",
+    "G5",
+    "G6",
+    "G7",
+    "G8",
+    "G9",
+    "G10",
+    "G11",
+    "G12",
+)
 OBSOLETE_STRATEGY_ENGINEERING_STAGES = ("G2", "G")
 EXECUTION_STAGES = ("E2", "E")
 STRATEGY_ENGINEERING_ALLOWED_PATHS = (

@@ -2895,7 +2895,7 @@ def test_validation_runtime_correction_rejects_real_test_failure():
     assert service._validation_runtime_correction(task) is None
 
 
-def test_reconcile_retains_exhausted_g9_review_and_advances(monkeypatch):
+def test_reconcile_retains_exhausted_g12_review_and_advances(monkeypatch):
     record = campaign(
         status="needs_attention",
         phase="complete",
@@ -2910,7 +2910,7 @@ def test_reconcile_retains_exhausted_g9_review_and_advances(monkeypatch):
     failed = SimpleNamespace(
         id=failed_id,
         status="failed",
-        task_number=f"A3-{record.id.hex[:8]}-001-G9",
+        task_number=f"A3-{record.id.hex[:8]}-001-G12",
         plan_digest="7" * 64,
         input_contract={"evidence_context": "{}"},
         failure={
@@ -3068,12 +3068,12 @@ def test_g7_review_failure_creates_final_g8_correction(monkeypatch):
     ]
 
 
-def test_g8_review_failure_creates_final_g9_correction(monkeypatch):
+def test_g9_review_failure_creates_g10_correction(monkeypatch):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     rejected = SimpleNamespace(
         id=uuid4(),
-        task_number=f"A3-{record.id.hex[:8]}-001-G8",
+        task_number=f"A3-{record.id.hex[:8]}-001-G9",
         status="failed",
         plan_digest="a" * 64,
         input_contract={"evidence_context": "{}"},
@@ -3112,7 +3112,7 @@ def test_g8_review_failure_creates_final_g9_correction(monkeypatch):
     monkeypatch.setattr(service, "_append_event", MagicMock())
 
     assert service._advance_governed_pipeline(db, record) is successor
-    assert create.call_args.kwargs["stage"] == "G9"
+    assert create.call_args.kwargs["stage"] == "G10"
     assert create.call_args.kwargs["parent_task_id"] == rejected.id
 
 
@@ -3121,7 +3121,7 @@ def test_final_correction_review_failure_does_not_create_unbounded_retry(monkeyp
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     rejected = SimpleNamespace(
         id=uuid4(),
-        task_number=f"A3-{record.id.hex[:8]}-001-G9",
+        task_number=f"A3-{record.id.hex[:8]}-001-G12",
         status="failed",
         plan_digest="a" * 64,
         input_contract={"evidence_context": "{}"},

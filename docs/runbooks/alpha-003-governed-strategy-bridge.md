@@ -12,8 +12,10 @@ publishes the immutable result.
 1. The campaign freezes a DISC-009 question, DATA-002/003 build, Bulletproof commit,
    UTC window, Tier2B policy and variant budget.
 2. The VM1 alpha executor returns a citation-bearing hypothesis card. An unsupported
-   question creates an approval-gated `engineering_mission` limited to Bulletproof's
-   hypothesis, strategy and test paths; it is never mapped to a nearby strategy.
+   question creates a mandate-authorized `engineering_mission` limited to
+   Bulletproof's hypothesis, strategy and test paths; it is never mapped to a nearby
+   strategy. This narrow risk-one mission is founder-approval exempt, while broader
+   code, data-authority, shadow and capital changes remain approval-gated.
 3. The founder approves the exact card digest.
 4. Bulletproof emits the native YAML/strategy bundle and passes schema, causality,
    leakage and independent specification review.
@@ -33,6 +35,11 @@ publishes the immutable result.
 8. Positive, negative, invalid and failed evidence is retained. BT-009 publishes a
    terminal result to Bulletproof memory and Hermes. The campaign advances to the
    next question unless the complete gate set yields a prospective shadow candidate.
+
+Independent-review corrections inherit the preceding rejected patch and findings.
+The bounded ladder runs from G3 through G12. Reaching G12 without acceptance retains
+an invalid engineering outcome and advances to the next hypothesis; it never weakens
+review gates or retries indefinitely.
 
 ## Activation
 
