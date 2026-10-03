@@ -32,6 +32,18 @@ def digest(value: object) -> str:
     ).hexdigest()
 
 
+def next_charter_version(charters: list[dict]) -> str:
+    patches = []
+    for charter in charters:
+        try:
+            major, minor, patch = (int(part) for part in charter["version"].split("."))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (major, minor) == (1, 0):
+            patches.append(patch)
+    return f"1.0.{max(patches, default=-1) + 1}"
+
+
 def compatible_executor_charter(
     existing: dict, expected: dict, package_name: str
 ) -> bool:
@@ -60,7 +72,7 @@ def executor_charter_manifest(manifest, package_name: str) -> dict:
         "schema_version": "agent-charter-v1.0.0",
         "role": manifest.role,
         "responsibilities": [
-            f"Execute one leased no-capital question through Bulletproof only as {package_name}."
+            f"Execute one leased no-capital question through Bulletproof only as {package_name} under signed role package {manifest.version}."
         ],
         "capabilities": manifest.required_capabilities,
         "allowed_machines": ["vm1-developer"],
@@ -255,7 +267,8 @@ def main() -> int:
                     expires_at=(datetime.now(UTC) + timedelta(days=365)).isoformat(),
                     version=manifest.version,
                 )
-                ensure_native_producer_profile(api, state)
+                if "alpha-research-execution" in manifest.required_capabilities:
+                    ensure_native_producer_profile(api, state)
             state["workload_identity_id"] = identity["id"]
             state["workload_identity_version"] = manifest.version
             state["workload_scopes"] = WORKLOAD_SCOPES
@@ -371,43 +384,50 @@ def main() -> int:
                     )
         charter_manifest = executor_charter_manifest(manifest, package_name)
         charters = call(api, "GET", "/v1/agent-governance/charters")
-        matches = [
+        agent_charters = [
             item
             for item in charters
             if item["agent_id"] == registration["agent"]["id"]
-            and item["version"] == "1.0.0"
         ]
-        if matches and (
-            len(matches) != 1
-            or not compatible_executor_charter(
-                matches[0]["manifest"], charter_manifest, package_name
+        compatible = [
+            item
+            for item in agent_charters
+            if compatible_executor_charter(
+                item["manifest"], charter_manifest, package_name
             )
-        ):
+        ]
+        active_matches = [item for item in compatible if item["status"] == "active"]
+        draft_matches = [item for item in compatible if item["status"] == "draft"]
+        if len(active_matches) > 1 or len(draft_matches) > 1:
+            raise RuntimeError("Multiple compatible executor charters exist.")
+        reusable_charter = (active_matches or draft_matches or [None])[0]
+        if agent_charters and reusable_charter is None and not rotate_existing_package:
             raise RuntimeError(
                 "Partial executor charter differs from the reviewed package."
             )
         charter = (
-            matches[0]
-            if matches
+            reusable_charter
+            if reusable_charter is not None
             else call(
                 api,
                 "POST",
                 "/v1/agent-governance/charters",
                 {
                     "agent_id": registration["agent"]["id"],
-                    "version": "1.0.0",
+                    "version": next_charter_version(agent_charters),
                     "manifest": charter_manifest,
                     "manifest_digest": digest(charter_manifest),
                     "created_by": "founder-operator",
                 },
             )
         )
-        charter = call(
-            api,
-            "POST",
-            f"/v1/agent-governance/charters/{charter['id']}/activate",
-            {"activated_by": "founder-operator"},
-        )
+        if charter.get("status") != "active":
+            charter = call(
+                api,
+                "POST",
+                f"/v1/agent-governance/charters/{charter['id']}/activate",
+                {"activated_by": "founder-operator"},
+            )
         grants = call(api, "GET", "/v1/agent-governance/grants")
         grant_ids = []
         for capability in manifest.required_capabilities:
@@ -471,7 +491,8 @@ def main() -> int:
         state["workload_identity_id"] = identity["id"]
         state["workload_identity_version"] = manifest.version
         state["workload_scopes"] = WORKLOAD_SCOPES
-        ensure_native_producer_profile(api, state)
+        if "alpha-research-execution" in manifest.required_capabilities:
+            ensure_native_producer_profile(api, state)
         if existing_agent:
             rotated = call(
                 api,

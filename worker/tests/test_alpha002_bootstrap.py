@@ -86,6 +86,17 @@ def test_api_error_reports_route_and_detail_without_request_payload() -> None:
     assert secret not in message
 
 
+def test_charter_versions_advance_past_superseded_records() -> None:
+    assert MODULE.next_charter_version(
+        [
+            {"version": "1.0.0"},
+            {"version": "1.0.1"},
+            {"version": "2.0.9"},
+            {"version": "invalid"},
+        ]
+    ) == "1.0.2"
+
+
 def test_missing_workload_identity_is_created_and_credential_is_bound() -> None:
     requests = []
 
@@ -371,6 +382,7 @@ def test_existing_state_requires_explicit_package_rotation(
                         "version": "1.0.0",
                         "manifest": historical_charter,
                         "manifest_digest": MODULE.digest(historical_charter),
+                        "status": "active",
                     }
                 ],
                 "/v1/agent-governance/grants": [
@@ -495,6 +507,7 @@ def test_existing_state_requires_explicit_package_rotation(
     assert rotated["workload_identity_version"] == "1.0.3"
     assert "SWARM_AGENT_TOKEN=rotated-secret" in env_file.read_text()
     assert ("POST", "/v1/agent-governance/charters") not in requests
+    assert not any(path.endswith("/activate") for _, path in requests)
     assert ("POST", "/v1/agent-governance/grants") not in requests
     deploy_index = requests.index(("POST", "/v1/packages/deployments"))
     revoke_index = requests.index(
