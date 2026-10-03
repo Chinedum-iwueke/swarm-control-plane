@@ -41,7 +41,7 @@ from app.services.alpha_discovery import (
     _recent_signal_surveillance,
     _reconcile_campaign_cycle,
     _recover_resumed_stage,
-    _retire_superseded_invalid_cycles,
+    _retire_superseded_discovery_stalls,
     _task,
     approve_mandate,
     canonicalize_mandates,
@@ -943,7 +943,7 @@ def test_superseded_invalid_cycle_is_terminalized_without_erasing_evidence(
     event = MagicMock()
     monkeypatch.setattr("app.services.alpha_discovery._event", event)
 
-    _retire_superseded_invalid_cycles(db, mandate, newest, moment)
+    _retire_superseded_discovery_stalls(db, mandate, newest, moment)
 
     assert stale.status == "rejected"
     assert stale.phase == "complete"
@@ -953,6 +953,33 @@ def test_superseded_invalid_cycle_is_terminalized_without_erasing_evidence(
     )
     assert event.call_args.args[3]["retained_next_action"] == (
         "review_invalid_representation_output"
+    )
+
+
+def test_superseded_failed_worker_cycle_is_removed_from_operator_stalls(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4())
+    newest = SimpleNamespace(id=uuid4(), ordinal=7)
+    stale = SimpleNamespace(
+        id=uuid4(),
+        ordinal=6,
+        status="needs_attention",
+        phase="representation_selection",
+        next_action="repair_data_representation_agent",
+        completed_at=None,
+        heartbeat_at=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [stale]
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+
+    _retire_superseded_discovery_stalls(db, mandate, newest, moment)
+
+    assert stale.status == "rejected"
+    assert stale.next_action == "schedule_next_discovery_cycle"
+    assert event.call_args.args[3]["retained_next_action"] == (
+        "repair_data_representation_agent"
     )
 
 

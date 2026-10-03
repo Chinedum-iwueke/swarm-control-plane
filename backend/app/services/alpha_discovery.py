@@ -1326,7 +1326,7 @@ def _automatically_retry_failed_discovery_stage(
     return True
 
 
-def _retire_superseded_invalid_cycles(
+def _retire_superseded_discovery_stalls(
     db: Session,
     mandate: AlphaResearchMandate,
     newest_cycle: AlphaDiscoveryCycle,
@@ -1344,6 +1344,9 @@ def _retire_superseded_invalid_cycles(
             AlphaDiscoveryCycle.status == "needs_attention",
             AlphaDiscoveryCycle.next_action.in_(
                 {
+                    "repair_research_intelligence_worker",
+                    "repair_senior_researcher",
+                    "repair_data_representation_agent",
                     "review_invalid_intelligence_output",
                     "review_invalid_hypothesis_output",
                     "review_invalid_representation_output",
@@ -2871,7 +2874,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     if cycle is None:
         _new_cycle(db, mandate, _next_founder_idea(db, mandate))
         return
-    _retire_superseded_invalid_cycles(db, mandate, cycle, moment)
+    _retire_superseded_discovery_stalls(db, mandate, cycle, moment)
     if cycle.campaign_id is not None and cycle.id not in reconciled_cycles:
         _reconcile_campaign_cycle(db, mandate, cycle, moment)
         if mandate.status != "active":
