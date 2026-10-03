@@ -394,6 +394,7 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "real compiler and evaluator" in prompt
     assert "must not rewrite the frozen production contract" in prompt
     assert "trace the exact predictor, target, direction and horizon" in prompt
+    assert "warmup-only or rejected-only runs" in prompt
     assert "exercise execute_registered" in prompt
     assert "must not contaminate later rolling" in prompt
     assert "semantically validated and consumed" in prompt
@@ -439,6 +440,7 @@ def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:
     assert "exact catalog/manifest/producer/governance/partition" in prompt
     assert "real execute_registered compiler/evaluator path" in prompt
     assert "positive/test-open, negative, invalid and failed" in prompt
+    assert "not evidence of actual adaptive-field consumption" in prompt
     assert "interaction claims that are not estimated as interactions" in prompt
     assert "local approximations" in prompt
 

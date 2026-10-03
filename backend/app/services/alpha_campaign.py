@@ -995,6 +995,7 @@ def _create_strategy_engineering_task(
             "The hypothesis YAML declares immutable data, window, tier, grid, costs, falsification and logging contracts.",
             "The native strategy uses only point-in-time inputs and passes causality, leakage, schema and independent-review gates.",
             "When an adaptive representation plan exists, the strategy declares and consumes its exact ordered output fields and plan digest at causal decision timestamps.",
+            "Adaptive-representation acceptance requires at least one causally valid consumed decision; warmup-only or rejected-only runs cannot satisfy actual-consumption evidence.",
             "Tests cover deterministic compilation and execution while retaining negative, invalid and failed outcomes.",
             "The existing native draft/qualification runner discovers the generated card without mapping its question to a different template.",
             "Runner integration tests invoke execute_registered and verify trusted evidence binding plus per-variant artifact retention; source-text assertions are insufficient.",
