@@ -398,6 +398,10 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "must not contaminate later rolling" in prompt
     assert "semantically validated and consumed" in prompt
     assert "distinct per-variant artifacts" in prompt
+    assert "never monkeypatch a production digest onto synthetic bytes" in prompt
+    assert "source rows independently pass timestamp" in prompt
+    assert "genuine treated-versus-control or model interaction effect" in prompt
+    assert "canonical engine accounting evidence" in prompt
 
 
 def test_alpha_correction_prompt_marks_inherited_patch_untrusted() -> None:
@@ -435,6 +439,8 @@ def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:
     assert "exact catalog/manifest/producer/governance/partition" in prompt
     assert "real execute_registered compiler/evaluator path" in prompt
     assert "positive/test-open, negative, invalid and failed" in prompt
+    assert "interaction claims that are not estimated as interactions" in prompt
+    assert "local approximations" in prompt
 
 
 def test_retry_prompt_includes_prior_failure_without_expanding_authority() -> None:

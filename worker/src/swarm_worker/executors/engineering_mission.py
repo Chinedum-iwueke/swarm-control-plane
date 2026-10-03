@@ -633,7 +633,15 @@ class EngineeringMissionExecutor:
             "declared representation output must either be semantically validated and "
             "consumed or be rejected from the contract. Runner tests must prove distinct "
             "per-variant artifacts and explicit positive/test-open, negative, invalid "
-            "and failed terminal paths.\n"
+            "and failed terminal paths through the real execute_registered boundary. "
+            "Give portable fixtures a distinct immutable test identity; never monkeypatch "
+            "a production digest onto synthetic bytes. Lagged and rival features may "
+            "affect state only when their source rows independently pass timestamp, "
+            "continuity and admissibility gates. A declared interaction must estimate "
+            "a genuine treated-versus-control or model interaction effect, not a "
+            "prevalence-weighted treated return. A metric declared engine-authoritative "
+            "must consume and reconcile canonical engine accounting evidence rather "
+            "than relabel a local cost or return approximation.\n"
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )
@@ -697,6 +705,9 @@ class EngineeringMissionExecutor:
             "the governed BT-009 execution against the registered lake. Still reject mocks "
             "of the compiler/evaluator, shortened production windows, reduced production "
             "thresholds, or synthetic results presented as scientific evidence."
+            " Also reject lagged/rival inputs whose source rows are not independently "
+            "admissible, interaction claims that are not estimated as interactions, and "
+            "engine-authoritative metric claims backed only by local approximations."
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )
