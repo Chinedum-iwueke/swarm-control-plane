@@ -431,7 +431,7 @@ def test_existing_state_requires_explicit_package_rotation(
         if path == "/v1/agent-governance/grants":
             return httpx.Response(201, json={"id": payload["capability"]})
         if path == "/v1/workload-identities":
-            assert payload["version"] == "1.0.4"
+            assert payload["version"] == "1.0.5"
             created = identity() | {"package_id": new_package_id}
             return httpx.Response(201, json=created)
         if path == "/v1/evaluator-routing/profiles":
@@ -504,7 +504,7 @@ def test_existing_state_requires_explicit_package_rotation(
     assert rotated["deployment_id"] == new_deployment_id
     assert rotated["manifest_digest"] == manifest_digest
     assert rotated["source_commit"] == "b" * 40
-    assert rotated["workload_identity_version"] == "1.0.4"
+    assert rotated["workload_identity_version"] == "1.0.5"
     assert "SWARM_AGENT_TOKEN=rotated-secret" in env_file.read_text()
     assert ("POST", "/v1/agent-governance/charters") not in requests
     assert not any(path.endswith("/activate") for _, path in requests)

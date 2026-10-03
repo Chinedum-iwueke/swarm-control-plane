@@ -80,6 +80,19 @@ def test_default_validation_budget_covers_complete_bulletproof_suite(
     assert executor._validator._step_timeout_seconds == 2400.0
 
 
+def test_alpha_review_prompt_separates_portable_fixture_from_production_receipt() -> None:
+    document = contract().model_copy(
+        update={"milestone_id": "ALPHA-003", "repository": "bulletproof_bt"}
+    )
+
+    prompt = EngineeringMissionExecutor._review_prompt(document)
+
+    assert "internally consistent portable fixture" in prompt
+    assert "does not mutate or weaken the frozen production card/YAML" in prompt
+    assert "every immutable-identity mismatch is rejected" in prompt
+    assert "governed BT-009 execution against the registered lake" in prompt
+
+
 @pytest.mark.asyncio
 async def test_independent_review_precedes_expensive_outer_validation(
     tmp_path: Path,

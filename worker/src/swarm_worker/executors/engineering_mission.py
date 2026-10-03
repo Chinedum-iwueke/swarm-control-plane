@@ -682,7 +682,17 @@ class EngineeringMissionExecutor:
             "and actual strategy consumption; exact catalog/manifest/producer/governance/"
             "partition and plan digests; a real execute_registered compiler/evaluator path; "
             "and production of every declared metric plus positive/test-open, negative, "
-            "invalid and failed terminal evidence."
+            "invalid and failed terminal evidence. Repository tests need not contain or "
+            "reproduce the production lake payload: an internally consistent portable "
+            "fixture may prove the successful runner path, provided it uses a separate "
+            "test contract, does not mutate or weaken the frozen production card/YAML, "
+            "and companion tests prove that every immutable-identity mismatch is rejected. "
+            "Do not demand a production dataset preimage from a repository test or treat "
+            "fixture evidence as a production receipt. Exact admitted production digests "
+            "must instead remain frozen in the shipped contract and are proven later by "
+            "the governed BT-009 execution against the registered lake. Still reject mocks "
+            "of the compiler/evaluator, shortened production windows, reduced production "
+            "thresholds, or synthetic results presented as scientific evidence."
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )
