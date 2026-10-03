@@ -68,3 +68,35 @@ def test_campaign_failure_does_not_block_other_reconciliation(monkeypatch):
     ]
     assert healthy.phase == "strategy_qualification"
     assert healthy.next_action == "await_independent_review"
+
+
+def test_recoverable_attention_campaign_is_reconciled_without_operator_post(
+    monkeypatch,
+):
+    recovery = SimpleNamespace(
+        id=uuid4(),
+        status="needs_attention",
+        phase="complete",
+        next_action="operator_review",
+        hypothesis_count=0,
+        trial_count=0,
+        created_at=None,
+        terminal_reason={"category": "governed_pipeline_task_failed"},
+    )
+    session = FakeSession([recovery])
+
+    def reconcile(_db, campaign):
+        campaign.status = "running"
+        campaign.phase = "strategy_engineering"
+        campaign.next_action = "create_review_bound_strategy_correction"
+
+    monkeypatch.setattr(worker, "SessionLocal", lambda: session)
+    monkeypatch.setattr(worker, "reconcile_campaign", reconcile)
+
+    result = worker.run_once()
+
+    assert session.committed
+    assert result["failed_campaigns"] == []
+    assert result["active_campaigns"] == 1
+    assert recovery.status == "running"
+    assert recovery.next_action == "create_review_bound_strategy_correction"

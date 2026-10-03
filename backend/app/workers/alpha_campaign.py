@@ -6,11 +6,19 @@ import time
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.db.session import SessionLocal
 from app.models.alpha_campaign import AlphaCampaign
 from app.services.alpha_campaign import reconcile_campaign
+
+_AUTO_RECOVERABLE_ATTENTION_CATEGORIES = {
+    "governed_pipeline_task_failed",
+    "qualification_dataset_binding_mismatch",
+    "qualification_overlap_admission_missing_or_invalid",
+    "strategy_engineering_failed",
+    "strategy_not_qualified",
+}
 
 
 def _error_detail(exc: Exception):
@@ -25,7 +33,19 @@ def run_once() -> dict:
     with SessionLocal() as db:
         campaigns = db.scalars(
             select(AlphaCampaign)
-            .where(AlphaCampaign.status == "running")
+            .where(
+                or_(
+                    AlphaCampaign.status == "running",
+                    (
+                        (AlphaCampaign.status == "needs_attention")
+                        & (
+                            AlphaCampaign.terminal_reason["category"].astext.in_(
+                                _AUTO_RECOVERABLE_ATTENTION_CATEGORIES
+                            )
+                        )
+                    ),
+                )
+            )
             .order_by(AlphaCampaign.created_at)
             .with_for_update(skip_locked=True)
         ).all()
