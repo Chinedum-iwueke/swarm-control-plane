@@ -167,6 +167,31 @@ def test_alpha_data_admission_has_bounded_multi_receipt_envelope():
         )
 
 
+def test_alpha_discovery_has_bounded_structured_plan_envelope():
+    common = {
+        "repository": "swarm-control-plane",
+        "base_commit": "a" * 40,
+        "task_attempt": 1,
+        "total_duration_seconds": 1,
+        "steps": [],
+        "success": True,
+    }
+
+    result = WorkflowExecutionResult(
+        workflow="alpha-discovery",
+        summary={"alpha_discovery_output": {"plans": ["x" * 20_000]}},
+        **common,
+    )
+    assert len(result.summary["alpha_discovery_output"]["plans"]) == 1
+
+    with pytest.raises(ValidationError, match="128 KiB"):
+        WorkflowExecutionResult(
+            workflow="alpha-discovery",
+            summary={"payload": "x" * 132_000},
+            **common,
+        )
+
+
 def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     document = alpha_discovery_contract()
     document["context"]["lake_catalog"] = {

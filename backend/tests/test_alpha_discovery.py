@@ -21,6 +21,7 @@ from app.services.alpha_discovery import (
     _active_parallel_instrument_sets,
     _apply_representation_plans,
     _automatically_correct_invalid_representation,
+    _automatically_retry_failed_discovery_stage,
     _bounded_context,
     _candidate_enters_novelty_memory,
     _candidate_reasons,
@@ -872,6 +873,54 @@ def test_invalid_representation_is_automatically_corrected_with_bounded_feedback
     )
     assert create_task.call_args.kwargs["task_number"] == "A4-example-003-R-A1"
     assert event.call_args.args[2] == "invalid_representation_automatically_superseded"
+
+
+def test_failed_representation_stage_gets_bounded_automatic_successor(monkeypatch):
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), budget={"maximum_candidates_per_cycle": 5})
+    cycle = SimpleNamespace(
+        id=uuid4(),
+        ordinal=4,
+        representation_task_id=None,
+        status="needs_attention",
+        phase="representation_selection",
+        next_action="repair_data_representation_agent",
+        completed_at=moment,
+        heartbeat_at=moment,
+    )
+    previous = SimpleNamespace(
+        id=uuid4(),
+        task_number="A4-example-004-R",
+        result={},
+        failure={
+            "error_category": "executor_ValidationError",
+            "detail": "execution summary exceeds 16 KiB",
+        },
+        input_contract={"context": {"raw_candidates": [{"candidate_key": "frozen"}]}},
+    )
+    replacement = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    db.scalar.return_value = 0
+    create_task = MagicMock(return_value=replacement)
+    event = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._task", create_task)
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+
+    assert _automatically_retry_failed_discovery_stage(
+        db, mandate, cycle, previous, "representation"
+    )
+
+    assert cycle.status == "running"
+    assert cycle.representation_task_id == replacement.id
+    assert cycle.next_action == "await_recovered_representation"
+    context = create_task.call_args.args[4]
+    assert context["recovery_feedback"]["failure_category"] == (
+        "executor_ValidationError"
+    )
+    assert create_task.call_args.kwargs["task_number"] == "A4-example-004-R-F1"
+    assert event.call_args.args[2] == (
+        "failed_discovery_stage_automatically_superseded"
+    )
 
 
 def test_superseded_invalid_cycle_is_terminalized_without_erasing_evidence(

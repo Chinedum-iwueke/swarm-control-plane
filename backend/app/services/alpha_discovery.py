@@ -1249,6 +1249,83 @@ def _automatically_correct_invalid_representation(
     return True
 
 
+def _automatically_retry_failed_discovery_stage(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    cycle: AlphaDiscoveryCycle,
+    previous: Task,
+    stage: str,
+) -> bool:
+    """Retry a terminal discovery-worker failure without expanding authority."""
+    retry_count = int(
+        db.scalar(
+            select(func.count(AlphaDiscoveryEvent.id)).where(
+                AlphaDiscoveryEvent.cycle_id == cycle.id,
+                AlphaDiscoveryEvent.event_type
+                == "failed_discovery_stage_automatically_superseded",
+            )
+        )
+        or 0
+    )
+    if retry_count >= 2:
+        return False
+    contract = previous.input_contract or {}
+    recovery_context = deepcopy(contract.get("context", {}))
+    failure = previous.failure if isinstance(previous.failure, dict) else {}
+    recovery_context["recovery_feedback"] = {
+        "previous_task_id": str(previous.id),
+        "failure_category": failure.get("error_category", "unknown"),
+        "failure_detail": str(failure.get("detail", ""))[:2000],
+        "correction_requirements": [
+            "preserve the frozen stage input and mandate digest",
+            "retry only within the original no-capital read-only authority",
+            "return a complete schema-valid bounded result",
+        ],
+    }
+    replacement = _task(
+        db,
+        mandate,
+        cycle,
+        stage,
+        recovery_context,
+        task_number=f"{previous.task_number}-F{retry_count + 1}",
+    )
+    task_attributes = {
+        "intelligence": "intelligence_task_id",
+        "hypothesis": "hypothesis_task_id",
+        "representation": "representation_task_id",
+    }
+    phases = {
+        "intelligence": ("intelligence_synthesis", "await_recovered_intelligence"),
+        "hypothesis": ("hypothesis_generation", "await_recovered_hypothesis"),
+        "representation": (
+            "representation_selection",
+            "await_recovered_representation",
+        ),
+    }
+    setattr(cycle, task_attributes[stage], replacement.id)
+    cycle.status = "running"
+    cycle.phase, cycle.next_action = phases[stage]
+    cycle.completed_at = None
+    cycle.heartbeat_at = now()
+    _event(
+        db,
+        mandate,
+        "failed_discovery_stage_automatically_superseded",
+        {
+            "stage": stage,
+            "previous_task_id": str(previous.id),
+            "failure_digest": digest_document(failure),
+            "replacement_task_id": str(replacement.id),
+            "retry_ordinal": retry_count + 1,
+            "maximum_retries": 2,
+            "authority": "bounded_no_capital_runtime_recovery",
+        },
+        cycle,
+    )
+    return True
+
+
 def _retire_superseded_invalid_cycles(
     db: Session,
     mandate: AlphaResearchMandate,
@@ -2910,8 +2987,6 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     }:
         return
     if intelligence.status != "succeeded":
-        cycle.status = "needs_attention"
-        cycle.next_action = "repair_research_intelligence_worker"
         _event(
             db,
             mandate,
@@ -2919,6 +2994,12 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             {"task_id": str(intelligence.id)},
             cycle,
         )
+        if _automatically_retry_failed_discovery_stage(
+            db, mandate, cycle, intelligence, "intelligence"
+        ):
+            return
+        cycle.status = "needs_attention"
+        cycle.next_action = "repair_research_intelligence_worker"
         return
     output = intelligence.result.get("summary", {}).get("alpha_discovery_output", {})
     brief = output.get("research_brief")
@@ -2944,8 +3025,6 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     }:
         return
     if hypothesis.status != "succeeded":
-        cycle.status = "needs_attention"
-        cycle.next_action = "repair_senior_researcher"
         _event(
             db,
             mandate,
@@ -2953,6 +3032,12 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             {"task_id": str(hypothesis.id)},
             cycle,
         )
+        if _automatically_retry_failed_discovery_stage(
+            db, mandate, cycle, hypothesis, "hypothesis"
+        ):
+            return
+        cycle.status = "needs_attention"
+        cycle.next_action = "repair_senior_researcher"
         return
     raw = (
         hypothesis.result.get("summary", {})
@@ -2995,8 +3080,6 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     }:
         return
     if representation.status != "succeeded":
-        cycle.status = "needs_attention"
-        cycle.next_action = "repair_data_representation_agent"
         _event(
             db,
             mandate,
@@ -3004,6 +3087,12 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             {"task_id": str(representation.id)},
             cycle,
         )
+        if _automatically_retry_failed_discovery_stage(
+            db, mandate, cycle, representation, "representation"
+        ):
+            return
+        cycle.status = "needs_attention"
+        cycle.next_action = "repair_data_representation_agent"
         return
     raw_plans = (
         representation.result.get("summary", {})
