@@ -154,6 +154,15 @@ def test_relocation_safe_python_module_pytest_is_allowed(
     assert workflow.steps[0].command == ["python", "-m", "pytest", "-q"]
 
 
+def test_engineering_workflow_fails_fast_but_keeps_full_success_validation(
+) -> None:
+    workflow = WorkflowLoader(Path(__file__).parents[1] / "workflows").load(
+        "engineering-mission"
+    )
+
+    assert workflow.steps[1].command == ["python", "-m", "pytest", "-x", "-q"]
+
+
 def test_unknown_workflow_and_path_traversal_are_rejected(
     loader: WorkflowLoader,
 ) -> None:

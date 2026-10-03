@@ -18,4 +18,5 @@ steps:
   - python
   - -m
   - pytest
+  - -x
   - -q

@@ -94,7 +94,7 @@ _READ_ONLY_GIT_OPTIONS = {
     ),
 }
 _ALLOWED_PYTHON_FLAGS = frozenset({"-q"})
-_ALLOWED_PYTEST_OPTIONS = frozenset({"-q", "--quiet"})
+_ALLOWED_PYTEST_OPTIONS = frozenset({"-q", "--quiet", "-x", "--exitfirst"})
 
 
 class WorkflowPolicyError(Exception):

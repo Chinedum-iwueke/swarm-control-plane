@@ -1,13 +1,13 @@
 schema_version: 1
 name: vm1-alpha-strategy-engineer
-version: 1.0.1
+version: 1.0.2
 role: Restricted VM1 native alpha strategy engineer
 task_types:
 - engineering_mission
 workflows:
 - name: engineering-mission
   file: engineering-mission.yaml
-  sha256: 607dea642736f7148a04efe5927e0d9b0455c8a0446712ae0bdd0c56805961cd
+  sha256: 4f13519f299a4d61525646f139797c7a2a37d2ed3cdd178cca145eef1a039a02
 required_capabilities:
 - alpha-strategy-engineering
 - git
