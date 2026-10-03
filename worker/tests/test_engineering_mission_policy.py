@@ -401,8 +401,12 @@ def test_alpha_prompt_requires_real_causal_and_terminal_outcome_evidence() -> No
     assert "distinct per-variant artifacts" in prompt
     assert "never monkeypatch a production digest onto synthetic bytes" in prompt
     assert "source rows independently pass timestamp" in prompt
+    assert "distinguish rolling bars from inter-bar gaps" in prompt
+    assert "every frozen purge and embargo" in prompt
     assert "genuine treated-versus-control or model interaction effect" in prompt
+    assert "exact estimand rather than a pooled proxy" in prompt
     assert "canonical engine accounting evidence" in prompt
+    assert "Retain invalid decision-row evidence" in prompt
 
 
 def test_alpha_correction_prompt_marks_inherited_patch_untrusted() -> None:
@@ -443,6 +447,8 @@ def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:
     assert "not evidence of actual adaptive-field consumption" in prompt
     assert "interaction claims that are not estimated as interactions" in prompt
     assert "local approximations" in prompt
+    assert "missing frozen purge/embargo boundaries" in prompt
+    assert "drop invalid decision-row evidence" in prompt
 
 
 def test_retry_prompt_includes_prior_failure_without_expanding_authority() -> None:

@@ -639,11 +639,15 @@ class EngineeringMissionExecutor:
             "Give portable fixtures a distinct immutable test identity; never monkeypatch "
             "a production digest onto synthetic bytes. Lagged and rival features may "
             "affect state only when their source rows independently pass timestamp, "
-            "continuity and admissibility gates. A declared interaction must estimate "
+            "continuity and admissibility gates. Explicitly lag prior-only controls, "
+            "distinguish rolling bars from inter-bar gaps, and apply every frozen purge "
+            "and embargo at train/validation/test boundaries. A declared interaction must estimate "
             "a genuine treated-versus-control or model interaction effect, not a "
-            "prevalence-weighted treated return. A metric declared engine-authoritative "
+            "prevalence-weighted treated return, and its confidence interval must target "
+            "that exact estimand rather than a pooled proxy. A metric declared engine-authoritative "
             "must consume and reconcile canonical engine accounting evidence rather "
-            "than relabel a local cost or return approximation.\n"
+            "than relabel a local cost or return approximation. Retain invalid decision-"
+            "row evidence in terminal artifacts even when evaluation otherwise continues.\n"
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )
@@ -711,7 +715,10 @@ class EngineeringMissionExecutor:
             "consumption."
             " Also reject lagged/rival inputs whose source rows are not independently "
             "admissible, interaction claims that are not estimated as interactions, and "
-            "engine-authoritative metric claims backed only by local approximations."
+            "engine-authoritative metric claims backed only by local approximations. "
+            "Reject unlagged prior-only controls, missing frozen purge/embargo boundaries, "
+            "confidence intervals for proxy estimands, and successful artifacts that drop "
+            "invalid decision-row evidence."
             if contract.milestone_id.startswith("ALPHA-")
             else ""
         )
