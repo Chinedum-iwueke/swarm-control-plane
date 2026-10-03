@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -235,6 +236,50 @@ def _write_state(path: Path, value: dict) -> None:
     os.replace(temporary, path)
 
 
+def run_probe(
+    settings: ProbeSettings,
+    command: str,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    consecutive_failures = 0
+    while True:
+        try:
+            publish(settings, collect(settings))
+        except RuntimeError as exc:
+            if command == "once":
+                raise
+            consecutive_failures += 1
+            delay = min(
+                settings.interval_seconds * (2 ** min(consecutive_failures - 1, 2)),
+                60.0,
+            )
+            print(
+                json.dumps(
+                    {
+                        "event": "fleet_observation_publish_deferred",
+                        "machine": settings.machine,
+                        "error_category": type(exc).__name__,
+                        "consecutive_failures": consecutive_failures,
+                        "retry_delay_seconds": delay,
+                    }
+                ),
+                flush=True,
+            )
+            sleep(delay)
+            continue
+        consecutive_failures = 0
+        print(
+            json.dumps(
+                {"event": "fleet_observation_published", "machine": settings.machine}
+            ),
+            flush=True,
+        )
+        if command == "once":
+            return 0
+        sleep(settings.interval_seconds)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Hermes bounded Linux fleet probe")
     parser.add_argument("command", choices=("check", "once", "run"))
@@ -252,17 +297,7 @@ def main() -> int:
             )
         )
         return 0
-    while True:
-        publish(settings, collect(settings))
-        print(
-            json.dumps(
-                {"event": "fleet_observation_published", "machine": settings.machine}
-            ),
-            flush=True,
-        )
-        if args.command == "once":
-            return 0
-        time.sleep(settings.interval_seconds)
+    return run_probe(settings, args.command)
 
 
 if __name__ == "__main__":

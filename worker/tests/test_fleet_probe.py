@@ -3,7 +3,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from swarm_worker.fleet_probe import ProbeSettings, _service, collect, publish
+import pytest
+
+from swarm_worker.fleet_probe import (
+    ProbeSettings,
+    _service,
+    collect,
+    publish,
+    run_probe,
+)
 
 
 def settings(tmp_path: Path) -> ProbeSettings:
@@ -59,6 +67,29 @@ def test_publish_does_not_put_token_in_payload(tmp_path: Path) -> None:
     request = urlopen.call_args.args[0]
     assert request.headers["Authorization"].startswith("Bearer swarm_ag_")
     assert b"swarm_ag_" not in request.data
+
+
+def test_run_probe_recovers_from_transient_publish_failure(tmp_path: Path) -> None:
+    probe_settings = settings(tmp_path)
+    sleeps: list[float] = []
+    with (
+        patch("swarm_worker.fleet_probe.collect", return_value={"safe": True}),
+        patch(
+            "swarm_worker.fleet_probe.publish",
+            side_effect=[RuntimeError("Control plane is unreachable."), None],
+        ) as publisher,
+        pytest.raises(KeyboardInterrupt),
+    ):
+        run_probe(
+            probe_settings,
+            "run",
+            sleep=lambda delay: sleeps.append(delay)
+            if len(sleeps) == 0
+            else (_ for _ in ()).throw(KeyboardInterrupt),
+        )
+
+    assert publisher.call_count == 2
+    assert sleeps == [probe_settings.interval_seconds]
 
 
 def test_backup_metrics_are_reported_only_when_configured(tmp_path: Path) -> None:
