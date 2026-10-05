@@ -13,6 +13,8 @@ here is not a substitute for those records.
   require focused tests, separate read-only Codex review, the complete Bulletproof
   validator and terminal BT-009 publication. Keep autonomous leasing drain-paused
   outside bounded certification windows until a production receipt proves the route.
+  The restricted rehearsal and commit-bound real-data admission are complete; exact
+  mandate approval and a genuine terminal BT-009 receipt remain open.
 
 ## Deferred
 

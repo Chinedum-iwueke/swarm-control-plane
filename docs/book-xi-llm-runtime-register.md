@@ -97,8 +97,10 @@ remain unchanged.
 
 The Ollama/Qwen implementation remains in the codebase as dormant experimental
 capability. Active strategy-engineer units explicitly select `codex`, their installer
-does not install or pull a model, and it removes the project-owned Ollama drop-in. A
-local model may return only after adequate inference compute and fresh qualification.
+does not install or pull a model, and it removes the project-owned Ollama drop-in. The
+host Ollama service is disabled and stopped, so there is no implicit local-provider
+fallback. A local model may return only after adequate inference compute, deliberate
+redeployment and fresh qualification.
 
 The senior researcher receives the exact native Bulletproof mechanism catalog in
 addition to citations, prior outcomes, signal screens and execution observations.

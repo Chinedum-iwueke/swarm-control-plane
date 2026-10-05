@@ -43,6 +43,18 @@ retain their prior artifact and held-out semantics.
   evidence semantics. Both were corrected and their exact tests passed; the full suite
   was intentionally interrupted after 195 tests because it is a long-running compute
   workload, not represented as a complete-suite pass.
+- Restricted systemd rehearsal `a8429d77-abf9-4e17-8662-86c210bd3d63` completed the
+  deterministic preflight and scaffold, scoped Codex implementation, focused tests,
+  separate read-only Codex review, complete rehearsal validator and synthetic terminal
+  lifecycle. Its report digest is
+  `6a99a62a9567659f2d0ba481af2f7bdd2afc740f20b73ad195a477820ba444b4`.
+- Real-data admission receipt `ed31bf69-796a-4489-98b4-8dc64ce6fdce` binds the
+  immutable TIAUSDT panel to Bulletproof commit
+  `2eeda5d7cdbedfdd1d9c40755d83e28522ba2c88` without capital or order authority.
+- Weekly mandate `a8ec1740-af8d-4136-a14a-d483e1b675ec`, digest
+  `5d096b6e439d7254834323634c5b4cfaed9921e2e8128fada8b2bd6ee38d8df7`,
+  is awaiting founder approval. Production leasing is drain-paused until that exact
+  mandate is approved and a fresh campaign can prove the real BT-009 path.
 
 ## Authority boundary
 
@@ -50,4 +62,3 @@ Scaffolding, synthetic tests and engineering review do not establish alpha or pr
 a scientific receipt. A genuine BT-009 receipt requires registered real data, a frozen
 production commit, independent review and classic Bulletproof execution. No component
 in this milestone receives order, capital, shadow-promotion or self-approval authority.
-

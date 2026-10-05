@@ -12,7 +12,8 @@ authority. Keep Codex at the higher-value independent review boundary.
 
 ## Implemented controls
 
-- Dedicated strategy engineers select `ollama`; generic engineering remains on Codex.
+- Historical qualification used dedicated strategy engineers selecting `ollama`;
+  production strategy engineers now select `codex` explicitly.
 - The local endpoint must be loopback HTTP and the model receives no arbitrary shell
   or network tool.
 - Reads and writes are confined to immutable contract paths; file count, diff size,
@@ -78,3 +79,8 @@ installer runs the actual local-author, independent Codex review and full-valida
 route inside the restricted systemd boundary. A fresh private production-parity report
 is mandatory. The historical fixture does not establish alpha, production strategy
 quality, promotion authority or capital authority.
+
+As of 2026-10-05 the Ollama service is disabled and stopped, its loopback listener is
+absent, and all five strategy-engineer consumers are explicitly pinned to `codex`.
+The dormant implementation remains source-controlled so reopening requires an
+intentional, reviewed deployment rather than an implicit provider fallback.
