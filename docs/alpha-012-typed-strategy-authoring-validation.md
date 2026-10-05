@@ -70,6 +70,12 @@ retain their prior artifact and held-out semantics.
   running work allowed to finish. No terminal BT-009 receipt was produced, so this
   milestone remains open pending a fresh production-parity run on the corrected
   Bulletproof commit.
+- Replacement ALPHA-001 receipt `8e423ef5-5435-4ada-9198-3e1c91619eeb` binds the same
+  admitted TIAUSDT bytes to corrected Bulletproof commit `bb876bc7aa538c480ad368ebbec9ee3b0fc98175`.
+  Replacement mandate `df99c4d8-98b0-4d6e-ba2e-b6f4a67fd2a9`, digest
+  `6e22be5625472ca5db258bd5af43f41900c3355cbe8ac57c0c6c30f200cbe55b`,
+  is awaiting an exact founder approval; it has not activated work while autonomy is
+  drain-paused.
 
 ## Authority boundary
 
