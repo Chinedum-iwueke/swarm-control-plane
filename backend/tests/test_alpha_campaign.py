@@ -1221,6 +1221,60 @@ def test_stage_contract_canonicalizes_legacy_resampling_policy(monkeypatch):
     assert contract["resampling_policy"] == "left_closed_left_labeled_complete_bars"
 
 
+def test_stage_contract_orders_cross_asset_bindings_by_primary_instrument(monkeypatch):
+    record = campaign()
+    predictor = deepcopy(record.specification["dataset_bindings"][0])
+    predictor.update(
+        {
+            "dataset_key": "bybit-storjusdt-perp-1m",
+            "instruments": ["STORJUSDT"],
+            "venue": "bybit",
+        }
+    )
+    primary = deepcopy(predictor)
+    primary.update(
+        {
+            "dataset_build_id": str(uuid4()),
+            "dataset_digest": "c" * 64,
+            "dataset_key": "bybit-xlmusdt-perp-1m",
+            "instruments": ["XLMUSDT"],
+            "partition_digests": ["d" * 64],
+        }
+    )
+    record.specification.update(
+        {
+            "allowed_instruments": ["STORJUSDT", "XLMUSDT"],
+            "dataset_bindings": [predictor, primary],
+            "execution_window_start": "2025-10-01T00:00:00Z",
+            "execution_window_end": "2026-10-01T00:00:00Z",
+        }
+    )
+    source = record.specification["research_queue"][0]
+    source.update(
+        {
+            "instrument": "XLMUSDT",
+            "instruments": ["STORJUSDT", "XLMUSDT"],
+            "dataset_binding_indices": [0, 1],
+        }
+    )
+    monkeypatch.setattr(service, "_dataset_path", lambda *_: "/tmp/panel.parquet")
+    monkeypatch.setattr(
+        service,
+        "_research_context",
+        lambda *_: {"corpus_digest": "9" * 64, "abstained": False, "citations": []},
+    )
+
+    contract = service._stage_contract(MagicMock(), record, source, stage="draft")
+
+    assert contract["instrument"] == "XLMUSDT"
+    assert contract["dataset_key"] == "bybit-xlmusdt-perp-1m"
+    assert contract["instruments"] == ["XLMUSDT", "STORJUSDT"]
+    assert [item["instrument"] for item in contract["dataset_bindings"]] == [
+        "XLMUSDT",
+        "STORJUSDT",
+    ]
+
+
 def test_unknown_resampling_policy_is_rejected_before_task_creation():
     with pytest.raises(HTTPException, match="Unsupported research resampling policy"):
         service._canonical_resampling_policy({"resampling_policy": "ambiguous-bars"})

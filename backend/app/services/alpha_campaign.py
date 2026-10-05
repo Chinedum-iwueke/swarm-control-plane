@@ -652,6 +652,17 @@ def _stage_contract(
 ) -> dict:
     bindings = _source_bindings(campaign, source)
     binding = bindings[0]
+    binding_instruments = [
+        item.get(
+            "instruments",
+            [
+                source.get(
+                    "instrument", campaign.specification["allowed_instruments"][0]
+                )
+            ],
+        )[0]
+        for item in bindings
+    ]
     question = " ".join(source["question"].split())
     return {
         "repository": "bulletproof_bt",
@@ -707,14 +718,7 @@ def _stage_contract(
         "instrument": source.get(
             "instrument", campaign.specification["allowed_instruments"][0]
         ),
-        "instruments": source.get(
-            "instruments",
-            [
-                source.get(
-                    "instrument", campaign.specification["allowed_instruments"][0]
-                )
-            ],
-        ),
+        "instruments": binding_instruments,
         "timeframe": "1m",
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": _canonical_resampling_policy(source),
@@ -748,6 +752,21 @@ def _source_bindings(campaign: AlphaCampaign, source: dict) -> list[dict]:
         raise HTTPException(409, "Research queue dataset bindings changed.") from exc
     if len({item["dataset_build_id"] for item in bindings}) != len(bindings):
         raise HTTPException(409, "Research queue dataset bindings are duplicated.")
+    primary_instrument = source.get("instrument")
+    if primary_instrument:
+        primary_bindings = [
+            item
+            for item in bindings
+            if primary_instrument in item.get("instruments", [])
+        ]
+        if len(primary_bindings) != 1:
+            raise HTTPException(
+                409,
+                "Research queue primary instrument does not identify exactly one "
+                "admitted dataset binding.",
+            )
+        primary = primary_bindings[0]
+        bindings = [primary, *(item for item in bindings if item is not primary)]
     return bindings
 
 
@@ -842,6 +861,21 @@ def _create_strategy_engineering_task(
     question = " ".join(source["question"].split())
     bindings = _source_bindings(campaign, source)
     binding = bindings[0]
+    primary_instrument = source.get(
+        "instrument", campaign.specification["allowed_instruments"][0]
+    )
+    binding_instruments = list(
+        dict.fromkeys(
+            [
+                primary_instrument,
+                *(
+                    instrument
+                    for item in bindings
+                    for instrument in item.get("instruments", [primary_instrument])
+                ),
+            ]
+        )
+    )
     research_context = _research_context(db, question)
     candidate_document = None
     selected_panel_admission = None
@@ -872,14 +906,7 @@ def _create_strategy_engineering_task(
         "instrument": source.get(
             "instrument", campaign.specification["allowed_instruments"][0]
         ),
-        "instruments": source.get(
-            "instruments",
-            [
-                source.get(
-                    "instrument", campaign.specification["allowed_instruments"][0]
-                )
-            ],
-        ),
+        "instruments": binding_instruments,
         "research_timeframe": source.get("research_timeframe", "1m"),
         "resampling_policy": _canonical_resampling_policy(source),
         "representation_plan": source.get("representation_plan"),
