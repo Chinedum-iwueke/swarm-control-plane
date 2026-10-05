@@ -88,6 +88,12 @@ module before spending a second review invocation. The reviewer is read-only. Th
 Bulletproof validator and existing independent strategy/causality reviews remain
 mandatory before BT-009 execution and publication.
 
+Generated tests construct the authoring sentinel from separate string fragments. This
+prevents the deterministic verifier from mistaking the test's own absence assertion for
+an unresolved placeholder. The production window that discovered this defect is
+retained as a failed engineering attempt; it is not counted as a backtest or model
+quality failure.
+
 The generic evaluator protocol removes the need to add a question-specific branch to
 the central assignment runner. Reviewed YAML may load only a direct
 `src/bt/strategy/<name>.py` module exposing `evaluate_alpha_intent`; path escape,

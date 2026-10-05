@@ -53,8 +53,23 @@ retain their prior artifact and held-out semantics.
   `2eeda5d7cdbedfdd1d9c40755d83e28522ba2c88` without capital or order authority.
 - Weekly mandate `a8ec1740-af8d-4136-a14a-d483e1b675ec`, digest
   `5d096b6e439d7254834323634c5b4cfaed9921e2e8128fada8b2bd6ee38d8df7`,
-  is awaiting founder approval. Production leasing is drain-paused until that exact
-  mandate is approved and a fresh campaign can prove the real BT-009 path.
+  was approved by the founder and activated a bounded production window.
+- The window autonomously completed intelligence, senior-research and representation
+  tasks, attempted lazy panel admission, retained a failed POWRUSDT admission, created
+  a governed STORJUSDT/XLMUSDT campaign, and dispatched a TIAUSDT strategy-engineering
+  task without local-model fallback.
+- Production exposed two deterministic integration defects before any backtest was
+  claimed. Cross-asset tasks used predictor-first binding order even though the worker
+  requires execution-primary-first order; control-plane commit `87fec3fa0` now
+  canonicalizes that order. The generated placeholder test also contained the literal
+  sentinel it was designed to detect, making every authored package fail closed;
+  Bulletproof commit `bb876bc` removes that self-match and covers it with a regression
+  test.
+- The affected campaign and its zero-trial malformed task remain immutable retained
+  evidence. The bounded timer returned autonomy to drain mode after 30 minutes, with
+  running work allowed to finish. No terminal BT-009 receipt was produced, so this
+  milestone remains open pending a fresh production-parity run on the corrected
+  Bulletproof commit.
 
 ## Authority boundary
 

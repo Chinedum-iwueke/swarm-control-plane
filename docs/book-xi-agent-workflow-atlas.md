@@ -530,6 +530,9 @@ focused-test work. It cannot change the intent. A second Codex invocation review
 patch read-only, and the complete repository validator remains downstream. A failure
 at any stage is retained and cannot consume a BT-009 scientific attempt as though a
 backtest had run. The CPU-local author is dormant pending better inference compute.
+For cross-asset questions, the declared execution target is always the first canonical
+dataset binding; predictors follow in stable admitted order. Producer and worker both
+fail closed when that primary identity is absent or ambiguous.
 
 The weekly mandate removes the redundant click only for campaign-director tasks that
 implement an admitted hypothesis inside the exact YAML, strategy, test and named
