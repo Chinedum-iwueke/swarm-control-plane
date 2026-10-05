@@ -9,8 +9,10 @@ The rehearsal uses a disposable Git repository and synthetic evidence. It walks 
 complete lifecycle from predictive-question and falsifiability gates through DATA
 availability, hypothesis compilation, mandate binding, exclusive engineering lease,
 independent review, execution approval, bounded results, BT-009-style publication,
-and campaign replenishment. A real Codex coding pass produces only bounded files;
-real compile, tests and structured review must pass. The quantitative stage is a
+and campaign replenishment. The active route performs deterministic feasibility and
+typed-intent scaffolding before a real Codex authoring pass, which may change only the
+explicitly unresolved strategy logic. Focused tests, a separate read-only Codex review
+and the complete deterministic validator must pass. The quantitative stage is a
 deterministic mock receipt retaining eight positive, negative, invalid, or failed
 variant outcomes over a declared 365-day research window. It does not read market
 data, mutate the production API, place orders, establish alpha, or grant promotion.
@@ -43,20 +45,21 @@ capacity is classified as retryable and distinguished from coding, validation, o
 independent-review rejection; the installer still refuses activation in every
 failure case.
 
-The systemd boundary gives Codex a private writable runtime under `/var/lib` while
+The systemd boundary gives the independent Codex reviewer a private writable runtime
+under `/var/lib` while
 bind-mounting only the canonical `auth.json` read-only. The protected canonical
 Codex home remains read-only; configuration, durable credentials and repository
 permissions cannot be rewritten by the agent.
 
 The worker daemon continues to run from its narrow control-plane virtualenv. Codex
-commands and all engineering validation commands run with Bulletproof's pinned
+authoring and review commands and all engineering validation commands run with Bulletproof's pinned
 Python 3.11 environment at `/home/omenka/Projects/bulletproof_bt/.venv`, installed
 from `requirements/dev-py311.lock`. This supplies the same NumPy, pandas, PyArrow,
 pytest and scientific dependencies used for operator-run Bulletproof experiments.
 The canonical repository and market-data lake remain read-only; each task receives
 a disposable Git worktree under `/home/omenka/Projects/swarm-agent-workspaces`.
 
-The outer unit permits `AF_NETLINK` because Codex's inner Bubblewrap sandbox uses a
+The outer unit permits `AF_NETLINK` because the Codex reviewer's inner Bubblewrap sandbox uses a
 netlink route socket to configure its isolated loopback device. This does not grant
 an external route: the Codex workspace sandbox still runs with network access false,
 and the outer unit retains its address-family and capability restrictions.
@@ -66,7 +69,8 @@ An in-process G3 fixture run was recorded on 2026-09-17 with report digest
 It followed 15 declared states through mock publication and replenishment after real
 coding, validation and structured review. This fixture evidence does not qualify the
 outer systemd boundary. A fresh production-parity systemd rehearsal is required by
-the installer before the production service may start, and every failed attempt is
+the installer before the production service may start. That rehearsal explicitly
+selects the Codex author provider; the packaged local author remains dormant. Every failed attempt is
 retained rather than being presented as scientific failure or success.
 
 ## Real-data commissioning

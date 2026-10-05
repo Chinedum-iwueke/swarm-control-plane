@@ -17,8 +17,9 @@ parent campaign label cannot be mistaken for an active backtest.
 | Senior researcher | `AlphaDiscoveryExecutor`, stage `hypothesis` | Proposes predictive, timed, falsifiable questions and mechanisms | Structured candidate questions only | Falsifiability, novelty, equation and data gates |
 | Governed external research | `ri017_external_acquisition.py` and RI-006 ingestion | No LLM is invoked during fetch, parsing, transcript extraction, quarantine or publication. Sanitized source metadata may later be supplied to the Research Intelligence director and senior researcher as untrusted question-seed context | Immutable retrieval receipts and quarantined publications only | Source allowlist, SSRF/size/content controls, replayable provenance and normal ALPHA-004 gates |
 | Data representation scientist | `AlphaDiscoveryExecutor`, stage `representation` | Selects pre-outcome baskets, member roles, clocks and a typed transformation graph; may use or cross optional stable/volatile labels when justified; records rejected alternatives | `adaptive-representation-plan-v1.0.0` only | Catalog-label validation, exact DATA-002/003 panel admission, native causal replay, exact strategy-consumer binding and terminal BT-009 evidence |
-| Strategy engineer | `EngineeringMissionExecutor`, coding session | Drafts an exact native Bulletproof hypothesis contract, strategy and tests in an isolated worktree | Approved paths and diff budget only | Tests, independent review, PR/merge and source-commit rebinding |
-| Engineering reviewer | `EngineeringMissionExecutor`, review session | Reviews the uncommitted engineering patch against its immutable acceptance contract | Read-only | High findings fail the task; it cannot merge or approve itself |
+| Strategy logic author | `EngineeringMissionExecutor`, Codex authoring session | Implements only unresolved signal/gate logic, bounded values, native evaluator behavior and focused tests inside a deterministic scaffold | Approved paths and diff budget only; immutable `StrategyIntent`, data, representation, clocks and authority cannot change | Focused tests, separate read-only review, full validation, PR/merge and source-commit rebinding |
+| Engineering reviewer | `EngineeringMissionExecutor`, separate Codex review session | Reviews the uncommitted patch against its immutable intent and acceptance contract | Read-only | High findings fail the task; it cannot edit, merge or approve itself |
+| Dormant local author | `swarm_worker.local_author` | No production work while disabled; retained for future GPU-backed requalification | No active service selects it | Must pass a new production-parity qualification before reactivation |
 | Strategy-spec reviewer | `AlphaStrategyReviewExecutor` | Independently critiques native strategy/spec equivalence and reproducibility | Structured review only | Separate evaluator profile and controller reconciliation |
 | Causality/leakage reviewer | `AlphaStrategyReviewExecutor` | Independently checks timing, leakage, target and implementation equivalence | Structured review only | Separate evaluator profile and controller reconciliation |
 | PDF recovery adviser | `backend/app/ingestion/recovery_controller.py` | Classifies bounded ingestion failures and proposes recovery actions | Recovery recommendation only | Deterministic sanitizer/parser policy; no canonical overwrite |
@@ -69,6 +70,35 @@ An LLM may propose fractional differentiation, returns, local scaling or a cross
 representation, but it may not tune those choices against targets or held-out results.
 The native compiler validates parameters, materializes complete bars, aligns panels,
 and exposes fields only at their decision timestamps.
+
+## Typed deterministic strategy authoring
+
+Repeated strategy failures spent hosted-model tokens before cheap structural errors
+were discovered. ALPHA-012 moves those checks ahead of Codex. A deterministic preflight
+rejects incomplete questions, clocks, baskets, data identities, transformations,
+equation authority, windows, variant budgets or research-only authority. A frozen
+`StrategyIntent` then binds every admitted field by digest. A deterministic scaffolder
+creates the hypothesis card, YAML, native module, documentation and focused test.
+
+The first Codex invocation is therefore not asked to invent an entire integration. It
+fills only explicit placeholders for signal/gate logic, bounded parameter values,
+`evaluate_alpha_intent`, classic-engine signal behavior and focused tests. The worker
+rejects intent mutation, missing files or unresolved placeholders, then runs the focused
+module before spending a second review invocation. The reviewer is read-only. The full
+Bulletproof validator and existing independent strategy/causality reviews remain
+mandatory before BT-009 execution and publication.
+
+The generic evaluator protocol removes the need to add a question-specific branch to
+the central assignment runner. Reviewed YAML may load only a direct
+`src/bt/strategy/<name>.py` module exposing `evaluate_alpha_intent`; path escape,
+function substitution, missing registration, variant loss, undeclared selection or
+incomplete held-out evidence fail closed. Existing strategy-family evidence semantics
+remain unchanged.
+
+The Ollama/Qwen implementation remains in the codebase as dormant experimental
+capability. Active strategy-engineer units explicitly select `codex`, their installer
+does not install or pull a model, and it removes the project-owned Ollama drop-in. A
+local model may return only after adequate inference compute and fresh qualification.
 
 The senior researcher receives the exact native Bulletproof mechanism catalog in
 addition to citations, prior outcomes, signal screens and execution observations.

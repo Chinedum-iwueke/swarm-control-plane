@@ -483,7 +483,12 @@ flowchart TB
     Freeze[Freeze question, data build,<br/>window, tier and variant budget]
     Card[Hypothesis card]
     Known{Native strategy exists?}
-    Engineer[Bounded hypothesis engineering<br/>inside weekly mandate]
+    Preflight[Deterministic feasibility preflight]
+    Intent[Immutable typed StrategyIntent]
+    Scaffold[Deterministic card/YAML/module/test scaffold]
+    Engineer[Codex fills unresolved signal logic only]
+    Correct{Focused tests pass?}
+    CodexReview[Read-only Codex engineering review]
     ExternalEngineer[Other code change<br/>founder approval required]
     Bundle[Native YAML, strategy and tests]
     SpecReview[Independent specification review]
@@ -499,7 +504,9 @@ flowchart TB
 
     Freeze --> Card --> Known
     Known -->|yes| Bundle
-    Known -->|no, bounded ALPHA-003 scope| Engineer --> Bundle
+    Known -->|no, bounded ALPHA-003 scope| Preflight --> Intent --> Scaffold --> Engineer --> Correct
+    Correct -->|yes| CodexReview --> Bundle
+    Correct -->|no| Reject[Retain typed engineering failure]
     Known -->|no, outside bounded scope| ExternalEngineer --> Bundle
     Bundle --> SpecReview
     Bundle --> CausalReview
@@ -514,6 +521,15 @@ Positive, negative, invalid and failed results are successful retained research
 outcomes. Only the classic native engine calculates results. See
 `alpha-003-governed-strategy-bridge.md` and
 `bt-009-governed-research-bridge.md`.
+
+Feasibility failures terminate before coding tokens are spent. The typed intent freezes
+question, target, horizon, causal timing, dataset identities, representation, parameter
+budget and authority. Deterministic scaffolding creates the repetitive artifacts;
+Codex receives only the unresolved signal, bounded parameters, evaluator, strategy and
+focused-test work. It cannot change the intent. A second Codex invocation reviews the
+patch read-only, and the complete repository validator remains downstream. A failure
+at any stage is retained and cannot consume a BT-009 scientific attempt as though a
+backtest had run. The CPU-local author is dormant pending better inference compute.
 
 The weekly mandate removes the redundant click only for campaign-director tasks that
 implement an admitted hypothesis inside the exact YAML, strategy, test and named

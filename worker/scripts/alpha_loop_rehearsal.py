@@ -87,9 +87,10 @@ def classify_engineering_failure(result: object, workspace: TaskWorkspace) -> di
     review_rejected = False
     if review_path.is_file():
         try:
-            review_rejected = json.loads(
-                review_path.read_text(encoding="utf-8")
-            ).get("approved") is False
+            review_rejected = (
+                json.loads(review_path.read_text(encoding="utf-8")).get("approved")
+                is False
+            )
         except (json.JSONDecodeError, OSError):
             review_rejected = False
     if "model is at capacity" in lowered:
@@ -236,7 +237,7 @@ def build_task(base_commit: str) -> Task:
         ],
         "max_files_changed": 2,
         "max_diff_lines": 160,
-        "max_duration_seconds": 900,
+        "max_duration_seconds": 1800,
     }
     return Task(
         id=uuid4(),
@@ -279,6 +280,11 @@ async def execute(
     *,
     codex_home: Path,
     model: str,
+    author_provider: str,
+    local_author_url: str,
+    local_author_model: str,
+    local_author_max_turns: int,
+    local_author_num_ctx: int,
     workflow_directory: Path,
 ):
     workflow = WorkflowLoader(workflow_directory).load("engineering-mission")
@@ -292,13 +298,18 @@ async def execute(
     executor = EngineeringMissionExecutor(
         codex_home=codex_home,
         codex_model=model,
-        timeout_seconds=900,
+        timeout_seconds=1800,
         heartbeat_interval_seconds=15,
         process_runner=process_runner,
         validation_executor=CodeValidationExecutor(
             heartbeat_interval_seconds=15,
             process_runner=process_runner,
         ),
+        author_provider=author_provider,
+        local_author_url=local_author_url,
+        local_author_model=local_author_model,
+        local_author_max_turns=local_author_max_turns,
+        local_author_num_ctx=local_author_num_ctx,
     )
 
     async def heartbeat(_: dict[str, object]) -> None:
@@ -314,8 +325,7 @@ async def execute(
 
 def mock_terminal_receipt(task: Task, workspace: TaskWorkspace) -> dict:
     variants = [
-        {"index": index, "net_r": round((index - 4) * 0.01, 4)}
-        for index in range(8)
+        {"index": index, "net_r": round((index - 4) * 0.01, 4)} for index in range(8)
     ]
     classifications = {
         "positive": sum(item["net_r"] > 0 for item in variants),
@@ -355,9 +365,7 @@ def rehearse_full_loop_contract(
         "execution_approval_is_digest_bound": True,
         "variant_budget_is_exactly_eight": receipt["declared_variant_count"] == 8,
         "research_window_is_one_year": receipt["window_days"] == 365,
-        "all_terminal_classes_are_retained": set(
-            receipt["retained_classifications"]
-        )
+        "all_terminal_classes_are_retained": set(receipt["retained_classifications"])
         == {"positive", "negative", "invalid", "failed"},
         "publication_has_no_capital_authority": not receipt[
             "capital_or_order_authority"
@@ -386,6 +394,29 @@ def main() -> int:
         "--codex-home", type=Path, default=Path("/etc/invariance-swarm/codex-worker")
     )
     parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument(
+        "--author-provider",
+        choices=("codex", "ollama"),
+        default=os.environ.get("SWARM_ENGINEERING_AUTHOR_PROVIDER", "ollama"),
+    )
+    parser.add_argument(
+        "--local-author-url",
+        default=os.environ.get("SWARM_LOCAL_AUTHOR_URL", "http://127.0.0.1:11434"),
+    )
+    parser.add_argument(
+        "--local-author-model",
+        default=os.environ.get("SWARM_LOCAL_AUTHOR_MODEL", "qwen2.5-coder:7b"),
+    )
+    parser.add_argument(
+        "--local-author-max-turns",
+        type=int,
+        default=int(os.environ.get("SWARM_LOCAL_AUTHOR_MAX_TURNS", "6")),
+    )
+    parser.add_argument(
+        "--local-author-num-ctx",
+        type=int,
+        default=int(os.environ.get("SWARM_LOCAL_AUTHOR_NUM_CTX", "8192")),
+    )
     parser.add_argument(
         "--state-root",
         type=Path,
@@ -420,6 +451,11 @@ def main() -> int:
                 workspace,
                 codex_home=args.codex_home,
                 model=args.model,
+                author_provider=args.author_provider,
+                local_author_url=args.local_author_url,
+                local_author_model=args.local_author_model,
+                local_author_max_turns=args.local_author_max_turns,
+                local_author_num_ctx=args.local_author_num_ctx,
                 workflow_directory=Path(__file__).resolve().parents[1] / "workflows",
             )
         )

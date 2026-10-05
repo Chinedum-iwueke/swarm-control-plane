@@ -12,6 +12,7 @@ EnvironmentFile=/etc/invariance-swarm/alpha-strategy-engineer.env
 EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env
 Environment=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv
 Environment=SWARM_ENGINEERING_TIMEOUT_SECONDS=7200
+Environment=SWARM_ENGINEERING_AUTHOR_PROVIDER=codex
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=NODE_OPTIONS=--jitless
 Environment=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin

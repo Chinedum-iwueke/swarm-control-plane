@@ -25,6 +25,10 @@ test "$(sed -n 's/^SWARM_AGENT_SLUG=//p' "$environment")" = \
   vm1-alpha-strategy-engineer
 test -f /etc/invariance-swarm/codex-worker/auth.json
 
+# The CPU-local author remains packaged for later evaluation, but is deliberately
+# absent from the production authoring path until suitable inference compute exists.
+rm -f /etc/systemd/system/ollama.service.d/local-author.conf
+
 bulletproof_repo=/home/omenka/Projects/bulletproof_bt
 bulletproof_venv="$bulletproof_repo/.venv"
 bulletproof_lock="$bulletproof_repo/requirements/dev-py311.lock"
@@ -97,6 +101,7 @@ systemd-run \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
   --setenv=NODE_OPTIONS=--jitless \
+  --setenv=SWARM_ENGINEERING_AUTHOR_PROVIDER=codex \
   --setenv=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv \
   --setenv=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin \
   --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \

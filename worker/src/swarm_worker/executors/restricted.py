@@ -33,16 +33,12 @@ class RestrictedExecutor:
         )
         engineering_runner = AsyncProcessRunner(
             virtualenv=(
-                settings.swarm_engineering_virtualenv
-                if settings is not None
-                else None
+                settings.swarm_engineering_virtualenv if settings is not None else None
             )
         )
         engineering_validation_runner = AsyncProcessRunner(
             virtualenv=(
-                settings.swarm_engineering_virtualenv
-                if settings is not None
-                else None
+                settings.swarm_engineering_virtualenv if settings is not None else None
             ),
             child_umask=0o022,
         )
@@ -62,6 +58,23 @@ class RestrictedExecutor:
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             process_runner=engineering_runner,
             validation_executor=engineering_validation,
+            author_provider=(
+                settings.swarm_engineering_author_provider
+                if settings is not None
+                else "codex"
+            ),
+            local_author_url=(
+                settings.swarm_local_author_url if settings is not None else None
+            ),
+            local_author_model=(
+                settings.swarm_local_author_model if settings is not None else None
+            ),
+            local_author_max_turns=(
+                settings.swarm_local_author_max_turns if settings is not None else 6
+            ),
+            local_author_num_ctx=(
+                settings.swarm_local_author_num_ctx if settings is not None else 8192
+            ),
         )
         self._research = ResearchExperimentExecutor(
             heartbeat_interval_seconds=heartbeat_interval_seconds,
