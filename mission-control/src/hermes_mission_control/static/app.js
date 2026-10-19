@@ -25,6 +25,13 @@ const state = {
   backtestPage: null,
   backtestOffset: 0,
   backtestLoading: false,
+  dashboardLoading: false,
+  dashboardFetchedAt: null,
+  dashboardRefreshError: null,
+  libraryCatalog: null,
+  graphLayoutSignature: null,
+  graphLayout: new Map(),
+  graphDragging: false,
 };
 
 const intentHeaders = {
@@ -47,6 +54,11 @@ document.querySelectorAll(".open-intake-copy").forEach((button) => {
 document.getElementById("open-intake").addEventListener("click", () => openIntake("task"));
 document.getElementById("refresh").addEventListener("click", loadDashboard);
 document.getElementById("refresh-activity").addEventListener("click", loadDashboard);
+document.getElementById("agent-filter").addEventListener("input", renderAgents);
+document.getElementById("library-filter").addEventListener("input", renderLibraryCatalog);
+document.getElementById("refresh-library").addEventListener("click", loadLibraryCatalog);
+document.getElementById("refresh-graph").addEventListener("click", loadGraph);
+document.getElementById("graph-find").addEventListener("input", renderGraphFindResults);
 document.getElementById("execution-environments").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-execution-environment]");
   if (!button) return;
@@ -557,6 +569,7 @@ async function transitionConversation(action) {
 
 function setResearchMode(mode, { focus = false } = {}) {
   if (!allowedResearchModes.has(mode)) return;
+  const previousMode = state.researchMode;
   state.researchMode = mode;
   document.querySelectorAll("[data-research-mode]").forEach((button) => {
     const active = button.dataset.researchMode === mode;
@@ -573,7 +586,8 @@ function setResearchMode(mode, { focus = false } = {}) {
   if (mode === "ask") url.searchParams.delete("workspace");
   else url.searchParams.set("workspace", mode);
   window.history.replaceState({}, "", url);
-  if (mode === "explore" && state.graphData) renderGraph(state.graphData);
+  if (mode === "explore" && state.graphData && previousMode !== mode) renderGraph(state.graphData);
+  if (mode === "library" && !state.libraryCatalog) loadLibraryCatalog();
 }
 
 function navigateResearchTabs(event, current) {
@@ -593,29 +607,41 @@ function openIntake(kind) {
   dialog.showModal();
 }
 
-async function loadDashboard() {
-  setLoading(true);
+async function loadDashboard({ silent = false } = {}) {
+  if (state.dashboardLoading) return;
+  state.dashboardLoading = true;
+  if (!silent) setLoading(true);
   try {
     if (!state.demo) {
       document.getElementById("health").textContent = "Mission Control online · loading current state";
       document.getElementById("health-dot").classList.add("ok");
     }
-    state.dashboard = state.demo ? demoDashboard() : await request("/api/dashboard");
+    state.dashboard = state.demo ? demoDashboard() : await request("/api/dashboard?refresh=true");
+    state.dashboardFetchedAt = Date.now();
+    state.dashboardRefreshError = null;
     if (state.demo) loadDemoConversation();
     document.getElementById("health").textContent = state.demo ? "Demo isolated" : "Control plane online";
     document.getElementById("health-dot").classList.toggle("ok", !state.demo);
     document.getElementById("demo-banner").hidden = !state.demo;
-    renderAll();
-    if (!state.demo) await loadGraph();
-    else renderGraph(state.dashboard.graph);
-    navigate(state.activeView, { resetScroll: false });
+    if (silent) renderActiveView();
+    else renderAll();
+    if (!state.demo && !state.graphData) await loadGraph();
+    else if (state.demo && !state.graphData) renderGraph(state.dashboard.graph);
+    if (!silent) navigate(state.activeView, { resetScroll: false });
   } catch (error) {
     document.getElementById("health").textContent = "Control plane unavailable";
     document.getElementById("health-dot").classList.remove("ok");
-    renderUnavailable();
-    toast(`${error.message} Add ?demo=1 to inspect the prototype safely.`);
+    if (silent && state.dashboard) {
+      state.dashboardRefreshError = error.message;
+      renderSnapshotAge();
+    } else {
+      renderUnavailable();
+      toast(`${error.message} Add ?demo=1 to inspect the prototype safely.`);
+    }
   } finally {
-    setLoading(false);
+    state.dashboardLoading = false;
+    if (!silent) setLoading(false);
+    renderSnapshotAge();
   }
 }
 
@@ -635,6 +661,16 @@ function renderAll() {
   renderResearchWorkspaceStatus();
   renderResearchContext();
   setResearchMode(state.researchMode);
+  renderSnapshotAge();
+}
+
+function renderActiveView() {
+  if (!state.dashboard) return;
+  if (state.activeView === "command") {
+    renderCommand();
+    renderActivity();
+  } else if (state.activeView === "activity") renderActivity();
+  renderSnapshotAge();
 }
 
 function renderActivity() {
@@ -767,7 +803,10 @@ function renderCommand() {
 
   document.getElementById("machine-strip").innerHTML = machineCells(machines);
   document.getElementById("mission-pulse").innerHTML = missionPulse(tasks);
-  document.getElementById("active-execution").innerHTML = executionColumns(tasks);
+  document.getElementById("active-execution").innerHTML = renderLiveFlow(data);
+  document.querySelectorAll("[data-operation-id]").forEach((button) => {
+    button.onclick = () => openOperation(button.dataset.operationId);
+  });
   document.getElementById("fleet-summary").innerHTML = fleetRows(machines);
   renderCommandVenues(data.execution_telemetry);
   document.getElementById("recent-proof").innerHTML = proofRows(tasks, data.artifacts || []);
@@ -898,6 +937,53 @@ function executionColumns(tasks) {
       ${items.map((task) => `<button class="flow-item" data-task-id="${task.id}"><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.task_number)}</span></button>`).join("") || '<div class="empty-state">None</div>'}
     </div>`;
   }).join("");
+}
+
+function renderLiveFlow(data) {
+  const activeStates = new Set(["queued", "waiting_approval", "running", "blocked", "stalled"]);
+  const operations = data.operations || [];
+  const tasks = data.tasks || [];
+  const operationStages = [
+    { label: "Queued", states: ["queued"] },
+    { label: "In progress", states: ["running"] },
+    { label: "Waiting", states: ["waiting_approval", "blocked"] },
+    { label: "Needs attention", states: ["stalled"] },
+  ];
+  if (operations.length) {
+    const columns = operationStages.map((stage) => {
+      const items = operations.filter((item) => stage.states.includes(item.state));
+      return `<section class="live-flow-stage ${stage.states.includes("running") ? "stage-running" : ""}">
+        <div class="live-flow-stage-heading"><h3>${escapeHtml(stage.label)}</h3><span>${items.length}</span></div>
+        ${items.length ? items.slice(0, 4).map((item) => liveOperationNode(item, data.agents || [])).join("") : '<p class="stage-empty">No processes</p>'}
+      </section>`;
+    });
+    const finished = operations.filter((item) => !activeStates.has(item.state)).slice(0, 3);
+    columns.push(`<section class="live-flow-stage stage-terminal"><div class="live-flow-stage-heading"><h3>Recently finished</h3><span>${finished.length}</span></div>${finished.map((item) => liveOperationNode(item, data.agents || [])).join("") || '<p class="stage-empty">No recent receipts</p>'}</section>`);
+    return `<div class="live-flow-scroll"><div class="live-flow-map" aria-label="Current operation stages">${columns.join('<span class="flow-connector" aria-hidden="true"></span>')}</div></div>`;
+  }
+  const stages = [
+    { label: "Queued", states: ["queued", "pending_approval"] },
+    { label: "Leased", states: ["leased"] },
+    { label: "Running", states: ["running"] },
+    { label: "Complete", states: ["succeeded", "failed", "released"] },
+  ];
+  return `<div class="live-flow-scroll"><div class="live-flow-map task-flow-map">${stages.map((stage) => {
+    const items = tasks.filter((task) => stage.states.includes(task.status)).slice(0, 3);
+    return `<section class="live-flow-stage"><div class="live-flow-stage-heading"><h3>${escapeHtml(stage.label)}</h3><span>${tasks.filter((task) => stage.states.includes(task.status)).length}</span></div>${items.map((task) => `<button class="live-flow-node" data-task-id="${task.id}"><span class="live-node-label">${escapeHtml(task.title)}</span><span class="live-node-meta">${escapeHtml(task.task_number)} · ${escapeHtml(humanize(task.status))}</span></button>`).join("") || '<p class="stage-empty">No tasks</p>'}</section>`;
+  }).join('<span class="flow-connector" aria-hidden="true"></span>')}</div></div>`;
+}
+
+function liveOperationNode(operation, agents) {
+  const agent = agents.find((item) => String(item.id) === String(operation.owner_id) || item.slug === operation.owner_id);
+  const determinate = operation.progress_mode === "determinate" && Number(operation.progress_total) > 0;
+  const progress = determinate ? Math.max(0, Math.min(100, Math.round(operation.progress_current / operation.progress_total * 100))) : null;
+  return `<button class="live-flow-node" type="button" data-operation-id="${escapeHtml(operation.id)}">
+    <span class="live-node-top"><span class="live-node-phase">${escapeHtml(humanize(operation.phase || operation.kind))}</span>${statusBadge(operation.state)}</span>
+    <strong class="live-node-label">${escapeHtml(operation.title)}</strong>
+    <span class="live-node-meta">${escapeHtml(operation.machine || "Machine unreported")} · ${escapeHtml(agent?.display_name || operation.owner_id || operation.owner_type || "Service")}</span>
+    ${progress !== null ? `<span class="live-node-progress"><span style="width:${progress}%"></span></span><span class="live-node-meta">${progress}% · ${operation.progress_current}/${operation.progress_total} ${escapeHtml(operation.progress_unit || "")}</span>` : ""}
+    <span class="live-node-meta">Heartbeat ${relativeTime(operation.heartbeat_at)}</span>
+  </button>`;
 }
 
 function fleetRows(machines) {
@@ -1210,21 +1296,34 @@ function openDecision(id, action) {
 
 function renderAgents() {
   if (!state.dashboard) return;
-  const agents = state.dashboard.agents || [];
+  const filter = document.getElementById("agent-filter").value.trim().toLowerCase();
+  const allAgents = state.dashboard.agents || [];
+  const agents = allAgents.filter((agent) => {
+    const deployment = activeDeployment(agent.id);
+    const manifest = deployment?.package?.manifest;
+    const haystack = [agent.display_name, agent.slug, agent.machine, agent.role, agent.hermes_profile, ...(agent.capabilities || []), ...(manifest?.task_types || [])].join(" ").toLowerCase();
+    return !filter || haystack.includes(filter);
+  });
+  document.getElementById("agent-count").textContent = `${agents.length} of ${allAgents.length} agents`;
   document.getElementById("agent-matrix").innerHTML = agents.length ? agents.map((agent) => {
     const deployment = activeDeployment(agent.id);
     const charter = (state.dashboard.agent_charters || []).find((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const grants = (state.dashboard.agent_capability_grants || []).filter((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const workloadIdentity = (state.dashboard.workload_identities?.identities || []).find((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const manifest = deployment?.package?.manifest;
+    const assigned = (state.dashboard.tasks || []).filter((task) => String(task.assigned_agent_id || "") === String(agent.id)).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+    const currentTask = assigned.find((task) => activeStatuses.has(task.status));
+    const latestTask = currentTask || assigned[0];
+    const initials = (agent.display_name || agent.slug).split(/[\s-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
     return `
-    <article class="agent-card" data-agent-id="${agent.id}">
-      <div class="agent-header"><div><h3>${escapeHtml(agent.display_name || agent.slug)}</h3><div class="agent-machine">${escapeHtml(agent.machine)}</div></div>${statusBadge(agentStatus(agent))}</div>
-      <div class="capabilities">${(agent.capabilities || []).map((capability) => `<span class="capability">${escapeHtml(capability)}</span>`).join("")}</div>
-      <p class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</p>
-      <div class="agent-envelope"><span>${manifest?.task_types?.length || 0} task types</span><span>${manifest?.repository_profile?.repositories?.length || 0} repositories</span><span>${manifest?.permission_profile?.privileged_operations ? "Privileged" : "Unprivileged"}</span></div>
-      <div class="agent-footer"><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"}</span><span>${charter ? `Charter ${escapeHtml(charter.version)}` : "No active charter"}</span><span>${grants.length} active grants</span><span>${workloadIdentity ? `Identity ${escapeHtml(workloadIdentity.version)} · ${workloadIdentity.scopes.length} scopes` : "No workload identity"}</span></div>
-    </article>`;
+    <button class="agent-card" type="button" data-agent-id="${agent.id}">
+      <span class="agent-card-top"><span class="agent-avatar" aria-hidden="true">${escapeHtml(initials)}</span><span class="agent-presence">${statusBadge(agentStatus(agent))}</span></span>
+      <span class="agent-name">${escapeHtml(agent.display_name || agent.slug)}</span>
+      <span class="agent-machine">${escapeHtml(agent.machine)} · heartbeat ${relativeTime(agent.last_heartbeat_at)}</span>
+      <span class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</span>
+      <span class="agent-assignment"><span>${currentTask ? "Working now" : latestTask ? "Most recent task" : "No task assigned"}</span><strong>${escapeHtml(latestTask?.title || "Available for governed work")}</strong></span>
+      <span class="agent-card-footer"><span>${(agent.capabilities || []).length} capabilities</span><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${grants.length} active grants · ${workloadIdentity ? `${workloadIdentity.scopes.length} scopes` : "no workload identity"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"} · ${charter ? `Charter ${escapeHtml(charter.version)}` : "No active charter"}</span></span>
+    </button>`;
   }).join("") : empty("No agents registered.");
   bindEntityButtons();
 }
@@ -1823,6 +1922,30 @@ async function openTask(id) {
   `);
 }
 
+function openOperation(id) {
+  const operation = (state.dashboard?.operations || []).find((item) => String(item.id) === String(id));
+  if (!operation) return;
+  const progress = operation.progress_mode === "determinate" && operation.progress_total
+    ? `${operation.progress_current}/${operation.progress_total} ${operation.progress_unit || ""}`
+    : "Not reported";
+  openInspector("Live process", operation.title, `
+    <section class="detail-section"><h3>Current stage</h3><dl class="detail-grid">
+      <dt>State</dt><dd>${statusBadge(operation.state)}</dd>
+      <dt>Phase</dt><dd>${escapeHtml(humanize(operation.phase || "Unreported"))}</dd>
+      <dt>Kind</dt><dd>${escapeHtml(humanize(operation.kind))}</dd>
+      <dt>Machine</dt><dd>${escapeHtml(operation.machine || "Unreported")}</dd>
+      <dt>Owner</dt><dd>${escapeHtml(operation.owner_type || "Unreported")} ${escapeHtml(operation.owner_id || "")}</dd>
+      <dt>Started</dt><dd>${formatDate(operation.started_at)}</dd>
+      <dt>Heartbeat</dt><dd>${relativeTime(operation.heartbeat_at)}</dd>
+      <dt>Progress</dt><dd>${escapeHtml(progress)}</dd>
+      <dt>Updated</dt><dd>${formatDate(operation.updated_at)}</dd>
+      <dt>Input digest</dt><dd class="mono">${escapeHtml(operation.input_digest || "Not recorded")}</dd>
+    </dl></section>
+    ${operation.error_summary ? `<section class="detail-section"><h3>Current issue</h3><p>${escapeHtml(operation.error_summary)}</p></section>` : ""}
+    <section class="detail-section"><h3>Process context</h3><pre class="json-view">${escapeHtml(JSON.stringify(operation.detail || {}, null, 2))}</pre></section>
+  `);
+}
+
 function openAgent(id) {
   const agent = state.dashboard.agents.find((item) => String(item.id) === String(id));
   if (!agent) return;
@@ -1831,6 +1954,8 @@ function openAgent(id) {
   const manifest = pkg?.manifest;
   const permission = manifest?.permission_profile;
   const repository = manifest?.repository_profile;
+  const assignedTasks = (state.dashboard.tasks || []).filter((task) => String(task.assigned_agent_id || "") === String(agent.id)).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  const latestTask = assignedTasks.find((task) => activeStatuses.has(task.status)) || assignedTasks[0];
   openInspector("Agent", agent.display_name || agent.slug, `
     <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
       <dt>Slug</dt><dd class="mono">${escapeHtml(agent.slug)}</dd>
@@ -1839,7 +1964,9 @@ function openAgent(id) {
       <dt>Enabled</dt><dd>${String(agent.is_enabled ?? agent.enabled ?? true)}</dd>
       <dt>Risk ceiling</dt><dd>${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</dd>
       <dt>Profile</dt><dd>${escapeHtml(agent.hermes_profile || "Worker")}</dd>
+      <dt>Last heartbeat</dt><dd>${relativeTime(agent.last_heartbeat_at)}</dd>
     </dl></section>
+    <section class="detail-section"><h3>${latestTask && activeStatuses.has(latestTask.status) ? "Current assignment" : "Most recent task"}</h3>${latestTask ? `<button class="entity-row agent-task-link" data-task-id="${latestTask.id}"><span class="entity-primary"><strong>${escapeHtml(latestTask.title)}</strong><span class="entity-meta"><span class="mono">${escapeHtml(latestTask.task_number)}</span><span>${relativeTime(latestTask.updated_at)}</span></span></span><span class="entity-side">${statusBadge(latestTask.status)}</span></button>` : '<p class="muted">No task assignment is recorded in the current task window.</p>'}</section>
     <section class="detail-section"><h3>Role and responsibility</h3>
       <p><strong>${escapeHtml(manifest?.role || agent.role || "No deployed role package")}</strong></p>
       <p>${escapeHtml(roleResponsibility(manifest))}</p>
@@ -1868,6 +1995,8 @@ function openAgent(id) {
       <dt>Manifest digest</dt><dd class="mono">${escapeHtml(pkg?.manifest_digest || "Not recorded")}</dd>
     </dl></section>
   `);
+  const taskLink = document.querySelector(".agent-task-link");
+  if (taskLink) taskLink.onclick = () => openTask(taskLink.dataset.taskId);
 }
 
 function openProposal(id) {
@@ -2183,6 +2312,77 @@ async function loadGraph() {
   }
 }
 
+async function loadLibraryCatalog() {
+  const container = document.getElementById("library-catalog");
+  if (!container) return;
+  container.innerHTML = '<p class="stage-empty">Loading the indexed title catalog…</p>';
+  try {
+    if (state.demo) {
+      state.libraryCatalog = {
+        canonical: [
+          { id: "demo-source-1", title: "Advances in Financial Machine Learning", project: "systematic-research", origin: "Synthetic demo catalog", content_digest: "a68317817f2b39c760f1c4743050ad6a5d5719b51db543c5b0eb9983b4d398c8", kind: "canonical", access_class: "internal" },
+          { id: "demo-source-2", title: "Market Microstructure and Trading Strategies", project: "systematic-research", origin: "Synthetic demo catalog", content_digest: "8914a183e66b1aefa292d8f8728e0be1dbef2be0e8d0d8a6f21fc893c97b42aa", kind: "canonical", access_class: "internal" },
+        ], private: [], generated_at: new Date().toISOString(),
+      };
+    } else {
+      state.libraryCatalog = await request("/api/knowledge/catalog");
+    }
+    renderLibraryCatalog();
+  } catch (error) {
+    state.libraryCatalog = null;
+    container.innerHTML = empty(`Source catalog unavailable: ${error.message}`);
+    document.getElementById("library-catalog-count").textContent = "Unavailable";
+  }
+}
+
+function renderLibraryCatalog() {
+  const data = state.libraryCatalog;
+  const container = document.getElementById("library-catalog");
+  if (!data || !container) return;
+  const query = document.getElementById("library-filter").value.trim().toLowerCase();
+  const canonical = (data.canonical || []).map((item) => ({ ...item, catalog_kind: "canonical" }));
+  const privateSources = (data.private || []).map((item) => ({ ...item, catalog_kind: "private" }));
+  const all = [...canonical, ...privateSources].filter((item) => !query || `${item.title} ${item.project || ""} ${item.origin || item.path || ""}`.toLowerCase().includes(query));
+  document.getElementById("library-catalog-count").textContent = `${all.length} titles${all.length !== canonical.length + privateSources.length ? ` · ${canonical.length + privateSources.length} total` : ""}`;
+  const snapshot = data.generated_at ? `Index refreshed ${relativeTime(data.generated_at)}` : "Index refresh time unavailable";
+  container.innerHTML = all.length ? `<div class="library-catalog-status"><span>${escapeHtml(snapshot)}</span><span>${canonical.length} canonical · ${privateSources.length} private</span>${data.canonical_error ? `<span class="catalog-warning">Canonical catalog unavailable: ${escapeHtml(data.canonical_error)}</span>` : ""}</div>${all.map((item) => `<button class="library-source-row" type="button" data-library-id="${escapeHtml(item.id)}" data-library-kind="${item.catalog_kind}">
+    <span class="library-source-kind" aria-hidden="true">${item.catalog_kind === "canonical" ? "Research" : "Private"}</span>
+    <span class="library-source-title"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.project || item.confidentiality || "Private library")} · ${item.catalog_kind === "canonical" ? escapeHtml(item.access_class || "canonical") : "Mac-local index"}</span></span>
+    <span class="library-source-meta">${escapeHtml(item.origin || item.path || "")}<small>${escapeHtml(shortHash(item.content_digest || item.digest || ""))}</small></span>
+    <span class="row-open" aria-hidden="true">›</span>
+  </button>`).join("")}` : empty(query ? "No titles match this filter." : "No sources have been indexed yet.");
+  container.querySelectorAll("[data-library-id]").forEach((button) => {
+    button.onclick = () => openLibrarySource(button.dataset.libraryKind, button.dataset.libraryId);
+  });
+}
+
+function openLibrarySource(kind, id) {
+  const data = state.libraryCatalog || {};
+  const item = kind === "canonical"
+    ? (data.canonical || []).find((source) => String(source.id) === String(id))
+    : (data.private || []).find((source) => String(source.id) === String(id));
+  if (!item) return;
+  const digest = item.content_digest || item.digest;
+  openInspector(kind === "canonical" ? "Canonical source" : "Private indexed source", item.title, `
+    <section class="detail-section"><h3>Catalog record</h3><dl class="detail-grid">
+      <dt>Project</dt><dd>${escapeHtml(item.project || item.confidentiality || "Private")}</dd>
+      <dt>Origin</dt><dd>${escapeHtml(item.origin || item.path || "Not recorded")}</dd>
+      <dt>Access</dt><dd>${escapeHtml(item.access_class || item.confidentiality || "private")}</dd>
+      <dt>Indexed</dt><dd>${formatDate(item.created_at || item.indexed_at)}</dd>
+      <dt>Digest</dt><dd class="mono">${escapeHtml(digest || "Not recorded")}</dd>
+    </dl></section>
+    <p class="muted">The catalog exposes source identity and title only. Full text is retrieved separately through authorized search.</p>
+    ${kind === "canonical" ? '<div class="inspector-actions"><button class="secondary" type="button" id="library-explore-source">Explore relationships</button></div>' : ""}
+  `);
+  const explore = document.getElementById("library-explore-source");
+  if (explore) explore.onclick = async () => {
+    closeInspector();
+    navigate("knowledge");
+    setResearchMode("explore");
+    await queryGraphRoot(id);
+  };
+}
+
 function renderGraph(graph) {
   state.graphData = graph;
   renderResearchWorkspaceStatus();
@@ -2201,7 +2401,7 @@ function renderGraph(graph) {
   if (!nodeMap.has(String(state.graphSelectedId))) state.graphSelectedId = String(nodes[0].id);
   const selected = nodeMap.get(String(state.graphSelectedId));
   document.getElementById("graph-expand").disabled = !selected;
-  const positions = graphPositions(nodes);
+  const positions = graphPositions(nodes, edges);
   const visual = `
     <div class="graph-canvas-shell">
       <div class="graph-canvas-toolbar" role="group" aria-label="Graph zoom controls">
@@ -2209,7 +2409,7 @@ function renderGraph(graph) {
         <button type="button" class="icon-button" data-graph-zoom="out" aria-label="Zoom out" title="Zoom out">−</button>
         <button type="button" class="icon-button graph-fit" data-graph-zoom="fit" aria-label="Fit graph" title="Fit graph">Fit</button>
       </div>
-      <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-labelledby="graph-svg-title graph-svg-desc">
+      <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="900" height="520" viewBox="0 0 900 520" role="application" aria-labelledby="graph-svg-title graph-svg-desc" aria-label="Interactive evidence graph. Drag nodes to arrange, drag the background to pan, and scroll to zoom.">
         <title id="graph-svg-title">Canonical research relationship graph</title>
         <desc id="graph-svg-desc">${nodes.length} evidence nodes and ${edges.length} visible relationships. Use the Relationships view for a keyboard-first adjacency list.</desc>
         <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
@@ -2231,16 +2431,63 @@ function renderGraph(graph) {
       ${graphSelectionPanel(selected, edges, nodeMap)}
     </div>`;
   bindGraphInteractions(nodeMap);
+  renderGraphFindResults();
 }
 
-function graphPositions(nodes) {
+function graphPositions(nodes, edges) {
+  const ids = nodes.map((node) => String(node.id));
+  const signature = `${ids.join("|")}::${edges.map((edge) => `${edge.source}>${edge.target}`).join("|")}`;
+  if (signature === state.graphLayoutSignature && state.graphLayout.size) return state.graphLayout;
   const positions = new Map();
+  const center = { x: 450, y: 260 };
   nodes.forEach((node, index) => {
-    if (index === 0) return positions.set(String(node.id), { x: 450, y: 260 });
     const angle = index * 2.399963;
-    const radius = Math.min(225, 38 + Math.sqrt(index) * 34);
-    positions.set(String(node.id), { x: 450 + Math.cos(angle) * radius * 1.55, y: 260 + Math.sin(angle) * radius });
+    const radius = Math.min(220, 36 + Math.sqrt(index) * 30);
+    positions.set(String(node.id), { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius * .78 });
   });
+  const usableEdges = edges.filter((edge) => positions.has(String(edge.source)) && positions.has(String(edge.target)));
+  for (let iteration = 0; iteration < 72; iteration += 1) {
+    const forces = new Map(ids.map((id) => [id, { x: 0, y: 0 }]));
+    for (let left = 0; left < ids.length; left += 1) {
+      const a = positions.get(ids[left]);
+      for (let right = left + 1; right < ids.length; right += 1) {
+        const b = positions.get(ids[right]);
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const distance2 = Math.max(dx * dx + dy * dy, 36);
+        const force = Math.min(2.6, 720 / distance2);
+        const fx = dx / Math.sqrt(distance2) * force;
+        const fy = dy / Math.sqrt(distance2) * force;
+        forces.get(ids[left]).x += fx;
+        forces.get(ids[left]).y += fy;
+        forces.get(ids[right]).x -= fx;
+        forces.get(ids[right]).y -= fy;
+      }
+    }
+    for (const edge of usableEdges) {
+      const source = positions.get(String(edge.source));
+      const target = positions.get(String(edge.target));
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.max(Math.hypot(dx, dy), 1);
+      const force = (distance - 105) * .006;
+      const fx = dx / distance * force;
+      const fy = dy / distance * force;
+      forces.get(String(edge.source)).x += fx;
+      forces.get(String(edge.source)).y += fy;
+      forces.get(String(edge.target)).x -= fx;
+      forces.get(String(edge.target)).y -= fy;
+    }
+    const cooling = 1 - iteration / 88;
+    for (const id of ids) {
+      const position = positions.get(id);
+      const force = forces.get(id);
+      position.x = Math.max(28, Math.min(872, position.x + force.x * cooling + (center.x - position.x) * .006));
+      position.y = Math.max(28, Math.min(492, position.y + force.y * cooling + (center.y - position.y) * .006));
+    }
+  }
+  state.graphLayoutSignature = signature;
+  state.graphLayout = positions;
   return positions;
 }
 
@@ -2254,7 +2501,7 @@ function graphNodeSvg(node, position, index, selected) {
 function graphEdgeSvg(edge, positions) {
   const source = positions.get(String(edge.source));
   const target = positions.get(String(edge.target));
-  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
+  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
 }
 
 function graphRelationshipRow(edge, nodeMap) {
@@ -2274,25 +2521,127 @@ function graphSelectionPanel(node, edges, nodeMap) {
 }
 
 function bindGraphInteractions(nodeMap) {
-  document.querySelectorAll("[data-graph-node]").forEach((element) => {
-    const select = () => {
-      state.graphSelectedId = element.dataset.graphNode;
-      const node = nodeMap.get(String(state.graphSelectedId));
+  const root = document.getElementById("graph");
+  root.onclick = (event) => {
+    const zoom = event.target.closest("[data-graph-zoom]");
+    if (zoom) {
+      if (zoom.dataset.graphZoom === "fit") state.graphTransform = { scale: 1, x: 0, y: 0 };
+      else state.graphTransform.scale = Math.max(.45, Math.min(2.8, state.graphTransform.scale * (zoom.dataset.graphZoom === "in" ? 1.2 : .8)));
+      return renderGraph(state.graphData);
+    }
+    const replay = event.target.closest("[data-graph-replay]");
+    if (replay) return replayGraphEvidence(nodeMap.get(replay.dataset.graphReplay));
+    if (state.graphDragging) return;
+    const element = event.target.closest("[data-graph-node]");
+    if (!element) return;
+    const node = nodeMap.get(String(element.dataset.graphNode));
+    if (!node) return;
+    state.graphSelectedId = String(node.id);
+    addResearchContext({ id: node.id, label: node.label || node.name, type: node.object_type || node.kind, digest: node.content_digest });
+    renderGraph(state.graphData);
+  };
+  root.onkeydown = (event) => {
+    const element = event.target.closest("[data-graph-node]");
+    if (!element || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    const node = nodeMap.get(String(element.dataset.graphNode));
+    if (!node) return;
+    state.graphSelectedId = String(node.id);
+    addResearchContext({ id: node.id, label: node.label || node.name, type: node.object_type || node.kind, digest: node.content_digest });
+    renderGraph(state.graphData);
+  };
+
+  const svg = document.getElementById("knowledge-graph-svg");
+  let gesture = null;
+  const graphPoint = (event) => {
+    const bounds = svg.getBoundingClientRect();
+    const screenX = (event.clientX - bounds.left) / bounds.width * 900;
+    const screenY = (event.clientY - bounds.top) / bounds.height * 520;
+    return { x: (screenX - state.graphTransform.x) / state.graphTransform.scale, y: (screenY - state.graphTransform.y) / state.graphTransform.scale, screenX, screenY };
+  };
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const node = event.target.closest(".graph-node-svg");
+    gesture = { kind: node ? "node" : "pan", id: node?.dataset.graphNode, x: event.clientX, y: event.clientY, start: graphPoint(event), moved: false };
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (!gesture) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) gesture.moved = true;
+    if (!gesture.moved) return;
+    if (gesture.kind === "node") {
+      const point = graphPoint(event);
+      state.graphLayout.set(String(gesture.id), { x: point.x, y: point.y });
+      updateGraphSvgPositions();
+    } else {
+      const bounds = svg.getBoundingClientRect();
+      state.graphTransform.x += dx / bounds.width * 900;
+      state.graphTransform.y += dy / bounds.height * 520;
+      gesture.x = event.clientX;
+      gesture.y = event.clientY;
+      document.getElementById("graph-viewport").setAttribute("transform", `translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})`);
+    }
+  });
+  svg.addEventListener("pointerup", (event) => {
+    if (!gesture) return;
+    if (gesture.moved) {
+      state.graphDragging = true;
+      renderGraph(state.graphData);
+      window.setTimeout(() => { state.graphDragging = false; }, 0);
+    }
+    gesture = null;
+    if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+  });
+  svg.addEventListener("pointercancel", () => { gesture = null; });
+  svg.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const point = graphPoint(event);
+    const oldScale = state.graphTransform.scale;
+    const newScale = Math.max(.45, Math.min(2.8, oldScale * (event.deltaY < 0 ? 1.12 : .89)));
+    state.graphTransform.x = point.screenX - point.x * newScale;
+    state.graphTransform.y = point.screenY - point.y * newScale;
+    state.graphTransform.scale = newScale;
+    document.getElementById("graph-viewport").setAttribute("transform", `translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${newScale})`);
+  }, { passive: false });
+}
+
+function updateGraphSvgPositions() {
+  document.querySelectorAll(".graph-node-svg[data-graph-node]").forEach((element) => {
+    const position = state.graphLayout.get(String(element.dataset.graphNode));
+    if (position) element.setAttribute("transform", `translate(${position.x} ${position.y})`);
+  });
+  document.querySelectorAll(".graph-link[data-edge-source]").forEach((element) => {
+    const source = state.graphLayout.get(String(element.dataset.edgeSource));
+    const target = state.graphLayout.get(String(element.dataset.edgeTarget));
+    if (!source || !target) return;
+    element.setAttribute("x1", source.x);
+    element.setAttribute("y1", source.y);
+    element.setAttribute("x2", target.x);
+    element.setAttribute("y2", target.y);
+  });
+}
+
+function renderGraphFindResults() {
+  const input = document.getElementById("graph-find");
+  const results = document.getElementById("graph-find-results");
+  if (!input || !results) return;
+  const query = input.value.trim().toLowerCase();
+  const nodes = state.graphData?.nodes || [];
+  const matches = query ? nodes.filter((node) => `${node.label || node.name || ""} ${node.object_type || node.kind || ""}`.toLowerCase().includes(query)).slice(0, 8) : [];
+  document.getElementById("graph-find-count").textContent = query ? `${matches.length} match${matches.length === 1 ? "" : "es"}` : "";
+  results.innerHTML = matches.map((node) => `<button class="graph-find-result" type="button" role="option" data-graph-find-id="${escapeHtml(node.id)}"><strong>${escapeHtml(node.label || node.name)}</strong><span>${escapeHtml(humanize(node.object_type || node.kind || "evidence"))}</span></button>`).join("");
+  results.querySelectorAll("[data-graph-find-id]").forEach((button) => {
+    button.onclick = () => {
+      const node = nodes.find((item) => String(item.id) === String(button.dataset.graphFindId));
+      if (!node) return;
+      state.graphSelectedId = String(node.id);
       addResearchContext({ id: node.id, label: node.label || node.name, type: node.object_type || node.kind, digest: node.content_digest });
       renderGraph(state.graphData);
+      results.innerHTML = "";
     };
-    element.addEventListener("click", select);
-    element.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
-    });
   });
-  document.querySelectorAll("[data-graph-zoom]").forEach((button) => button.addEventListener("click", () => {
-    if (button.dataset.graphZoom === "fit") state.graphTransform = { scale: 1, x: 0, y: 0 };
-    else state.graphTransform.scale = Math.max(.55, Math.min(2.2, state.graphTransform.scale * (button.dataset.graphZoom === "in" ? 1.2 : .8)));
-    renderGraph(state.graphData);
-  }));
-  const replay = document.querySelector("[data-graph-replay]");
-  if (replay) replay.addEventListener("click", () => replayGraphEvidence(nodeMap.get(replay.dataset.graphReplay)));
 }
 
 async function replayGraphEvidence(node) {
@@ -2490,6 +2839,20 @@ function renderUnavailable() {
 
 function updateClock() {
   document.getElementById("clock").textContent = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date());
+}
+
+function renderSnapshotAge() {
+  const element = document.getElementById("snapshot-age");
+  if (!element) return;
+  if (!state.dashboardFetchedAt) {
+    element.textContent = "Waiting for live state";
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - state.dashboardFetchedAt) / 1000));
+  const ageLabel = age < 5 ? "just now" : `${age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`} ago`;
+  element.textContent = state.dashboardRefreshError ? `Refresh failed · last snapshot ${ageLabel}` : `Updated ${ageLabel}`;
+  element.title = state.dashboardRefreshError || `Mission Control received this snapshot at ${new Date(state.dashboardFetchedAt).toLocaleString()}`;
+  element.classList.toggle("snapshot-stale", age > 45 || Boolean(state.dashboardRefreshError));
 }
 
 function loadDemoConversation() {
@@ -2718,11 +3081,8 @@ function demoDeployment(agentId, name, role, taskTypes, workflows, repositories,
 updateClock();
 window.setInterval(updateClock, 30000);
 window.setInterval(() => {
-  const activeMemoryTask = (state.dashboard?.tasks || []).some(
-    (task) => task.task_type === "research_memory_sync" && activeStatuses.has(task.status),
-  );
-  const activeOperation = Number(state.dashboard?.operation_summary?.active_total || 0) > 0;
-  if (!state.demo && (activeMemoryTask || activeOperation || state.activeView === "activity")) loadDashboard();
+  renderSnapshotAge();
+  if (!state.demo && document.visibilityState === "visible") loadDashboard({ silent: true });
 }, 15000);
 window.setInterval(() => {
   if (!state.demo && state.activeView === "work") loadConversations();

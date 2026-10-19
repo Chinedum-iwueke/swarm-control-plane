@@ -55,7 +55,10 @@ class ControlPlaneClient:
             params={"category": category, "tier": tier, "offset": offset, "limit": 50},
         )
 
-    async def dashboard(self) -> dict[str, Any]:
+    async def dashboard(self, *, refresh: bool = False) -> dict[str, Any]:
+        if refresh:
+            await self._ensure_dashboard_refresh()
+            return copy.deepcopy(self._dashboard_cache or {})
         if self._dashboard_cache is None:
             snapshot = await self._ensure_dashboard_refresh()
             return copy.deepcopy(snapshot)
@@ -416,6 +419,13 @@ class ControlPlaneClient:
     async def knowledge_graph(self, *, limit: int = 100) -> dict[str, Any]:
         return await self._request(
             "GET", "/v1/research/graph/overview", params={"limit": limit}
+        )
+
+    async def knowledge_catalog(self, *, limit: int = 500) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            "/v1/research/evidence/objects",
+            params={"object_type": "source", "limit": limit},
         )
 
     async def query_knowledge_graph(self, payload: dict[str, Any]) -> dict[str, Any]:

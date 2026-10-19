@@ -146,8 +146,8 @@ def create_app(
         }
 
     @app.get("/api/dashboard")
-    async def dashboard() -> dict:
-        result = await client.dashboard()
+    async def dashboard(refresh: bool = False) -> dict:
+        result = await client.dashboard(refresh=refresh)
         result["knowledge"] = store.stats()
         result["mission_control"] = {
             "machine": "mac-founder-control",
@@ -481,6 +481,38 @@ def create_app(
         return {
             "query": q,
             "results": [item.model_dump() for item in store.search(q, limit=limit)],
+        }
+
+    @app.get("/api/knowledge/catalog")
+    async def knowledge_catalog() -> dict:
+        catalog_error = None
+        try:
+            canonical = await client.knowledge_catalog(limit=500)
+        except ControlPlaneError as error:
+            canonical = {"items": []}
+            catalog_error = str(error)
+        sources = []
+        for item in canonical.get("items", []):
+            payload = item.get("payload") or {}
+            if item.get("object_type") != "source" or not payload.get("title"):
+                continue
+            sources.append(
+                {
+                    "id": item.get("object_id"),
+                    "title": payload["title"],
+                    "project": item.get("project"),
+                    "origin": payload.get("origin"),
+                    "content_digest": item.get("content_digest"),
+                    "created_at": item.get("created_at"),
+                    "access_class": item.get("access_class"),
+                    "kind": "canonical",
+                }
+            )
+        return {
+            "canonical": sources,
+            "private": store.catalog(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "canonical_error": catalog_error,
         }
 
     @app.get("/api/knowledge/graph")

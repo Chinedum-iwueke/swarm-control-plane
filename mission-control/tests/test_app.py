@@ -29,7 +29,7 @@ class FakeControlPlane:
     async def close(self) -> None:
         self.closed = True
 
-    async def dashboard(self) -> dict:
+    async def dashboard(self, *, refresh: bool = False) -> dict:
         return {
             "health": {"status": "ok"},
             "tasks": [],

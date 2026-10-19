@@ -218,6 +218,20 @@ class KnowledgeStore:
             for row in rows
         ]
 
+    def catalog(self, *, limit: int = 500) -> list[dict[str, object]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT id, title, path, digest, modified_at, indexed_at,
+                       confidentiality
+                FROM sources
+                ORDER BY title COLLATE NOCASE
+                LIMIT ?
+                """,
+                (min(max(limit, 1), 500),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def graph(self, *, limit: int = 250) -> KnowledgeGraph:
         with self._connect() as db:
             node_rows = db.execute(
