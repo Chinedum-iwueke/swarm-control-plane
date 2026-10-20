@@ -2552,6 +2552,7 @@ function bindGraphInteractions(nodeMap) {
   };
 
   const svg = document.getElementById("knowledge-graph-svg");
+  if (!svg) return;
   let gesture = null;
   const graphPoint = (event) => {
     const bounds = svg.getBoundingClientRect();

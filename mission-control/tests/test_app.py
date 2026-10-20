@@ -216,6 +216,9 @@ def test_static_application_and_safe_status(
     with TestClient(create_app(settings, control_plane=fake)) as client:
         page = client.get("/")
         script = client.get("/static/app.js")
+        styles = client.get("/static/styles.css")
+        logo = client.get("/static/brand/logo-primary.svg")
+        font = client.get("/static/fonts/ibm-plex-sans.woff2")
         status = client.get("/api/status")
     assert page.status_code == 200
     assert "Hermes Mission Control" in page.text
@@ -227,6 +230,11 @@ def test_static_application_and_safe_status(
     assert 'id="command-venue-summary"' in page.text
     assert 'id="command-venues"' in page.text
     assert 'id="evidence"' in page.text
+    assert "/static/brand/logo-primary.svg" in page.text
+    assert '"Instrument Serif"' in styles.text
+    assert '"IBM Plex Sans"' in styles.text
+    assert logo.status_code == 200 and 'viewBox="0 0 3335 1025"' in logo.text
+    assert font.status_code == 200 and font.headers["content-type"] == "font/woff2"
     assert 'role="tablist" aria-label="Research workspace mode"' in page.text
     assert 'id="research-panel-ask"' in page.text
     assert 'id="research-panel-explore"' in page.text

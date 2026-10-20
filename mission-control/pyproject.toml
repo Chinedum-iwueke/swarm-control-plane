@@ -28,7 +28,7 @@ dev = [
 hermes-mission-control = "hermes_mission_control.__main__:main"
 
 [tool.setuptools.package-data]
-hermes_mission_control = ["static/*", "static/brand/*.svg"]
+hermes_mission_control = ["static/*", "static/brand/*.svg", "static/fonts/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
