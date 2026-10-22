@@ -1,14 +1,17 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Task, TaskEvent
+from app.models import Artifact, Task, TaskEvent
 from app.models.alpha_campaign import AlphaCampaign
 
 
 def serialize_backtest(
-    task: Task, campaign: AlphaCampaign | None = None, progress: dict | None = None
+    task: Task,
+    campaign: AlphaCampaign | None = None,
+    progress: dict | None = None,
+    artifacts: list[Artifact] | None = None,
 ) -> dict:
     contract = task.input_contract or {}
     result = task.result or {}
@@ -23,16 +26,13 @@ def serialize_backtest(
         or {}
     )
     gates = attempt.get("gate_report") or producer_gates
-    has_native_receipt = bool(
-        attempt
-        or (
-            publication.get("schema_version")
-            and trial.get("bundle_digest")
-            and summary.get("receipt_digest")
-        )
-    )
     stage = contract.get("stage", "execute")
     terminal = task.status in {"succeeded", "failed", "cancelled"}
+    has_native_receipt = (
+        terminal
+        and stage == "execute"
+        and _has_native_receipt(summary, attempt, publication, trial)
+    )
     category = (
         "finished"
         if terminal
@@ -86,6 +86,7 @@ def serialize_backtest(
             )
             if key in gates
         },
+        "gate_states": _gate_states(gates),
         "receipt_digest": summary.get("receipt_digest"),
         "metrics": {
             key: value
@@ -123,8 +124,196 @@ def serialize_backtest(
         if campaign and campaign.status == "shadow_candidate"
         else "not_established",
         "execution_evidence": "native_terminal_receipt"
-        if has_native_receipt and stage == "execute"
+        if has_native_receipt
         else "no_native_terminal_receipt",
+        "scientific_contract": _scientific_contract(
+            contract, result, summary, publication, trial, attempt, progress or {}
+        ),
+        "terminal_receipt": {
+            "present": has_native_receipt,
+            "digest": summary.get("receipt_digest") if has_native_receipt else None,
+            "schema_version": publication.get("schema_version")
+            if has_native_receipt
+            else None,
+            "bundle_digest": trial.get("bundle_digest") if has_native_receipt else None,
+        },
+        "artifacts": [_artifact_reference(item) for item in (artifacts or [])],
+    }
+
+
+_REQUIRED_GATES = (
+    "truth_certified",
+    "point_in_time_valid",
+    "reproducible",
+    "out_of_sample_evaluated",
+    "cost_stress_evaluated",
+    "selection_bias_audited",
+    "independent_review_complete",
+    "required_trade_logging_complete",
+    "shadow_eligible",
+)
+
+
+def _has_native_receipt(
+    summary: dict, attempt: dict, publication: dict, trial: dict
+) -> bool:
+    receipt_digest = summary.get("receipt_digest")
+    complete_attempt = (
+        attempt.get("produced_by") == "bulletproof_bt"
+        and bool(attempt.get("attempt_key"))
+        and bool(attempt.get("source_commit"))
+        and bool(attempt.get("evidence_digests"))
+        and isinstance(attempt.get("gate_report"), dict)
+    )
+    complete_publication = all(
+        (
+            publication.get("schema_version"),
+            trial.get("trial_id"),
+            trial.get("code_digest"),
+            trial.get("bundle_digest"),
+            trial.get("representation_contract_digest"),
+            trial.get("search_plan_digest"),
+        )
+    )
+    return bool(receipt_digest and (complete_attempt or complete_publication))
+
+
+def _gate_states(gates: dict) -> dict[str, str]:
+    return {
+        key: (
+            "passed"
+            if gates.get(key) is True
+            else "failed"
+            if gates.get(key) is False
+            else "not_run"
+        )
+        for key in _REQUIRED_GATES
+    }
+
+
+def _scientific_contract(
+    contract: dict,
+    result: dict,
+    summary: dict,
+    publication: dict,
+    trial: dict,
+    attempt: dict,
+    progress: dict,
+) -> dict:
+    hypothesis = (
+        summary.get("hypothesis_card")
+        or publication.get("hypothesis_card")
+        or contract.get("hypothesis_card")
+        or {}
+    )
+    experiment = publication.get("experiment") or {}
+    durable = publication.get("durable_evidence") or {}
+    representation = contract.get("representation_plan") or {}
+    qualification = contract.get("qualification") or {}
+    metrics = trial.get("metrics") or summary.get("metrics") or {}
+    bindings = contract.get("dataset_bindings") or []
+    instruments = contract.get("instruments") or [contract.get("instrument")]
+    instruments = [value for value in instruments if value]
+    return {
+        "hypothesis": {
+            "id": attempt.get("hypothesis_id")
+            or (contract.get("reusable_strategy") or {}).get("hypothesis_id"),
+            "digest": attempt.get("hypothesis_digest") or hypothesis.get("card_digest"),
+            "question_digest": contract.get("question_digest"),
+            "card": hypothesis,
+        },
+        "dataset": {
+            "build_id": contract.get("dataset_build_id"),
+            "key": contract.get("dataset_key"),
+            "digest": contract.get("dataset_digest"),
+            "venue": contract.get("venue"),
+            "instruments": instruments,
+            "bindings": [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "dataset_build_id",
+                        "dataset_key",
+                        "dataset_digest",
+                        "instrument",
+                        "venue",
+                        "partition_digest",
+                    )
+                }
+                for item in bindings
+                if isinstance(item, dict)
+            ],
+        },
+        "representation": {
+            "source_timeframe": contract.get("timeframe"),
+            "research_timeframe": contract.get("research_timeframe"),
+            "resampling_policy": contract.get("resampling_policy"),
+            "plan": representation,
+            "contract_digest": trial.get("representation_contract_digest")
+            or durable.get("representation_contract_digest"),
+            "window_start": contract.get("window_start"),
+            "window_end": contract.get("window_end"),
+        },
+        "strategy": {
+            "source_commit": result.get("base_commit") or contract.get("base_ref"),
+            "code_digest": trial.get("code_digest"),
+            "binding": contract.get("reusable_strategy"),
+        },
+        "search": {
+            "maximum_variants": contract.get("max_variants"),
+            "declared_variants": metrics.get("declared_variant_count"),
+            "selected_variant_index": metrics.get("selected_variant_index"),
+            "selection_basis": metrics.get("selection_basis"),
+            "search_plan_digest": trial.get("search_plan_digest"),
+        },
+        "execution": {
+            "trial_id": trial.get("trial_id"),
+            "trial_count": attempt.get("trial_count") or (1 if trial else None),
+            "started_at": trial.get("started_at"),
+            "ended_at": trial.get("ended_at"),
+            "worker_allocation": progress.get("worker_allocation")
+            or progress.get("active_workers"),
+            "capacity_governed": progress.get("capacity_governed"),
+        },
+        "evaluation": {
+            "metrics": metrics,
+            "splits": experiment.get("splits") or qualification.get("splits"),
+            "costs": experiment.get("costs") or qualification.get("costs"),
+            "leakage_review": qualification.get("leakage_review")
+            or (
+                "passed"
+                if (attempt.get("gate_report") or {}).get("point_in_time_valid") is True
+                else "failed"
+                if (attempt.get("gate_report") or {}).get("point_in_time_valid")
+                is False
+                else "not_run"
+            ),
+            "selection_bias_audit_digest": durable.get("selection_bias_audit_digest"),
+            "required_trade_logging_digest": durable.get(
+                "required_trade_logging_digest"
+            ),
+            "hypothesis_evaluation": trial.get("hypothesis_evaluation"),
+        },
+    }
+
+
+def _artifact_reference(item: Artifact) -> dict:
+    return {
+        key: getattr(item, key, None)
+        for key in (
+            "id",
+            "task_id",
+            "name",
+            "artifact_type",
+            "size_bytes",
+            "sha256",
+            "location",
+            "workflow",
+            "workflow_version",
+            "source_commit",
+            "verification_status",
+            "created_at",
+        )
     }
 
 
@@ -140,10 +329,69 @@ def overview(
     # not backtests. Only the governed execution stage may enter this projection.
     predicate = Task.task_type.in_(["alpha_research_execution", "research_experiment"])
     predicate &= Task.input_contract["stage"].astext == "execute"
-    counts = dict(
+    task_status_counts = dict(
         db.execute(
             select(Task.status, func.count()).where(predicate).group_by(Task.status)
         ).all()
+    )
+    terminal_predicate = Task.status.in_(["succeeded", "failed", "cancelled"])
+    receipt_digest_present = Task.result["summary"]["receipt_digest"].astext.is_not(
+        None
+    )
+    receipt_shape_present = or_(
+        and_(
+            Task.result["summary"]["alpha_campaign_attempt"]["produced_by"].astext
+            == "bulletproof_bt",
+            Task.result["summary"]["alpha_campaign_attempt"][
+                "attempt_key"
+            ].astext.is_not(None),
+            Task.result["summary"]["alpha_campaign_attempt"][
+                "source_commit"
+            ].astext.is_not(None),
+            Task.result["summary"]["alpha_campaign_attempt"]["evidence_digests"].is_not(
+                None
+            ),
+            Task.result["summary"]["alpha_campaign_attempt"]["gate_report"].is_not(
+                None
+            ),
+        ),
+        and_(
+            Task.result["downstream_handoff"]["publication_envelope"][
+                "schema_version"
+            ].astext.is_not(None),
+            Task.result["downstream_handoff"]["publication_envelope"]["trial"][
+                "bundle_digest"
+            ].astext.is_not(None),
+            Task.result["downstream_handoff"]["publication_envelope"]["trial"][
+                "trial_id"
+            ].astext.is_not(None),
+            Task.result["downstream_handoff"]["publication_envelope"]["trial"][
+                "code_digest"
+            ].astext.is_not(None),
+            Task.result["downstream_handoff"]["publication_envelope"]["trial"][
+                "representation_contract_digest"
+            ].astext.is_not(None),
+            Task.result["downstream_handoff"]["publication_envelope"]["trial"][
+                "search_plan_digest"
+            ].astext.is_not(None),
+        ),
+    )
+    completed_backtests_all = (
+        db.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(
+                predicate,
+                terminal_predicate,
+                receipt_digest_present,
+                receipt_shape_present,
+            )
+        )
+        or 0
+    )
+    terminal_tasks = sum(
+        task_status_counts.get(state, 0)
+        for state in ("succeeded", "failed", "cancelled")
     )
     if category == "finished":
         predicate &= Task.status.in_(["succeeded", "failed", "cancelled"])
@@ -156,6 +404,27 @@ def overview(
     if tier != "all":
         predicate &= Task.input_contract["tier"].astext == tier
     total = db.scalar(select(func.count()).select_from(Task).where(predicate)) or 0
+    completed_backtests = (
+        db.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(
+                predicate,
+                terminal_predicate,
+                receipt_digest_present,
+                receipt_shape_present,
+            )
+        )
+        or 0
+    )
+    counts = {
+        **task_status_counts,
+        "completed_backtests": completed_backtests,
+        "completed_backtests_all": completed_backtests_all,
+        "terminal_tasks_without_receipt_all": max(
+            0, terminal_tasks - completed_backtests_all
+        ),
+    }
     tasks = db.scalars(
         select(Task)
         .where(predicate)
@@ -190,6 +459,14 @@ def overview(
         str(event.task_id): (event.payload or {}).get("progress", {})
         for event in events
     }
+    artifacts = db.scalars(
+        select(Artifact)
+        .where(Artifact.task_id.in_([task.id for task in tasks]))
+        .order_by(Artifact.task_id, Artifact.created_at, Artifact.id)
+    ).all()
+    artifacts_by_task: dict[str, list[Artifact]] = {}
+    for artifact in artifacts:
+        artifacts_by_task.setdefault(str(artifact.task_id), []).append(artifact)
     return {
         "generated_at": datetime.now(UTC),
         "counts": counts,
@@ -202,6 +479,7 @@ def overview(
                 task,
                 campaigns.get(str((task.input_contract or {}).get("campaign_id"))),
                 progress.get(str(task.id)),
+                artifacts_by_task.get(str(task.id), []),
             )
             for task in tasks
         ],

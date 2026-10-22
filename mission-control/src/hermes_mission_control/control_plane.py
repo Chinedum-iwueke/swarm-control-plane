@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from .config import MissionControlSettings
+from .freshness import build_snapshot_provenance
 from .models import ApprovalDecision, IntakeRequest, ProposalDecision
 
 
@@ -55,6 +56,38 @@ class ControlPlaneClient:
             params={"category": category, "tier": tier, "offset": offset, "limit": 50},
         )
 
+    async def venue_event_history(
+        self,
+        *,
+        environment: str | None = None,
+        venue: str | None = None,
+        replay_id: str | None = None,
+    ) -> dict[str, Any]:
+        params = {
+            key: value
+            for key, value in {
+                "environment": environment,
+                "venue": venue,
+                "replay_id": replay_id,
+            }.items()
+            if value is not None
+        }
+        return await self._request("GET", "/v1/execution/events", params=params)
+
+    async def agent_tasks(
+        self, agent_id: str, *, offset: int = 0, limit: int = 25
+    ) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET",
+            "/v1/tasks",
+            params={
+                "assigned_agent_id": agent_id,
+                "offset": offset,
+                "limit": limit,
+                "compact": True,
+            },
+        )
+
     async def dashboard(self, *, refresh: bool = False) -> dict[str, Any]:
         if refresh:
             await self._ensure_dashboard_refresh()
@@ -68,10 +101,7 @@ class ControlPlaneClient:
         return snapshot
 
     def _ensure_dashboard_refresh(self) -> asyncio.Task[dict[str, Any]]:
-        if (
-            self._dashboard_refresh_task is None
-            or self._dashboard_refresh_task.done()
-        ):
+        if self._dashboard_refresh_task is None or self._dashboard_refresh_task.done():
             self._dashboard_refresh_task = asyncio.create_task(
                 self._refresh_dashboard_cache()
             )
@@ -115,9 +145,7 @@ class ControlPlaneClient:
                     "items": [],
                 },
             ),
-            "artifacts": self._request(
-                "GET", "/v1/artifacts", params={"limit": 100}
-            ),
+            "artifacts": self._request("GET", "/v1/artifacts", params={"limit": 100}),
             "control_scopes": self._request("GET", "/v1/control/scopes"),
             "package_deployments": self._request("GET", "/v1/packages/deployments"),
             "proposals": self._request("GET", "/v1/proposals"),
@@ -314,10 +342,10 @@ class ControlPlaneClient:
                 )
             ),
             "terminal_total": sum(
-                counts.get(state, 0)
-                for state in ("succeeded", "failed", "cancelled")
+                counts.get(state, 0) for state in ("succeeded", "failed", "cancelled")
             ),
         }
+        result["provenance"] = build_snapshot_provenance(result).model_dump(mode="json")
         return result
 
     async def task_detail(self, task_id: str) -> dict[str, Any]:
@@ -391,7 +419,10 @@ class ControlPlaneClient:
         except httpx.TransportError as exc:
             raise ControlPlaneError("Control plane is currently unreachable.") from exc
         if response.status_code == 404:
-            return fallback
+            unavailable = copy.deepcopy(fallback)
+            unavailable["unavailable"] = True
+            unavailable["unavailable_reason"] = "endpoint_not_available"
+            return unavailable
         if response.is_success:
             result = response.json()
             if isinstance(result, dict):
@@ -426,6 +457,16 @@ class ControlPlaneClient:
             "GET",
             "/v1/research/evidence/objects",
             params={"object_type": "source", "limit": limit},
+        )
+
+    async def research_evidence_object(self, object_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/evidence/objects/{object_id}"
+        )
+
+    async def research_evidence_lineage(self, object_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/evidence/objects/{object_id}/lineage"
         )
 
     async def query_knowledge_graph(self, payload: dict[str, Any]) -> dict[str, Any]:

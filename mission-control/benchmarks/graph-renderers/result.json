@@ -1,0 +1,11 @@
+{
+  "schema_version": "mcux-016-graph-renderer-benchmark-v1",
+  "browser": "HeadlessChrome/146.0.0.0",
+  "cytoscape_version": "3.34.4",
+  "trials_per_case": 25,
+  "results": [
+    {"nodes": 25, "edges": 31, "svg": {"setup_ms": 0.8, "interaction_dispatch_ms": 0.1, "dom_elements": 81, "keyboard_nodes": 25, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "not_implemented"}, "cytoscape": {"setup_ms": 9.7, "interaction_dispatch_ms": 0.4, "dom_elements": 4, "keyboard_nodes": 0, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "implemented"}},
+    {"nodes": 100, "edges": 131, "svg": {"setup_ms": 3.0, "interaction_dispatch_ms": 0.2, "dom_elements": 331, "keyboard_nodes": 100, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "not_implemented"}, "cytoscape": {"setup_ms": 9.3, "interaction_dispatch_ms": 0.4, "dom_elements": 4, "keyboard_nodes": 0, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "implemented"}},
+    {"nodes": 250, "edges": 331, "svg": {"setup_ms": 4.8, "interaction_dispatch_ms": 0.4, "dom_elements": 831, "keyboard_nodes": 250, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "not_implemented"}, "cytoscape": {"setup_ms": 19.7, "interaction_dispatch_ms": 1.2, "dom_elements": 4, "keyboard_nodes": 0, "deterministic_layout": true, "pan_zoom": "implemented", "pinch_zoom": "implemented"}}
+  ]
+}

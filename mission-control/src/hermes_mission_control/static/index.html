@@ -34,6 +34,7 @@
         <button class="nav-item active" data-view="command"><span class="nav-glyph">⌂</span>Command</button>
         <button class="nav-item" data-view="work"><span class="nav-glyph">›_</span>Chat &amp; Work</button>
         <button class="nav-item" data-view="activity"><span class="nav-glyph">◉</span>Activity <span class="nav-count" id="activity-count">0</span></button>
+        <button class="nav-item" data-view="workflows"><span class="nav-glyph">⇢</span>Workflows</button>
         <button class="nav-item" data-view="missions"><span class="nav-glyph">◎</span>Missions</button>
         <button class="nav-item" data-view="tasks"><span class="nav-glyph">≡</span>Tasks</button>
         <button class="nav-item" data-view="proposals"><span class="nav-glyph">◆</span>Proposals <span class="nav-count" id="proposal-count">0</span></button>
@@ -74,6 +75,7 @@
           </div>
           <div class="heading-actions">
             <span class="snapshot-age" id="snapshot-age" role="status">Waiting for live state</span>
+            <button class="secondary" id="open-investor-walkthrough" type="button">▷ <span>Investor walkthrough</span></button>
             <button class="secondary" id="refresh">↻ <span>Refresh</span></button>
             <button class="command" id="open-intake">＋ New request</button>
           </div>
@@ -198,6 +200,23 @@
         </div>
       </section>
 
+      <section id="workflows" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Canonical work projection</p><h1>Workflows</h1><p class="heading-context">Current leaf work, evidence and recovery state without campaign shorthand</p></div>
+          <button class="secondary" id="refresh-workflows">↻ <span>Refresh</span></button>
+        </div>
+        <div id="workflow-summary" class="metric-row" aria-live="polite" aria-atomic="true"></div>
+        <div class="workflow-layout">
+          <section class="workflow-list-panel" aria-label="Workflow instances">
+            <div class="band-heading"><div><p class="section-kicker">Instances</p><h2>Live and retained</h2></div><span id="workflow-count" class="count">0</span></div>
+            <div id="workflow-list" class="workflow-list"></div>
+          </section>
+          <section class="workflow-detail-panel" aria-live="polite">
+            <div id="workflow-detail" class="empty-state">Select a workflow instance to inspect its stage, owner, blocker, and evidence.</div>
+          </section>
+        </div>
+      </section>
+
       <section id="missions" class="view">
         <div class="section-heading">
           <div><p class="eyebrow">Objectives to evidence</p><h1>Missions</h1><p class="heading-context">Strategic work grouped by mission and milestone</p></div>
@@ -303,6 +322,11 @@
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Exposure</p><h2>Positions and cash</h2></div></div><div id="execution-positions" class="table-wrap"></div></section>
           <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Lifecycle</p><h2>Orders and fills</h2></div></div><div id="execution-orders" class="table-wrap"></div></section>
         </div>
+        <section class="operational-band execution-replay-band">
+          <div class="band-heading"><div><p class="section-kicker">Immutable event history</p><h2>Decision-to-reconciliation replay</h2></div><span id="execution-event-count" class="count" role="status" aria-atomic="true">Not loaded</span></div>
+          <div id="execution-event-status" class="execution-event-status"></div>
+          <div id="execution-timeline" class="venue-timeline" aria-label="Venue event replay timeline"></div>
+        </section>
         <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Backtest-compatible replay</p><h2>Completed trade episodes</h2></div></div><div id="execution-episodes" class="table-wrap"></div></section>
         <section class="operational-band"><div class="band-heading"><div><p class="section-kicker">Integrity</p><h2>Incidents and provenance</h2></div></div><div id="execution-provenance" class="entity-list"></div></section>
       </section>
@@ -439,21 +463,59 @@
                 <button class="secondary" id="refresh-graph" type="button" title="Refresh graph data">↻ Refresh</button>
               </div>
             </div>
+            <div class="graph-scope-bar">
+              <div class="graph-scope-toggle" role="group" aria-label="Graph extent">
+                <button class="secondary active" type="button" data-graph-extent="global" aria-pressed="true">Global map</button>
+                <button class="secondary" type="button" data-graph-extent="local" aria-pressed="false">Local focus</button>
+              </div>
+              <label>Evidence boundary<select id="graph-scope"><option value="canonical">Canonical corpus</option><option value="private">Private local notes</option></select></label>
+              <p id="graph-boundary" class="graph-boundary">Canonical evidence only. Views are capped at 100 nodes and never mix access boundaries.</p>
+            </div>
             <form id="graph-query-form" class="graph-query-form">
               <label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label>
               <label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
-              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option></select></label>
+              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option><option value="mentions">Mentions (private)</option></select></label>
+              <label>Evidence type<select id="graph-object-type"><option value="">All types</option><option value="source">Source</option><option value="claim">Claim</option><option value="result">Result</option><option value="method">Method</option><option value="dataset">Dataset</option><option value="review">Review</option><option value="decision">Decision</option></select></label>
               <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button>
             </form>
             <div class="graph-find-row"><label class="search-field"><span>⌕</span><input id="graph-find" type="search" placeholder="Find a node by title"></label><span id="graph-find-count" class="muted"></span><div id="graph-find-results" class="graph-find-results" role="listbox" aria-label="Matching graph nodes"></div></div>
+            <form id="graph-path-form" class="graph-path-form">
+              <div><p class="section-kicker">Evidence path</p><span>Trace an explicit relation chain between two visible records.</span></div>
+              <label>From<select id="graph-path-source" aria-label="Path source"><option value="">Select source</option></select></label>
+              <label>To<select id="graph-path-target" aria-label="Path target"><option value="">Select target</option></select></label>
+              <button id="graph-find-path" class="secondary" type="submit">Find path</button>
+              <button id="graph-clear-path" class="text-button" type="button" hidden>Clear path</button>
+              <span id="graph-path-status" role="status" aria-live="polite"></span>
+            </form>
             <div id="graph" class="graph-explorer" aria-live="polite"></div>
           </section>
         </div>
         <div id="research-panel-library" class="research-mode-panel" role="tabpanel" aria-labelledby="research-tab-library" data-research-panel="library" hidden>
         <section class="operational-band library-catalog-band" aria-labelledby="library-catalog-title">
           <div class="band-heading"><div><p class="section-kicker">Canonical and private sources</p><h2 id="library-catalog-title">Research library</h2></div><span id="library-catalog-count" class="count">Loading sources</span></div>
-          <div class="library-catalog-tools"><label class="search-field"><span>⌕</span><input id="library-filter" type="search" placeholder="Filter books, papers, and notes by title"></label><button id="refresh-library" class="secondary" type="button">↻ Refresh</button></div>
-          <div id="library-catalog" class="library-catalog" aria-live="polite"></div>
+          <div id="library-browser">
+            <div class="library-catalog-tools"><label class="search-field"><span>⌕</span><input id="library-filter" type="search" placeholder="Filter books, papers, and notes by title"></label><label class="library-kind-filter"><span>Collection</span><select id="library-kind"><option value="all">All sources</option><option value="canonical">Canonical</option><option value="private">Private local</option></select></label><button id="refresh-library" class="secondary" type="button">↻ Refresh</button></div>
+            <div id="library-catalog" class="library-catalog" aria-live="polite"></div>
+            <nav id="library-pagination" class="library-pagination" aria-label="Library pages"></nav>
+          </div>
+          <article id="library-reader" class="library-reader" aria-labelledby="library-reader-title" hidden>
+            <header class="library-reader-header">
+              <button id="library-reader-back" class="text-button library-reader-back" type="button">← Library</button>
+              <div><p id="library-reader-kicker" class="section-kicker">Source</p><h2 id="library-reader-title">Source title</h2><p id="library-reader-subtitle" class="library-reader-subtitle"></p></div>
+              <div id="library-reader-status" class="library-reader-status" role="status" aria-live="polite"></div>
+            </header>
+            <div class="library-reader-tools">
+              <form id="library-find-form" class="search-field"><span>⌕</span><input id="library-find" type="search" placeholder="Find in stored text" aria-label="Find in document"><button class="secondary" type="submit">Find</button></form>
+              <div class="library-reading-mode" role="group" aria-label="Reading unit"><button class="secondary active" type="button" data-library-unit="line" aria-pressed="true">Lines</button><button class="secondary" type="button" data-library-unit="page" aria-pressed="false">Pages</button></div>
+              <span id="library-find-status" class="library-find-status" aria-live="polite"></span>
+            </div>
+            <div class="library-reader-layout">
+              <aside class="library-outline" aria-labelledby="library-outline-title"><h3 id="library-outline-title">Outline</h3><nav id="library-outline"></nav></aside>
+              <div id="library-document" class="library-document" tabindex="-1" role="document" aria-label="Stored source text"></div>
+              <aside id="library-provenance" class="library-provenance" aria-label="Source and extraction evidence"></aside>
+            </div>
+            <footer class="library-reader-footer"><button id="library-load-more" class="secondary" type="button">Load next range</button><button id="library-load-all" class="text-button" type="button">Load all available text</button><span id="library-range-status"></span></footer>
+          </article>
         </section>
         <div class="knowledge-toolbar">
           <form id="search-form" class="search-field knowledge-search"><span>⌕</span><input id="search-query" required minlength="2" placeholder="Ask your indexed knowledge"></form>
@@ -570,11 +632,25 @@
     </form>
   </dialog>
 
+  <dialog id="walkthrough-finding-dialog" class="modal walkthrough-finding-dialog">
+    <form id="walkthrough-finding-form" method="dialog">
+      <div class="dialog-heading"><div><p class="section-kicker">Rehearsal observation</p><h2>Record a finding</h2></div><button type="button" class="icon-button close" data-close-dialog aria-label="Close" title="Close">×</button></div>
+      <input type="hidden" name="step_id">
+      <label>Finding type<select name="kind" required><option value="question">Question</option><option value="misunderstanding">Misunderstanding</option><option value="evidence_gap">Evidence gap</option></select></label>
+      <label>What did the visitor encounter?<textarea name="note" required minlength="3" maxlength="2000" placeholder="Record the visitor's words or the missing evidence without interpretation."></textarea></label>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close-dialog>Cancel</button><button type="submit" class="command">Retain finding</button></div>
+    </form>
+  </dialog>
+
   <aside id="inspector" class="inspector" aria-hidden="true">
     <div class="inspector-heading"><div><p class="section-kicker" id="inspector-kicker">Details</p><h2 id="inspector-title">Entity</h2></div><button class="icon-button" id="close-inspector" aria-label="Close inspector" title="Close inspector">×</button></div>
     <div id="inspector-body"></div>
   </aside>
   <div id="inspector-backdrop" class="inspector-backdrop"></div>
+
+  <aside id="walkthrough-coach" class="walkthrough-coach" aria-label="Investor walkthrough" aria-live="polite" hidden>
+    <div id="walkthrough-coach-body"></div>
+  </aside>
 
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/static/app.js" defer></script>

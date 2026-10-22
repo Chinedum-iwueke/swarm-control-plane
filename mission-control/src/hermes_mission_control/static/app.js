@@ -1,8 +1,12 @@
-const allowedViews = new Set(["command", "work", "activity", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "execution", "research", "knowledge", "notes", "evidence"]);
+const allowedViews = new Set(["command", "work", "activity", "workflows", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "execution", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
 const requestedApproval = new URLSearchParams(window.location.search).get("approval");
+const requestedWalkthrough = new URLSearchParams(window.location.search).get("walkthrough") === "1";
+const requestedLibrarySource = new URLSearchParams(window.location.search).get("source");
+const requestedLibraryKind = new URLSearchParams(window.location.search).get("sourceKind");
+const requestedLibraryCitation = new URLSearchParams(window.location.search).get("cite");
 const state = {
   dashboard: null,
   activeView: allowedViews.has(requestedView) ? requestedView : "command",
@@ -13,6 +17,10 @@ const state = {
   graphData: null,
   graphSelectedId: null,
   graphView: window.matchMedia("(max-width: 680px)").matches ? "list" : "visual",
+  graphExtent: "global",
+  graphScope: "canonical",
+  graphPath: [],
+  graphSelectedEdgeId: null,
   graphTransform: { scale: 1, x: 0, y: 0 },
   researchMode: allowedResearchModes.has(requestedResearchMode) ? requestedResearchMode : "ask",
   researchContext: [],
@@ -29,10 +37,39 @@ const state = {
   dashboardFetchedAt: null,
   dashboardRefreshError: null,
   libraryCatalog: null,
+  libraryOffset: 0,
+  libraryLimit: 30,
+  libraryReader: null,
+  libraryListScroll: 0,
+  libraryDeepLinkOpened: false,
   graphLayoutSignature: null,
   graphLayout: new Map(),
   graphDragging: false,
+  overviewEventSource: null,
+  overviewEventCursor: null,
+  overviewReconnectAttempts: 0,
+  overviewReconnectTimer: null,
+  overviewPollingFallback: true,
+  overviewRefreshQueued: false,
+  workflows: null,
+  workflowLoading: false,
+  selectedWorkflowId: null,
+  agentDetail: null,
+  agentDetailTab: "overview",
+  agentDetailLoading: false,
+  backtestDetail: null,
+  venueEvents: null,
+  venueEventsLoading: false,
+  venueEventsError: null,
+  venueEventsRequestId: 0,
+  investorWalkthrough: null,
+  walkthroughSession: null,
+  walkthroughStartedAt: null,
+  walkthroughCompletedSteps: new Set(),
+  walkthroughCurrentStepId: null,
+  requestedWalkthroughOpened: false,
 };
+restoreGraphViewState();
 
 const intentHeaders = {
   "Content-Type": "application/json",
@@ -52,11 +89,31 @@ document.querySelectorAll(".open-intake-copy").forEach((button) => {
   button.addEventListener("click", () => openIntake(button.textContent.includes("mission") ? "mission" : "task"));
 });
 document.getElementById("open-intake").addEventListener("click", () => openIntake("task"));
+document.getElementById("open-investor-walkthrough").addEventListener("click", openInvestorWalkthrough);
 document.getElementById("refresh").addEventListener("click", loadDashboard);
 document.getElementById("refresh-activity").addEventListener("click", loadDashboard);
+document.getElementById("refresh-workflows").addEventListener("click", () => loadWorkflows({ refresh: true }));
 document.getElementById("agent-filter").addEventListener("input", renderAgents);
-document.getElementById("library-filter").addEventListener("input", renderLibraryCatalog);
+let libraryFilterTimer = null;
+document.getElementById("library-filter").addEventListener("input", () => {
+  window.clearTimeout(libraryFilterTimer);
+  libraryFilterTimer = window.setTimeout(() => {
+    state.libraryOffset = 0;
+    loadLibraryCatalog();
+  }, 180);
+});
+document.getElementById("library-kind").addEventListener("change", () => {
+  state.libraryOffset = 0;
+  loadLibraryCatalog();
+});
 document.getElementById("refresh-library").addEventListener("click", loadLibraryCatalog);
+document.getElementById("library-reader-back").addEventListener("click", closeLibraryReader);
+document.getElementById("library-load-more").addEventListener("click", loadNextLibraryRange);
+document.getElementById("library-load-all").addEventListener("click", () => loadAllLibraryRanges());
+document.getElementById("library-find-form").addEventListener("submit", findInLibraryDocument);
+document.querySelectorAll("[data-library-unit]").forEach((button) => {
+  button.addEventListener("click", () => switchLibraryUnit(button.dataset.libraryUnit));
+});
 document.getElementById("refresh-graph").addEventListener("click", loadGraph);
 document.getElementById("graph-find").addEventListener("input", renderGraphFindResults);
 document.getElementById("execution-environments").addEventListener("click", (event) => {
@@ -68,7 +125,7 @@ document.getElementById("execution-environments").addEventListener("click", (eve
     item.classList.toggle("active", active);
     item.setAttribute("aria-pressed", String(active));
   });
-  renderExecution();
+  loadVenueEvents();
 });
 document.getElementById("task-filter").addEventListener("input", renderTasks);
 document.getElementById("status-filter").addEventListener("change", renderTasks);
@@ -103,6 +160,34 @@ document.querySelectorAll("[data-graph-view]").forEach((button) => {
   });
 });
 document.getElementById("graph-query-form").addEventListener("submit", querySelectedGraphNode);
+document.getElementById("graph-path-form").addEventListener("submit", queryGraphPath);
+document.getElementById("graph-clear-path").addEventListener("click", clearGraphPath);
+document.getElementById("graph-scope").addEventListener("change", (event) => {
+  state.graphScope = event.target.value;
+  state.graphSelectedId = null;
+  state.graphPath = [];
+  saveGraphViewState();
+  loadGraph();
+});
+document.querySelectorAll("[data-graph-extent]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.graphExtent = button.dataset.graphExtent;
+    document.querySelectorAll("[data-graph-extent]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    saveGraphViewState();
+    if (state.graphExtent === "global") loadGraph();
+    else if (state.graphSelectedId) queryGraphRoot(state.graphSelectedId);
+  });
+});
+["graph-direction", "graph-depth", "graph-predicate", "graph-object-type"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", () => {
+    saveGraphViewState();
+    if (id === "graph-object-type" && state.graphData) renderGraph(state.graphData);
+  });
+});
 document.querySelectorAll("[data-research-mode]").forEach((button) => {
   button.addEventListener("click", () => setResearchMode(button.dataset.researchMode));
   button.addEventListener("keydown", (event) => navigateResearchTabs(event, button));
@@ -115,6 +200,7 @@ document.getElementById("new-conversation").addEventListener("click", createConv
 document.getElementById("refresh-conversations").addEventListener("click", loadConversations);
 document.getElementById("conversation-form").addEventListener("submit", continueConversation);
 document.getElementById("new-conversation-form").addEventListener("submit", submitConversation);
+document.getElementById("walkthrough-finding-form").addEventListener("submit", submitWalkthroughFinding);
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => button.closest("dialog")?.close());
 });
@@ -324,6 +410,206 @@ function navigate(view, { resetScroll = true } = {}) {
   window.history.replaceState({}, "", url);
   if (resetScroll) window.scrollTo({ top: 0, behavior: "smooth" });
   if (view === "work" && !state.demo) loadConversations();
+  if (view === "workflows" && !state.workflows) loadWorkflows();
+  if (view === "execution" && !state.venueEvents) loadVenueEvents();
+}
+
+async function openInvestorWalkthrough() {
+  const coach = document.getElementById("walkthrough-coach");
+  coach.hidden = false;
+  document.getElementById("walkthrough-coach-body").innerHTML = '<div class="walkthrough-loading" role="status">Loading canonical walkthrough evidence…</div>';
+  if (state.demo) {
+    state.investorWalkthrough = demoWalkthroughBoundary();
+    renderInvestorWalkthrough();
+    return;
+  }
+  try {
+    state.investorWalkthrough = await request("/api/investor-walkthrough?refresh=true");
+    renderInvestorWalkthrough();
+  } catch (error) {
+    document.getElementById("walkthrough-coach-body").innerHTML = `<div class="walkthrough-error" role="alert"><strong>Walkthrough evidence unavailable</strong><p>${escapeHtml(error.message)}</p><button class="secondary" type="button" data-walkthrough-retry>Retry</button><button class="text-button" type="button" data-walkthrough-close>Close</button></div>`;
+    document.querySelector("[data-walkthrough-retry]").onclick = openInvestorWalkthrough;
+    document.querySelector("[data-walkthrough-close]").onclick = closeInvestorWalkthrough;
+  }
+}
+
+function demoWalkthroughBoundary() {
+  return {
+    schema_version: "mission-control-investor-walkthrough-v1",
+    status: "demonstration_only",
+    ready_steps: 0,
+    total_steps: 5,
+    steps: [],
+    claim_boundary: "Demonstration mode contains illustrative UI data and cannot be used as investor rehearsal evidence. Reconnect to the canonical control plane.",
+  };
+}
+
+function renderInvestorWalkthrough() {
+  const projection = state.investorWalkthrough;
+  const body = document.getElementById("walkthrough-coach-body");
+  if (!projection) return;
+  if (projection.status === "demonstration_only") {
+    body.innerHTML = `<div class="walkthrough-heading"><div><p class="section-kicker">Investor walkthrough</p><h2>Canonical evidence required</h2></div><button class="icon-button" type="button" data-walkthrough-close aria-label="Close walkthrough" title="Close">×</button></div><p>${escapeHtml(projection.claim_boundary)}</p><button class="command" type="button" data-walkthrough-reconnect>Reconnect to control plane</button>`;
+    body.querySelector("[data-walkthrough-close]").onclick = closeInvestorWalkthrough;
+    body.querySelector("[data-walkthrough-reconnect]").onclick = () => { window.location.href = window.location.pathname; };
+    return;
+  }
+  if (!state.walkthroughSession) {
+    const steps = projection.steps || [];
+    body.innerHTML = `<div class="walkthrough-heading"><div><p class="section-kicker">Investor walkthrough</p><h2>Evidence-backed system tour</h2></div><button class="icon-button" type="button" data-walkthrough-close aria-label="Close walkthrough" title="Close">×</button></div>
+      <div class="walkthrough-readiness ${projection.status}"><strong>${projection.ready_steps}/${projection.total_steps} steps ready</strong><span>${projection.status === "ready" ? "A complete canonical path is available." : "Missing steps will be disclosed, never simulated."}</span></div>
+      <ol class="walkthrough-preview">${steps.map((step) => `<li class="${step.status}"><span>${step.ordinal}</span><div><strong>${escapeHtml(step.title)}</strong><small>${step.status === "ready" ? `${step.evidence.length} evidence ${step.evidence.length === 1 ? "record" : "records"}` : escapeHtml(step.unavailable_reason)}</small></div></li>`).join("")}</ol>
+      <p class="walkthrough-boundary">${escapeHtml(projection.claim_boundary)}</p>
+      <button class="command" type="button" data-walkthrough-start>Start bounded rehearsal</button>`;
+    body.querySelector("[data-walkthrough-close]").onclick = closeInvestorWalkthrough;
+    body.querySelector("[data-walkthrough-start]").onclick = startInvestorWalkthrough;
+    return;
+  }
+  const steps = projection.steps || [];
+  const current = steps.find((step) => step.id === state.walkthroughCurrentStepId)
+    || steps.find((step) => !state.walkthroughCompletedSteps.has(step.id));
+  if (!current) {
+    finishInvestorWalkthrough();
+    return;
+  }
+  state.walkthroughCurrentStepId = current.id;
+  const completed = state.walkthroughCompletedSteps.size;
+  const unavailable = current.status === "unavailable";
+  body.innerHTML = `<div class="walkthrough-heading"><div><p class="section-kicker">Bounded rehearsal</p><h2>Step ${current.ordinal} of ${projection.total_steps}</h2></div><button class="icon-button" type="button" data-walkthrough-close aria-label="Hide walkthrough" title="Hide">×</button></div>
+    <div class="walkthrough-progress" aria-label="${completed} of ${projection.total_steps} steps completed"><span style="width:${Math.round(completed / projection.total_steps * 100)}%"></span></div>
+    <section class="walkthrough-current ${current.status}"><span class="walkthrough-step-number">${current.ordinal}</span><div><h3>${escapeHtml(current.title)}</h3><p>${escapeHtml(current.prompt)}</p></div></section>
+    ${unavailable ? `<div class="walkthrough-disclosure" role="status"><strong>Canonical step unavailable</strong><span>${escapeHtml(current.unavailable_reason)}</span></div>` : `<p class="walkthrough-evidence-count">${current.evidence.length} canonical evidence ${current.evidence.length === 1 ? "record" : "records"} linked</p>`}
+    <div class="walkthrough-actions"><button class="secondary" type="button" data-walkthrough-open ${unavailable ? "disabled" : ""}>Open evidence</button><button class="command" type="button" data-walkthrough-complete>${unavailable ? "Acknowledge unavailable" : "Step understood"}</button></div>
+    <div class="walkthrough-footer"><button class="text-button" type="button" data-walkthrough-finding>Record a finding</button><button class="text-button" type="button" data-walkthrough-end>End rehearsal</button></div>`;
+  body.querySelector("[data-walkthrough-close]").onclick = closeInvestorWalkthrough;
+  body.querySelector("[data-walkthrough-open]").onclick = () => openWalkthroughStep(current);
+  body.querySelector("[data-walkthrough-complete]").onclick = () => completeWalkthroughStep(current);
+  body.querySelector("[data-walkthrough-finding]").onclick = () => openWalkthroughFinding(current.id);
+  body.querySelector("[data-walkthrough-end]").onclick = () => finishInvestorWalkthrough("abandoned");
+}
+
+async function startInvestorWalkthrough() {
+  const projection = state.investorWalkthrough;
+  try {
+    state.walkthroughSession = await request("/api/investor-walkthrough/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        walkthrough_digest: projection.walkthrough_digest,
+        ready_steps: projection.ready_steps,
+        total_steps: projection.total_steps,
+      }),
+    });
+    state.walkthroughStartedAt = performance.now();
+    state.walkthroughCompletedSteps = new Set();
+    state.walkthroughCurrentStepId = projection.steps[0]?.id || null;
+    renderInvestorWalkthrough();
+  } catch (error) {
+    toast(error.message);
+    await openInvestorWalkthrough();
+  }
+}
+
+async function recordWalkthroughObservation(stepId, kind, note = null) {
+  if (!state.walkthroughSession) return;
+  await request(`/api/investor-walkthrough/sessions/${encodeURIComponent(state.walkthroughSession.id)}/observations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ step_id: stepId, kind, elapsed_ms: walkthroughElapsed(), note }),
+  });
+}
+
+async function openWalkthroughStep(step) {
+  try {
+    await recordWalkthroughObservation(step.id, "opened");
+  } catch (error) {
+    toast(`Rehearsal timing was not retained: ${error.message}`);
+  }
+  if (step.id === "command") {
+    navigate("command");
+  } else if (step.id === "workflow") {
+    if (!state.workflows) await loadWorkflows();
+    openWorkflow(step.entity_id);
+  } else if (step.id === "agent") {
+    navigate("agents");
+    await openAgent(step.entity_id);
+  } else if (step.id === "backtest") {
+    navigate("research");
+    openBacktest(step.entity_id);
+  } else if (step.id === "venue") {
+    navigate("execution");
+    state.executionEnvironment = "demo";
+    document.querySelectorAll("[data-execution-environment]").forEach((button) => {
+      const active = button.dataset.executionEnvironment === "demo";
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    await loadVenueEvents();
+    openVenueEvent(step.entity_id);
+  }
+}
+
+async function completeWalkthroughStep(step) {
+  try {
+    await recordWalkthroughObservation(step.id, "completed", step.status === "unavailable" ? step.unavailable_reason : null);
+    state.walkthroughCompletedSteps.add(step.id);
+    const next = state.investorWalkthrough.steps.find((item) => !state.walkthroughCompletedSteps.has(item.id));
+    state.walkthroughCurrentStepId = next?.id || null;
+    renderInvestorWalkthrough();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function openWalkthroughFinding(stepId) {
+  const dialog = document.getElementById("walkthrough-finding-dialog");
+  const form = document.getElementById("walkthrough-finding-form");
+  form.reset();
+  form.elements.step_id.value = stepId;
+  dialog.showModal();
+  window.setTimeout(() => form.elements.kind.focus(), 0);
+}
+
+async function submitWalkthroughFinding(event) {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  try {
+    await recordWalkthroughObservation(form.get("step_id"), form.get("kind"), String(form.get("note")).trim());
+    document.getElementById("walkthrough-finding-dialog").close();
+    toast("Rehearsal finding retained.");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function finishInvestorWalkthrough(status = "completed") {
+  if (!state.walkthroughSession) return;
+  try {
+    await request(`/api/investor-walkthrough/sessions/${encodeURIComponent(state.walkthroughSession.id)}/finish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status,
+        elapsed_ms: walkthroughElapsed(),
+        summary: status === "completed" ? `${state.walkthroughCompletedSteps.size} walkthrough steps reviewed.` : "Rehearsal ended before every step was reviewed.",
+      }),
+    });
+    toast(status === "completed" ? "Investor rehearsal retained." : "Partial rehearsal retained.");
+    state.walkthroughSession = null;
+    state.walkthroughStartedAt = null;
+    state.walkthroughCompletedSteps = new Set();
+    closeInvestorWalkthrough();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function walkthroughElapsed() {
+  return Math.max(0, Math.round(performance.now() - (state.walkthroughStartedAt || performance.now())));
+}
+
+function closeInvestorWalkthrough() {
+  document.getElementById("walkthrough-coach").hidden = true;
 }
 
 async function loadConversations() {
@@ -613,21 +899,26 @@ async function loadDashboard({ silent = false } = {}) {
   if (!silent) setLoading(true);
   try {
     if (!state.demo) {
-      document.getElementById("health").textContent = "Mission Control online · loading current state";
-      document.getElementById("health-dot").classList.add("ok");
+      document.getElementById("health").textContent = "Contacting control plane · freshness not yet verified";
+      document.getElementById("health-dot").classList.remove("ok");
     }
     state.dashboard = state.demo ? demoDashboard() : await request("/api/dashboard?refresh=true");
     state.dashboardFetchedAt = Date.now();
     state.dashboardRefreshError = null;
     if (state.demo) loadDemoConversation();
-    document.getElementById("health").textContent = state.demo ? "Demo isolated" : "Control plane online";
-    document.getElementById("health-dot").classList.toggle("ok", !state.demo);
+    renderConnectionStatus();
     document.getElementById("demo-banner").hidden = !state.demo;
     if (silent) renderActiveView();
     else renderAll();
+    await loadWorkflows({ silent: true });
     if (!state.demo && !state.graphData) await loadGraph();
     else if (state.demo && !state.graphData) renderGraph(state.dashboard.graph);
     if (!silent) navigate(state.activeView, { resetScroll: false });
+    if (requestedWalkthrough && !state.requestedWalkthroughOpened) {
+      state.requestedWalkthroughOpened = true;
+      await openInvestorWalkthrough();
+    }
+    if (!state.demo) startOverviewEvents();
   } catch (error) {
     document.getElementById("health").textContent = "Control plane unavailable";
     document.getElementById("health-dot").classList.remove("ok");
@@ -642,12 +933,76 @@ async function loadDashboard({ silent = false } = {}) {
     state.dashboardLoading = false;
     if (!silent) setLoading(false);
     renderSnapshotAge();
+    if (state.overviewRefreshQueued && !state.demo && document.visibilityState === "visible") {
+      state.overviewRefreshQueued = false;
+      queueOverviewRefresh();
+    }
   }
+}
+
+function startOverviewEvents() {
+  if (state.demo || document.visibilityState !== "visible" || state.overviewEventSource) return;
+  const query = state.overviewEventCursor ? `?cursor=${encodeURIComponent(state.overviewEventCursor)}` : "";
+  const source = new EventSource(`/api/overview/events${query}`);
+  state.overviewEventSource = source;
+  source.onopen = () => {
+    state.overviewReconnectAttempts = 0;
+    state.overviewPollingFallback = false;
+  };
+  source.addEventListener("overview.changed", queueOverviewRefresh);
+  source.addEventListener("overview.unavailable", queueOverviewRefresh);
+  source.addEventListener("overview.cursor_expired", () => {
+    state.overviewEventCursor = null;
+    queueOverviewRefresh();
+  });
+  source.onerror = () => {
+    if (state.overviewEventSource !== source) return;
+    source.close();
+    state.overviewEventSource = null;
+    state.overviewPollingFallback = true;
+    scheduleOverviewReconnect();
+  };
+}
+
+function queueOverviewRefresh(event) {
+  const eventId = event?.lastEventId;
+  if (eventId) {
+    const previous = Number(state.overviewEventCursor || 0);
+    if (Number(eventId) <= previous) return;
+    state.overviewEventCursor = eventId;
+  }
+  if (state.overviewRefreshQueued) return;
+  if (state.dashboardLoading) {
+    state.overviewRefreshQueued = true;
+    return;
+  }
+  state.overviewRefreshQueued = true;
+  window.setTimeout(async () => {
+    state.overviewRefreshQueued = false;
+    if (!state.demo && document.visibilityState === "visible") await loadDashboard({ silent: true });
+  }, 120);
+}
+
+function scheduleOverviewReconnect() {
+  if (state.demo || document.visibilityState !== "visible" || state.overviewReconnectTimer) return;
+  const delay = Math.min(30_000, 1_000 * (2 ** Math.min(state.overviewReconnectAttempts++, 5)));
+  state.overviewReconnectTimer = window.setTimeout(() => {
+    state.overviewReconnectTimer = null;
+    startOverviewEvents();
+  }, delay);
+}
+
+function stopOverviewEvents() {
+  if (state.overviewEventSource) state.overviewEventSource.close();
+  state.overviewEventSource = null;
+  if (state.overviewReconnectTimer) window.clearTimeout(state.overviewReconnectTimer);
+  state.overviewReconnectTimer = null;
 }
 
 function renderAll() {
   renderCommand();
   renderActivity();
+  renderWorkflows();
   renderMissions();
   renderTasks();
   renderProposals();
@@ -670,6 +1025,7 @@ function renderActiveView() {
     renderCommand();
     renderActivity();
   } else if (state.activeView === "activity") renderActivity();
+  else if (state.activeView === "workflows") renderWorkflows();
   renderSnapshotAge();
 }
 
@@ -803,9 +1159,12 @@ function renderCommand() {
 
   document.getElementById("machine-strip").innerHTML = machineCells(machines);
   document.getElementById("mission-pulse").innerHTML = missionPulse(tasks);
-  document.getElementById("active-execution").innerHTML = renderLiveFlow(data);
+  document.getElementById("active-execution").innerHTML = renderWorkflowFlow(state.workflows, data);
   document.querySelectorAll("[data-operation-id]").forEach((button) => {
     button.onclick = () => openOperation(button.dataset.operationId);
+  });
+  document.querySelectorAll("[data-workflow-id]").forEach((button) => {
+    button.onclick = () => openWorkflow(button.dataset.workflowId);
   });
   document.getElementById("fleet-summary").innerHTML = fleetRows(machines);
   renderCommandVenues(data.execution_telemetry);
@@ -813,6 +1172,116 @@ function renderCommand() {
   renderAttention();
   renderControls();
   renderCodexAuth();
+}
+
+async function loadWorkflows({ refresh = false, silent = false } = {}) {
+  if (state.workflowLoading) return;
+  state.workflowLoading = true;
+  try {
+    state.workflows = state.demo ? demoWorkflowProjection() : await request(`/api/workflows${refresh ? "?refresh=true" : ""}`);
+    const items = state.workflows?.items || [];
+    if (!items.some((item) => item.instance_id === state.selectedWorkflowId)) {
+      state.selectedWorkflowId = items[0]?.instance_id || null;
+    }
+    if (!silent || state.activeView === "workflows") renderWorkflows();
+    if (state.activeView === "command") renderCommand();
+  } catch (error) {
+    if (!silent) toast(error.message);
+  } finally {
+    state.workflowLoading = false;
+  }
+}
+
+function renderWorkflows() {
+  const projection = state.workflows;
+  const items = projection?.items || [];
+  const running = items.filter((item) => item.state === "running");
+  const attention = items.filter((item) => ["blocked", "stalled", "waiting_approval"].includes(item.state));
+  const terminal = items.filter((item) => ["succeeded", "failed", "cancelled"].includes(item.state));
+  document.getElementById("workflow-summary").innerHTML = [
+    metric(running.length, "Running leaves", "Observed leaf work only"),
+    metric(attention.length, "Needs attention", "Blocker, stale heartbeat, or approval"),
+    metric(items.filter((item) => item.native_backtest?.state === "running").length, "Native backtests", "Live execute-stage leaves"),
+    metric(terminal.length, "Terminal instances", "Outcome retained with evidence"),
+  ].join("");
+  document.getElementById("workflow-count").textContent = items.length;
+  document.getElementById("workflow-list").innerHTML = items.length ? items.map((item) => workflowListItem(item)).join("") : empty("No workflow instances have been projected yet.");
+  document.querySelectorAll("[data-workflow-id]").forEach((button) => {
+    button.onclick = () => openWorkflow(button.dataset.workflowId);
+  });
+  const selected = items.find((item) => item.instance_id === state.selectedWorkflowId);
+  document.getElementById("workflow-detail").innerHTML = selected ? workflowDetail(selected) : empty("Select a workflow instance to inspect its stage, owner, blocker, and evidence.");
+}
+
+function openWorkflow(instanceId) {
+  state.selectedWorkflowId = instanceId;
+  if (state.activeView !== "workflows") navigate("workflows");
+  renderWorkflows();
+}
+
+function workflowListItem(item) {
+  const selected = item.instance_id === state.selectedWorkflowId;
+  const leaf = item.current_leaf;
+  const detail = leaf ? `${humanize(leaf.phase || leaf.state)} · ${relativeTime(leaf.heartbeat_at)}` : nextWorkflowAction(item);
+  return `<button class="workflow-list-item ${selected ? "active" : ""}" data-workflow-id="${escapeHtml(item.instance_id)}" aria-pressed="${selected}">
+    <span class="workflow-list-top"><span class="workflow-kind">${escapeHtml(humanize(item.workflow?.name))}</span>${statusBadge(item.state)}</span>
+    <strong>${escapeHtml(item.title)}</strong>
+    <span>${escapeHtml(item.machine || "Machine unreported")} · ${escapeHtml(detail)}</span>
+  </button>`;
+}
+
+function workflowDetail(item) {
+  const leaf = item.current_leaf;
+  const stages = item.stages || [];
+  const blockers = item.blockers || [];
+  const sourceEvents = item.source_event_ids || [];
+  return `<header class="workflow-detail-heading">
+      <div><p class="section-kicker">${escapeHtml(humanize(item.instance_kind))}</p><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.workflow?.name || "Unknown workflow")}${item.workflow?.version ? ` · v${escapeHtml(item.workflow.version)}` : ""}</p></div>
+      ${statusBadge(item.state)}
+    </header>
+    <section class="workflow-stage-map" aria-label="Workflow stage map">
+      ${stages.map((stage, index) => `<div class="workflow-stage ${stage.state === "running" ? "active" : ""} ${stage.state === "not_running" ? "inactive" : ""}"><span>${index + 1}</span><strong>${escapeHtml(humanize(stage.name))}</strong><small>${escapeHtml(humanize(stage.state))}</small></div>`).join('<i aria-hidden="true"></i>')}
+    </section>
+    <dl class="workflow-facts">
+      <dt>Current leaf</dt><dd>${leaf ? `${escapeHtml(humanize(leaf.kind))} · ${escapeHtml(leaf.id)}` : "No live leaf run"}</dd>
+      <dt>Owner</dt><dd>${escapeHtml(item.owner?.id || item.owner?.type || "Unreported")}</dd>
+      <dt>Machine</dt><dd>${escapeHtml(item.machine || "Unreported")}</dd>
+      <dt>Heartbeat</dt><dd>${leaf?.heartbeat_at ? `${escapeHtml(relativeTime(leaf.heartbeat_at))} · ${escapeHtml(formatDate(leaf.heartbeat_at))}` : "No live heartbeat"}</dd>
+      <dt>Next action</dt><dd>${escapeHtml(nextWorkflowAction(item))}</dd>
+      <dt>Native backtest</dt><dd>${item.native_backtest ? escapeHtml(humanize(item.native_backtest.state)) : "Not applicable"}</dd>
+      <dt>Terminal outcome</dt><dd>${item.terminal_outcome ? escapeHtml(humanize(item.terminal_outcome)) : "Not terminal"}</dd>
+    </dl>
+    <section class="workflow-evidence"><div><p class="section-kicker">Evidence</p><h3>Bound to source records</h3></div>
+      <p>Entry ${escapeHtml(shortHash(item.entry_evidence?.digest))} · Exit ${escapeHtml(shortHash(item.exit_evidence?.digest))}</p>
+      <p>${sourceEvents.length ? `${sourceEvents.length} source event ${sourceEvents.length === 1 ? "ID" : "IDs"} recorded` : "No source event IDs supplied by the canonical record"}</p>
+    </section>
+    ${blockers.length ? `<section class="workflow-blockers"><p class="section-kicker">Blockers</p>${blockers.map((blocker) => `<p>${escapeHtml(blocker)}</p>`).join("")}</section>` : ""}`;
+}
+
+function nextWorkflowAction(item) {
+  if (item.state === "waiting_approval") return "Founder approval required";
+  if (item.state === "blocked") return "Resolve the recorded blocker";
+  if (item.state === "stalled") return "Inspect heartbeat and recover safely";
+  if (item.state === "queued") return "Await governed lease";
+  if (item.state === "running") return "Await current execution evidence";
+  if (["succeeded", "failed", "cancelled"].includes(item.state)) return "Inspect terminal evidence";
+  return "Await canonical state";
+}
+
+function renderWorkflowFlow(projection, data) {
+  const items = projection?.items || [];
+  if (!items.length) return renderLiveFlow(data);
+  const stages = [
+    { label: "Queued", states: ["queued"] },
+    { label: "In progress", states: ["running"] },
+    { label: "Waiting", states: ["waiting_approval", "blocked"] },
+    { label: "Needs attention", states: ["stalled"] },
+    { label: "Terminal", states: ["succeeded", "failed", "cancelled"] },
+  ];
+  return `<div class="live-flow-scroll"><div class="live-flow-map" aria-label="Workflow stages">${stages.map((stage) => {
+    const matches = items.filter((item) => stage.states.includes(item.state));
+    return `<section class="live-flow-stage ${stage.states.includes("running") ? "stage-running" : ""}"><div class="live-flow-stage-heading"><h3>${escapeHtml(stage.label)}</h3><span>${matches.length}</span></div>${matches.length ? matches.slice(0, 4).map((item) => `<button class="live-flow-node" data-workflow-id="${escapeHtml(item.instance_id)}"><span class="live-node-top"><span class="live-node-phase">${escapeHtml(humanize(item.workflow?.name))}</span>${statusBadge(item.state)}</span><strong class="live-node-label">${escapeHtml(item.title)}</strong><span class="live-node-meta">${escapeHtml(item.machine || "Machine unreported")} · ${escapeHtml(item.current_leaf?.phase || nextWorkflowAction(item))}</span></button>`).join("") : '<p class="stage-empty">No instances</p>'}</section>`;
+  }).join('<span class="flow-connector" aria-hidden="true"></span>')}</div></div>`;
 }
 
 function renderCodexAuth() {
@@ -1394,6 +1863,161 @@ function executionRows(items, columns, emptyMessage) {
   return `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${items.map((item) => `<tr>${columns.map((column) => `<td class="${column.mono ? "mono" : ""}">${escapeHtml(column.value(item) ?? "–")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
+async function loadVenueEvents() {
+  const requestId = ++state.venueEventsRequestId;
+  const environment = state.executionEnvironment;
+  state.venueEventsLoading = true;
+  state.venueEventsError = null;
+  renderExecutionEventHistory();
+  try {
+    if (state.demo) {
+      state.venueEvents = demoVenueEventHistory();
+    } else {
+      const query = environment === "all" ? "" : `?environment=${encodeURIComponent(environment)}`;
+      state.venueEvents = await request(`/api/execution/events${query}`);
+    }
+  } catch (error) {
+    if (requestId !== state.venueEventsRequestId) return;
+    state.venueEvents = null;
+    state.venueEventsError = error.message;
+  } finally {
+    if (requestId !== state.venueEventsRequestId) return;
+    state.venueEventsLoading = false;
+    renderExecution();
+  }
+}
+
+function executionEnvironmentMessage(events) {
+  const environments = [...new Set(events.map((item) => item.environment))];
+  if (state.executionEnvironment === "demo") return ["Demo evidence only", "Venue-confirmed demo activity. No live capital or order authority is implied."];
+  if (state.executionEnvironment === "live") return ["Live-environment published evidence", "This is an immutable replay, not a live stream or proof of a currently open position."];
+  if (state.executionEnvironment === "shadow") return ["Shadow evidence only", "Prospective simulated decisions; no venue order authority."];
+  if (environments.length > 1) return ["Mixed environment replay", "Every event retains an explicit shadow, demo, or live label. Environments are never merged."];
+  return ["Published replay", "Immutable event evidence; publication freshness is shown separately from venue environment."];
+}
+
+function eventLatency(event) {
+  const exchange = new Date(event.exchange_time).getTime();
+  const observed = new Date(event.observed_time).getTime();
+  if (!Number.isFinite(exchange) || !Number.isFinite(observed)) return "Not measured";
+  return `${Math.max(0, observed - exchange).toLocaleString()} ms`;
+}
+
+function eventPrimaryId(event) {
+  return event.execution_id || event.venue_order_id || event.client_order_id || event.correlation_id || event.event_id;
+}
+
+function validatedExchangeUrl(event) {
+  const candidate = event.payload?.exchange_url;
+  if (!candidate || event.environment === "shadow") return null;
+  try {
+    const url = new URL(candidate);
+    const allowed = {
+      bybit: { demo: new Set(["testnet.bybit.com"]), live: new Set(["www.bybit.com", "bybit.com"]) },
+      binance: { demo: new Set(["testnet.binancefuture.com"]), live: new Set(["www.binance.com", "binance.com"]) },
+    };
+    return url.protocol === "https:" && allowed[event.venue]?.[event.environment]?.has(url.hostname) ? url.href : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeExecutionPayload(value) {
+  const forbidden = new Set(["api_key", "apikey", "secret", "token", "password", "private_key", "signature", "raw_payload"]);
+  if (Array.isArray(value)) return value.map(safeExecutionPayload);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => {
+    const normalized = key.toLowerCase().replaceAll("-", "_");
+    return !forbidden.has(normalized) && !normalized.includes("credential");
+  }).map(([key, nested]) => [key, safeExecutionPayload(nested)]));
+}
+
+function venueEventRow(event) {
+  const label = humanize(event.event_type);
+  const primaryId = eventPrimaryId(event);
+  const eventKey = event.evidence?.event_digest || event.event_id;
+  return `<button class="venue-event" type="button" data-venue-event="${escapeHtml(eventKey)}">
+    <span class="venue-event-marker event-${escapeHtml(event.event_type)}" aria-hidden="true"></span>
+    <span class="venue-event-time mono">${escapeHtml(new Date(event.observed_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</span>
+    <span class="venue-event-main"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(event.instrument_id)} · ${escapeHtml(primaryId)}</small></span>
+    <span class="venue-event-meta"><span class="environment-label environment-${escapeHtml(event.environment)}">${escapeHtml(event.environment)}</span><small>${escapeHtml(eventLatency(event))}</small></span>
+  </button>`;
+}
+
+function renderExecutionEventHistory() {
+  const count = document.getElementById("execution-event-count");
+  const status = document.getElementById("execution-event-status");
+  const timeline = document.getElementById("execution-timeline");
+  if (!count || !status || !timeline) return;
+  if (state.venueEventsLoading) {
+    count.textContent = "Loading event evidence";
+    status.innerHTML = '<div class="timeline-state"><strong>Reconstructing immutable replay</strong><span>Verifying event and receipt identities…</span></div>';
+    timeline.innerHTML = '<div class="timeline-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>';
+    return;
+  }
+  if (state.venueEventsError) {
+    count.textContent = "Unavailable";
+    status.innerHTML = `<div class="timeline-state attention" role="alert"><strong>Event history unavailable</strong><span>${escapeHtml(state.venueEventsError)}</span><button class="secondary" type="button" id="retry-venue-events">Retry</button></div>`;
+    timeline.innerHTML = "";
+    document.getElementById("retry-venue-events").onclick = loadVenueEvents;
+    return;
+  }
+  if (!state.venueEvents) {
+    count.textContent = "Not loaded";
+    status.innerHTML = '<div class="timeline-state"><strong>Event projection not requested</strong><span>Open Execution to load exact venue evidence.</span></div>';
+    timeline.innerHTML = "";
+    return;
+  }
+  const events = state.venueEvents.events || [];
+  const coverage = state.venueEvents.replay_coverage || [];
+  const legacy = coverage.filter((item) => item.coverage === "legacy_summary_only").length;
+  const newest = events.reduce((latest, item) => !latest || new Date(item.observed_time) > new Date(latest) ? item.observed_time : latest, null);
+  const [heading, detail] = executionEnvironmentMessage(events);
+  count.textContent = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  status.innerHTML = `<div class="timeline-state"><div><strong>${escapeHtml(heading)}</strong><span>${escapeHtml(detail)}</span></div><div class="timeline-facts">${newest ? `<span>Newest event ${relativeTime(newest)}</span>` : ""}<span>${coverage.length} source ${coverage.length === 1 ? "replay" : "replays"}</span><span>${state.venueEvents.counts?.duplicates_suppressed || 0} duplicates suppressed</span>${legacy ? `<span class="attention-text">${legacy} legacy summary-only</span>` : ""}</div></div>`;
+  timeline.innerHTML = events.length ? events.map(venueEventRow).join("") : empty(legacy ? "The selected immutable replay predates event-envelope retention. Aggregate venue state remains available above; no synthetic timeline was created." : "No canonical events were published for this environment.");
+  timeline.querySelectorAll("[data-venue-event]").forEach((button) => {
+    button.onclick = () => openVenueEvent(button.dataset.venueEvent);
+  });
+}
+
+function openVenueEvent(eventKey) {
+  const events = state.venueEvents?.events || [];
+  const event = events.find((item) => (item.evidence?.event_digest || item.event_id) === eventKey);
+  if (!event) return;
+  const identifiers = [event.correlation_id, event.client_order_id, event.venue_order_id, event.execution_id].filter(Boolean);
+  const related = events.filter((candidate) => {
+    const sameSource = candidate.venue === event.venue
+      && candidate.environment === event.environment
+      && candidate.account_pseudonym === event.account_pseudonym;
+    const differentEvent = (candidate.evidence?.event_digest || candidate.event_id) !== eventKey;
+    return sameSource && differentEvent && identifiers.some((id) => [candidate.correlation_id, candidate.client_order_id, candidate.venue_order_id, candidate.execution_id].includes(id));
+  });
+  const exchangeUrl = validatedExchangeUrl(event);
+  const evidence = event.evidence || {};
+  const identifierRows = [
+    ["Correlation", event.correlation_id], ["Client order", event.client_order_id], ["Venue order", event.venue_order_id], ["Execution", event.execution_id],
+  ].filter(([, value]) => value).map(([label, value]) => `<div class="copy-identity"><span>${escapeHtml(label)}</span><code>${escapeHtml(value)}</code><button class="text-button" type="button" data-copy-value="${escapeHtml(value)}">Copy</button></div>`).join("");
+  openInspector("Venue event replay", humanize(event.event_type), `
+    <section class="venue-event-hero"><div><span class="environment-label environment-${escapeHtml(event.environment)}">${escapeHtml(event.environment)}</span><span class="published-replay-label">Published replay</span></div><strong>${escapeHtml(event.venue)} · ${escapeHtml(event.account_pseudonym)}</strong><p>${escapeHtml(event.instrument_id)} · sequence ${event.sequence}</p></section>
+    <section class="detail-section"><h3>Identity</h3>${identifierRows || '<p class="muted">No order correlation identifiers were published for this event.</p>'}${exchangeUrl ? `<a class="button-link secondary" href="${escapeHtml(exchangeUrl)}" target="_blank" rel="noopener noreferrer">Open validated ${escapeHtml(event.environment)} venue</a>` : '<p class="evidence-note">No validated environment-specific exchange link was published. Use the copyable IDs above.</p>'}</section>
+    <section class="detail-section"><h3>Clocks and stream</h3><dl class="detail-grid"><dt>Exchange time</dt><dd>${formatDate(event.exchange_time)}</dd><dt>Observed time</dt><dd>${formatDate(event.observed_time)}</dd><dt>Observed latency</dt><dd>${escapeHtml(eventLatency(event))}</dd><dt>Stream</dt><dd>${escapeHtml(event.stream)}</dd><dt>Cursor</dt><dd class="mono">${escapeHtml(event.cursor)}</dd><dt>Correction of</dt><dd class="mono">${escapeHtml(event.correction_of || "None")}</dd></dl></section>
+    <section class="detail-section"><h3>Related lifecycle</h3>${related.map((item) => `<button class="inspector-reference" type="button" data-related-event="${escapeHtml(item.evidence?.event_digest || item.event_id)}"><span><strong>${escapeHtml(humanize(item.event_type))}</strong><small>${formatDate(item.observed_time)} · ${escapeHtml(eventPrimaryId(item))}</small></span><span aria-hidden="true">›</span></button>`).join("") || '<p class="muted">No other event shares the published identifiers.</p>'}</section>
+    <section class="detail-section"><h3>Sanitized canonical payload</h3><pre class="event-payload">${escapeHtml(JSON.stringify(safeExecutionPayload(event.payload || {}), null, 2))}</pre></section>
+    <section class="detail-section"><h3>Immutable source evidence</h3><dl class="detail-grid"><dt>Receipt</dt><dd class="mono">${escapeHtml(evidence.receipt_digest)}</dd><dt>Projection</dt><dd class="mono">${escapeHtml(evidence.projection_digest)}</dd><dt>Event</dt><dd class="mono">${escapeHtml(evidence.event_digest)}</dd><dt>Raw reference</dt><dd class="mono">${escapeHtml(evidence.raw_reference_digest)}</dd><dt>Receipt path</dt><dd class="mono">${escapeHtml(evidence.receipt_path)}</dd><dt>Replay path</dt><dd class="mono">${escapeHtml(evidence.replay_path)}</dd></dl></section>`);
+  document.querySelectorAll("#inspector-body [data-copy-value]").forEach((button) => { button.onclick = () => copyExecutionIdentity(button.dataset.copyValue); });
+  document.querySelectorAll("#inspector-body [data-related-event]").forEach((button) => { button.onclick = () => openVenueEvent(button.dataset.relatedEvent); });
+}
+
+async function copyExecutionIdentity(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast("Identifier copied.");
+  } catch (_) {
+    toast("Clipboard unavailable. Select the visible identifier to copy it.");
+  }
+}
+
 function renderExecution() {
   if (!state.dashboard) return;
   const telemetry = state.dashboard.execution_telemetry || { venues: [], counts: {}, claim_boundary: "No canonical venue replay has been published." };
@@ -1443,6 +2067,7 @@ function renderExecution() {
   const provenance = projections.map(({ replay, view }) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(replay.venue)} ${escapeHtml(replay.environment)} replay</strong><div class="entity-meta"><span>Receipt <code>${shortHash(replay.receipt_digest)}</code></span><span>Projection <code>${shortHash(replay.projection_digest)}</code></span><span>Event head <code>${shortHash(view.event_head_digest)}</code></span><span>${(view.sequence_gaps || []).length} gaps</span><span>${(view.reconciliation_discrepancies || []).length} discrepancies</span></div></div>${statusBadge(replay.status)}</article>`);
   const incidentRows = incidents.map((item) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(item.kind || "Venue incident")}</strong><div class="entity-meta"><span>${escapeHtml(item.venue)}</span><span>${escapeHtml(item.environment)}</span><span>${escapeHtml(item.summary || item.reason || "Canonical incident recorded")}</span></div></div>${statusBadge("critical")}</article>`);
   document.getElementById("execution-provenance").innerHTML = [...incidentRows, ...provenance].join("") || empty("No incidents or replay receipts published.");
+  renderExecutionEventHistory();
 }
 
 async function transitionServiceAlert(alertId, action) {
@@ -1532,26 +2157,62 @@ function renderBacktests() {
   document.getElementById("research-utilization-boundary").textContent = utilization.claim_boundary || "";
   const items = page.items || [];
   const container = document.getElementById("backtest-items");
-  const expanded = new Set([...container.querySelectorAll("details[open]")].map((node) => node.closest("[data-backtest-id]").dataset.backtestId));
-  document.getElementById("backtest-count").textContent = page.unavailable ? "Unavailable" : `${page.total || 0} records`;
-  const content = items.length ? items.map((item) => `<article class="entity-row" data-backtest-id="${escapeHtml(item.task_id)}">
-    <div class="entity-primary"><strong>${escapeHtml(item.question)}</strong>
-      <div class="entity-meta"><span>${escapeHtml(item.task_number)}</span><span>${escapeHtml(item.tier || "Tier not recorded")}</span><span>${escapeHtml(humanize(item.stage))}</span><span>${escapeHtml(humanize(item.execution_class || "qualification"))}</span><span>${item.qualification_authority === false ? "No qualification authority" : "Qualification authority recorded"}</span><span>${escapeHtml(item.instrument || "Instrument not recorded")}</span><span>${item.trial_count ?? 0} trials / ${item.max_variants ?? "not recorded"} maximum</span></div>
-      <div class="entity-meta"><span>${formatDate(item.window_start)} to ${formatDate(item.window_end)}</span><span>Heartbeat ${relativeTime(item.heartbeat_at)}</span><span>${escapeHtml(humanize(item.promotion))}</span><span>${escapeHtml(humanize(item.progress?.phase || ""))}</span>${item.progress?.capacity_governed ? "<span>Capacity governed</span>" : ""}</div>
-      ${item.category === "finished" ? `<p>${escapeHtml(humanize(item.outcome || item.disposition || item.status))} · ${escapeHtml(humanize(item.execution_evidence))}</p>` : ""}
-      ${item.failed_gates?.length ? `<p class="operation-error">${item.failed_gates.map((gate) => escapeHtml(humanize(gate))).join(" · ")}</p>` : ""}
-      ${item.error_category ? `<p class="operation-error">${escapeHtml(humanize(item.error_category))}</p>` : ""}
-      <details><summary>Evidence and gates</summary><div class="entity-meta"><span>Dataset ${escapeHtml(item.dataset_key || "Not recorded")}</span><span class="mono">${escapeHtml(item.dataset_digest || "")}</span><span class="mono">Code ${escapeHtml(item.base_ref || "")}</span><span class="mono">Receipt ${escapeHtml(item.receipt_digest || "Not recorded")}</span></div><dl>${Object.entries({ ...(item.metrics || {}), ...(item.gate_report || {}) }).map(([key, value]) => `<dt>${escapeHtml(humanize(key))}</dt><dd>${escapeHtml(String(value))}</dd>`).join("")}</dl></details>
-    </div><div class="entity-side">${statusBadge(item.status)}</div></article>`).join("") : empty(page.unavailable ? "Backtest queue unavailable." : "No backtests in this view.");
+  const completed = page.counts?.completed_backtests || 0;
+  document.getElementById("backtest-count").textContent = page.unavailable ? "Unavailable" : `${completed} completed · ${page.total || 0} execution records`;
+  const content = items.length ? items.map(backtestCard).join("") : empty(page.unavailable ? "Backtest queue unavailable." : "No backtests in this view.");
   const signature = JSON.stringify(items);
   if (container.dataset.signature !== signature) {
     container.innerHTML = content;
     container.dataset.signature = signature;
-    container.querySelectorAll("[data-backtest-id]").forEach((node) => { if (expanded.has(node.dataset.backtestId)) node.querySelector("details").open = true; });
+    container.querySelectorAll("[data-backtest-open]").forEach((button) => { button.onclick = () => openBacktest(button.dataset.backtestOpen); });
   }
   document.getElementById("backtest-coverage").textContent = page.unavailable ? "" : `${page.offset || 0}-${(page.offset || 0) + items.length} of ${page.total || 0} · Updated ${relativeTime(page.generated_at)}`;
   document.getElementById("backtest-previous").disabled = !state.backtestOffset;
   document.getElementById("backtest-next").disabled = !page.has_more;
+}
+
+function backtestCard(item) {
+  const completed = item.execution_evidence === "native_terminal_receipt" && item.terminal_receipt?.present;
+  const terminalWithoutReceipt = item.category === "finished" && !completed;
+  const gates = Object.values(item.gate_states || {});
+  const passed = gates.filter((value) => value === "passed").length;
+  const failed = gates.filter((value) => value === "failed").length;
+  const notRun = gates.filter((value) => value === "not_run").length;
+  const classification = completed ? "Completed backtest" : terminalWithoutReceipt ? "Terminal task · receipt missing" : `${humanize(item.category)} execution`;
+  const instruments = item.scientific_contract?.dataset?.instruments || [item.instrument].filter(Boolean);
+  return `<article class="backtest-card ${completed ? "receipt-complete" : terminalWithoutReceipt ? "receipt-missing" : ""}" data-backtest-id="${escapeHtml(item.task_id)}">
+    <header class="backtest-card-heading"><div><span class="backtest-classification">${escapeHtml(classification)}</span><h3>${escapeHtml(item.question)}</h3></div>${statusBadge(completed ? item.outcome || "completed" : item.status)}</header>
+    <div class="backtest-card-facts"><span>${escapeHtml(item.tier || "Tier unrecorded")}</span><span>${escapeHtml(instruments.join(", ") || "Universe unrecorded")}</span><span>${escapeHtml(item.scientific_contract?.representation?.research_timeframe || "Timeframe unrecorded")}</span><span>${formatDate(item.window_start)} – ${formatDate(item.window_end)}</span></div>
+    <div class="backtest-gate-summary" aria-label="Gate summary"><span class="gate-pass">${passed} passed</span><span class="gate-fail">${failed} failed</span><span class="gate-unrun">${notRun} not run</span></div>
+    ${terminalWithoutReceipt ? '<p class="backtest-boundary">This terminal task is retained for diagnosis and is not counted as a completed backtest.</p>' : ""}
+    ${item.failed_gates?.length ? `<p class="operation-error">${item.failed_gates.map((gate) => escapeHtml(humanize(gate))).join(" · ")}</p>` : ""}
+    <footer><span class="mono">${completed ? `Receipt ${shortHash(item.terminal_receipt.digest)}` : `Task ${escapeHtml(item.task_number)}`}</span><button class="secondary" type="button" data-backtest-open="${escapeHtml(item.task_id)}">Inspect evidence</button></footer>
+  </article>`;
+}
+
+function openBacktest(id) {
+  const item = (state.backtestPage?.items || state.dashboard?.backtest_activity?.items || []).find((candidate) => String(candidate.task_id) === String(id));
+  if (!item) return;
+  state.backtestDetail = item;
+  const contract = item.scientific_contract || {};
+  const dataset = contract.dataset || {};
+  const representation = contract.representation || {};
+  const strategy = contract.strategy || {};
+  const search = contract.search || {};
+  const execution = contract.execution || {};
+  const evaluation = contract.evaluation || {};
+  const receipt = item.terminal_receipt || {};
+  openInspector(receipt.present ? "Completed native backtest" : "Execution record", item.question, `
+    <section class="detail-section backtest-truth-banner ${receipt.present ? "complete" : "missing"}"><h3>Scientific status</h3><p><strong>${receipt.present ? escapeHtml(humanize(item.outcome || item.disposition || "terminal outcome")) : "No native terminal BT-009 receipt"}</strong></p><p>${receipt.present ? "This record counts as a completed backtest. It does not imply shadow admission or capital authority." : "This task remains visible for diagnosis but does not count as a completed backtest."}</p></section>
+    <section class="detail-section"><h3>Hypothesis and specification</h3><dl class="detail-grid"><dt>Task</dt><dd><button class="text-button" type="button" data-task-id="${escapeHtml(item.task_id)}">${escapeHtml(item.task_number)}</button></dd><dt>Hypothesis</dt><dd>${escapeHtml(contract.hypothesis?.id || "Not recorded")}</dd><dt>Hypothesis digest</dt><dd class="mono">${escapeHtml(contract.hypothesis?.digest || "Not recorded")}</dd><dt>Question digest</dt><dd class="mono">${escapeHtml(contract.hypothesis?.question_digest || "Not recorded")}</dd><dt>Tier</dt><dd>${escapeHtml(item.tier || "Not recorded")}</dd><dt>Execution class</dt><dd>${escapeHtml(humanize(item.execution_class || "qualification"))}</dd></dl></section>
+    <section class="detail-section"><h3>Dataset, universe and representation</h3><dl class="detail-grid"><dt>Dataset</dt><dd>${escapeHtml(dataset.key || "Not recorded")}</dd><dt>Dataset digest</dt><dd class="mono">${escapeHtml(dataset.digest || "Not recorded")}</dd><dt>Venue</dt><dd>${escapeHtml(dataset.venue || "Not recorded")}</dd><dt>Universe</dt><dd>${escapeHtml((dataset.instruments || []).join(", ") || "Not recorded")}</dd><dt>Source bars</dt><dd>${escapeHtml(representation.source_timeframe || "Not recorded")}</dd><dt>Research bars</dt><dd>${escapeHtml(representation.research_timeframe || "Not recorded")}</dd><dt>Resampling</dt><dd>${escapeHtml(humanize(representation.resampling_policy || "not recorded"))}</dd><dt>Window</dt><dd>${formatDate(representation.window_start)} – ${formatDate(representation.window_end)}</dd><dt>Representation receipt</dt><dd class="mono">${escapeHtml(representation.contract_digest || "Not recorded")}</dd></dl></section>
+    <section class="detail-section"><h3>Strategy, search and execution</h3><dl class="detail-grid"><dt>Source commit</dt><dd class="mono">${escapeHtml(strategy.source_commit || "Not recorded")}</dd><dt>Code digest</dt><dd class="mono">${escapeHtml(strategy.code_digest || "Not recorded")}</dd><dt>Variant budget</dt><dd>${search.maximum_variants ?? "Not recorded"}</dd><dt>Variants run</dt><dd>${search.declared_variants ?? item.trial_count ?? "Not recorded"}</dd><dt>Selected variant</dt><dd>${search.selected_variant_index ?? "Not selected"}</dd><dt>Selection basis</dt><dd>${escapeHtml(humanize(search.selection_basis || "not recorded"))}</dd><dt>Trial</dt><dd class="mono">${escapeHtml(execution.trial_id || "Not recorded")}</dd><dt>Workers</dt><dd>${execution.worker_allocation ?? "Not recorded"}</dd><dt>Run interval</dt><dd>${formatDate(execution.started_at)} – ${formatDate(execution.ended_at)}</dd></dl></section>
+    <section class="detail-section"><h3>Evaluation gates</h3><div class="backtest-gate-grid">${Object.entries(item.gate_states || {}).map(([gate, value]) => `<div><span>${escapeHtml(humanize(gate))}</span>${statusBadge(value)}</div>`).join("")}</div>${item.failed_gates?.length ? `<p class="operation-error">${item.failed_gates.map((gate) => escapeHtml(humanize(gate))).join(" · ")}</p>` : ""}<dl class="detail-grid compact"><dt>OOS trades</dt><dd>${evaluation.metrics?.oos_trades ?? "Not recorded"}</dd><dt>OOS mean net R</dt><dd>${evaluation.metrics?.oos_mean_net_r ?? "Not recorded"}</dd><dt>Double-cost OOS</dt><dd>${evaluation.metrics?.double_cost_oos_mean_net_r ?? "Not recorded"}</dd><dt>Splits</dt><dd>${evaluation.splits ? escapeHtml(JSON.stringify(evaluation.splits)) : "Not recorded"}</dd><dt>Costs</dt><dd>${evaluation.costs ? escapeHtml(JSON.stringify(evaluation.costs)) : "Not recorded"}</dd><dt>Leakage review</dt><dd>${statusBadge(evaluation.leakage_review || "not_run")}</dd><dt>Selection-bias receipt</dt><dd class="mono">${escapeHtml(evaluation.selection_bias_audit_digest || "Not recorded")}</dd></dl></section>
+    <section class="detail-section"><h3>Terminal receipt</h3><dl class="detail-grid"><dt>Present</dt><dd>${yesNo(receipt.present)}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(receipt.digest || "Not recorded")}</dd><dt>Schema</dt><dd>${escapeHtml(receipt.schema_version || "Not recorded")}</dd><dt>Bundle</dt><dd class="mono">${escapeHtml(receipt.bundle_digest || "Not recorded")}</dd><dt>Promotion</dt><dd>${escapeHtml(humanize(item.promotion || "not established"))}</dd></dl></section>
+    <section class="detail-section"><h3>Exact reports and artifacts</h3>${(item.artifacts || []).map((artifact) => `<button class="inspector-reference" type="button" data-artifact-id="${escapeHtml(artifact.id)}"><span><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(humanize(artifact.artifact_type))} · ${escapeHtml(artifact.verification_status || "registered")}</small></span><span aria-hidden="true">›</span></button>`).join("") || '<p class="muted">No canonical artifacts are registered for this task.</p>'}</section>
+  `);
+  document.querySelectorAll("#inspector-body [data-task-id]").forEach((button) => { button.onclick = () => openTask(button.dataset.taskId); });
+  document.querySelectorAll("#inspector-body [data-artifact-id]").forEach((button) => { button.onclick = () => openArtifact(button.dataset.artifactId); });
 }
 
 for (const id of ["backtest-view", "backtest-tier"]) {
@@ -1890,11 +2551,10 @@ function bindEntityButtons() {
 
 async function openTask(id) {
   const summary = state.dashboard.tasks.find((item) => String(item.id) === String(id));
-  if (!summary) return;
   let task = summary;
   try {
     const detail = await request(`/api/tasks/${encodeURIComponent(id)}`);
-    task = detail.task || summary;
+    task = detail.task || summary || detail;
   } catch (error) {
     toast(`Full task evidence is unavailable: ${error.message}`);
   }
@@ -1946,57 +2606,151 @@ function openOperation(id) {
   `);
 }
 
-function openAgent(id) {
+async function openAgent(id) {
   const agent = state.dashboard.agents.find((item) => String(item.id) === String(id));
   if (!agent) return;
-  const deployment = activeDeployment(agent.id);
-  const pkg = deployment?.package;
-  const manifest = pkg?.manifest;
-  const permission = manifest?.permission_profile;
-  const repository = manifest?.repository_profile;
-  const assignedTasks = (state.dashboard.tasks || []).filter((task) => String(task.assigned_agent_id || "") === String(agent.id)).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-  const latestTask = assignedTasks.find((task) => activeStatuses.has(task.status)) || assignedTasks[0];
-  openInspector("Agent", agent.display_name || agent.slug, `
-    <section class="detail-section"><h3>Identity</h3><dl class="detail-grid">
-      <dt>Slug</dt><dd class="mono">${escapeHtml(agent.slug)}</dd>
-      <dt>Machine</dt><dd>${escapeHtml(agent.machine)}</dd>
-      <dt>Presence</dt><dd>${statusBadge(agentStatus(agent))}</dd>
-      <dt>Enabled</dt><dd>${String(agent.is_enabled ?? agent.enabled ?? true)}</dd>
-      <dt>Risk ceiling</dt><dd>${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</dd>
-      <dt>Profile</dt><dd>${escapeHtml(agent.hermes_profile || "Worker")}</dd>
-      <dt>Last heartbeat</dt><dd>${relativeTime(agent.last_heartbeat_at)}</dd>
-    </dl></section>
-    <section class="detail-section"><h3>${latestTask && activeStatuses.has(latestTask.status) ? "Current assignment" : "Most recent task"}</h3>${latestTask ? `<button class="entity-row agent-task-link" data-task-id="${latestTask.id}"><span class="entity-primary"><strong>${escapeHtml(latestTask.title)}</strong><span class="entity-meta"><span class="mono">${escapeHtml(latestTask.task_number)}</span><span>${relativeTime(latestTask.updated_at)}</span></span></span><span class="entity-side">${statusBadge(latestTask.status)}</span></button>` : '<p class="muted">No task assignment is recorded in the current task window.</p>'}</section>
-    <section class="detail-section"><h3>Role and responsibility</h3>
-      <p><strong>${escapeHtml(manifest?.role || agent.role || "No deployed role package")}</strong></p>
-      <p>${escapeHtml(roleResponsibility(manifest))}</p>
-    </section>
-    <section class="detail-section"><h3>Tasks this agent can carry out</h3>
-      <div class="capabilities">${(manifest?.task_types || []).map((item) => `<span class="capability strong">${escapeHtml(humanize(item))}</span>`).join("") || '<span class="muted">No executable task types deployed.</span>'}</div>
-      <dl class="detail-grid compact">
-        <dt>Workflows</dt><dd>${listOrNone((manifest?.workflows || []).map((item) => item.name))}</dd>
-        <dt>Machines</dt><dd>${listOrNone(manifest?.allowed_machines)}</dd>
-        <dt>Repositories</dt><dd>${listOrNone(repository?.repositories)}</dd>
-      </dl>
-    </section>
-    <section class="detail-section"><h3>Capabilities</h3><div class="capabilities">${(agent.capabilities || []).map((item) => `<span class="capability">${escapeHtml(item)}</span>`).join("")}</div></section>
-    <section class="detail-section"><h3>Effective permissions</h3><dl class="detail-grid">
-      <dt>Profile</dt><dd>${escapeHtml(permission?.name || "No active package")}</dd>
-      <dt>Network</dt><dd>${escapeHtml(humanize(permission?.network_access || "none"))}</dd>
-      <dt>Writable roots</dt><dd>${listOrNone(permission?.writable_roots)}</dd>
-      <dt>Privileged ops</dt><dd>${yesNo(permission?.privileged_operations)}</dd>
-      <dt>Primary write</dt><dd>${yesNo(repository?.primary_checkout_write)}</dd>
-      <dt>Remote write</dt><dd>${yesNo(repository?.remote_write)}</dd>
-    </dl></section>
-    <section class="detail-section"><h3>Signed deployment</h3><dl class="detail-grid">
-      <dt>Package</dt><dd>${escapeHtml(pkg ? `${pkg.name} ${pkg.version}` : "None")}</dd>
-      <dt>Active</dt><dd>${yesNo(deployment?.deployment?.is_active)}</dd>
-      <dt>Source commit</dt><dd class="mono">${escapeHtml(pkg?.source_commit || "Not recorded")}</dd>
-      <dt>Manifest digest</dt><dd class="mono">${escapeHtml(pkg?.manifest_digest || "Not recorded")}</dd>
-    </dl></section>
-  `);
-  const taskLink = document.querySelector(".agent-task-link");
-  if (taskLink) taskLink.onclick = () => openTask(taskLink.dataset.taskId);
+  state.agentDetail = null;
+  state.agentDetailTab = "overview";
+  state.agentDetailLoading = true;
+  openInspector("Agent", agent.display_name || agent.slug, agentInspectorLoading());
+  try {
+    state.agentDetail = await request(`/api/agents/${encodeURIComponent(id)}/detail?offset=0&limit=25`);
+    renderAgentInspector();
+  } catch (error) {
+    document.getElementById("inspector-body").innerHTML = `<section class="agent-inspector-error" role="alert"><h3>Agent evidence unavailable</h3><p>${escapeHtml(error.message)}</p><button class="secondary" type="button" id="retry-agent-detail">Retry</button></section>`;
+    document.getElementById("retry-agent-detail").onclick = () => openAgent(id);
+  } finally {
+    state.agentDetailLoading = false;
+  }
+}
+
+function agentInspectorLoading() {
+  return `<div class="agent-detail-loading" role="status" aria-live="polite"><span class="loading-line wide"></span><span class="loading-line"></span><span class="loading-line short"></span><span class="sr-only">Loading canonical agent evidence</span></div>`;
+}
+
+function renderAgentInspector({ focusTab = false } = {}) {
+  const detail = state.agentDetail;
+  if (!detail) return;
+  const tabs = ["overview", "now", "history", "workflows", "governance"];
+  const active = tabs.includes(state.agentDetailTab) ? state.agentDetailTab : "overview";
+  const body = document.getElementById("inspector-body");
+  body.innerHTML = `
+    <div class="agent-inspector-summary">
+      <div class="agent-inspector-identity"><span class="agent-avatar" aria-hidden="true">${agentInitials(detail.agent)}</span><div><strong>${escapeHtml(detail.agent.display_name || detail.agent.slug)}</strong><span>${escapeHtml(detail.agent.machine || "Machine unreported")}</span></div></div>
+      ${statusBadge(detail.agent.presence || detail.agent.status || "unknown")}
+    </div>
+    <div class="agent-inspector-tabs" role="tablist" aria-label="Agent evidence">
+      ${tabs.map((tab) => `<button type="button" role="tab" id="agent-tab-${tab}" aria-controls="agent-panel" aria-selected="${tab === active}" tabindex="${tab === active ? "0" : "-1"}" data-agent-tab="${tab}">${escapeHtml(humanize(tab))}</button>`).join("")}
+    </div>
+    <div id="agent-panel" class="agent-inspector-panel" role="tabpanel" aria-labelledby="agent-tab-${active}" tabindex="0">${agentInspectorPanel(detail, active)}</div>`;
+  bindAgentInspectorControls();
+  if (focusTab) document.getElementById(`agent-tab-${active}`)?.focus();
+}
+
+function agentInspectorPanel(detail, tab) {
+  const agent = detail.agent;
+  if (tab === "now") {
+    const lease = detail.current_lease;
+    const leaseTaskId = canonicalLeaseTaskId(lease, detail.task_history.items);
+    return `<section class="detail-section"><h3>Current assignment</h3>${lease ? `<button class="entity-row" type="button" ${leaseTaskId ? `data-task-id="${escapeHtml(leaseTaskId)}"` : "disabled"}><span class="entity-primary"><strong>${escapeHtml(lease.title || lease.operation_key || "Governed work")}</strong><span class="entity-meta"><span>${escapeHtml(humanize(lease.phase || lease.status || "running"))}</span><span>${escapeHtml(lease.machine || agent.machine || "Machine unreported")}</span></span></span><span class="entity-side">${statusBadge(lease.status || "running")}</span></button>` : '<p class="muted">No current lease or active assigned task is recorded.</p>'}</section>
+      <section class="detail-section"><h3>Task status evidence</h3>${sourceEvidence(detail.provenance?.task_status)}</section>
+      <section class="detail-section"><h3>Latest heartbeat</h3><dl class="detail-grid"><dt>Observed</dt><dd>${formatDate(agent.last_heartbeat_at)}</dd><dt>History</dt><dd>${escapeHtml(humanize(detail.heartbeat_history.availability))}</dd></dl><p class="evidence-boundary">${escapeHtml(detail.heartbeat_history.claim_boundary)}</p></section>
+      ${referenceSection(detail.references)}`;
+  }
+  if (tab === "history") {
+    const history = detail.task_history;
+    return `<section class="detail-section"><h3>Canonical task history</h3><div class="agent-history-list">${history.items.length ? history.items.map(agentHistoryRow).join("") : '<p class="muted">No assigned tasks are recorded.</p>'}</div>${history.has_more ? '<button class="secondary agent-load-more" type="button" id="agent-history-more">Load more tasks</button>' : '<p class="history-end">End of available task history</p>'}</section><section class="detail-section"><h3>History source</h3>${sourceEvidence(detail.provenance?.task_status)}</section>`;
+  }
+  if (tab === "workflows") {
+    const memberships = detail.workflow_memberships || [];
+    return `<section class="detail-section"><h3>Workflow membership</h3>${memberships.length ? memberships.map((item) => `<button class="entity-row" type="button" data-workflow-id="${escapeHtml(item.instance_id)}"><span class="entity-primary"><strong>${escapeHtml(item.title)}</strong><span class="entity-meta"><span>${escapeHtml(item.machine || "Machine unreported")}</span><span>${escapeHtml(item.current_leaf?.phase || "No current leaf")}</span></span></span><span class="entity-side">${statusBadge(item.state)}</span></button>`).join("") : '<p class="muted">No workflow ownership is recorded in the current projection.</p>'}</section>`;
+  }
+  if (tab === "governance") {
+    const charter = detail.charter;
+    const identity = detail.workload_identity;
+    const relationship = detail.reporting_relationship || {};
+    return `<section class="detail-section"><h3>Charter</h3><dl class="detail-grid"><dt>Role</dt><dd>${escapeHtml(charter?.role || "No active charter")}</dd><dt>Responsibilities</dt><dd>${listOrNone(charter?.responsibilities)}</dd><dt>Allowed tasks</dt><dd>${listOrNone(charter?.allowed_task_types)}</dd><dt>Risk ceiling</dt><dd>${charter?.risk_ceiling ?? agent.risk_ceiling ?? "Not recorded"}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(charter?.manifest_digest || "Not recorded")}</dd></dl></section>
+      <section class="detail-section"><h3>Capabilities and grants</h3><div class="capabilities">${(agent.capabilities || []).map((item) => `<span class="capability">${escapeHtml(item)}</span>`).join("") || '<span class="muted">None recorded.</span>'}</div><div class="agent-grant-list">${(detail.grants || []).map((grant) => `<div class="inspector-row"><span>${escapeHtml(grant.capability || "Capability grant")}</span><strong>${escapeHtml(grant.machine || "Any governed machine")}</strong><small>risk ${grant.risk_ceiling ?? "unrecorded"} · expires ${formatDate(grant.expires_at)}</small></div>`).join("") || '<p class="muted">No active grants.</p>'}</div></section>
+      <section class="detail-section"><h3>Workload identity</h3><dl class="detail-grid"><dt>Audience</dt><dd>${escapeHtml(identity?.audience || "Not recorded")}</dd><dt>Scopes</dt><dd>${listOrNone(identity?.scopes)}</dd><dt>Owner</dt><dd>${escapeHtml(identity?.accountable_owner || "Not recorded")}</dd></dl></section>
+      <section class="detail-section"><h3>Reporting relationship</h3><p>${relationship.status === "recorded" ? escapeHtml(relationship.description || relationship.manager || "Recorded by source") : "Unknown. Mission Control does not infer an organization chart from tasks or deployments."}</p></section>`;
+  }
+  const deployment = detail.deployment;
+  return `<section class="detail-section"><h3>Identity</h3><dl class="detail-grid"><dt>Slug</dt><dd class="mono">${escapeHtml(agent.slug)}</dd><dt>Machine</dt><dd>${escapeHtml(agent.machine || "Not recorded")}</dd><dt>Presence</dt><dd>${statusBadge(agent.presence || agent.status || "unknown")}</dd><dt>Enabled</dt><dd>${yesNo(agent.is_enabled)}</dd><dt>Runtime</dt><dd>${escapeHtml([agent.runtime, agent.runtime_version].filter(Boolean).join(" ") || "Not recorded")}</dd><dt>Last heartbeat</dt><dd>${formatDate(agent.last_heartbeat_at)} · ${relativeTime(agent.last_heartbeat_at)}</dd></dl></section>
+    <section class="detail-section"><h3>Presence evidence</h3>${sourceEvidence(detail.provenance?.presence)}</section>
+    <section class="detail-section"><h3>Active deployment</h3><dl class="detail-grid"><dt>Package</dt><dd>${escapeHtml(deployment ? `${deployment.package_name} ${deployment.package_version || ""}` : "None")}</dd><dt>Source commit</dt><dd class="mono">${escapeHtml(deployment?.source_commit || "Not recorded")}</dd><dt>Manifest digest</dt><dd class="mono">${escapeHtml(deployment?.manifest_digest || "Not recorded")}</dd></dl></section><p class="evidence-boundary">${escapeHtml(detail.claim_boundary)}</p>`;
+}
+
+function sourceEvidence(source) {
+  if (!source) return '<p class="muted">Source metadata unavailable.</p>';
+  return `<dl class="source-evidence"><dt>Source</dt><dd class="mono">${escapeHtml(source.source_identity)}</dd><dt>Class</dt><dd>${escapeHtml(humanize(source.fact_class))}</dd><dt>Freshness</dt><dd>${statusBadge(source.freshness)}</dd><dt>Timestamp</dt><dd>${formatDate(source.source_timestamp)}</dd><dt>Threshold</dt><dd>${source.freshness_threshold_seconds}s</dd>${source.reason ? `<dt>Reason</dt><dd>${escapeHtml(humanize(source.reason))}</dd>` : ""}</dl>`;
+}
+
+function referenceSection(references) {
+  const artifacts = references?.artifacts || [];
+  const logs = references?.logs || [];
+  return `<section class="detail-section"><h3>Artifacts and logs</h3>${artifacts.map((item) => `<button class="inspector-reference" type="button" data-artifact-id="${escapeHtml(item.id)}"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(humanize(item.artifact_type))} · ${escapeHtml(item.verification_status || "registered")}</small></span><span aria-hidden="true">›</span></button>`).join("") || '<p class="muted">No linked artifacts in this task window.</p>'}${logs.map((item) => `<div class="inspector-reference static"><span><strong>Operation log</strong><small class="mono">${escapeHtml(item.reference)}</small></span></div>`).join("")}</section>`;
+}
+
+function agentHistoryRow(item) {
+  return `<button class="entity-row" type="button" data-task-id="${escapeHtml(item.id)}"><span class="entity-primary"><strong>${escapeHtml(item.title)}</strong><span class="entity-meta"><span class="mono">${escapeHtml(item.task_number)}</span><span>${item.attempt_count ?? 0}/${item.max_attempts ?? 0} attempts</span><span>${formatDate(item.updated_at)}</span></span></span><span class="entity-side">${statusBadge(item.status)}</span></button>`;
+}
+
+function agentInitials(agent) {
+  return (agent.display_name || agent.slug || "A").split(/[\s-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+}
+
+function canonicalLeaseTaskId(lease, tasks) {
+  if (!lease) return null;
+  const direct = tasks.find((item) => String(item.id) === String(lease.id));
+  if (direct) return direct.id;
+  const operationTaskId = String(lease.operation_key || "").match(/^task:(.+)$/)?.[1];
+  return tasks.some((item) => String(item.id) === operationTaskId) ? operationTaskId : null;
+}
+
+function bindAgentInspectorControls() {
+  document.querySelectorAll("[data-agent-tab]").forEach((button) => {
+    button.onclick = () => {
+      state.agentDetailTab = button.dataset.agentTab;
+      renderAgentInspector({ focusTab: true });
+    };
+    button.onkeydown = (event) => {
+      const tabs = [...document.querySelectorAll("[data-agent-tab]")];
+      const index = tabs.indexOf(button);
+      let next = null;
+      if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+      if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+      if (event.key === "Home") next = tabs[0];
+      if (event.key === "End") next = tabs.at(-1);
+      if (!next) return;
+      event.preventDefault();
+      state.agentDetailTab = next.dataset.agentTab;
+      renderAgentInspector({ focusTab: true });
+    };
+  });
+  document.querySelectorAll("#agent-panel [data-task-id]").forEach((button) => { button.onclick = () => openTask(button.dataset.taskId); });
+  document.querySelectorAll("#agent-panel [data-artifact-id]").forEach((button) => { button.onclick = () => openArtifact(button.dataset.artifactId); });
+  document.querySelectorAll("#agent-panel [data-workflow-id]").forEach((button) => { button.onclick = () => { closeInspector(); openWorkflow(button.dataset.workflowId); }; });
+  const more = document.getElementById("agent-history-more");
+  if (more) more.onclick = loadMoreAgentHistory;
+}
+
+async function loadMoreAgentHistory() {
+  const detail = state.agentDetail;
+  const button = document.getElementById("agent-history-more");
+  if (!detail || !button) return;
+  button.disabled = true;
+  button.textContent = "Loading…";
+  try {
+    const history = detail.task_history;
+    const next = await request(`/api/agents/${encodeURIComponent(detail.agent.id)}/detail?offset=${history.offset + history.items.length}&limit=${history.limit}`);
+    detail.task_history.items.push(...next.task_history.items);
+    detail.task_history.has_more = next.task_history.has_more;
+    renderAgentInspector();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Retry loading tasks";
+    toast(error.message);
+  }
 }
 
 function openProposal(id) {
@@ -2072,7 +2826,9 @@ function bulletList(values, fallback) {
 }
 
 function openArtifact(id) {
-  const artifact = state.dashboard.artifacts.find((item) => String(item.id) === String(id));
+  const artifact = (state.dashboard?.artifacts || []).find((item) => String(item.id) === String(id))
+    || (state.agentDetail?.references?.artifacts || []).find((item) => String(item.id) === String(id))
+    || (state.backtestDetail?.artifacts || []).find((item) => String(item.id) === String(id));
   if (!artifact) return;
   openInspector("Evidence", artifact.name, `
     <section class="detail-section"><h3>Provenance</h3><dl class="detail-grid">
@@ -2306,9 +3062,16 @@ function openCopilotSource(source) {
 
 async function loadGraph() {
   try {
-    renderGraph(await request("/api/knowledge/graph"));
+    if (state.demo) {
+      renderGraph(state.dashboard?.graph || { nodes: [], edges: [], scope: "demonstration" });
+      return;
+    }
+    state.graphExtent = "global";
+    const parameters = new URLSearchParams({ scope: state.graphScope, limit: "100" });
+    renderGraph(await request(`/api/knowledge/graph?${parameters}`));
+    saveGraphViewState();
   } catch (error) {
-    document.getElementById("graph").innerHTML = empty("Knowledge graph unavailable.");
+    document.getElementById("graph").innerHTML = empty(`Knowledge graph unavailable: ${error.message}`);
   }
 }
 
@@ -2322,12 +3085,20 @@ async function loadLibraryCatalog() {
         canonical: [
           { id: "demo-source-1", title: "Advances in Financial Machine Learning", project: "systematic-research", origin: "Synthetic demo catalog", content_digest: "a68317817f2b39c760f1c4743050ad6a5d5719b51db543c5b0eb9983b4d398c8", kind: "canonical", access_class: "internal" },
           { id: "demo-source-2", title: "Market Microstructure and Trading Strategies", project: "systematic-research", origin: "Synthetic demo catalog", content_digest: "8914a183e66b1aefa292d8f8728e0be1dbef2be0e8d0d8a6f21fc893c97b42aa", kind: "canonical", access_class: "internal" },
-        ], private: [], generated_at: new Date().toISOString(),
+        ], private: [], generated_at: new Date().toISOString(), pagination: { offset: 0, limit: 30, total: 2, has_more: false }, counts: { canonical: 2, private: 0 },
       };
     } else {
-      state.libraryCatalog = await request("/api/knowledge/catalog");
+      const query = document.getElementById("library-filter").value.trim();
+      const kind = document.getElementById("library-kind").value;
+      const parameters = new URLSearchParams({ kind, offset: String(state.libraryOffset), limit: String(state.libraryLimit) });
+      if (query) parameters.set("q", query);
+      state.libraryCatalog = await request(`/api/knowledge/catalog?${parameters}`);
     }
     renderLibraryCatalog();
+    if (!state.libraryDeepLinkOpened && requestedLibrarySource && ["canonical", "private"].includes(requestedLibraryKind)) {
+      state.libraryDeepLinkOpened = true;
+      await openLibrarySource(requestedLibraryKind, requestedLibrarySource, { citation: requestedLibraryCitation, updateUrl: false });
+    }
   } catch (error) {
     state.libraryCatalog = null;
     container.innerHTML = empty(`Source catalog unavailable: ${error.message}`);
@@ -2339,59 +3110,318 @@ function renderLibraryCatalog() {
   const data = state.libraryCatalog;
   const container = document.getElementById("library-catalog");
   if (!data || !container) return;
-  const query = document.getElementById("library-filter").value.trim().toLowerCase();
   const canonical = (data.canonical || []).map((item) => ({ ...item, catalog_kind: "canonical" }));
   const privateSources = (data.private || []).map((item) => ({ ...item, catalog_kind: "private" }));
-  const all = [...canonical, ...privateSources].filter((item) => !query || `${item.title} ${item.project || ""} ${item.origin || item.path || ""}`.toLowerCase().includes(query));
-  document.getElementById("library-catalog-count").textContent = `${all.length} titles${all.length !== canonical.length + privateSources.length ? ` · ${canonical.length + privateSources.length} total` : ""}`;
+  const all = [...canonical, ...privateSources].sort((left, right) => String(left.title).localeCompare(String(right.title)));
+  const pagination = data.pagination || { offset: 0, limit: all.length || 1, total: all.length, has_more: false };
+  document.getElementById("library-catalog-count").textContent = `${pagination.total} title${pagination.total === 1 ? "" : "s"}`;
   const snapshot = data.generated_at ? `Index refreshed ${relativeTime(data.generated_at)}` : "Index refresh time unavailable";
-  container.innerHTML = all.length ? `<div class="library-catalog-status"><span>${escapeHtml(snapshot)}</span><span>${canonical.length} canonical · ${privateSources.length} private</span>${data.canonical_error ? `<span class="catalog-warning">Canonical catalog unavailable: ${escapeHtml(data.canonical_error)}</span>` : ""}</div>${all.map((item) => `<button class="library-source-row" type="button" data-library-id="${escapeHtml(item.id)}" data-library-kind="${item.catalog_kind}">
+  const counts = data.counts || { canonical: canonical.length, private: privateSources.length };
+  container.innerHTML = all.length ? `<div class="library-catalog-status"><span>${escapeHtml(snapshot)}</span><span>${counts.canonical} canonical · ${counts.private} private</span>${data.canonical_error ? `<span class="catalog-warning">Canonical catalog unavailable: ${escapeHtml(data.canonical_error)}</span>` : ""}</div>${all.map((item) => `<button class="library-source-row" type="button" data-library-id="${escapeHtml(item.id)}" data-library-kind="${item.catalog_kind}">
     <span class="library-source-kind" aria-hidden="true">${item.catalog_kind === "canonical" ? "Research" : "Private"}</span>
     <span class="library-source-title"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.project || item.confidentiality || "Private library")} · ${item.catalog_kind === "canonical" ? escapeHtml(item.access_class || "canonical") : "Mac-local index"}</span></span>
-    <span class="library-source-meta">${escapeHtml(item.origin || item.path || "")}<small>${escapeHtml(shortHash(item.content_digest || item.digest || ""))}</small></span>
+    <span class="library-source-meta">${escapeHtml(item.origin || "Source origin unavailable")}<small>${escapeHtml(shortHash(item.content_digest || item.digest || ""))}</small></span>
     <span class="row-open" aria-hidden="true">›</span>
-  </button>`).join("")}` : empty(query ? "No titles match this filter." : "No sources have been indexed yet.");
+  </button>`).join("")}` : empty(document.getElementById("library-filter").value ? "No titles match this filter." : "No sources have been indexed yet.");
   container.querySelectorAll("[data-library-id]").forEach((button) => {
     button.onclick = () => openLibrarySource(button.dataset.libraryKind, button.dataset.libraryId);
   });
+  renderLibraryPagination(pagination);
 }
 
-function openLibrarySource(kind, id) {
+function renderLibraryPagination(pagination) {
+  const nav = document.getElementById("library-pagination");
+  const first = pagination.total ? pagination.offset + 1 : 0;
+  const last = Math.min(pagination.offset + pagination.limit, pagination.total);
+  nav.innerHTML = `<button class="secondary" type="button" data-library-page="previous" ${pagination.offset <= 0 ? "disabled" : ""}>← Previous</button><span>${first}–${last} of ${pagination.total}</span><button class="secondary" type="button" data-library-page="next" ${pagination.has_more ? "" : "disabled"}>Next →</button>`;
+  nav.querySelectorAll("[data-library-page]").forEach((button) => {
+    button.onclick = () => {
+      state.libraryOffset = button.dataset.libraryPage === "next" ? pagination.offset + pagination.limit : Math.max(0, pagination.offset - pagination.limit);
+      loadLibraryCatalog();
+    };
+  });
+}
+
+async function openLibrarySource(kind, id, { citation = null, updateUrl = true } = {}) {
   const data = state.libraryCatalog || {};
   const item = kind === "canonical"
     ? (data.canonical || []).find((source) => String(source.id) === String(id))
     : (data.private || []).find((source) => String(source.id) === String(id));
-  if (!item) return;
-  const digest = item.content_digest || item.digest;
-  openInspector(kind === "canonical" ? "Canonical source" : "Private indexed source", item.title, `
-    <section class="detail-section"><h3>Catalog record</h3><dl class="detail-grid">
-      <dt>Project</dt><dd>${escapeHtml(item.project || item.confidentiality || "Private")}</dd>
-      <dt>Origin</dt><dd>${escapeHtml(item.origin || item.path || "Not recorded")}</dd>
-      <dt>Access</dt><dd>${escapeHtml(item.access_class || item.confidentiality || "private")}</dd>
-      <dt>Indexed</dt><dd>${formatDate(item.created_at || item.indexed_at)}</dd>
-      <dt>Digest</dt><dd class="mono">${escapeHtml(digest || "Not recorded")}</dd>
-    </dl></section>
-    <p class="muted">The catalog exposes source identity and title only. Full text is retrieved separately through authorized search.</p>
-    ${kind === "canonical" ? '<div class="inspector-actions"><button class="secondary" type="button" id="library-explore-source">Explore relationships</button></div>' : ""}
-  `);
+  state.libraryListScroll = document.getElementById("library-catalog").scrollTop;
+  document.getElementById("library-browser").hidden = true;
+  const reader = document.getElementById("library-reader");
+  reader.hidden = false;
+  document.getElementById("library-reader-title").textContent = item?.title || "Loading source…";
+  document.getElementById("library-reader-status").innerHTML = '<span class="reader-loading">Loading authorized content…</span>';
+  document.getElementById("library-document").innerHTML = '<p class="stage-empty">Resolving source lineage and first text range…</p>';
+  if (updateUrl) updateLibrarySourceUrl(kind, id, citation);
+  if (state.demo) {
+    renderUnavailableDemoSource(item, kind, id);
+    return;
+  }
+  state.libraryReader = { kind, id, item, unit: "line", ranges: [], outline: [], find: "", loading: false };
+  try {
+    await fetchLibraryRangeAt(1, { reset: true });
+    renderLibraryReader();
+    if (citation) await jumpToLibraryCitation(citation);
+    document.getElementById("library-reader-title").focus?.();
+  } catch (error) {
+    document.getElementById("library-reader-status").innerHTML = '<span class="quality-label uncertain">Unavailable</span>';
+    document.getElementById("library-document").innerHTML = empty(`Source content unavailable: ${error.message}`);
+  }
+}
+
+function sourceContentUrl(reader, start) {
+  const parameters = new URLSearchParams({ start: String(start), limit: String(reader.unit === "page" ? 5 : 200) });
+  if (reader.kind === "canonical") parameters.set("unit", reader.unit);
+  return `/api/knowledge/sources/${reader.kind}/${encodeURIComponent(reader.id)}/content?${parameters}`;
+}
+
+async function fetchLibraryRangeAt(start, options = {}) {
+  const reader = state.libraryReader;
+  if (!reader || reader.loading) return null;
+  reader.loading = true;
+  try {
+    const response = await request(sourceContentUrl(reader, start));
+    if (options.reset) reader.ranges = [];
+    reader.ranges.push(response);
+    reader.outline = response.outline || reader.outline;
+    reader.source = response;
+    return response;
+  } finally {
+    reader.loading = false;
+  }
+}
+
+async function loadNextLibraryRange() {
+  const next = state.libraryReader?.ranges.at(-1)?.range?.next_start;
+  if (!next) return;
+  document.getElementById("library-load-more").disabled = true;
+  try {
+    await fetchLibraryRangeAt(next);
+    renderLibraryReader();
+  } finally {
+    document.getElementById("library-load-more").disabled = false;
+  }
+}
+
+async function loadAllLibraryRanges() {
+  const reader = state.libraryReader;
+  if (!reader) return;
+  const button = document.getElementById("library-load-all");
+  button.disabled = true;
+  const seen = new Set(reader.ranges.map((range) => range.range.start));
+  try {
+    while (reader.ranges.at(-1)?.range?.next_start) {
+      const next = reader.ranges.at(-1).range.next_start;
+      if (seen.has(next)) throw new Error("Source pagination repeated a range boundary.");
+      seen.add(next);
+      button.textContent = `Loading from ${reader.unit === "page" ? "page" : "line"} ${next}…`;
+      await fetchLibraryRangeAt(next);
+    }
+    renderLibraryReader();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Load all available text";
+  }
+}
+
+function renderLibraryReader() {
+  const reader = state.libraryReader;
+  if (!reader?.source) return;
+  const source = reader.source;
+  document.getElementById("library-reader-title").textContent = source.title;
+  document.getElementById("library-reader-kicker").textContent = source.source_kind === "canonical" ? "Canonical research source" : "Private local source";
+  document.getElementById("library-reader-subtitle").textContent = `${source.source_metadata.project || source.source_metadata.origin || "Local index"} · version ${source.version} · ${shortHash(source.source_digest)}`;
+  const quality = source.lineage.quality || "unknown";
+  document.getElementById("library-reader-status").innerHTML = `<span class="quality-label ${escapeHtml(quality)}">${escapeHtml(humanize(quality))}</span><span>${source.source_kind === "canonical" ? "Extracted text" : "Native text"}</span>`;
+  document.querySelectorAll("[data-library-unit]").forEach((button) => {
+    const active = button.dataset.libraryUnit === reader.unit;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.disabled = source.source_kind === "private" && button.dataset.libraryUnit === "page";
+  });
+  renderLibraryDocument();
+  renderLibraryOutline();
+  renderLibraryProvenance();
+  const last = reader.ranges.at(-1)?.range;
+  document.getElementById("library-load-more").hidden = !last?.next_start;
+  document.getElementById("library-load-all").hidden = !last?.next_start;
+  document.getElementById("library-range-status").textContent = last ? `${humanize(last.unit)} ${reader.ranges[0].range.start}–${last.end} of ${last.total}${last.truncated_by_size ? " · response size bounded" : ""}` : "";
+}
+
+function renderLibraryDocument() {
+  const reader = state.libraryReader;
+  const documentBody = document.getElementById("library-document");
+  if (!reader?.ranges.length) return;
+  if (reader.unit === "page") {
+    documentBody.innerHTML = reader.ranges.map((range) => `<section class="source-page" id="source-P${range.range.start}" tabindex="-1"><header><strong>Extracted page range ${range.range.start}–${range.range.end}</strong><button class="text-button" type="button" data-copy-citation="${escapeHtml(range.citation)}">Copy citation</button></header><pre>${highlightLibraryText(range.content, reader.find)}</pre><p class="source-extraction-boundary">Extracted text. This is not an image of the original page.</p></section>`).join("");
+  } else {
+    const lines = [];
+    reader.ranges.forEach((range) => range.content.split("\n").forEach((text, index) => lines.push({ number: range.range.start + index, text, citation: range.citation })));
+    documentBody.innerHTML = `<div class="source-lines">${lines.map((line) => `<div class="source-line" id="source-L${line.number}" data-source-line="${line.number}"><a href="#source-L${line.number}" class="source-line-number" aria-label="Line ${line.number}" data-line-citation="L${line.number}">${line.number}</a><span>${highlightLibraryText(line.text, reader.find) || "&nbsp;"}</span></div>`).join("")}</div>`;
+  }
+  documentBody.querySelectorAll("[data-copy-citation]").forEach((button) => button.onclick = () => copyLibraryCitation(button.dataset.copyCitation));
+  documentBody.querySelectorAll("[data-line-citation]").forEach((link) => link.onclick = (event) => {
+    event.preventDefault();
+    updateLibrarySourceUrl(reader.kind, reader.id, link.dataset.lineCitation);
+    copyLibraryCitation(`${reader.source.citation.split("#")[0]}#${link.dataset.lineCitation}`);
+  });
+}
+
+function renderLibraryOutline() {
+  const outline = document.getElementById("library-outline");
+  const items = state.libraryReader?.outline || [];
+  outline.innerHTML = items.length ? items.map((item) => `<button type="button" style="--outline-indent:${Math.max(0, Number(item.level || 1) - 1) * 8}px" data-outline-unit="${escapeHtml(item.unit)}" data-outline-position="${Number(item.position)}"><span>${escapeHtml(item.label)}</span><small>${escapeHtml(item.unit)} ${Number(item.position)}</small></button>`).join("") : '<p class="muted">No structural outline was extracted.</p>';
+  outline.querySelectorAll("[data-outline-position]").forEach((button) => button.onclick = () => jumpToLibraryPosition(button.dataset.outlineUnit, Number(button.dataset.outlinePosition)));
+}
+
+function renderLibraryProvenance() {
+  const source = state.libraryReader.source;
+  const lineage = source.lineage || {};
+  const assets = source.original_assets || [];
+  const pageAsset = assets.map((asset) => ({ ...asset, safeUrl: authorizedLibraryAssetUrl(asset) })).find((asset) => asset.safeUrl);
+  document.getElementById("library-provenance").innerHTML = `<section><p class="section-kicker">Source record</p><dl><dt>Access</dt><dd>${escapeHtml(source.access_class || "unknown")}</dd><dt>Version</dt><dd>${escapeHtml(source.version)}</dd><dt>Source digest</dt><dd class="mono">${escapeHtml(source.source_digest)}</dd><dt>Text digest</dt><dd class="mono">${escapeHtml(source.content_digest)}</dd></dl></section><section><p class="section-kicker">Extraction</p><dl><dt>Parser</dt><dd>${escapeHtml((lineage.parsers || [lineage.parser]).filter(Boolean).join(", ") || "Not recorded")}</dd><dt>Quality</dt><dd>${escapeHtml(humanize(lineage.quality || "unknown"))}</dd><dt>Confidence</dt><dd>${lineage.minimum_confidence == null ? "Not recorded" : `${Math.round(lineage.minimum_confidence * 100)}–${Math.round(lineage.maximum_confidence * 100)}%`}</dd></dl>${(lineage.uncertainties || []).map((item) => `<p class="source-uncertainty">${escapeHtml(humanize(item))}</p>`).join("")}</section><section><p class="section-kicker">Original asset</p>${pageAsset ? `<figure class="source-page-asset"><img src="${escapeHtml(pageAsset.safeUrl)}" alt="Authorized original source page" loading="lazy"><figcaption>Authorized original page asset. Compare it with the extracted text in the reading pane.</figcaption></figure>` : '<p class="source-asset-unavailable"><strong>Original page unavailable</strong><span>The reading pane shows stored or extracted text only. It is not a facsimile of the source.</span></p>'}</section>${source.source_kind === "canonical" ? '<button id="library-explore-source" class="secondary" type="button">Explore source relationships</button>' : '<p class="local-only-boundary">Local-only content remains on this Mission Control host.</p>'}`;
   const explore = document.getElementById("library-explore-source");
   if (explore) explore.onclick = async () => {
-    closeInspector();
-    navigate("knowledge");
+    const id = state.libraryReader.id;
+    closeLibraryReader();
     setResearchMode("explore");
     await queryGraphRoot(id);
   };
 }
 
+function authorizedLibraryAssetUrl(asset) {
+  if (asset?.availability !== "authorized_page_asset" || !asset.url) return null;
+  try {
+    const url = new URL(asset.url, window.location.origin);
+    if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/knowledge/assets/")) return null;
+    return `${url.pathname}${url.search}`;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function switchLibraryUnit(unit) {
+  const reader = state.libraryReader;
+  if (!reader || reader.unit === unit || (reader.kind === "private" && unit === "page")) return;
+  reader.unit = unit;
+  reader.find = "";
+  document.getElementById("library-find").value = "";
+  document.getElementById("library-document").innerHTML = '<p class="stage-empty">Loading range…</p>';
+  await fetchLibraryRangeAt(1, { reset: true });
+  renderLibraryReader();
+}
+
+async function jumpToLibraryPosition(unit, position) {
+  const reader = state.libraryReader;
+  if (!reader) return;
+  if (reader.unit !== unit) {
+    reader.unit = unit;
+    await fetchLibraryRangeAt(position, { reset: true });
+    renderLibraryReader();
+  } else if (!document.getElementById(`source-${unit === "page" ? "P" : "L"}${position}`)) {
+    await fetchLibraryRangeAt(position, { reset: true });
+    renderLibraryReader();
+  }
+  const marker = unit === "page" ? "P" : "L";
+  document.getElementById(`source-${marker}${position}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  updateLibrarySourceUrl(reader.kind, reader.id, `${marker}${position}`);
+}
+
+async function jumpToLibraryCitation(citation) {
+  const match = /^([LP])(\d+)$/.exec(citation || "");
+  if (match) await jumpToLibraryPosition(match[1] === "P" ? "page" : "line", Number(match[2]));
+}
+
+async function findInLibraryDocument(event) {
+  event.preventDefault();
+  const query = document.getElementById("library-find").value.trim();
+  if (!state.libraryReader || !query) return;
+  if (state.libraryReader.unit !== "line") await switchLibraryUnit("line");
+  if (state.libraryReader.ranges[0]?.range?.start !== 1) {
+    await fetchLibraryRangeAt(1, { reset: true });
+  }
+  state.libraryReader.find = query;
+  await loadAllLibraryRanges();
+  renderLibraryDocument();
+  const matches = [...document.querySelectorAll(".source-line")].filter((line) => line.textContent.toLowerCase().includes(query.toLowerCase()));
+  document.getElementById("library-find-status").textContent = `${matches.length} match${matches.length === 1 ? "" : "es"}`;
+  matches[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function highlightLibraryText(value, query) {
+  if (!query) return escapeHtml(value);
+  const lower = String(value).toLowerCase();
+  const needle = query.toLowerCase();
+  let cursor = 0;
+  let output = "";
+  while (needle && lower.indexOf(needle, cursor) !== -1) {
+    const index = lower.indexOf(needle, cursor);
+    output += escapeHtml(String(value).slice(cursor, index));
+    output += `<mark>${escapeHtml(String(value).slice(index, index + needle.length))}</mark>`;
+    cursor = index + needle.length;
+  }
+  return output + escapeHtml(String(value).slice(cursor));
+}
+
+async function copyLibraryCitation(citation) {
+  try {
+    await navigator.clipboard.writeText(citation);
+    toast("Citation copied.");
+  } catch (_) {
+    toast(citation);
+  }
+}
+
+function updateLibrarySourceUrl(kind, id, citation = null) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", "knowledge");
+  url.searchParams.set("workspace", "library");
+  url.searchParams.set("sourceKind", kind);
+  url.searchParams.set("source", id);
+  if (citation) url.searchParams.set("cite", citation);
+  else url.searchParams.delete("cite");
+  window.history.replaceState({}, "", url);
+}
+
+function closeLibraryReader() {
+  const selectedId = state.libraryReader?.id;
+  state.libraryReader = null;
+  document.getElementById("library-reader").hidden = true;
+  document.getElementById("library-browser").hidden = false;
+  const url = new URL(window.location.href);
+  ["sourceKind", "source", "cite"].forEach((key) => url.searchParams.delete(key));
+  window.history.replaceState({}, "", url);
+  window.requestAnimationFrame(() => {
+    const catalog = document.getElementById("library-catalog");
+    catalog.scrollTop = state.libraryListScroll;
+    catalog.querySelector(`[data-library-id="${CSS.escape(String(selectedId || ""))}"]`)?.focus();
+  });
+}
+
+function renderUnavailableDemoSource(item, kind, id) {
+  state.libraryReader = { kind, id, item, unit: "line", ranges: [], outline: [], find: "" };
+  document.getElementById("library-reader-title").textContent = item?.title || "Demonstration source";
+  document.getElementById("library-reader-status").innerHTML = '<span class="quality-label uncertain">Demonstration only</span>';
+  document.getElementById("library-document").innerHTML = empty("Synthetic catalog entries have no source text and cannot be presented as evidence.");
+  document.getElementById("library-outline").innerHTML = '<p class="muted">No canonical outline.</p>';
+  document.getElementById("library-provenance").innerHTML = '<p class="source-asset-unavailable"><strong>Evidence unavailable</strong><span>Leave demonstration mode to read authorized source content.</span></p>';
+  document.getElementById("library-load-more").hidden = true;
+  document.getElementById("library-load-all").hidden = true;
+}
+
 function renderGraph(graph) {
   state.graphData = graph;
   renderResearchWorkspaceStatus();
+  syncGraphControls();
   document.querySelectorAll("[data-graph-view]").forEach((item) => {
     const active = item.dataset.graphView === state.graphView;
     item.classList.toggle("active", active);
     item.setAttribute("aria-pressed", String(active));
   });
-  const nodes = (graph.nodes || []).slice(0, 100);
+  const selectedType = document.getElementById("graph-object-type").value;
+  const nodes = (graph.nodes || []).filter((node) => !selectedType || String(node.object_type || node.kind) === selectedType).slice(0, 100);
   const nodeMap = new Map(nodes.map((node) => [String(node.id), node]));
   const edges = (graph.edges || []).filter((edge) => nodeMap.has(String(edge.source)) && nodeMap.has(String(edge.target))).slice(0, 240);
   if (!nodes.length) {
@@ -2414,24 +3444,160 @@ function renderGraph(graph) {
         <desc id="graph-svg-desc">${nodes.length} evidence nodes and ${edges.length} visible relationships. Use the Relationships view for a keyboard-first adjacency list.</desc>
         <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
         <g id="graph-viewport" transform="translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})">
-          <g class="graph-links">${edges.map((edge) => graphEdgeSvg(edge, positions)).join("")}</g>
-          <g class="graph-nodes">${nodes.map((node, index) => graphNodeSvg(node, positions.get(String(node.id)), index, String(node.id) === String(state.graphSelectedId))).join("")}</g>
+          <g class="graph-links">${edges.map((edge) => graphEdgeSvg(edge, positions, graphEdgeInFocusedPath(edge))).join("")}</g>
+          <g class="graph-nodes">${nodes.map((node, index) => graphNodeSvg(node, positions.get(String(node.id)), index, String(node.id) === String(state.graphSelectedId), state.graphPath.includes(String(node.id)))).join("")}</g>
         </g>
       </svg>
       <div class="graph-legend"><span><i class="legend-shape claim"></i>Claim</span><span><i class="legend-shape result"></i>Result</span><span><i class="legend-shape source"></i>Source</span><span><i class="legend-line supports"></i>Supports</span><span><i class="legend-line contradicts"></i>Contradicts</span></div>
     </div>`;
   const relationships = `
     <div class="graph-adjacency" role="list" aria-label="Visible graph relationships">
-      ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap)).join("") : empty("The selected bounded view contains no explicit relationships.")}
+      ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap, graphEdgeInFocusedPath(edge))).join("") : empty("The selected bounded view contains no explicit relationships.")}
     </div>`;
   document.getElementById("graph").innerHTML = `
-    <div class="projection-meta"><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${nodes.length.toLocaleString()} nodes</span><span>${edges.length.toLocaleString()} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? "<span>Bounded at query limit</span>" : ""}</div>
+    <div class="projection-meta"><span>${escapeHtml(state.graphExtent === "global" ? "Global map" : "Local focus")}</span><span>${escapeHtml(state.graphScope)} boundary</span><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${nodes.length.toLocaleString()} / 100 nodes</span><span>${edges.length.toLocaleString()} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? `<span>${escapeHtml(graph.truncation?.reasons?.length ? `Bounded: ${graph.truncation.reasons.map(humanize).join(", ")}` : "Bounded at query limit")}</span>` : ""}<span>${graph.built_at || graph.generated_at ? `Published ${escapeHtml(relativeTime(graph.built_at || graph.generated_at))}` : "Projection time unavailable"}</span></div>
     <div class="graph-workspace">
       <div class="graph-primary">${state.graphView === "visual" ? visual : relationships}</div>
       ${graphSelectionPanel(selected, edges, nodeMap)}
     </div>`;
   bindGraphInteractions(nodeMap);
+  populateGraphPathControls(nodes);
   renderGraphFindResults();
+  saveGraphViewState();
+}
+
+function restoreGraphViewState() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem("hermes.graph-view.v1") || "{}");
+    if (["canonical", "private"].includes(saved.scope)) state.graphScope = saved.scope;
+    if (["global", "local"].includes(saved.extent)) state.graphExtent = saved.extent;
+    if (["visual", "list"].includes(saved.view)) state.graphView = saved.view;
+    if (["incoming", "outgoing", "both"].includes(saved.direction)) state.graphDirection = saved.direction;
+    if ([1, 2, 3].includes(Number(saved.depth))) state.graphDepth = Number(saved.depth);
+    state.graphPredicate = String(saved.predicate || "");
+    state.graphObjectType = String(saved.objectType || "");
+    state.graphSelectedId = saved.selectedId ? String(saved.selectedId) : null;
+  } catch (_) {
+    window.localStorage.removeItem("hermes.graph-view.v1");
+  }
+}
+
+function saveGraphViewState() {
+  const payload = {
+    scope: state.graphScope,
+    extent: state.graphExtent,
+    view: state.graphView,
+    direction: document.getElementById("graph-direction")?.value || state.graphDirection || "both",
+    depth: Number(document.getElementById("graph-depth")?.value || state.graphDepth || 2),
+    predicate: document.getElementById("graph-predicate")?.value || "",
+    objectType: document.getElementById("graph-object-type")?.value || "",
+    selectedId: state.graphSelectedId,
+  };
+  window.localStorage.setItem("hermes.graph-view.v1", JSON.stringify(payload));
+}
+
+function syncGraphControls() {
+  document.getElementById("graph-scope").value = state.graphScope;
+  if (state.graphDirection) document.getElementById("graph-direction").value = state.graphDirection;
+  if (state.graphDepth) document.getElementById("graph-depth").value = String(state.graphDepth);
+  if (state.graphPredicate != null) document.getElementById("graph-predicate").value = state.graphPredicate;
+  if (state.graphObjectType != null) document.getElementById("graph-object-type").value = state.graphObjectType;
+  const mentions = document.querySelector('#graph-predicate option[value="mentions"]');
+  mentions.disabled = state.graphScope !== "private";
+  if (state.graphScope !== "private" && document.getElementById("graph-predicate").value === "mentions") document.getElementById("graph-predicate").value = "";
+  document.querySelectorAll("[data-graph-extent]").forEach((item) => {
+    const active = item.dataset.graphExtent === state.graphExtent;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+  document.getElementById("graph-boundary").textContent = state.demo
+    ? "Synthetic demonstration relationships only. No item in this map is canonical evidence."
+    : state.graphScope === "canonical"
+    ? "Canonical control-plane evidence only. Views are capped at 100 nodes and never mix access boundaries."
+    : "Private Mac-local notes only. Opaque identities never cross into the canonical graph.";
+}
+
+function populateGraphPathControls(nodes) {
+  const options = nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(truncate(node.label || node.name || node.id, 64))}</option>`).join("");
+  const source = document.getElementById("graph-path-source");
+  const target = document.getElementById("graph-path-target");
+  const priorSource = source.value || state.graphSelectedId || "";
+  const priorTarget = target.value;
+  source.innerHTML = `<option value="">Select source</option>${options}`;
+  target.innerHTML = `<option value="">Select target</option>${options}`;
+  if (nodes.some((node) => String(node.id) === String(priorSource))) source.value = priorSource;
+  if (nodes.some((node) => String(node.id) === String(priorTarget))) target.value = priorTarget;
+}
+
+function graphEdgeInFocusedPath(edge) {
+  if (state.graphPath.length < 2) return false;
+  for (let index = 0; index < state.graphPath.length - 1; index += 1) {
+    const left = state.graphPath[index];
+    const right = state.graphPath[index + 1];
+    if ((String(edge.source) === left && String(edge.target) === right) || (String(edge.source) === right && String(edge.target) === left)) return true;
+  }
+  return false;
+}
+
+function clearGraphPath() {
+  state.graphPath = [];
+  document.getElementById("graph-path-status").textContent = "Path focus cleared.";
+  document.getElementById("graph-clear-path").hidden = true;
+  if (state.graphData) renderGraph(state.graphData);
+}
+
+async function queryGraphPath(event) {
+  event.preventDefault();
+  const source = document.getElementById("graph-path-source").value;
+  const target = document.getElementById("graph-path-target").value;
+  const status = document.getElementById("graph-path-status");
+  if (!source || !target || source === target) {
+    status.textContent = "Choose two different visible records.";
+    return;
+  }
+  status.textContent = "Tracing explicit relations…";
+  try {
+    const predicate = document.getElementById("graph-predicate").value;
+    const objectType = document.getElementById("graph-object-type").value;
+    const graph = await request("/api/knowledge/graph/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: state.graphScope, root_ids: [source], target_id: target, mode: "paths",
+        predicates: predicate ? [predicate] : [], object_types: objectType ? [objectType] : [],
+        direction: document.getElementById("graph-direction").value,
+        max_depth: Math.max(2, Number(document.getElementById("graph-depth").value)), max_nodes: 100, page_size: 100,
+      }),
+    });
+    state.graphExtent = "local";
+    state.graphPath = (graph.paths?.[0] || []).map(String);
+    state.graphSelectedId = source;
+    state.graphTransform = { scale: 1, x: 0, y: 0 };
+    renderGraph(graph);
+    status.textContent = state.graphPath.length ? `Path found across ${state.graphPath.length - 1} relation${state.graphPath.length === 2 ? "" : "s"}.` : "No explicit path exists inside the selected direction, filters, depth, and access boundary.";
+    document.getElementById("graph-clear-path").hidden = !state.graphPath.length;
+  } catch (error) {
+    status.textContent = `Path query unavailable: ${error.message}`;
+  }
+}
+
+function openGraphEdgeInspector(edge, nodeMap) {
+  const source = nodeMap.get(String(edge.source));
+  const target = nodeMap.get(String(edge.target));
+  const provenance = edge.provenance_object_id || edge.provenance_id;
+  openInspector("Relationship evidence", humanize(edge.predicate || edge.relation || "related"), `<section class="detail-section"><h3>Directed relation</h3><p class="edge-statement"><strong>${escapeHtml(source?.label || source?.name || edge.source)}</strong><span>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</span><strong>${escapeHtml(target?.label || target?.name || edge.target)}</strong></p><dl class="detail-grid"><dt>Boundary</dt><dd>${escapeHtml(state.graphScope)}</dd><dt>Access</dt><dd>${statusBadge(edge.access_class || "private")}</dd><dt>Valid from</dt><dd>${escapeHtml(edge.valid_from || "Unbounded")}</dd><dt>Valid until</dt><dd>${escapeHtml(edge.valid_until || "Current")}</dd><dt>Record digest</dt><dd class="mono">${escapeHtml(edge.record_digest || "Unavailable")}</dd><dt>Provenance</dt><dd class="mono">${escapeHtml(provenance || "Unavailable")}</dd></dl></section>${provenance && state.graphScope === "canonical" ? `<div class="inspector-actions"><button class="secondary" id="replay-edge-provenance" type="button">Replay provenance</button></div><div id="edge-provenance-result"></div>` : '<p class="local-only-boundary">Private relationship evidence remains local to this Mission Control host.</p>'}`);
+  const replay = document.getElementById("replay-edge-provenance");
+  if (replay) replay.onclick = async () => {
+    replay.disabled = true;
+    try {
+      const result = await request(`/api/research/copilot/citations/${encodeURIComponent(provenance)}`);
+      document.getElementById("edge-provenance-result").innerHTML = `<pre class="citation-replay">${escapeHtml(JSON.stringify(result, null, 2))}</pre>`;
+    } catch (error) {
+      document.getElementById("edge-provenance-result").innerHTML = empty(error.message);
+    } finally {
+      replay.disabled = false;
+    }
+  };
 }
 
 function graphPositions(nodes, edges) {
@@ -2491,23 +3657,23 @@ function graphPositions(nodes, edges) {
   return positions;
 }
 
-function graphNodeSvg(node, position, index, selected) {
+function graphNodeSvg(node, position, index, selected, inPath = false) {
   const type = String(node.object_type || node.kind || "evidence");
   const label = String(node.label || node.name || node.id);
   const shape = type === "claim" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
-  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}">${shape}${(index < 14 || selected) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
+  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}">${shape}${(index < 14 || selected || inPath) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
 }
 
-function graphEdgeSvg(edge, positions) {
+function graphEdgeSvg(edge, positions, inPath = false) {
   const source = positions.get(String(edge.source));
   const target = positions.get(String(edge.target));
-  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
+  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}" data-graph-edge="${escapeHtml(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect ${escapeHtml(humanize(edge.predicate || edge.relation || "related"))} relationship"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
 }
 
-function graphRelationshipRow(edge, nodeMap) {
+function graphRelationshipRow(edge, nodeMap, inPath = false) {
   const source = nodeMap.get(String(edge.source));
   const target = nodeMap.get(String(edge.target));
-  return `<div class="graph-relationship" role="listitem"><button type="button" data-graph-node="${escapeHtml(source.id)}">${escapeHtml(source.label || source.name)}</button><span class="relationship-predicate ${escapeHtml(edge.predicate || edge.relation)}">${escapeHtml(humanize(edge.predicate || edge.relation))}</span><button type="button" data-graph-node="${escapeHtml(target.id)}">${escapeHtml(target.label || target.name)}</button></div>`;
+  return `<div class="graph-relationship${inPath ? " path-focus" : ""}" role="listitem"><button type="button" data-graph-node="${escapeHtml(source.id)}">${escapeHtml(source.label || source.name)}</button><button class="relationship-predicate ${escapeHtml(edge.predicate || edge.relation)}" type="button" data-graph-edge="${escapeHtml(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`)}" aria-label="Inspect ${escapeHtml(humanize(edge.predicate || edge.relation))} relationship">${escapeHtml(humanize(edge.predicate || edge.relation))}</button><button type="button" data-graph-node="${escapeHtml(target.id)}">${escapeHtml(target.label || target.name)}</button></div>`;
 }
 
 function graphSelectionPanel(node, edges, nodeMap) {
@@ -2515,7 +3681,7 @@ function graphSelectionPanel(node, edges, nodeMap) {
   return `<aside class="graph-selection" aria-label="Selected graph node">
     <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
     <dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || ""))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd></dl>
-    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button></div>
+    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Expand neighbors</button></div>
     <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
   </aside>`;
 }
@@ -2531,6 +3697,13 @@ function bindGraphInteractions(nodeMap) {
     }
     const replay = event.target.closest("[data-graph-replay]");
     if (replay) return replayGraphEvidence(nodeMap.get(replay.dataset.graphReplay));
+    const neighbors = event.target.closest("[data-graph-neighbors]");
+    if (neighbors) return queryGraphRoot(neighbors.dataset.graphNeighbors);
+    const edgeElement = event.target.closest("[data-graph-edge]");
+    if (edgeElement) {
+      const edge = (state.graphData?.edges || []).find((item) => String(item.id || `${item.source}:${item.target}:${item.predicate}`) === String(edgeElement.dataset.graphEdge));
+      if (edge) return openGraphEdgeInspector(edge, nodeMap);
+    }
     if (state.graphDragging) return;
     const element = event.target.closest("[data-graph-node]");
     if (!element) return;
@@ -2541,8 +3714,23 @@ function bindGraphInteractions(nodeMap) {
     renderGraph(state.graphData);
   };
   root.onkeydown = (event) => {
+    const edgeElement = event.target.closest("[data-graph-edge]");
+    if (edgeElement && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      edgeElement.click();
+      return;
+    }
     const element = event.target.closest("[data-graph-node]");
-    if (!element || !["Enter", " "].includes(event.key)) return;
+    if (!element) return;
+    if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const nodes = [...root.querySelectorAll("[data-graph-node]")];
+      const index = nodes.indexOf(element);
+      const step = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
+      nodes[(index + step + nodes.length) % nodes.length]?.focus();
+      return;
+    }
+    if (!["Enter", " "].includes(event.key)) return;
     event.preventDefault();
     const node = nodeMap.get(String(element.dataset.graphNode));
     if (!node) return;
@@ -2646,6 +3834,10 @@ function renderGraphFindResults() {
 }
 
 async function replayGraphEvidence(node) {
+  if (state.graphScope === "private") {
+    openInspector("Private graph evidence", node.label || node.name, `<section class="detail-section"><h3>Local evidence identity</h3><dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind || "private evidence")}</dd><dt>Access</dt><dd>${statusBadge("private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(node.content_digest || "Unavailable")}</dd></dl></section><p class="local-only-boundary">Private graph content remains on this Mission Control host. Open the matching source from the Library to inspect its stored text.</p>`);
+    return;
+  }
   openInspector("Canonical graph evidence", node.label || node.name, `<div id="graph-replay-result" class="empty-state">Replaying canonical evidence…</div>`);
   try {
     const replay = await request(`/api/research/copilot/citations/${encodeURIComponent(node.id)}`);
@@ -2667,15 +3859,18 @@ async function queryGraphRoot(rootId) {
   document.getElementById("graph").classList.add("loading");
   try {
     const predicate = document.getElementById("graph-predicate").value;
+    const objectType = document.getElementById("graph-object-type").value;
     const graph = await request("/api/knowledge/graph/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        root_ids: [rootId], mode: "neighborhood", predicates: predicate ? [predicate] : [],
+        scope: state.graphScope, root_ids: [rootId], mode: "neighborhood", predicates: predicate ? [predicate] : [], object_types: objectType ? [objectType] : [],
         direction: document.getElementById("graph-direction").value,
-        max_depth: Number(document.getElementById("graph-depth").value), max_nodes: 100,
+        max_depth: Number(document.getElementById("graph-depth").value), max_nodes: 100, page_size: 100,
       }),
     });
+    state.graphExtent = "local";
+    state.graphPath = [];
     state.graphSelectedId = rootId;
     state.graphTransform = { scale: 1, x: 0, y: 0 };
     renderGraph(graph);
@@ -2851,9 +4046,35 @@ function renderSnapshotAge() {
   }
   const age = Math.max(0, Math.floor((Date.now() - state.dashboardFetchedAt) / 1000));
   const ageLabel = age < 5 ? "just now" : `${age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`} ago`;
-  element.textContent = state.dashboardRefreshError ? `Refresh failed · last snapshot ${ageLabel}` : `Updated ${ageLabel}`;
-  element.title = state.dashboardRefreshError || `Mission Control received this snapshot at ${new Date(state.dashboardFetchedAt).toLocaleString()}`;
-  element.classList.toggle("snapshot-stale", age > 45 || Boolean(state.dashboardRefreshError));
+  const provenance = state.dashboard?.provenance;
+  const freshness = provenance?.freshness || "unknown";
+  const sources = Object.values(provenance?.sources || {});
+  const uncertain = sources.filter((item) => item.freshness === "unknown" || item.freshness === "unavailable").length;
+  const stateLabel = humanize(freshness);
+  const received = `received ${ageLabel}`;
+  element.textContent = state.dashboardRefreshError
+    ? `Refresh failed · ${stateLabel} snapshot ${received}`
+    : `${stateLabel} snapshot · ${received}${uncertain ? ` · ${uncertain} source${uncertain === 1 ? "" : "s"} unverified` : ""}`;
+  element.title = state.dashboardRefreshError
+    || provenance?.reason
+    || `Mission Control received this snapshot at ${new Date(state.dashboardFetchedAt).toLocaleString()}`;
+  element.classList.toggle("snapshot-stale", freshness === "stale" || age > 45 || Boolean(state.dashboardRefreshError));
+  element.classList.toggle("snapshot-unknown", freshness === "unknown" || freshness === "partial" || freshness === "unavailable");
+}
+
+function renderConnectionStatus() {
+  const label = document.getElementById("health");
+  const dot = document.getElementById("health-dot");
+  if (state.demo) {
+    label.textContent = "Demo isolated";
+    dot.classList.remove("ok");
+    return;
+  }
+  const freshness = state.dashboard?.provenance?.freshness || "unknown";
+  label.textContent = freshness === "current"
+    ? "Control plane reachable · sources current"
+    : `Control plane reachable · source freshness ${humanize(freshness)}`;
+  dot.classList.toggle("ok", freshness === "current");
 }
 
 function loadDemoConversation() {
@@ -2891,6 +4112,70 @@ function loadDemoConversation() {
     artifacts: artifact ? [artifact] : [],
   };
   renderConversations();
+}
+
+function demoWorkflowProjection() {
+  const operations = state.dashboard?.operations || [];
+  return {
+    schema_version: "mission-control-workflow-projection-v1",
+    items: operations.map((operation) => ({
+      instance_id: `operation:${operation.id}`,
+      instance_kind: "operation",
+      workflow: { name: operation.kind, version: null },
+      state: operation.state,
+      stale: operation.state === "stalled",
+      title: operation.title,
+      project: operation.project,
+      owner: { type: operation.owner_type, id: operation.owner_id },
+      machine: operation.machine,
+      stages: [{ name: operation.phase, state: operation.state }],
+      current_leaf: ["running", "queued", "waiting_approval", "blocked", "stalled"].includes(operation.state) ? {
+        kind: "operation", id: operation.id, state: operation.state, phase: operation.phase, heartbeat_at: operation.heartbeat_at,
+      } : null,
+      native_backtest: null,
+      entry_evidence: { digest: operation.input_digest, source_event_ids: [] },
+      exit_evidence: { digest: operation.record_digest, source_event_ids: [] },
+      source_event_ids: [],
+      blockers: operation.error_summary ? [operation.error_summary] : [],
+      retries: { retryable: Boolean(operation.retryable), attempt: null, max_attempts: null },
+      terminal_outcome: ["succeeded", "failed", "cancelled"].includes(operation.state) ? operation.state : null,
+      updated_at: operation.updated_at || operation.heartbeat_at,
+    })),
+  };
+}
+
+function demoVenueEventHistory() {
+  const base = Date.now() - 38_000;
+  const digest = (character) => character.repeat(64);
+  const evidence = (eventCharacter) => ({
+    replay_id: "c2107e96-4c87-4ca0-a09e-d1bb244cf338",
+    replay_path: "/v1/execution/replays/c2107e96-4c87-4ca0-a09e-d1bb244cf338",
+    receipt_id: "db0bb60f-60f8-49ad-ac26-3a25ce34894f",
+    receipt_path: "/v1/research/quantitative-receipts/db0bb60f-60f8-49ad-ac26-3a25ce34894f",
+    receipt_digest: digest("d"), projection_digest: digest("b"), event_digest: digest(eventCharacter), raw_reference_digest: digest("a"),
+  });
+  const common = { venue: "bybit", environment: "demo", account_pseudonym: "bybit-demo-71f2", instrument_id: "bybit:linear:BTCUSDT", stream: "private-orders", correction_of: null, reconciliation_id: null };
+  const make = (sequence, event_type, source_kind, payload, ids = {}) => ({
+    ...common, event_id: `demo-event-${sequence}`, event_type, source_kind, payload, ...ids,
+    exchange_time: new Date(base + sequence * 4_000).toISOString(), observed_time: new Date(base + sequence * 4_000 + 84 + sequence * 7).toISOString(), sequence, cursor: String(sequence), evidence: evidence(String(sequence)),
+  });
+  const allEvents = [
+    make(1, "signal_decision", "decision", { decision_domain: "signal", verdict: "enter", symbol: "BTCUSDT" }, { correlation_id: "demo-trace-024", client_order_id: null, venue_order_id: null, execution_id: null }),
+    make(2, "risk_decision", "decision", { decision_domain: "risk", verdict: "allow", bounded_notional: "5.00" }, { correlation_id: "demo-trace-024", client_order_id: null, venue_order_id: null, execution_id: null }),
+    make(3, "oms_command", "intent", { action: "submit", side: "buy", quantity: "0.001" }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: null, execution_id: null }),
+    make(4, "venue_acknowledgement", "order", { status: "new", side: "buy", quantity: "0.001" }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: "venue-8f210", execution_id: null }),
+    make(5, "fill", "fill", { fill_status: "partial", side: "buy", quantity: "0.0004", price: "66420.5" }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: "venue-8f210", execution_id: "exec-a31" }),
+    make(6, "fill", "fill", { fill_status: "filled", side: "buy", quantity: "0.0006", price: "66421.0" }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: "venue-8f210", execution_id: "exec-a32" }),
+    make(7, "position", "position", { quantity: "0.001", entry_price: "66420.8" }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: "venue-8f210", execution_id: null }),
+    { ...make(8, "reconciliation", "reconciliation", { positions: { "bybit:linear:BTCUSDT": "0.001" }, cash: { USDT: "99.92" } }, { correlation_id: "demo-trace-024", client_order_id: "mc-demo-024", venue_order_id: "venue-8f210", execution_id: null }), reconciliation_id: "demo-recon-024" },
+  ];
+  const events = state.executionEnvironment === "all" || state.executionEnvironment === "demo" ? allEvents : [];
+  return {
+    schema_version: "mission-control-venue-event-history-v1", generated_at: new Date().toISOString(), environment: state.executionEnvironment === "all" ? null : state.executionEnvironment, venue: null, replay_id: null, events,
+    counts: { events: events.length, replays: events.length ? 1 : 0, complete_replays: events.length ? 1 : 0, legacy_summary_only_replays: 0, duplicates_suppressed: 1 },
+    replay_coverage: events.length ? [{ replay_id: evidence("1").replay_id, venue: "bybit", environment: "demo", account_pseudonym: common.account_pseudonym, coverage: "complete", event_count: allEvents.length, duplicates_suppressed: 1, source_receipt_digest: evidence("1").receipt_digest, reason: null }] : [],
+    claim_boundary: "Demonstration-only immutable replay. No live capital or order authority.",
+  };
 }
 
 function demoDashboard() {
@@ -3083,7 +4368,9 @@ updateClock();
 window.setInterval(updateClock, 30000);
 window.setInterval(() => {
   renderSnapshotAge();
-  if (!state.demo && document.visibilityState === "visible") loadDashboard({ silent: true });
+  if (!state.demo && state.overviewPollingFallback && document.visibilityState === "visible") {
+    loadDashboard({ silent: true });
+  }
 }, 15000);
 window.setInterval(() => {
   if (!state.demo && state.activeView === "work") loadConversations();
@@ -3091,4 +4378,14 @@ window.setInterval(() => {
 window.setInterval(() => {
   if (!state.demo && state.activeView === "research") loadBacktests();
 }, 15000);
+document.addEventListener("visibilitychange", () => {
+  if (state.demo) return;
+  if (document.visibilityState === "visible") {
+    state.overviewPollingFallback = true;
+    startOverviewEvents();
+    loadDashboard({ silent: true });
+  } else {
+    stopOverviewEvents();
+  }
+});
 loadDashboard();

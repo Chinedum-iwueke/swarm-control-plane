@@ -58,6 +58,31 @@ class KnowledgeIngestRequest(StrictModel):
     confidentiality: Literal["private", "internal"] = "private"
 
 
+class WalkthroughSessionCreate(StrictModel):
+    walkthrough_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    ready_steps: int = Field(ge=0, le=5)
+    total_steps: Literal[5] = 5
+
+
+class WalkthroughObservation(StrictModel):
+    step_id: Literal["command", "workflow", "agent", "backtest", "venue"]
+    kind: Literal[
+        "opened",
+        "completed",
+        "question",
+        "misunderstanding",
+        "evidence_gap",
+    ]
+    elapsed_ms: int = Field(ge=0, le=86_400_000)
+    note: str | None = Field(default=None, min_length=3, max_length=2000)
+
+
+class WalkthroughSessionFinish(StrictModel):
+    status: Literal["completed", "abandoned"]
+    elapsed_ms: int = Field(ge=0, le=86_400_000)
+    summary: str | None = Field(default=None, min_length=3, max_length=4000)
+
+
 class KnowledgeSearchResult(StrictModel):
     source_id: int
     title: str

@@ -17,9 +17,11 @@ from app.schemas.execution_telemetry import (
     ExecutionTelemetryReplayResponse,
     ExecutionTelemetrySchemaCreate,
     ExecutionTelemetrySchemaResponse,
+    VenueEventHistory,
 )
 from app.services.execution_telemetry import (
     ExecutionTelemetryConflict,
+    event_history,
     overview,
     register_replay,
     register_schema,
@@ -91,3 +93,21 @@ def get_overview(
     environment: Annotated[Literal["shadow", "demo", "live"] | None, Query()] = None,
 ):
     return overview(db, environment)
+
+
+@router.get("/events", response_model=VenueEventHistory)
+def get_events(
+    db: Annotated[Session, Depends(get_db)],
+    environment: Annotated[Literal["shadow", "demo", "live"] | None, Query()] = None,
+    venue: Annotated[Literal["binance", "bybit"] | None, Query()] = None,
+    replay_id: Annotated[UUID | None, Query()] = None,
+):
+    try:
+        return event_history(
+            db,
+            environment=environment,
+            venue=venue,
+            replay_id=replay_id,
+        )
+    except ExecutionTelemetryConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

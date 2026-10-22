@@ -106,6 +106,8 @@ def list_tasks(
     db: Annotated[Session, Depends(get_db)],
     task_status: Annotated[str | None, Query(alias="status")] = None,
     project: str | None = None,
+    assigned_agent_id: uuid.UUID | None = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     compact: bool = False,
 ) -> list[TaskResponse]:
@@ -116,8 +118,12 @@ def list_tasks(
 
     if project is not None:
         statement = statement.where(Task.project == project)
+    if assigned_agent_id is not None:
+        statement = statement.where(Task.assigned_agent_id == assigned_agent_id)
 
-    tasks = db.scalars(statement.order_by(Task.created_at.desc()).limit(limit)).all()
+    tasks = db.scalars(
+        statement.order_by(Task.created_at.desc()).offset(offset).limit(limit)
+    ).all()
 
     serialized = [serialize_task(task) for task in tasks]
     if compact:

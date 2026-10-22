@@ -74,6 +74,9 @@ class GraphQueryRequest(StrictModel):
     direction: Literal["outgoing", "incoming", "both"] = "both"
     max_depth: int = Field(default=2, ge=1, le=5)
     max_nodes: int = Field(default=100, ge=1, le=500)
+    page_size: int = Field(default=100, ge=1, le=100)
+    cursor: str | None = Field(default=None, min_length=8, max_length=512)
+    object_types: list[str] = Field(default_factory=list, max_length=20)
     as_of: datetime | None = None
     project: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9._-]{0,99}$")
 
@@ -102,7 +105,24 @@ class GraphEdge(StrictModel):
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     provenance_object_id: UUID
+    access_class: AccessClass
     record_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GraphPage(StrictModel):
+    cursor: str | None = None
+    next_cursor: str | None = None
+    page_size: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+    returned: int = Field(ge=0)
+    traversed: int = Field(ge=0)
+
+
+class GraphTruncation(StrictModel):
+    truncated: bool
+    reasons: list[Literal["page_size", "max_nodes", "max_depth"]]
+    max_nodes: int = Field(ge=1, le=500)
+    max_depth: int = Field(ge=1, le=5)
 
 
 class GraphQueryResponse(StrictModel):
@@ -113,6 +133,8 @@ class GraphQueryResponse(StrictModel):
     edges: list[GraphEdge]
     paths: list[list[UUID]] = Field(default_factory=list)
     truncated: bool
+    page: GraphPage
+    truncation: GraphTruncation
 
 
 class ContextPackRequest(StrictModel):

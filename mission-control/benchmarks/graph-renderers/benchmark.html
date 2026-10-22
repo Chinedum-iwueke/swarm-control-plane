@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MCUX-016 graph renderer benchmark</title>
+  <style>
+    .surface { position: fixed; left: -2000px; width: 900px; height: 520px; }
+    svg, #cy { width: 900px; height: 520px; }
+  </style>
+</head>
+<body>
+  <div id="svg" class="surface"></div><div id="cy" class="surface"></div>
+  <pre id="results">running</pre>
+  <script src="fixture.js"></script>
+  <script src="cytoscape.min.js"></script>
+  <script>
+    const round = (value) => Math.round(value * 100) / 100;
+
+    function svgTrial(fixture) {
+      const host = document.getElementById("svg");
+      host.replaceChildren();
+      const start = performance.now();
+      const positions = deterministicPositions(fixture.nodes);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      for (const edge of fixture.edges) {
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        const source = positions.get(edge.source); const target = positions.get(edge.target);
+        line.setAttribute("x1", source.x); line.setAttribute("y1", source.y); line.setAttribute("x2", target.x); line.setAttribute("y2", target.y);
+        line.dataset.predicate = edge.predicate; svg.append(line);
+      }
+      for (const node of fixture.nodes) {
+        const group = document.createElementNS(svg.namespaceURI, "g");
+        const position = positions.get(node.id);
+        group.setAttribute("transform", `translate(${position.x} ${position.y})`);
+        group.setAttribute("tabindex", "0"); group.setAttribute("role", "button"); group.setAttribute("aria-label", node.label);
+        const circle = document.createElementNS(svg.namespaceURI, "circle"); circle.setAttribute("r", "8"); group.append(circle); svg.append(group);
+      }
+      host.append(svg);
+      const setupMs = performance.now() - start;
+      const interactionStart = performance.now();
+      svg.querySelectorAll('[data-predicate="supports"]').forEach((edge) => edge.classList.add("focus"));
+      svg.querySelectorAll("g").forEach((node, index) => node.classList.toggle("filtered", index % 7 === 0));
+      const interactionDispatchMs = performance.now() - interactionStart;
+      return { setup_ms: round(setupMs), interaction_dispatch_ms: round(interactionDispatchMs), dom_elements: svg.querySelectorAll("*").length, keyboard_nodes: svg.querySelectorAll('[tabindex="0"]').length, deterministic_layout: JSON.stringify([...positions]) === JSON.stringify([...deterministicPositions(fixture.nodes)]), pan_zoom: "implemented", pinch_zoom: "not_implemented" };
+    }
+
+    function cytoscapeTrial(fixture) {
+      const host = document.getElementById("cy"); host.replaceChildren();
+      const positions = deterministicPositions(fixture.nodes);
+      const start = performance.now();
+      const cy = cytoscape({
+        container: host,
+        elements: [
+          ...fixture.nodes.map((node) => ({ data: node, position: positions.get(node.id) })),
+          ...fixture.edges.map((edge) => ({ data: edge })),
+        ],
+        layout: { name: "preset", fit: false },
+        style: [{ selector: "node", style: { width: 16, height: 16 } }, { selector: "edge", style: { width: 1 } }],
+        userPanningEnabled: true, userZoomingEnabled: true, boxSelectionEnabled: false,
+      });
+      const setupMs = performance.now() - start;
+      const interactionStart = performance.now();
+      cy.batch(() => { cy.edges('[predicate = "supports"]').addClass("focus"); cy.nodes().filter((_, index) => index % 7 === 0).addClass("filtered"); });
+      const interactionDispatchMs = performance.now() - interactionStart;
+      const result = { setup_ms: round(setupMs), interaction_dispatch_ms: round(interactionDispatchMs), dom_elements: host.querySelectorAll("*").length, keyboard_nodes: host.querySelectorAll('[tabindex="0"]').length, deterministic_layout: fixture.nodes.every((node) => { const value = cy.getElementById(node.id).position(); const expected = positions.get(node.id); return value.x === expected.x && value.y === expected.y; }), pan_zoom: "implemented", pinch_zoom: "implemented" };
+      cy.destroy(); return result;
+    }
+
+    function medianTrials(renderer, fixture) {
+      const trials = [];
+      for (let index = 0; index < 25; index += 1) trials.push(renderer(fixture));
+      const median = (key) => trials.map((trial) => trial[key]).sort((a, b) => a - b)[Math.floor(trials.length / 2)];
+      return { setup_ms: median("setup_ms"), interaction_dispatch_ms: median("interaction_dispatch_ms"), dom_elements: median("dom_elements"), keyboard_nodes: median("keyboard_nodes"), deterministic_layout: trials.every((trial) => trial.deterministic_layout), pan_zoom: trials[0].pan_zoom, pinch_zoom: trials[0].pinch_zoom };
+    }
+
+    (() => {
+      const results = [];
+      for (const nodeCount of [25, 100, 250]) {
+        const fixture = graphFixture(nodeCount);
+        results.push({ nodes: nodeCount, edges: fixture.edges.length, svg: medianTrials(svgTrial, fixture), cytoscape: medianTrials(cytoscapeTrial, fixture) });
+      }
+      const payload = { schema_version: "mcux-016-graph-renderer-benchmark-v1", browser: navigator.userAgent, cytoscape_version: cytoscape.version, trials_per_case: 25, results };
+      const output = document.getElementById("results"); output.textContent = JSON.stringify(payload); output.dataset.complete = "true";
+    })();
+  </script>
+</body>
+</html>

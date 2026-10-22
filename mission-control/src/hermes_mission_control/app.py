@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import json
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
+from uuid import UUID
 
 from fastapi import (
     Depends,
@@ -18,13 +22,20 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi import Path as ApiPath
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .agent_detail import project_agent_detail
 from .config import MissionControlSettings
 from .control_plane import ControlPlaneClient, ControlPlaneError
-from .knowledge import KnowledgePolicyError, KnowledgeStore
+from .freshness import build_snapshot_provenance
+from .investor_walkthrough import (
+    WalkthroughJournal,
+    project_investor_walkthrough,
+)
+from .knowledge import KnowledgePolicyError, KnowledgeStore, LocalGraphQueryError
 from .models import (
     ApprovalDecision,
     ConversationCreateRequest,
@@ -34,6 +45,15 @@ from .models import (
     KnowledgeIngestRequest,
     ProposalDecision,
     ResearchCycleDecision,
+    WalkthroughObservation,
+    WalkthroughSessionCreate,
+    WalkthroughSessionFinish,
+)
+from .overview_events import (
+    EVENT_SCHEMA_VERSION,
+    OverviewEvent,
+    OverviewEventBroker,
+    SubscriberLimitExceeded,
 )
 from .research_copilot import (
     AnswerGenerator,
@@ -49,6 +69,8 @@ from .research_upload import (
     digest,
     safe_filename,
 )
+from .source_content import SourceContentError, canonical_source_content
+from .workflow_projection import project_workflows
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -76,14 +98,34 @@ def create_app(
             timeout_seconds=settings.research_codex_timeout_seconds,
         ),
     )
+    browser_event_session = secrets.token_urlsafe(32)
+    walkthrough_journal = WalkthroughJournal(
+        settings.data_root / "investor-walkthrough-sessions.json"
+    )
+
+    async def load_overview_snapshot() -> dict:
+        return await client.dashboard(refresh=True)
+
+    overview_events = OverviewEventBroker(
+        load_overview_snapshot,
+        poll_seconds=settings.overview_event_poll_seconds,
+        heartbeat_seconds=settings.overview_event_heartbeat_seconds,
+        replay_capacity=settings.overview_event_replay_capacity,
+        max_subscribers=settings.overview_event_max_subscribers,
+        max_payload_bytes=settings.overview_event_payload_max_bytes,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         warm_dashboard = getattr(client, "warm_dashboard", None)
         if warm_dashboard is not None:
             warm_dashboard()
-        yield
-        await client.close()
+        await overview_events.start()
+        try:
+            yield
+        finally:
+            await overview_events.stop()
+            await client.close()
 
     app = FastAPI(
         title="Hermes Mission Control",
@@ -106,6 +148,8 @@ def create_app(
 
     app.state.control_plane = client
     app.state.knowledge = store
+    app.state.overview_events = overview_events
+    app.state.walkthrough_journal = walkthrough_journal
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
     @app.exception_handler(ControlPlaneError)
@@ -119,6 +163,14 @@ def create_app(
         from fastapi.responses import JSONResponse
 
         return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(LocalGraphQueryError)
+    async def local_graph_error(_, exc: LocalGraphQueryError):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=exc.status_code, content={"detail": str(exc)}
+        )
 
     @app.exception_handler(ResearchUploadError)
     async def upload_error(_, exc: ResearchUploadError):
@@ -134,7 +186,17 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
-        return FileResponse(_STATIC / "index.html")
+        response = FileResponse(_STATIC / "index.html")
+        # This HttpOnly value is only a same-origin, loopback browser-session check.
+        # Control-plane credentials never enter the browser or an event payload.
+        response.set_cookie(
+            "hermes_overview_session",
+            browser_event_session,
+            httponly=True,
+            samesite="strict",
+            max_age=86_400,
+        )
+        return response
 
     @app.get("/api/status")
     async def status() -> dict:
@@ -148,19 +210,187 @@ def create_app(
     @app.get("/api/dashboard")
     async def dashboard(refresh: bool = False) -> dict:
         result = await client.dashboard(refresh=refresh)
+        if not isinstance(result.get("provenance"), dict):
+            result["provenance"] = build_snapshot_provenance(result).model_dump(
+                mode="json"
+            )
+        observed_at = datetime.now(timezone.utc).isoformat()
         result["knowledge"] = store.stats()
         result["mission_control"] = {
             "machine": "mac-founder-control",
             "display_name": "Mac",
             "role": "Founder control",
             "presence": "online",
-            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "observed_at": observed_at,
         }
+        provenance = result.get("provenance")
+        if isinstance(provenance, dict):
+            provenance.setdefault("sources", {})["mission_control"] = {
+                "source_key": "mission_control",
+                "source_identity": "mission-control/local-process",
+                "fact_class": "derived",
+                "freshness": "current",
+                "freshness_threshold_seconds": 45,
+                "source_timestamp": observed_at,
+                "reason": "locally_observed_process",
+            }
         return result
+
+    @app.get("/api/overview/events", include_in_schema=False)
+    async def overview_event_stream(
+        request: Request,
+        cursor: str | None = Query(default=None, max_length=32),
+        last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    ) -> StreamingResponse:
+        session = request.cookies.get("hermes_overview_session", "")
+        if not secrets.compare_digest(session, browser_event_session):
+            raise HTTPException(
+                status_code=401, detail="Local overview session required."
+            )
+        requested_cursor = last_event_id or cursor
+        try:
+            subscription = await overview_events.subscribe(requested_cursor)
+        except SubscriberLimitExceeded as exc:
+            raise HTTPException(
+                status_code=503, detail="Overview stream at capacity."
+            ) from exc
+
+        async def stream() -> AsyncIterator[str]:
+            try:
+                yield "retry: 2000\n\n"
+                if subscription.cursor_state is not None:
+                    yield _sse_frame(
+                        "overview.cursor_expired",
+                        None,
+                        {
+                            "schema_version": EVENT_SCHEMA_VERSION,
+                            "reason": f"cursor_{subscription.cursor_state}",
+                            "snapshot_required": True,
+                        },
+                    )
+                for event in subscription.replay:
+                    yield _sse_event_frame(event)
+                while not await request.is_disconnected():
+                    try:
+                        event = await asyncio.wait_for(
+                            subscription.queue.get(),
+                            timeout=overview_events.heartbeat_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        yield ": heartbeat\n\n"
+                        continue
+                    if not isinstance(event, OverviewEvent):
+                        return
+                    yield _sse_event_frame(event)
+            finally:
+                await overview_events.unsubscribe(subscription)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-store",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/tasks/{task_id}")
     async def task_detail(task_id: str) -> dict:
         return await client.task_detail(task_id)
+
+    @app.get("/api/agents/{agent_id}/detail")
+    async def agent_detail(
+        agent_id: str,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    ) -> dict:
+        snapshot, history = await asyncio.gather(
+            client.dashboard(), client.agent_tasks(agent_id, offset=offset, limit=limit)
+        )
+        result = project_agent_detail(
+            snapshot, agent_id, history, offset=offset, limit=limit
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Agent not found.")
+        return result
+
+    @app.get("/api/workflows")
+    async def workflows(refresh: bool = False) -> dict:
+        return project_workflows(await client.dashboard(refresh=refresh))
+
+    async def load_investor_walkthrough(*, refresh: bool = False) -> dict:
+        snapshot, venue_history = await asyncio.gather(
+            client.dashboard(refresh=refresh),
+            client.venue_event_history(environment="demo", venue="bybit"),
+        )
+        return project_investor_walkthrough(
+            snapshot,
+            project_workflows(snapshot),
+            venue_history,
+        )
+
+    @app.get("/api/investor-walkthrough")
+    async def investor_walkthrough(refresh: bool = False) -> dict:
+        return await load_investor_walkthrough(refresh=refresh)
+
+    @app.get("/api/investor-walkthrough/sessions")
+    async def investor_walkthrough_sessions(
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> dict:
+        return {
+            "schema_version": "mission-control-investor-rehearsal-journal-v1",
+            "sessions": walkthrough_journal.recent(limit),
+        }
+
+    @app.post("/api/investor-walkthrough/sessions")
+    async def start_investor_walkthrough(
+        body: WalkthroughSessionCreate,
+    ) -> dict:
+        current = await load_investor_walkthrough()
+        if (
+            body.walkthrough_digest != current["walkthrough_digest"]
+            or body.ready_steps != current["ready_steps"]
+            or body.total_steps != current["total_steps"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The walkthrough evidence changed. Refresh before rehearsing.",
+            )
+        return walkthrough_journal.start(
+            body.walkthrough_digest,
+            body.ready_steps,
+            body.total_steps,
+        )
+
+    @app.post("/api/investor-walkthrough/sessions/{session_id}/observations")
+    async def record_investor_walkthrough_observation(
+        session_id: str,
+        body: WalkthroughObservation,
+    ) -> dict:
+        try:
+            return walkthrough_journal.observe(session_id, body.model_dump())
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Rehearsal session not found.") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/investor-walkthrough/sessions/{session_id}/finish")
+    async def finish_investor_walkthrough(
+        session_id: str,
+        body: WalkthroughSessionFinish,
+    ) -> dict:
+        try:
+            return walkthrough_journal.finish(
+                session_id,
+                status=body.status,
+                elapsed_ms=body.elapsed_ms,
+                summary=body.summary,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Rehearsal session not found.") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/research/scientific-fidelity/adjudications")
     async def scientific_adjudication(request: Request) -> dict:
@@ -190,6 +420,20 @@ def create_app(
     ):
         return await client.backtest_activity(
             category=category, tier=tier, offset=offset
+        )
+
+    @app.get("/api/execution/events")
+    async def venue_event_history(
+        environment: Annotated[
+            str | None, Query(pattern="^(shadow|demo|live)$")
+        ] = None,
+        venue: Annotated[str | None, Query(pattern="^(binance|bybit)$")] = None,
+        replay_id: Annotated[str | None, Query()] = None,
+    ) -> dict:
+        return await client.venue_event_history(
+            environment=environment,
+            venue=venue,
+            replay_id=replay_id,
         )
 
     @app.get("/api/research/scientific-fidelity/review-context/{representation_id}")
@@ -484,7 +728,12 @@ def create_app(
         }
 
     @app.get("/api/knowledge/catalog")
-    async def knowledge_catalog() -> dict:
+    async def knowledge_catalog(
+        q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+        kind: Annotated[str, Query(pattern=r"^(all|canonical|private)$")] = "all",
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    ) -> dict:
         catalog_error = None
         try:
             canonical = await client.knowledge_catalog(limit=500)
@@ -508,20 +757,117 @@ def create_app(
                     "kind": "canonical",
                 }
             )
+        private_sources = store.catalog()
+        combined = [
+            *({**item, "catalog_kind": "canonical"} for item in sources),
+            *({**item, "catalog_kind": "private"} for item in private_sources),
+        ]
+        normalized_query = (q or "").casefold().strip()
+        if kind != "all":
+            combined = [item for item in combined if item["catalog_kind"] == kind]
+        if normalized_query:
+            combined = [
+                item
+                for item in combined
+                if normalized_query
+                in " ".join(
+                    str(item.get(key) or "")
+                    for key in ("title", "project", "origin", "confidentiality")
+                ).casefold()
+            ]
+        combined.sort(
+            key=lambda item: (
+                str(item.get("title") or "").casefold(),
+                item["catalog_kind"],
+                str(item.get("id") or ""),
+            )
+        )
+        total = len(combined)
+        page = combined[offset : offset + limit]
         return {
-            "canonical": sources,
-            "private": store.catalog(),
+            "canonical": [item for item in page if item["catalog_kind"] == "canonical"],
+            "private": [item for item in page if item["catalog_kind"] == "private"],
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total": total,
+                "has_more": offset + len(page) < total,
+            },
+            "counts": {
+                "canonical": len(sources),
+                "private": len(private_sources),
+            },
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "canonical_error": catalog_error,
         }
 
+    @app.get("/api/knowledge/sources/private/{opaque_id}/content")
+    async def private_source_content(
+        request: Request,
+        opaque_id: Annotated[str, ApiPath(pattern=r"^[A-Za-z0-9_-]{20,64}$")],
+        start: Annotated[int, Query(ge=1)] = 1,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    ) -> dict:
+        _require_source_query_keys(request, {"start", "limit"})
+        result = store.source_content(opaque_id, start=start, limit=limit)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Private source not found.")
+        return result
+
+    @app.get("/api/knowledge/sources/canonical/{object_id}/content")
+    async def canonical_content(
+        request: Request,
+        object_id: UUID,
+        unit: Annotated[str, Query(pattern=r"^(line|page)$")] = "line",
+        start: Annotated[int, Query(ge=1)] = 1,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    ) -> dict:
+        _require_source_query_keys(request, {"unit", "start", "limit"})
+        if unit == "page" and limit > 20:
+            raise HTTPException(status_code=422, detail="Page ranges are limited to 20.")
+        try:
+            return await canonical_source_content(
+                client, str(object_id), unit=unit, start=start, limit=limit
+            )
+        except SourceContentError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/knowledge/graph")
-    async def graph() -> dict:
-        return await client.knowledge_graph(limit=100)
+    async def graph(
+        scope: Annotated[str, Query(pattern=r"^(canonical|private)$")] = "canonical",
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        cursor: Annotated[str | None, Query(min_length=8, max_length=512)] = None,
+    ) -> dict:
+        if scope == "private":
+            return store.graph_overview(limit=limit, cursor=cursor)
+        if cursor is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Canonical overview cursors require a rooted graph query.",
+            )
+        result = await client.knowledge_graph(limit=limit)
+        return {
+            **result,
+            "scope": "canonical",
+            "authorization": {
+                "boundary": "control-plane-evidence-access",
+                "mixed_scope_allowed": False,
+            },
+        }
 
     @app.post("/api/knowledge/graph/query")
     async def query_graph(query: GraphExplorerQuery) -> dict:
-        return await client.query_knowledge_graph(query.model_dump(mode="json"))
+        if query.scope == "private":
+            return store.query_graph(query.model_dump(mode="json", exclude_none=True))
+        result = await client.query_knowledge_graph(query.canonical_payload())
+        return {
+            **result,
+            "scope": "canonical",
+            "authorization": {
+                "boundary": "control-plane-evidence-access",
+                "mixed_scope_allowed": False,
+            },
+        }
 
     @app.post("/api/research/copilot/questions")
     async def ask_research_copilot(question: CopilotQuestion) -> dict:
@@ -540,3 +886,22 @@ def _mutation_intent(
 ) -> None:
     if value != "founder-action":
         raise HTTPException(status_code=403, detail="Founder action header required.")
+
+
+def _require_source_query_keys(request: Request, allowed: set[str]) -> None:
+    unknown = set(request.query_params) - allowed
+    if unknown:
+        raise HTTPException(status_code=422, detail="Unsupported source query parameter.")
+
+
+def _sse_event_frame(event: OverviewEvent) -> str:
+    return _sse_frame(event.event, event.event_id, event.data)
+
+
+def _sse_frame(event: str, event_id: int | None, data: dict) -> str:
+    lines = []
+    if event_id is not None:
+        lines.append(f"id: {event_id}")
+    lines.append(f"event: {event}")
+    lines.append(f"data: {json.dumps(data, separators=(',', ':'))}")
+    return "\n".join(lines) + "\n\n"

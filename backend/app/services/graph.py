@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import math
@@ -572,42 +574,64 @@ def query_graph(
     requested = set(request.root_ids)
     if request.target_id is not None:
         requested.add(request.target_id)
-    initial = _authorized_node_subset(db, requested, access, request.project)
+    initial = _authorized_node_subset(
+        db, requested, access, request.project, object_types=request.object_types
+    )
     if set(initial) != requested:
         raise HTTPException(
             status_code=404, detail="Graph root or target is unavailable."
         )
+    cursor_fingerprint = digest_document(
+        {
+            "corpus_digest": state.corpus_digest,
+            "query": request.model_dump(
+                mode="json", exclude={"cursor", "page_size"}
+            ),
+        }
+    )
+    offset = _decode_graph_cursor(request.cursor, cursor_fingerprint)
     by_id = dict(initial)
+    provenance_by_id: dict[UUID, EvidenceGraphProjectionNode] = {}
     edges: list[EvidenceGraphProjectionEdge] = []
     frontier = set(request.root_ids)
-    for _depth in range(request.max_depth):
-        if not frontier or len(by_id) >= request.max_nodes:
+    depth_limited = False
+    node_limit = request.max_nodes + 1
+    for depth in range(request.max_depth):
+        if not frontier or len(by_id) >= node_limit:
             break
         candidates = _frontier_edges(db, frontier, access, request)
-        candidate_ids = {
+        endpoint_ids = {
             node_id
             for edge in candidates
-            for node_id in (
-                edge.subject_id,
-                edge.object_id,
-                edge.provenance_object_id,
-            )
+            for node_id in (edge.subject_id, edge.object_id)
         }
-        authorized = _authorized_node_subset(db, candidate_ids, access, request.project)
+        provenance_ids = {
+            edge.provenance_object_id
+            for edge in candidates
+            if edge.provenance_object_id is not None
+        }
+        authorized = _authorized_node_subset(
+            db,
+            endpoint_ids,
+            access,
+            request.project,
+            object_types=request.object_types,
+        )
+        provenance = _authorized_node_subset(
+            db, provenance_ids, access, request.project
+        )
         authorized_ids = set(authorized)
+        provenance_ids = set(provenance)
         accepted = [
             edge
             for edge in candidates
-            if {
-                edge.subject_id,
-                edge.object_id,
-                edge.provenance_object_id,
-            }
-            <= authorized_ids
+            if {edge.subject_id, edge.object_id} <= authorized_ids
+            and edge.provenance_object_id in provenance_ids
         ]
+        provenance_by_id.update(provenance)
         previous = set(by_id)
         for node_id in sorted(authorized, key=str):
-            if len(by_id) >= request.max_nodes and node_id not in by_id:
+            if len(by_id) >= node_limit and node_id not in by_id:
                 break
             by_id[node_id] = authorized[node_id]
         existing_edges = {edge.edge_id for edge in edges}
@@ -618,19 +642,60 @@ def query_graph(
             for node_id in (edge.subject_id, edge.object_id)
             if node_id not in previous and node_id in by_id
         }
+        if depth == request.max_depth - 1 and frontier:
+            depth_limited = True
+    node_limited = len(by_id) > request.max_nodes
+    edges = [
+        edge
+        for edge in edges
+        if edge.subject_id in by_id and edge.object_id in by_id
+    ]
     adjacency = _adjacency(edges, request.direction)
     visited, paths = _traverse(request, adjacency)
-    selected_ids = set(list(visited)[: request.max_nodes])
+    ordered_ids = list(visited)[: request.max_nodes]
+    if offset > len(ordered_ids):
+        raise HTTPException(status_code=422, detail="Graph cursor is out of range.")
+    page_ids = ordered_ids[offset : offset + request.page_size]
+    selected_ids = set(page_ids)
+    if offset:
+        selected_ids.update(request.root_ids)
     selected_edges = [
         edge
         for edge in edges
         if edge.subject_id in selected_ids and edge.object_id in selected_ids
     ]
+    provenance_ids = {
+        edge.provenance_object_id
+        for edge in selected_edges
+        if edge.provenance_object_id is not None
+    }
+    response_nodes = {item: by_id[item] for item in selected_ids if item in by_id}
+    response_nodes.update(
+        {
+            item: provenance_by_id[item]
+            for item in provenance_ids
+            if item in provenance_by_id
+        }
+    )
+    next_offset = offset + len(page_ids)
+    next_cursor = (
+        _encode_graph_cursor(next_offset, cursor_fingerprint)
+        if next_offset < len(ordered_ids)
+        else None
+    )
+    reasons: list[str] = []
+    if next_cursor is not None:
+        reasons.append("page_size")
+    if node_limited:
+        reasons.append("max_nodes")
+    if depth_limited:
+        reasons.append("max_depth")
     document = {
         "projection_version": state.projection_version,
         "corpus_digest": state.corpus_digest,
         "request": request.model_dump(mode="json"),
-        "node_ids": sorted(map(str, selected_ids)),
+        "cursor_offset": offset,
+        "node_ids": sorted(map(str, response_nodes)),
         "edge_digests": sorted(edge.record_digest for edge in selected_edges),
     }
     return {
@@ -638,11 +703,26 @@ def query_graph(
         "corpus_digest": state.corpus_digest,
         "query_digest": digest_document(document),
         "nodes": [
-            _node_response(by_id[item]) for item in sorted(selected_ids, key=str)
+            _node_response(response_nodes[item])
+            for item in sorted(response_nodes, key=str)
         ],
         "edges": [_edge_response(item) for item in selected_edges],
-        "paths": paths,
-        "truncated": len(visited) > request.max_nodes,
+        "paths": [path for path in paths if set(path) <= selected_ids],
+        "truncated": bool(reasons),
+        "page": {
+            "cursor": request.cursor,
+            "next_cursor": next_cursor,
+            "page_size": request.page_size,
+            "offset": offset,
+            "returned": len(page_ids),
+            "traversed": len(ordered_ids),
+        },
+        "truncation": {
+            "truncated": bool(reasons),
+            "reasons": reasons,
+            "max_nodes": request.max_nodes,
+            "max_depth": request.max_depth,
+        },
     }
 
 
@@ -687,6 +767,20 @@ def graph_overview(
         "edges": [_edge_response(item) for item in edges],
         "paths": [],
         "truncated": len(nodes) > limit,
+        "page": {
+            "cursor": None,
+            "next_cursor": None,
+            "page_size": min(limit, 100),
+            "offset": 0,
+            "returned": len(selected),
+            "traversed": len(selected),
+        },
+        "truncation": {
+            "truncated": len(nodes) > limit,
+            "reasons": ["page_size"] if len(nodes) > limit else [],
+            "max_nodes": min(limit, 500),
+            "max_depth": 1,
+        },
     }
 
 
@@ -860,6 +954,8 @@ def _authorized_node_subset(
     node_ids: set[UUID],
     access: EvidenceAccessContext,
     project: str | None,
+    *,
+    object_types: list[str] | None = None,
 ) -> dict[UUID, EvidenceGraphProjectionNode]:
     if not node_ids:
         return {}
@@ -884,6 +980,10 @@ def _authorized_node_subset(
         )
     if project is not None:
         statement = statement.where(EvidenceGraphProjectionNode.project == project)
+    if object_types:
+        statement = statement.where(
+            EvidenceGraphProjectionNode.object_type.in_(object_types)
+        )
     return {item.object_id: item for item in db.scalars(statement).all()}
 
 
@@ -1059,8 +1159,42 @@ def _edge_response(edge: EvidenceGraphProjectionEdge) -> dict[str, Any]:
         "valid_from": edge.valid_from,
         "valid_until": edge.valid_until,
         "provenance_object_id": edge.provenance_object_id,
+        "access_class": edge.access_class,
         "record_digest": edge.record_digest,
     }
+
+
+def _encode_graph_cursor(offset: int, fingerprint: str) -> str:
+    document = {"fingerprint": fingerprint, "offset": offset}
+    return base64.urlsafe_b64encode(_canonical(document)).decode("ascii").rstrip("=")
+
+
+def _decode_graph_cursor(cursor: str | None, fingerprint: str) -> int:
+    if cursor is None:
+        return 0
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        document = json.loads(base64.urlsafe_b64decode(cursor + padding))
+        offset = document["offset"]
+        if (
+            document.get("fingerprint") != fingerprint
+            or not isinstance(offset, int)
+            or isinstance(offset, bool)
+            or offset < 0
+        ):
+            raise ValueError
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeDecodeError,
+        binascii.Error,
+        json.JSONDecodeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=422, detail="Graph cursor does not match this query."
+        ) from exc
+    return offset
 
 
 def _canonical(value: Any) -> bytes:

@@ -10,12 +10,16 @@ from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
     GraphQueryRequest,
+    GraphQueryResponse,
 )
 from app.services.evidence import EvidenceAccessContext
 from app.services.graph import (
     _active,
     _adjacency,
     _authorized_edges,
+    _decode_graph_cursor,
+    _edge_response,
+    _encode_graph_cursor,
     _frontier_edges,
     _node_response,
     _stream_digest,
@@ -25,6 +29,7 @@ from app.services.graph import (
     digest_document,
     execute_cognitive_tool,
     graph_projection_status,
+    query_graph,
 )
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -162,6 +167,129 @@ def test_graph_node_replay_path_targets_canonical_evidence_route() -> None:
     assert response["replay_path"] == (
         f"/v1/research/evidence/objects/{ONE}"
     )
+
+
+def test_graph_cursor_is_bounded_to_exact_query_fingerprint() -> None:
+    cursor = _encode_graph_cursor(40, "a" * 64)
+    assert _decode_graph_cursor(cursor, "a" * 64) == 40
+    with pytest.raises(HTTPException, match="does not match"):
+        _decode_graph_cursor(cursor, "b" * 64)
+    with pytest.raises(HTTPException, match="does not match"):
+        _decode_graph_cursor("not-a-cursor", "a" * 64)
+
+
+def test_graph_response_exposes_edge_access_and_explicit_truncation() -> None:
+    projected_edge = SimpleNamespace(
+        edge_id=THREE,
+        subject_id=ONE,
+        object_id=TWO,
+        predicate="supports",
+        valid_from=None,
+        valid_until=None,
+        provenance_object_id=THREE,
+        access_class="restricted",
+        record_digest="d" * 64,
+    )
+    edge_payload = _edge_response(projected_edge)
+    assert edge_payload["access_class"] == "restricted"
+    cursor = _encode_graph_cursor(1, "c" * 64)
+    response = GraphQueryResponse.model_validate(
+        {
+            "projection_version": "knowledge-graph-v1.0.0",
+            "corpus_digest": "a" * 64,
+            "query_digest": "b" * 64,
+            "nodes": [],
+            "edges": [],
+            "paths": [],
+            "truncated": True,
+            "page": {
+                "cursor": None,
+                "next_cursor": cursor,
+                "page_size": 1,
+                "offset": 0,
+                "returned": 1,
+                "traversed": 3,
+            },
+            "truncation": {
+                "truncated": True,
+                "reasons": ["page_size", "max_nodes"],
+                "max_nodes": 3,
+                "max_depth": 2,
+            },
+        }
+    )
+    assert response.page.next_cursor == cursor
+    assert response.truncation.reasons == ["page_size", "max_nodes"]
+
+
+def test_canonical_neighborhood_pages_are_deterministic_and_keep_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = SimpleNamespace(
+        projection_version="knowledge-graph-v1.0.0", corpus_digest="a" * 64
+    )
+    nodes = {
+        item: SimpleNamespace(
+            object_id=item,
+            object_type="claim" if item != THREE else "scientific_object",
+            project="systematic-research",
+            access_class="internal",
+            content_digest=str(item.int % 10) * 64,
+            label=f"Node {item}",
+        )
+        for item in (ONE, TWO, THREE)
+    }
+    projected_edge = SimpleNamespace(
+        edge_id=UUID("44444444-4444-4444-8444-444444444444"),
+        subject_id=ONE,
+        object_id=TWO,
+        predicate="supports",
+        valid_from=None,
+        valid_until=None,
+        provenance_object_id=THREE,
+        access_class="internal",
+        record_digest="d" * 64,
+    )
+    monkeypatch.setattr(
+        "app.services.graph.graph_projection_status", lambda _: (state, False)
+    )
+    monkeypatch.setattr(
+        "app.services.graph._authorized_node_subset",
+        lambda _db, ids, _access, _project, **_kwargs: {
+            item: nodes[item] for item in ids
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.graph._frontier_edges",
+        lambda *_args, **_kwargs: [projected_edge],
+    )
+    access = EvidenceAccessContext(
+        actor="reader",
+        projects=frozenset({"systematic-research"}),
+        max_access_class="internal",
+    )
+    request = GraphQueryRequest(
+        root_ids=[ONE],
+        direction="outgoing",
+        max_depth=1,
+        max_nodes=10,
+        page_size=1,
+    )
+
+    first = query_graph(MagicMock(), request, access)
+    assert [node["id"] for node in first["nodes"]] == [ONE]
+    assert first["page"]["next_cursor"]
+    assert "page_size" in first["truncation"]["reasons"]
+
+    second = query_graph(
+        MagicMock(),
+        request.model_copy(update={"cursor": first["page"]["next_cursor"]}),
+        access,
+    )
+    assert {node["id"] for node in second["nodes"]} == {ONE, TWO, THREE}
+    assert second["edges"][0]["provenance_object_id"] == THREE
+    assert second["edges"][0]["access_class"] == "internal"
+    assert second["page"]["next_cursor"] is None
 
 
 def test_stale_projection_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -31,6 +31,11 @@ class MissionControlSettings(BaseSettings):
     research_codex_home: Path = Path.home() / ".codex"
     research_codex_model: str = "gpt-5.6-sol"
     research_codex_timeout_seconds: float = Field(default=120, ge=30, le=600)
+    overview_event_poll_seconds: float = Field(default=5, ge=1, le=60)
+    overview_event_heartbeat_seconds: float = Field(default=15, ge=5, le=60)
+    overview_event_replay_capacity: int = Field(default=128, ge=8, le=1024)
+    overview_event_max_subscribers: int = Field(default=12, ge=1, le=64)
+    overview_event_payload_max_bytes: int = Field(default=4096, ge=512, le=16384)
 
     @property
     def normalized_api_url(self) -> str:

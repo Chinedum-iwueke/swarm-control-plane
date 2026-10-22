@@ -213,17 +213,52 @@ async def test_dashboard_uses_bearer_without_exposing_token(
     assert result["research_utilization"]["items"] == []
     assert result["alpha_discovery"]["mandates"] == []
     assert result["scientific_assurance"]["counts"]["verified"] == 1
-    task_request = next(
-        request for request in seen if request.url.path == "/v1/tasks"
-    )
+    assert result["provenance"]["schema_version"] == "mission-control-provenance-v1"
+    assert result["provenance"]["sources"]["health"]["freshness"] == "unknown"
+    task_request = next(request for request in seen if request.url.path == "/v1/tasks")
     assert dict(task_request.url.params) == {"limit": "100", "compact": "true"}
     approval_request = next(
         request for request in seen if request.url.path == "/v1/approvals"
     )
     assert dict(approval_request.url.params) == {"status": "pending"}
-    assert not any(
-        request.url.path == "/v1/operations/summary" for request in seen
-    )
+    assert not any(request.url.path == "/v1/operations/summary" for request in seen)
+
+
+@pytest.mark.asyncio
+async def test_venue_event_history_uses_bounded_query_and_bearer(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "schema_version": "mission-control-venue-event-history-v1",
+                "events": [],
+                "counts": {"events": 0},
+                "replay_coverage": [],
+                "claim_boundary": "Immutable evidence only.",
+            },
+        )
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.venue_event_history(
+            environment="demo", venue="bybit", replay_id="replay-1"
+        )
+    finally:
+        await client.close()
+    request = seen[0]
+    assert request.url.path == "/v1/execution/events"
+    assert dict(request.url.params) == {
+        "environment": "demo",
+        "venue": "bybit",
+        "replay_id": "replay-1",
+    }
+    assert request.headers["authorization"].startswith("Bearer ")
+    assert result["events"] == []
 
 
 @pytest.mark.asyncio
@@ -635,6 +670,26 @@ async def test_api_error_is_bounded_and_token_free(
 
 
 @pytest.mark.asyncio
+async def test_optional_404_is_explicitly_unavailable_for_freshness(
+    settings: MissionControlSettings,
+) -> None:
+    client = ControlPlaneClient(
+        settings,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(404, json={"detail": "missing"})
+        ),
+    )
+    try:
+        result = await client._optional_object("/v1/optional", {"items": []})
+    finally:
+        await client.close()
+
+    assert result["items"] == []
+    assert result["unavailable"] is True
+    assert result["unavailable_reason"] == "endpoint_not_available"
+
+
+@pytest.mark.asyncio
 async def test_proposal_materialization_is_an_explicit_founder_action(
     settings: MissionControlSettings,
 ) -> None:
@@ -777,3 +832,26 @@ async def test_resend_approval_rearms_the_exact_task(
             ),
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_canonical_source_content_client_uses_evidence_access_routes(
+    settings: MissionControlSettings,
+) -> None:
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json={"object_id": "object-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.research_evidence_object("object-id")
+        await client.research_evidence_lineage("object-id")
+    finally:
+        await client.close()
+
+    assert paths == [
+        "/v1/research/evidence/objects/object-id",
+        "/v1/research/evidence/objects/object-id/lineage",
+    ]

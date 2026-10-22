@@ -1,5 +1,13 @@
 # Hermes Mission Control Design System
 
+> **Status note:** this file defines the visual and interaction foundation, not
+> proof that every described product capability is implemented. The current
+> implementation gaps and full target behavior are tracked in
+> [INVESTOR_EXPERIENCE_SPEC.md](INVESTOR_EXPERIENCE_SPEC.md). In particular, a
+> Obsidian-parity graph workspace, full agent history and
+> reporting relationships, a live venue event stream, and a streaming
+> conversational workbench are not yet complete.
+
 ## Product promise
 
 Hermes Mission Control lets the founder understand and safely direct the
@@ -92,7 +100,15 @@ digests, and promotion gates.
 
 ### Knowledge
 
-Private cited search, source ingestion, and explicit knowledge graph.
+Paginated canonical/private source catalog, access-aware full-text reader,
+citation anchors, extraction quality and provenance, private cited search,
+source ingestion, and explicitly separated canonical/private knowledge graphs.
+Graph traversal uses bounded query-bound cursor pages, stable identities,
+filters, edge provenance and explicit truncation reasons; canonical access is
+rechecked by the control plane while private traversal remains local-only.
+Original PDF pages render only when the API grants a same-origin page asset;
+extracted text is always labeled. The richer graph workspace and renderer are
+tracked separately and are not implied by the API contract.
 
 ### Evidence
 
@@ -101,11 +117,12 @@ verification status.
 
 ## Application shell
 
-- Persistent 216px navigation rail on desktop.
-- 52px global command bar.
-- Flexible main canvas constrained to a readable operational width.
+- Persistent 232px navigation rail on desktop.
+- 64px global command bar.
+- Flexible main canvas capped at 1560px with 28-32px desktop inset.
 - Persistent 320px attention rail on wide screens.
-- Compact mobile tab rail and a single-column content flow below 960px.
+- Collapsible mobile navigation and a single-column content flow at 960px;
+  compact toolbar/row layouts apply at 680px and 620px.
 - Detail inspector enters from the right without losing list context.
 
 The command view is organized as full-width operational bands. Repeated entities
@@ -117,46 +134,53 @@ may use bordered rows. Avoid decorative cards and cards nested inside cards.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `ink` | `#171A19` | Primary text |
-| `muted` | `#68716D` | Secondary information |
-| `canvas` | `#F4F6F5` | Application background |
-| `surface` | `#FFFFFF` | Working surfaces |
-| `nav` | `#171B1A` | Navigation and command surfaces |
-| `line` | `#D9DFDC` | Dividers and boundaries |
-| `blue` | `#2563EB` | Commands and selected state |
-| `green` | `#15805D` | Healthy and succeeded |
-| `amber` | `#B76A00` | Pending and attention |
-| `red` | `#C23832` | Failed, offline, and destructive |
-| `cyan` | `#087E8B` | Research and evidence |
+| `--ink` | `#1A1817` | Primary text |
+| `--muted` | `#56504C` | Secondary information |
+| `--quiet` | `#756E69` | Tertiary labels |
+| `--canvas` | `#FBFAF7` | Ivory application background |
+| `--surface`, `--nav` | `#FFFFFF` | Working surfaces and white navigation |
+| `--nav-soft` | `#F4F1EC` | Selected/soft navigation surface |
+| `--line`, `--line-soft` | `#DED8D1`, `#EEE9E3` | Boundaries and subtle dividers |
+| `--accent` | `#B00020` | Invariance red commands and selection |
+| `--accent-hover` | `#8F001A` | Hover state for primary command |
+| `--green` / `--green-soft` | `#24734D` / `#E7F2EC` | Healthy/succeeded state and its surface |
+| `--amber` / `--amber-soft` | `#805000` / `#F8EEDC` | Pending/attention state and its surface |
+| `--red` / `--red-soft` | `#B00020` / `#F7E8EB` | Failed/offline/destructive state and its surface |
+| `--cyan` / `--cyan-soft` | `#235A97` / `#E8EFF6` | Research/evidence state and its surface |
+
+The red brand accent is not blue. `--blue` remains a compatibility alias for
+older component rules; new rules use `--accent`. `--danger` aliases `--red`.
+Status always pairs color with text and, where present, a symbol.
 
 No gradient backgrounds, decorative blobs, or ornamental shadows.
 
 ### Typography
 
-- Interface: Inter, system UI fallback.
-- Technical data: IBM Plex Mono, SFMono fallback.
-- Base size: 13px.
-- Page titles: 22px.
-- Section titles: 13px with strong weight.
+- Interface: bundled IBM Plex Sans, with Inter/system fallbacks.
+- Technical data: bundled IBM Plex Mono, with SFMono/Consolas fallbacks.
+- Display headings: bundled Instrument Serif, with system serif fallbacks.
+- Base size: 13px; dense metadata may use 9-11px and must remain secondary.
+- Page titles: 30px Instrument Serif; section titles: 13px IBM Plex Sans bold.
 - Technical IDs and timestamps use monospace and tabular numerals.
 - Letter spacing is always zero.
 
 ### Spacing
 
-Use a 4px base unit:
+Use the CSS spacing tokens on a 4px base unit:
 
-- 4px: tight inline relationship;
-- 8px: control and row internals;
-- 12px: compact groups;
-- 16px: standard panel padding;
-- 24px: major sections;
-- 32px: page separation.
+- `--space-1` / 4px: tight inline relationship;
+- `--space-2` / 8px: control and row internals;
+- `--space-3` / 12px: compact groups;
+- `--space-4` / 16px: standard panel padding;
+- `--space-6` / 24px: major sections;
+- `--space-8` / 32px: page separation.
 
 Operational rows use stable 44px, 52px, or 64px minimum heights.
 
 ### Shape and depth
 
-- Radius: 4px for controls, 6px maximum for dialogs and inspectors.
+- `--radius-control`: 4px; `--radius-panel`: 6px maximum for dialogs and
+  inspectors; `--radius-pill`: compact state metadata only.
 - Borders create structure.
 - Shadows appear only on overlays.
 - Status pills may be fully rounded because they are compact metadata.
@@ -213,7 +237,9 @@ reconnect or explicit demonstration mode.
 - Visible `:focus-visible` treatment.
 - Semantic tables, headings, forms, and dialogs.
 - Icon-only buttons require accessible names and tooltips.
-- Touch targets are at least 36px.
+- Primary decision controls are at least 44px; dense desktop navigation and
+  secondary controls currently use 34-36px minimums and are a documented gap
+  for touch-first responsive qualification.
 - Status and risk always include text.
 
 ## Safety requirements
@@ -227,7 +253,7 @@ reconnect or explicit demonstration mode.
 - Research findings visibly retain their production-eligibility gate.
 - Raw secrets, authorization headers, and lease tokens are never rendered.
 
-## First prototype scope
+## Prototype scope (design target, not a completion claim)
 
 The first high-fidelity prototype implements:
 

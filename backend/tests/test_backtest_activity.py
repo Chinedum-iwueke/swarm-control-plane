@@ -64,6 +64,10 @@ def test_preserves_task_state_and_native_outcome_without_inventing_promotion(
     assert result["trial_count"] == 0
     assert result["failed_gates"] == ["missing_strategy"]
     assert result["metrics"] == {"oos_trades": 70}
+    assert result["execution_evidence"] == "no_native_terminal_receipt"
+    assert result["terminal_receipt"]["present"] is False
+    assert result["gate_states"]["shadow_eligible"] == "passed"
+    assert result["gate_states"]["out_of_sample_evaluated"] == "not_run"
 
 
 def test_drafting_success_is_not_execution_or_admission():
@@ -72,6 +76,27 @@ def test_drafting_success_is_not_execution_or_admission():
     )
     assert result["execution_evidence"] == "no_native_terminal_receipt"
     assert result["promotion"] == "shadow_review_requested"
+
+
+def test_nonterminal_task_cannot_claim_a_complete_native_receipt():
+    item = task(status="running")
+    item.result["summary"].update(
+        {
+            "receipt_digest": "a" * 64,
+            "alpha_campaign_attempt": {
+                **item.result["summary"]["alpha_campaign_attempt"],
+                "attempt_key": "attempt-1",
+                "produced_by": "bulletproof_bt",
+                "source_commit": "b" * 40,
+                "evidence_digests": ["c" * 64],
+            },
+        }
+    )
+
+    result = serialize_backtest(item)
+
+    assert result["execution_evidence"] == "no_native_terminal_receipt"
+    assert result["terminal_receipt"]["present"] is False
 
 
 def test_commissioning_terminal_receipt_projects_native_evidence_without_promotion():
@@ -95,6 +120,8 @@ def test_commissioning_terminal_receipt_projects_native_evidence_without_promoti
                 "execution_class": "commissioning",
                 "qualification_authority": False,
                 "trial": {
+                    "trial_id": "trial-1",
+                    "code_digest": "1" * 64,
                     "result_disposition": "rejected",
                     "bundle_digest": "b" * 64,
                     "bundle_manifest_digest": "c" * 64,
@@ -134,6 +161,16 @@ def test_commissioning_terminal_receipt_projects_native_evidence_without_promoti
         "f" * 64,
     ]
     assert result["promotion"] == "not_established"
+    assert result["terminal_receipt"] == {
+        "present": True,
+        "digest": "a" * 64,
+        "schema_version": "alpha003-publication-envelope-v1.0.0",
+        "bundle_digest": "b" * 64,
+    }
+    assert result["scientific_contract"]["strategy"]["code_digest"] == "1" * 64
+    assert result["gate_states"]["reproducible"] == "passed"
+    assert result["gate_states"]["point_in_time_valid"] == "not_run"
+    assert result["scientific_contract"]["evaluation"]["leakage_review"] == ("not_run")
 
 
 def test_activity_has_protected_static_route_before_campaign_id():
@@ -156,6 +193,20 @@ def test_pagination_and_heartbeat_receipt_are_read_only():
             }
         },
     )
+    artifact = SimpleNamespace(
+        id=uuid4(),
+        task_id=item.id,
+        name="terminal-report.json",
+        artifact_type="report",
+        size_bytes=1200,
+        sha256="a" * 64,
+        location="workspace://terminal-report.json",
+        workflow="alpha-research-execution",
+        workflow_version="1",
+        source_commit="b" * 40,
+        verification_status="verified",
+        created_at=datetime.now(UTC),
+    )
     db = MagicMock()
     db.execute.return_value.all.return_value = [("running", 3)]
     db.scalar.return_value = 3
@@ -163,6 +214,7 @@ def test_pagination_and_heartbeat_receipt_are_read_only():
         SimpleNamespace(all=lambda: [item]),
         SimpleNamespace(all=list),
         SimpleNamespace(all=lambda: [event]),
+        SimpleNamespace(all=lambda: [artifact]),
     ]
     result = overview(db, limit=1, offset=1, category="running", tier="Tier2B")
     assert result["has_more"] and result["total"] == 3
@@ -171,6 +223,8 @@ def test_pagination_and_heartbeat_receipt_are_read_only():
         "phase": "native_bulletproof_execution",
         "capacity_governed": True,
     }
+    assert result["items"][0]["artifacts"][0]["name"] == "terminal-report.json"
+    assert result["counts"]["completed_backtests"] == 3
     db.commit.assert_not_called()
     db.add.assert_not_called()
     count_query = str(
@@ -180,3 +234,10 @@ def test_pagination_and_heartbeat_receipt_are_read_only():
     )
     assert "input_contract" in count_query
     assert "execute" in count_query
+    completed_count_query = str(
+        db.scalar.call_args_list[0]
+        .args[0]
+        .compile(compile_kwargs={"literal_binds": True})
+    )
+    assert "receipt_digest" in completed_count_query
+    assert "bulletproof_bt" in completed_count_query

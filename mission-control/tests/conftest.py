@@ -20,4 +20,3 @@ def settings(tmp_path: Path) -> MissionControlSettings:
         data_root=tmp_path / "data",
         knowledge_roots=str(knowledge),
     )
-

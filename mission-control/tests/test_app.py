@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -25,6 +26,8 @@ class FakeControlPlane:
         self.approval_decision: Any = None
         self.approval_resend: tuple[str, str] | None = None
         self.codex_auth_retry: tuple[str, dict] | None = None
+        self.venue_event_query: dict | None = None
+        self.evidence_version = "1"
 
     async def close(self) -> None:
         self.closed = True
@@ -41,6 +44,27 @@ class FakeControlPlane:
             "proposals": [],
             "fleet_health": {"machines": []},
             "execution_telemetry": {"venues": []},
+        }
+
+    async def agent_tasks(
+        self, agent_id: str, *, offset: int = 0, limit: int = 25
+    ) -> list[dict]:
+        return []
+
+    async def venue_event_history(
+        self, *, environment=None, venue=None, replay_id=None
+    ) -> dict:
+        self.venue_event_query = {
+            "environment": environment,
+            "venue": venue,
+            "replay_id": replay_id,
+        }
+        return {
+            "schema_version": "mission-control-venue-event-history-v1",
+            "events": [],
+            "counts": {"events": 0},
+            "replay_coverage": [],
+            "claim_boundary": "Immutable EXEC-011 event evidence only.",
         }
 
     async def task_detail(self, task_id: str) -> dict:
@@ -189,9 +213,91 @@ class FakeControlPlane:
             "truncated": False,
         }
 
+    async def knowledge_catalog(self, *, limit: int = 500) -> dict:
+        return {"items": [], "count": 0}
+
     async def query_knowledge_graph(self, payload: dict) -> dict:
         self.graph_query = payload
         return await self.knowledge_graph(limit=payload["max_nodes"])
+
+    async def research_evidence_object(self, object_id: str) -> dict:
+        if object_id != "11111111-1111-4111-8111-111111111111":
+            raise AssertionError(f"unexpected evidence object {object_id}")
+        return self._evidence_object(object_id, "source")
+
+    async def research_evidence_lineage(self, object_id: str) -> dict:
+        descendants = {
+            "11111111-1111-4111-8111-111111111111": [
+                self._evidence_object(
+                    "22222222-2222-4222-8222-222222222222", "edition"
+                )
+            ],
+            "22222222-2222-4222-8222-222222222222": [
+                self._evidence_object(
+                    "33333333-3333-4333-8333-333333333333", "artifact"
+                )
+            ],
+            "33333333-3333-4333-8333-333333333333": [
+                self._evidence_object(
+                    "44444444-4444-4444-8444-444444444444",
+                    "scientific_object",
+                    page=1,
+                    line_start=1,
+                    content="First canonical line.\nSecond canonical line.",
+                ),
+                self._evidence_object(
+                    "55555555-5555-4555-8555-555555555555",
+                    "scientific_object",
+                    page=2,
+                    line_start=3,
+                    content="Third canonical line.",
+                ),
+            ],
+        }.get(object_id, [])
+        return {"object": {}, "ancestors": [], "descendants": descendants}
+
+    def _evidence_object(
+        self,
+        object_id: str,
+        object_type: str,
+        *,
+        page: int = 1,
+        line_start: int = 1,
+        content: str = "",
+    ) -> dict:
+        payloads = {
+            "source": {
+                "kind": "source",
+                "title": "Canonical Research Note",
+                "origin": "research-inbox",
+                "rights": "internal",
+                "acquired_at": "2026-10-22T00:00:00Z",
+            },
+            "edition": {"kind": "edition"},
+            "artifact": {"kind": "artifact", "media_type": "application/pdf"},
+            "scientific_object": {
+                "kind": "scientific_object",
+                "scientific_type": "paragraph",
+                "coordinates": {
+                    "page": page,
+                    "line_start": line_start,
+                    "line_end": line_start + max(len(content.splitlines()) - 1, 0),
+                },
+                "extraction_method": "pypdf-heldout",
+                "extraction_confidence": 0.98,
+                "content_text": content,
+            },
+        }
+        return {
+            "object_id": object_id,
+            "object_type": object_type,
+            "content_version": self.evidence_version,
+            "content_digest": object_id.replace("-", "")[:32] * 2,
+            "project": "systematic-research",
+            "access_class": "internal",
+            "created_at": "2026-10-22T00:00:00Z",
+            "payload": payloads[object_type],
+        }
 
     async def research_retrieval(self, payload) -> dict:
         return {
@@ -223,6 +329,8 @@ def test_static_application_and_safe_status(
     assert page.status_code == 200
     assert "Hermes Mission Control" in page.text
     assert 'id="command"' in page.text
+    assert 'id="workflows"' in page.text
+    assert 'id="workflow-list"' in page.text
     assert 'id="research"' in page.text
     assert 'id="execution"' in page.text
     assert 'id="execution-environments"' in page.text
@@ -238,6 +346,9 @@ def test_static_application_and_safe_status(
     assert 'role="tablist" aria-label="Research workspace mode"' in page.text
     assert 'id="research-panel-ask"' in page.text
     assert 'id="research-panel-explore"' in page.text
+    assert "renderWorkflowFlow" in script.text
+    assert "loadWorkflows" in script.text
+    assert "/api/workflows" in script.text
     assert 'id="research-panel-library"' in page.text
     assert 'id="research-context-items"' in page.text
     assert 'id="alpha-founder-ideas"' in page.text
@@ -260,6 +371,75 @@ def test_dashboard_refresh_preserves_research_scroll_position(
     assert "navigate(state.activeView, { resetScroll: false });" in script
 
 
+def test_investor_walkthrough_api_discloses_unavailable_canonical_steps(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get("/api/investor-walkthrough")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "mission-control-investor-walkthrough-v1"
+    assert payload["status"] == "incomplete"
+    assert payload["total_steps"] == 5
+    assert fake.venue_event_query == {
+        "environment": "demo",
+        "venue": "bybit",
+        "replay_id": None,
+    }
+
+
+def test_investor_walkthrough_journal_binds_current_projection(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(
+        create_app(settings, control_plane=FakeControlPlane())
+    ) as client:
+        projection = client.get("/api/investor-walkthrough").json()
+        stale = client.post(
+            "/api/investor-walkthrough/sessions",
+            json={
+                "walkthrough_digest": "f" * 64,
+                "ready_steps": projection["ready_steps"],
+                "total_steps": 5,
+            },
+        )
+        started = client.post(
+            "/api/investor-walkthrough/sessions",
+            json={
+                "walkthrough_digest": projection["walkthrough_digest"],
+                "ready_steps": projection["ready_steps"],
+                "total_steps": 5,
+            },
+        )
+        session_id = started.json()["id"]
+        observed = client.post(
+            f"/api/investor-walkthrough/sessions/{session_id}/observations",
+            json={
+                "step_id": "workflow",
+                "kind": "question",
+                "elapsed_ms": 500,
+                "note": "Which record proves this workflow is current?",
+            },
+        )
+        finished = client.post(
+            f"/api/investor-walkthrough/sessions/{session_id}/finish",
+            json={
+                "status": "completed",
+                "elapsed_ms": 900,
+                "summary": "Unavailable records were disclosed.",
+            },
+        )
+        sessions = client.get("/api/investor-walkthrough/sessions").json()
+
+    assert stale.status_code == 409
+    assert started.status_code == 200
+    assert observed.json()["kind"] == "question"
+    assert finished.json()["status"] == "completed"
+    assert sessions["sessions"][0]["id"] == session_id
+
+
 def test_dashboard_reports_local_mission_control_presence(
     settings: MissionControlSettings,
 ) -> None:
@@ -269,6 +449,15 @@ def test_dashboard_reports_local_mission_control_presence(
     assert dashboard["mission_control"]["machine"] == "mac-founder-control"
     assert dashboard["mission_control"]["presence"] == "online"
     assert dashboard["mission_control"]["observed_at"]
+    assert dashboard["provenance"]["sources"]["mission_control"] == {
+        "source_key": "mission_control",
+        "source_identity": "mission-control/local-process",
+        "fact_class": "derived",
+        "freshness": "current",
+        "freshness_threshold_seconds": 45,
+        "source_timestamp": dashboard["mission_control"]["observed_at"],
+        "reason": "locally_observed_process",
+    }
 
 
 def test_autonomy_drain_control_requires_founder_intent(
@@ -326,6 +515,25 @@ def test_execution_workspace_is_environment_explicit_and_digest_safe(
     assert "receipt_digest" in script
     assert "projection_digest" in script
     assert "api_key" not in html
+
+
+def test_execution_event_history_proxy_preserves_bounded_filters(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get(
+            "/api/execution/events",
+            params={"environment": "demo", "venue": "bybit", "replay_id": "r-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "mission-control-venue-event-history-v1"
+    assert fake.venue_event_query == {
+        "environment": "demo",
+        "venue": "bybit",
+        "replay_id": "r-1",
+    }
 
 
 def test_new_thread_dialog_cancel_bypasses_required_field_validation(
@@ -465,6 +673,147 @@ def test_application_routes_construct_for_supported_python(
     assert "/api/research/copilot/questions" in paths
     assert "/api/research/copilot/citations/{object_id}" in paths
     assert "/api/knowledge/graph/query" in paths
+    assert "/api/knowledge/sources/private/{opaque_id}/content" in paths
+    assert "/api/knowledge/sources/canonical/{object_id}/content" in paths
+
+
+def test_private_source_content_route_separates_ids_and_rejects_paths(
+    settings: MissionControlSettings,
+) -> None:
+    source = Path(settings.knowledge_roots) / "private-note.md"
+    source.write_text("# Private note\n\nline two\nline three", encoding="utf-8")
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        client.app.state.knowledge.ingest(str(source))
+        catalog = client.get("/api/knowledge/catalog").json()["private"]
+        opaque_id = catalog[0]["opaque_id"]
+        response = client.get(
+            f"/api/knowledge/sources/private/{opaque_id}/content",
+            params={"start": 2, "limit": 2},
+        )
+        path_attempt = client.get(
+            f"/api/knowledge/sources/private/{opaque_id}/content",
+            params={"path": str(source)},
+        )
+        canonical_as_private = client.get(
+            "/api/knowledge/sources/private/"
+            "11111111-1111-4111-8111-111111111111/content"
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_kind"] == "private"
+    assert body["range"]["start"] == 2
+    assert body["source_digest"]
+    assert "path" not in body
+    assert path_attempt.status_code == 422
+    assert canonical_as_private.status_code == 404
+
+
+def test_library_catalog_is_server_paginated_and_filterable_without_paths(
+    settings: MissionControlSettings,
+) -> None:
+    root = Path(settings.knowledge_roots)
+    for name, title in (
+        ("alpha.md", "# Alpha Methods\n\nalpha"),
+        ("beta.md", "# Beta Evidence\n\nbeta"),
+        ("gamma.md", "# Gamma Notes\n\ngamma"),
+    ):
+        (root / name).write_text(title, encoding="utf-8")
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        for path in root.iterdir():
+            client.app.state.knowledge.ingest(str(path))
+        first = client.get(
+            "/api/knowledge/catalog",
+            params={"kind": "private", "offset": 0, "limit": 2},
+        ).json()
+        filtered = client.get(
+            "/api/knowledge/catalog",
+            params={"kind": "private", "q": "gamma", "limit": 10},
+        ).json()
+
+    assert first["pagination"] == {
+        "offset": 0,
+        "limit": 2,
+        "total": 3,
+        "has_more": True,
+    }
+    assert [item["title"] for item in first["private"]] == [
+        "Alpha Methods",
+        "Beta Evidence",
+    ]
+    assert filtered["pagination"]["total"] == 1
+    assert filtered["private"][0]["title"] == "Gamma Notes"
+    assert "path" not in filtered["private"][0]
+
+
+def test_canonical_source_content_route_paginates_lineage_and_pages(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    source_id = "11111111-1111-4111-8111-111111111111"
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        lines = client.get(
+            f"/api/knowledge/sources/canonical/{source_id}/content",
+            params={"start": 2, "limit": 2},
+        )
+        pages = client.get(
+            f"/api/knowledge/sources/canonical/{source_id}/content",
+            params={"unit": "page", "start": 2, "limit": 1},
+        )
+        path_attempt = client.get(
+            f"/api/knowledge/sources/canonical/{source_id}/content",
+            params={"path": "/srv/private/book.pdf"},
+        )
+        private_as_canonical = client.get(
+            "/api/knowledge/sources/canonical/not-a-uuid/content"
+        )
+
+    assert lines.status_code == 200
+    body = lines.json()
+    assert body["content"] == "Second canonical line.\nThird canonical line."
+    assert body["citation"].endswith("#L2-L3")
+    assert body["lineage"]["parsers"] == ["pypdf-heldout"]
+    assert body["lineage"]["quality"] == "high"
+    assert len(body["lineage"]["scientific_object_ids"]) == 2
+    assert body["outline"] == [
+        {
+            "label": "Page 1",
+            "level": 1,
+            "unit": "page",
+            "position": 1,
+            "citation": "P1",
+        },
+        {
+            "label": "Page 2",
+            "level": 1,
+            "unit": "page",
+            "position": 2,
+            "citation": "P2",
+        },
+    ]
+    assert body["original_assets"][0]["availability"] == "reference_only"
+    assert "storage_uri" not in body["original_assets"][0]
+    assert pages.status_code == 200
+    assert pages.json()["content"] == "Third canonical line."
+    assert pages.json()["citation"].endswith("#P2-P2")
+    assert path_attempt.status_code == 422
+    assert private_as_canonical.status_code == 422
+
+
+def test_canonical_source_content_version_is_reflected_in_stable_citation(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    fake.evidence_version = "2"
+    source_id = "11111111-1111-4111-8111-111111111111"
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get(
+            f"/api/knowledge/sources/canonical/{source_id}/content"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["version"] == "2"
+    assert response.json()["citation"].startswith(f"canonical:{source_id}@2#")
 
 
 def test_graph_explorer_uses_canonical_control_plane_projection(
@@ -513,6 +862,76 @@ def test_graph_explorer_rejects_unbounded_or_executable_input(
             json={"root_ids": [root_id], "max_nodes": 500, "command": "shell"},
         )
     assert response.status_code == 422
+
+
+def test_private_graph_stays_local_and_supports_rooted_path_queries(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    app = create_app(settings, control_plane=fake)
+    source = Path(settings.knowledge_roots) / "private-graph.md"
+    source.write_text("# Private graph\n\n[[Liquidity]] and [[Momentum]].", encoding="utf-8")
+    app.state.knowledge.ingest(str(source))
+
+    with TestClient(app) as client:
+        overview = client.get("/api/knowledge/graph", params={"scope": "private"})
+        assert overview.status_code == 200
+        document = next(
+            node
+            for node in overview.json()["nodes"]
+            if node["object_type"] == "private_source"
+        )
+        topic = next(
+            node
+            for node in overview.json()["nodes"]
+            if node["object_type"] == "private_topic"
+        )
+        response = client.post(
+            "/api/knowledge/graph/query",
+            json={
+                "scope": "private",
+                "root_ids": [document["id"]],
+                "mode": "paths",
+                "target_id": topic["id"],
+                "predicates": ["mentions"],
+                "direction": "outgoing",
+                "max_depth": 2,
+                "max_nodes": 20,
+                "page_size": 20,
+            },
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["paths"] == [[document["id"], topic["id"]]]
+    assert payload["authorization"] == {
+        "boundary": "mission-control-local-only",
+        "mixed_scope_allowed": False,
+    }
+    assert fake.graph_requested is False
+    assert not hasattr(fake, "graph_query")
+
+
+def test_graph_api_rejects_mixed_scope_ids_and_canonical_overview_cursor(
+    settings: MissionControlSettings,
+) -> None:
+    canonical_id = "11111111-1111-4111-8111-111111111111"
+    private_id = "private-source:abcdefghijklmnopqrstuvwxyz123456"
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        private_response = client.post(
+            "/api/knowledge/graph/query",
+            json={"scope": "private", "root_ids": [canonical_id]},
+        )
+        canonical_response = client.post(
+            "/api/knowledge/graph/query",
+            json={"scope": "canonical", "root_ids": [private_id]},
+        )
+        cursor_response = client.get(
+            "/api/knowledge/graph",
+            params={"scope": "canonical", "cursor": "abcdefgh"},
+        )
+    assert private_response.status_code == 422
+    assert canonical_response.status_code == 422
+    assert cursor_response.status_code == 422
 
 
 def test_research_copilot_abstention_is_bounded_and_read_only(
@@ -678,3 +1097,65 @@ def test_research_upload_is_canonical_and_reconciled(
     assert fake.ingestion["source"]["title"] == "A bounded research paper"
     assert fake.reconciliation["items"][0]["disposition"] == "canonical"
     assert response.json()["passages"] == 1
+
+
+def test_overview_stream_requires_a_same_origin_loopback_session(settings):
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.get("/api/overview/events")
+        assert response.status_code == 401
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "hermes_overview_session" in client.cookies
+
+
+def test_workflow_projection_endpoint_is_read_only_and_fails_closed(settings):
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.get("/api/workflows")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "mission-control-workflow-projection-v1"
+    assert payload["items"] == []
+    assert "not a running native backtest" in payload["claim_boundary"]
+
+
+def test_agent_detail_endpoint_returns_a_safe_paginated_projection(settings):
+    fake = FakeControlPlane()
+
+    async def dashboard(*, refresh: bool = False) -> dict:
+        return {
+            "agents": [
+                {
+                    "id": "agent-1",
+                    "slug": "reviewer",
+                    "display_name": "Reviewer",
+                    "role": "reviewer",
+                    "machine": "vm1-developer",
+                    "hermes_profile": "restricted",
+                    "status": "online",
+                    "presence": "online",
+                    "capabilities": [],
+                    "risk_ceiling": 1,
+                    "is_enabled": True,
+                    "credential": "not-for-browser",
+                }
+            ]
+        }
+
+    async def agent_tasks(agent_id: str, *, offset: int, limit: int) -> list[dict]:
+        assert (agent_id, offset, limit) == ("agent-1", 3, 1)
+        return []
+
+    fake.dashboard = dashboard
+    fake.agent_tasks = agent_tasks
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get("/api/agents/agent-1/detail?offset=3&limit=1")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["task_history"] == {
+        "items": [],
+        "offset": 3,
+        "limit": 1,
+        "has_more": False,
+        "source": "canonical_task_assignment",
+    }
+    assert "credential" not in payload["agent"]
