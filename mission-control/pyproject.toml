@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Mac-local founder control and private knowledge surface for Hermes"
 requires-python = ">=3.9"
 dependencies = [
+  "eval-type-backport>=0.2,<1.0; python_version < '3.10'",
   "fastapi>=0.115,<1.0",
   "httpx>=0.28,<1.0",
   "pydantic>=2.10,<3.0",

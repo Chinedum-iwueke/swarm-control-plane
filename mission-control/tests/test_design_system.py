@@ -3,6 +3,7 @@ from pathlib import Path
 
 STATIC = Path(__file__).parents[1] / "src/hermes_mission_control/static"
 STYLES = (STATIC / "styles.css").read_text(encoding="utf-8")
+PYPROJECT = (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
 
 
 def _root_tokens() -> dict[str, str]:
@@ -86,3 +87,10 @@ def test_local_brand_assets_are_bundled() -> None:
     assert (STATIC / "fonts/ibm-plex-sans.woff2").is_file()
     assert (STATIC / "fonts/ibm-plex-mono.woff2").is_file()
     assert (STATIC / "fonts/instrument-serif.woff2").is_file()
+
+
+def test_python_39_installs_annotation_evaluation_backport() -> None:
+    assert (
+        '"eval-type-backport>=0.2,<1.0; python_version < \'3.10\'"'
+        in PYPROJECT
+    )
