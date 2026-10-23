@@ -83,6 +83,19 @@
 
         <div class="status-strip" id="machine-strip" aria-label="Machine readiness"></div>
 
+        <section class="autonomy-hero" id="autonomy-hero" aria-label="Autonomous research control">
+          <button class="autonomy-hero-main" type="button" data-navigate="autonomy">
+            <span class="autonomy-orbit" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+            <span class="autonomy-hero-copy">
+              <span class="section-kicker">Autonomous research</span>
+              <strong id="autonomy-hero-title">Loading research loop</strong>
+              <small id="autonomy-hero-context">Reading canonical workflow state</small>
+            </span>
+            <span class="autonomy-hero-open">Open live workflow <span aria-hidden="true">→</span></span>
+          </button>
+          <div class="autonomy-hero-control" id="autonomy-hero-control"></div>
+        </section>
+
         <div class="command-grid">
           <div class="command-canvas">
             <section class="operational-band">
@@ -137,6 +150,36 @@
             </div>
           </aside>
         </div>
+      </section>
+
+      <section id="autonomy" class="view">
+        <div class="section-heading autonomy-heading">
+          <div><p class="eyebrow">Continuous evidence-grounded discovery</p><h1>Autonomous Research</h1><p class="heading-context">From institutional evidence to retained scientific outcome</p></div>
+          <div class="heading-actions">
+            <span class="snapshot-age" id="autonomy-snapshot-age" role="status">Waiting for live state</span>
+            <button class="secondary" type="button" data-navigate="command">← <span>Command</span></button>
+            <button class="secondary" type="button" id="refresh-autonomy">↻ <span>Refresh</span></button>
+          </div>
+        </div>
+
+        <section class="autonomy-status-band" aria-live="polite" aria-atomic="true">
+          <div class="autonomy-status-copy"><span class="section-kicker">Control state</span><h2 id="autonomy-state-title">Reading loop state</h2><p id="autonomy-state-context">Canonical workflow and agent evidence is loading.</p></div>
+          <div id="autonomy-page-control" class="autonomy-page-control"></div>
+          <div id="autonomy-metrics" class="autonomy-metrics"></div>
+        </section>
+
+        <section class="autonomy-workspace">
+          <div class="autonomy-canvas-shell">
+            <div class="band-heading"><div><p class="section-kicker">Live research loop</p><h2>Evidence moves forward; every outcome feeds learning</h2></div><span class="live-key"><i></i> Active evidence path</span></div>
+            <div class="autonomy-canvas" id="autonomy-canvas" aria-label="Autonomous research workflow stages"></div>
+          </div>
+          <aside class="autonomy-inspector" id="autonomy-inspector" aria-live="polite"></aside>
+        </section>
+
+        <section class="autonomy-agent-band">
+          <div class="band-heading"><div><p class="section-kicker">Agent presence</p><h2>Specialists observed in this loop</h2></div><button class="text-button" type="button" data-navigate="agents">Open agent fleet →</button></div>
+          <div id="autonomy-agents" class="autonomy-agent-strip"></div>
+        </section>
       </section>
 
       <section id="work" class="view">

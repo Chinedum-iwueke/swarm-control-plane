@@ -1,4 +1,4 @@
-const allowedViews = new Set(["command", "work", "activity", "workflows", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "execution", "research", "knowledge", "notes", "evidence"]);
+const allowedViews = new Set(["command", "autonomy", "work", "activity", "workflows", "missions", "tasks", "proposals", "approvals", "agents", "infrastructure", "execution", "research", "knowledge", "notes", "evidence"]);
 const requestedView = new URLSearchParams(window.location.search).get("view");
 const allowedResearchModes = new Set(["ask", "explore", "library"]);
 const requestedResearchMode = new URLSearchParams(window.location.search).get("workspace");
@@ -54,6 +54,7 @@ const state = {
   workflows: null,
   workflowLoading: false,
   selectedWorkflowId: null,
+  selectedAutonomyStage: "discover",
   agentDetail: null,
   agentDetailTab: "overview",
   agentDetailLoading: false,
@@ -93,6 +94,10 @@ document.getElementById("open-investor-walkthrough").addEventListener("click", o
 document.getElementById("refresh").addEventListener("click", loadDashboard);
 document.getElementById("refresh-activity").addEventListener("click", loadDashboard);
 document.getElementById("refresh-workflows").addEventListener("click", () => loadWorkflows({ refresh: true }));
+document.getElementById("refresh-autonomy").addEventListener("click", async () => {
+  await Promise.all([loadDashboard({ silent: true }), loadWorkflows({ refresh: true, silent: true })]);
+  renderAutonomy();
+});
 document.getElementById("agent-filter").addEventListener("input", renderAgents);
 let libraryFilterTimer = null;
 document.getElementById("library-filter").addEventListener("input", () => {
@@ -411,6 +416,10 @@ function navigate(view, { resetScroll = true } = {}) {
   if (resetScroll) window.scrollTo({ top: 0, behavior: "smooth" });
   if (view === "work" && !state.demo) loadConversations();
   if (view === "workflows" && !state.workflows) loadWorkflows();
+  if (view === "autonomy") {
+    if (!state.workflows) loadWorkflows();
+    else renderAutonomy();
+  }
   if (view === "execution" && !state.venueEvents) loadVenueEvents();
 }
 
@@ -1001,6 +1010,7 @@ function stopOverviewEvents() {
 
 function renderAll() {
   renderCommand();
+  renderAutonomy();
   renderActivity();
   renderWorkflows();
   renderMissions();
@@ -1024,7 +1034,8 @@ function renderActiveView() {
   if (state.activeView === "command") {
     renderCommand();
     renderActivity();
-  } else if (state.activeView === "activity") renderActivity();
+  } else if (state.activeView === "autonomy") renderAutonomy();
+  else if (state.activeView === "activity") renderActivity();
   else if (state.activeView === "workflows") renderWorkflows();
   renderSnapshotAge();
 }
@@ -1185,6 +1196,7 @@ async function loadWorkflows({ refresh = false, silent = false } = {}) {
     }
     if (!silent || state.activeView === "workflows") renderWorkflows();
     if (state.activeView === "command") renderCommand();
+    if (state.activeView === "autonomy") renderAutonomy();
   } catch (error) {
     if (!silent) toast(error.message);
   } finally {
@@ -1556,13 +1568,28 @@ function renderControls() {
   const scopes = state.dashboard.control_scopes || [];
   const globalScope = scopes.find((scope) => scope.scope_type === "global" && scope.scope_key === "all");
   const paused = Boolean(globalScope?.is_paused);
-  const autonomyControl = `<div class="control-row"><div><strong>Autonomous research</strong><div class="entity-meta">${escapeHtml(paused ? "Drain paused: no new work starts; active work may finish." : "Active: new discovery, engineering, and native research may start.")}</div></div><div class="entity-side">${statusBadge(paused ? "paused" : "active")}<button class="${paused ? "secondary" : "danger"} compact" data-autonomy-control="${paused ? "resume" : "pause"}">${paused ? "Resume" : "Pause"}</button></div></div>`;
+  const heroContext = paused
+    ? "Drain paused: no new work starts; active work may finish."
+    : "Discovering, engineering, testing, and retaining evidence under bounded authority.";
+  document.getElementById("autonomy-hero-title").textContent = paused ? "Research admission is paused" : "Research loop is active";
+  document.getElementById("autonomy-hero-context").textContent = heroContext;
+  document.getElementById("autonomy-hero").classList.toggle("is-paused", paused);
+  document.getElementById("autonomy-hero-control").innerHTML = autonomyControlButton(paused);
+  bindAutonomyControl(document.getElementById("autonomy-hero-control"));
+
   const scopeRows = scopes.length ? scopes.map((scope) => `
     <div class="control-row"><div><strong>${escapeHtml(scope.scope_type)} · ${escapeHtml(scope.scope_key)}</strong><div class="entity-meta">${escapeHtml(scope.reason || "No restriction")}</div></div>${statusBadge(scope.is_paused ? "paused" : "active")}</div>
   `).join("") : "";
   const container = document.getElementById("controls");
-  container.innerHTML = autonomyControl + scopeRows;
-  container.querySelector("[data-autonomy-control]")?.addEventListener("click", async (event) => {
+  container.innerHTML = scopeRows || empty("No granular control scopes are registered.");
+}
+
+function autonomyControlButton(paused) {
+  return `${statusBadge(paused ? "paused" : "active")}<button class="${paused ? "secondary" : "danger"} compact" type="button" data-autonomy-control="${paused ? "resume" : "pause"}">${paused ? "Resume" : "Pause"}</button>`;
+}
+
+function bindAutonomyControl(container) {
+  container?.querySelector("[data-autonomy-control]")?.addEventListener("click", async (event) => {
     if (state.demo) return toast("Actions are disabled in demonstration mode.");
     const action = event.currentTarget.dataset.autonomyControl;
     const explanation = action === "pause"
@@ -1577,6 +1604,132 @@ function renderControls() {
     );
     await loadDashboard();
   });
+}
+
+const autonomyStageDefinitions = [
+  { id: "discover", step: "01", label: "Discover", detail: "Literature, prior failures, market observations, and portfolio gaps become predictive questions.", match: /discover|question|mandate|senior.research|research.intelligence|hypothesis.intake/i, agents: /director|senior.research|discovery|intelligence/i },
+  { id: "synthesize", step: "02", label: "Synthesize", detail: "The senior researcher challenges novelty, predictive meaning, and falsifiability before compute is spent.", match: /synthes|senior.research|predictive|falsif|research.brief/i, agents: /senior.research|research.intelligence|director/i },
+  { id: "represent", step: "03", label: "Represent", detail: "Point-in-time data availability, universe, transformation, timeframe, and eligibility are selected.", match: /represent|dataset|data.feasib|resampl|universe|availability|scientific.assurance/i, agents: /data|represent|scientific|research/i },
+  { id: "specify", step: "04", label: "Specify", detail: "A falsifiable hypothesis becomes a typed strategy intent and bounded native implementation.", match: /strateg|engineer|specif|compile|scaffold|implement/i, agents: /engineer|coder|strategy/i },
+  { id: "review", step: "05", label: "Challenge", detail: "Independent evaluators test causal timing, leakage, implementation semantics, and reproducibility.", match: /review|causal|leakage|evaluator|qualif/i, agents: /review|causal|evaluator|critic/i },
+  { id: "execute", step: "06", label: "Test", detail: "Bulletproof runs bounded variants, walk-forward evaluation, costs, and selection-bias checks.", match: /backtest|bulletproof|execut|trial|walk.forward|cost.stress/i, agents: /executor|capacity|bulletproof|worker/i },
+  { id: "retain", step: "07", label: "Retain", detail: "Positive, negative, invalid, and failed outcomes receive immutable BT-009 evidence and enter memory.", match: /bt.?009|retain|memory|terminal|publish|outcome/i, agents: /memory|publisher|director|executor/i },
+  { id: "admit", step: "08", label: "Promote", detail: "Only candidates that survive every preregistered gate may enter prospective shadow monitoring.", match: /shadow|admission|promot|candidate|risk.?004/i, agents: /risk|shadow|admission|monitor/i },
+];
+
+function renderAutonomy() {
+  if (!state.dashboard) return;
+  const workflows = state.workflows?.items || [];
+  const scopes = state.dashboard.control_scopes || [];
+  const paused = Boolean(scopes.find((scope) => scope.scope_type === "global" && scope.scope_key === "all")?.is_paused);
+  const activeStates = new Set(["queued", "running", "waiting_approval", "blocked", "stalled"]);
+  const active = workflows.filter((item) => activeStates.has(item.state));
+  const native = workflows.filter((item) => item.native_backtest?.state === "running");
+  const terminal = workflows.filter((item) => ["succeeded", "failed", "cancelled"].includes(item.state));
+  const alpha = state.dashboard.alpha_discovery || {};
+  const cycles = alpha.cycles || state.dashboard.research_cycles || [];
+  const campaigns = state.dashboard.alpha_campaigns || [];
+
+  document.getElementById("autonomy-state-title").textContent = paused ? "Admission paused; active work is draining" : "The governed research loop is active";
+  document.getElementById("autonomy-state-context").textContent = paused
+    ? "No new autonomous work may start. Existing leases retain their bounded authority until completion."
+    : "Live records move through discovery, representation, engineering, independent challenge, testing, retention, and admission.";
+  document.getElementById("autonomy-page-control").innerHTML = autonomyControlButton(paused);
+  bindAutonomyControl(document.getElementById("autonomy-page-control"));
+  document.getElementById("autonomy-snapshot-age").textContent = document.getElementById("snapshot-age")?.textContent || "Live state";
+  document.getElementById("autonomy-metrics").innerHTML = [
+    autonomyMetric(active.length, "active workflow leaves"),
+    autonomyMetric(cycles.filter((item) => !["completed", "failed", "cancelled"].includes(item.status)).length, "questions in motion"),
+    autonomyMetric(native.length, "native backtests running"),
+    autonomyMetric(terminal.length, "retained outcomes"),
+  ].join("");
+
+  const stageModels = autonomyStageDefinitions.map((definition) => autonomyStageModel(definition, workflows, cycles, campaigns));
+  document.getElementById("autonomy-canvas").innerHTML = `<div class="autonomy-flow">${stageModels.map((stage, index) => `${autonomyStageNode(stage)}${index < stageModels.length - 1 ? autonomyConnector(stage) : ""}`).join("")}</div><div class="autonomy-feedback" aria-label="Retained outcomes inform the next discovery cycle"><span aria-hidden="true">↶</span><strong>Learning loop</strong><small>Every terminal result updates novelty, failure memory, and the next question.</small></div>`;
+  bindAutonomyStageControls();
+  renderAutonomyInspector(stageModels);
+  renderAutonomyAgents();
+}
+
+function autonomyMetric(value, label) {
+  return `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+function autonomyStageModel(definition, workflows, cycles, campaigns) {
+  const matches = workflows.filter((item) => definition.match.test(autonomyWorkflowText(item)));
+  const live = matches.filter((item) => ["queued", "running", "waiting_approval", "blocked", "stalled"].includes(item.state));
+  let observedCount = matches.length;
+  if (definition.id === "discover") observedCount += cycles.length;
+  if (definition.id === "execute") observedCount += campaigns.filter((item) => Number(item.trial_count || 0) > 0).length;
+  const stateName = live.some((item) => item.state === "stalled" || item.state === "blocked")
+    ? "attention"
+    : live.length
+      ? "active"
+      : matches.some((item) => item.state === "succeeded")
+        ? "complete"
+        : observedCount
+          ? "observed"
+          : "idle";
+  return { ...definition, matches, live, observedCount, state: stateName };
+}
+
+function autonomyWorkflowText(item) {
+  return [item.title, item.instance_kind, item.workflow?.name, item.current_leaf?.kind, item.current_leaf?.phase, item.next_action, ...(item.stages || []).map((stage) => stage.name)].filter(Boolean).join(" ");
+}
+
+function autonomyStageNode(stage) {
+  const selected = stage.id === state.selectedAutonomyStage;
+  return `<button class="autonomy-stage stage-${stage.state} ${selected ? "selected" : ""}" type="button" data-autonomy-stage="${stage.id}" aria-pressed="${selected}">
+    <span class="autonomy-stage-number">${stage.step}</span>
+    <span class="autonomy-stage-state"><i aria-hidden="true"></i>${escapeHtml(humanize(stage.state))}</span>
+    <strong>${escapeHtml(stage.label)}</strong>
+    <small>${escapeHtml(stage.detail)}</small>
+    <span class="autonomy-stage-count">${stage.live.length ? `${stage.live.length} live` : `${stage.observedCount} observed`}</span>
+  </button>`;
+}
+
+function autonomyConnector(stage) {
+  const active = stage.state === "active";
+  return `<span class="autonomy-connector ${active ? "is-live" : ""}" aria-hidden="true"><i></i></span>`;
+}
+
+function bindAutonomyStageControls() {
+  document.querySelectorAll("[data-autonomy-stage]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedAutonomyStage = button.dataset.autonomyStage;
+      renderAutonomy();
+      document.getElementById("autonomy-inspector")?.focus({ preventScroll: true });
+    });
+  });
+}
+
+function renderAutonomyInspector(stageModels) {
+  const stage = stageModels.find((item) => item.id === state.selectedAutonomyStage) || stageModels[0];
+  const agents = autonomyAgentsFor(stage);
+  const records = stage.matches.slice(0, 5);
+  const container = document.getElementById("autonomy-inspector");
+  container.tabIndex = -1;
+  container.innerHTML = `<div class="autonomy-inspector-heading"><span>${escapeHtml(stage.step)}</span><div><p class="section-kicker">Selected stage</p><h2>${escapeHtml(stage.label)}</h2></div>${statusBadge(stage.state)}</div>
+    <p class="autonomy-inspector-detail">${escapeHtml(stage.detail)}</p>
+    <section><h3>Observed work</h3>${records.length ? records.map((item) => `<button class="autonomy-record" type="button" data-workflow-id="${escapeHtml(item.instance_id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.current_leaf?.phase || nextWorkflowAction(item))}</small>${statusBadge(item.state)}</button>`).join("") : '<p class="muted">No canonical workflow record is currently bound to this stage.</p>'}</section>
+    <section><h3>Agents in range</h3>${agents.length ? agents.slice(0, 4).map((agent) => `<button class="autonomy-agent-row" type="button" data-agent-id="${escapeHtml(agent.id)}">${agentBot(agent, "small")}<span><strong>${escapeHtml(agent.display_name || agent.slug)}</strong><small>${escapeHtml(agent.role || agent.hermes_profile || "Governed specialist")}</small></span>${statusBadge(agentStatus(agent))}</button>`).join("") : '<p class="muted">No registered agent role currently matches this stage.</p>'}</section>`;
+  container.querySelectorAll("[data-workflow-id]").forEach((button) => { button.onclick = () => openWorkflow(button.dataset.workflowId); });
+  container.querySelectorAll("[data-agent-id]").forEach((button) => { button.onclick = () => openAgent(button.dataset.agentId); });
+}
+
+function autonomyAgentsFor(stage) {
+  return (state.dashboard.agents || []).filter((agent) => stage.agents.test([agent.slug, agent.display_name, agent.role, agent.hermes_profile, ...(agent.capabilities || [])].filter(Boolean).join(" ")));
+}
+
+function renderAutonomyAgents() {
+  const seen = new Set();
+  const agents = autonomyStageDefinitions.flatMap((stage) => autonomyAgentsFor(stage)).filter((agent) => {
+    if (seen.has(agent.id)) return false;
+    seen.add(agent.id);
+    return true;
+  });
+  document.getElementById("autonomy-agents").innerHTML = agents.length ? agents.slice(0, 10).map((agent) => `<button class="autonomy-agent-chip" type="button" data-agent-id="${escapeHtml(agent.id)}">${agentBot(agent, "medium")}<span><strong>${escapeHtml(agent.display_name || agent.slug)}</strong><small>${escapeHtml(agent.machine || "Machine unreported")}</small></span>${statusBadge(agentStatus(agent))}</button>`).join("") : empty("No research-loop agent bindings are visible in the current snapshot.");
+  document.querySelectorAll("#autonomy-agents [data-agent-id]").forEach((button) => { button.onclick = () => openAgent(button.dataset.agentId); });
 }
 
 function renderMissions() {
@@ -1783,10 +1936,9 @@ function renderAgents() {
     const assigned = (state.dashboard.tasks || []).filter((task) => String(task.assigned_agent_id || "") === String(agent.id)).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     const currentTask = assigned.find((task) => activeStatuses.has(task.status));
     const latestTask = currentTask || assigned[0];
-    const initials = (agent.display_name || agent.slug).split(/[\s-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
     return `
     <button class="agent-card" type="button" data-agent-id="${agent.id}">
-      <span class="agent-card-top"><span class="agent-avatar" aria-hidden="true">${escapeHtml(initials)}</span><span class="agent-presence">${statusBadge(agentStatus(agent))}</span></span>
+      <span class="agent-card-top">${agentBot(agent, "large")}<span class="agent-presence">${statusBadge(agentStatus(agent))}</span></span>
       <span class="agent-name">${escapeHtml(agent.display_name || agent.slug)}</span>
       <span class="agent-machine">${escapeHtml(agent.machine)} · heartbeat ${relativeTime(agent.last_heartbeat_at)}</span>
       <span class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</span>
@@ -2628,6 +2780,17 @@ function agentInspectorLoading() {
   return `<div class="agent-detail-loading" role="status" aria-live="polite"><span class="loading-line wide"></span><span class="loading-line"></span><span class="loading-line short"></span><span class="sr-only">Loading canonical agent evidence</span></div>`;
 }
 
+function agentBot(agent, size = "medium") {
+  const role = [agent?.slug, agent?.display_name, agent?.role, agent?.hermes_profile, ...(agent?.capabilities || [])].filter(Boolean).join(" ").toLowerCase();
+  const kind = role.match(/review|causal|critic|evaluator/) ? "reviewer"
+    : role.match(/data|represent|scientific/) ? "data"
+      : role.match(/engineer|coder|strategy/) ? "engineer"
+        : role.match(/execut|worker|capacity|bulletproof/) ? "executor"
+          : role.match(/director|senior|research|discover/) ? "researcher"
+            : "operator";
+  return `<span class="agent-bot bot-${kind} bot-${size}" aria-hidden="true"><i class="bot-antenna"></i><i class="bot-head"><b></b><b></b><em></em></i><i class="bot-body"></i></span>`;
+}
+
 function renderAgentInspector({ focusTab = false } = {}) {
   const detail = state.agentDetail;
   if (!detail) return;
@@ -2636,7 +2799,7 @@ function renderAgentInspector({ focusTab = false } = {}) {
   const body = document.getElementById("inspector-body");
   body.innerHTML = `
     <div class="agent-inspector-summary">
-      <div class="agent-inspector-identity"><span class="agent-avatar" aria-hidden="true">${agentInitials(detail.agent)}</span><div><strong>${escapeHtml(detail.agent.display_name || detail.agent.slug)}</strong><span>${escapeHtml(detail.agent.machine || "Machine unreported")}</span></div></div>
+      <div class="agent-inspector-identity">${agentBot(detail.agent, "large")}<div><strong>${escapeHtml(detail.agent.display_name || detail.agent.slug)}</strong><span>${escapeHtml(detail.agent.machine || "Machine unreported")}</span></div></div>
       ${statusBadge(detail.agent.presence || detail.agent.status || "unknown")}
     </div>
     <div class="agent-inspector-tabs" role="tablist" aria-label="Agent evidence">

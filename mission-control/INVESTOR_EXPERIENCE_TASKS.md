@@ -115,7 +115,11 @@ campaign phase names; all workflow states have explicit accessible labels. The
 Command stage map and dedicated Workflow inspector consume the same
 `mission-control-workflow-projection-v1` response, retain selected workflow
 state during background updates, and label the native-backtest stage separately
-from the parent campaign.
+from the parent campaign. The Command hero now places governed Autonomous
+Research immediately after fleet readiness. Its linked live-loop workspace
+projects discovery, representation, specification, independent challenge,
+Bulletproof testing, immutable retention and promotion from canonical workflow,
+campaign and agent records; only evidence-backed active paths animate.
 
 ### [x] MCUX-007 - Add agent detail projection API
 
@@ -151,6 +155,9 @@ and governance. Presence and task claims expose canonical source identity,
 timestamp, freshness threshold and failure reason. Task, workflow and artifact
 references open their existing inspectors, while an absent reporting record is
 shown as unknown rather than rendered as an inferred organization chart.
+Role-aware bot identity marks now make specialists visually recognizable in
+the directory, agent inspector and autonomous-loop workspace without replacing
+their canonical names, roles, presence or permission evidence.
 
 ### [x] MCUX-009 - Make backtest outcome cards receipt-truthful
 
