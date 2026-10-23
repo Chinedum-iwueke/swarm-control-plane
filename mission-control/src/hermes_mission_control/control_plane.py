@@ -49,6 +49,14 @@ class ControlPlaneClient:
         """Populate the first dashboard snapshot without delaying app startup."""
         self._ensure_dashboard_refresh()
 
+    async def readiness(self) -> dict[str, Any]:
+        """Verify transport and operator authentication without building a dashboard."""
+        health, scopes = await asyncio.gather(
+            self._request("GET", "/health", authenticated=False),
+            self._request("GET", "/v1/control/scopes"),
+        )
+        return {"health": health, "control_scopes": scopes}
+
     async def backtest_activity(self, *, category="all", tier="all", offset=0) -> dict:
         return await self._request(
             "GET",

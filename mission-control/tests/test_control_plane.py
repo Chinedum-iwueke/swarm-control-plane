@@ -19,6 +19,40 @@ from hermes_mission_control.models import (
 
 
 @pytest.mark.asyncio
+async def test_readiness_checks_health_and_operator_authentication(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/v1/control/scopes":
+            return httpx.Response(200, json={"scopes": ["control:read"]})
+        return httpx.Response(500)
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.readiness()
+    finally:
+        await client.close()
+
+    assert result == {
+        "health": {"status": "ok"},
+        "control_scopes": {"scopes": ["control:read"]},
+    }
+    assert [request.url.path for request in seen] == [
+        "/health",
+        "/v1/control/scopes",
+    ]
+    assert seen[0].headers["authorization"] == ""
+    assert seen[1].headers["authorization"] == (
+        "Bearer operator-token-that-is-long-enough"
+    )
+
+
+@pytest.mark.asyncio
 async def test_dashboard_uses_bearer_without_exposing_token(
     settings: MissionControlSettings,
 ) -> None:

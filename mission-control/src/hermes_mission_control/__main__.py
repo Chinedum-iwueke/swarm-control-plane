@@ -55,14 +55,15 @@ def main() -> int:
 async def _check(settings: MissionControlSettings, store: KnowledgeStore) -> int:
     client = ControlPlaneClient(settings)
     try:
-        dashboard = await client.dashboard()
+        readiness = await client.readiness()
     finally:
         await client.close()
     print(
         json.dumps(
             {
                 "event": "mission_control_check_succeeded",
-                "control_plane": dashboard["health"]["status"],
+                "control_plane": readiness["health"]["status"],
+                "operator_authentication": "ok",
                 "knowledge": store.stats(),
                 "roots": [str(path) for path in settings.allowed_knowledge_roots],
             },
