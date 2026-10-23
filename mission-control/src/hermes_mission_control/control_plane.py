@@ -711,7 +711,7 @@ class ControlPlaneClient:
         scope_key: str,
         reason: str,
     ) -> dict[str, Any]:
-        if scope_type not in {"global", "machine", "agent"}:
+        if scope_type not in {"global", "machine", "agent", "workflow"}:
             raise ValueError("Unsupported control scope.")
         return await self._request(
             "POST",

@@ -1566,8 +1566,8 @@ function renderProposals() {
 
 function renderControls() {
   const scopes = state.dashboard.control_scopes || [];
-  const globalScope = scopes.find((scope) => scope.scope_type === "global" && scope.scope_key === "all");
-  const paused = Boolean(globalScope?.is_paused);
+  const autonomyScope = scopes.find((scope) => scope.scope_type === "workflow" && scope.scope_key === "autonomous-research");
+  const paused = Boolean(autonomyScope?.is_paused);
   const heroContext = paused
     ? "Drain paused: no new work starts; active work may finish."
     : "Discovering, engineering, testing, and retaining evidence under bounded authority.";
@@ -1599,7 +1599,7 @@ function bindAutonomyControl(container) {
     if (!reason || reason.trim().length < 10) return toast("A reason of at least 10 characters is required.");
     await mutate(
       `/api/control/${action}`,
-      { scope_type: "global", scope_key: "all", reason: reason.trim() },
+      { scope_type: "workflow", scope_key: "autonomous-research", reason: reason.trim() },
       action === "pause" ? "Autonomous research is draining." : "Autonomous research resumed."
     );
     await loadDashboard();
@@ -1621,7 +1621,7 @@ function renderAutonomy() {
   if (!state.dashboard) return;
   const workflows = state.workflows?.items || [];
   const scopes = state.dashboard.control_scopes || [];
-  const paused = Boolean(scopes.find((scope) => scope.scope_type === "global" && scope.scope_key === "all")?.is_paused);
+  const paused = Boolean(scopes.find((scope) => scope.scope_type === "workflow" && scope.scope_key === "autonomous-research")?.is_paused);
   const activeStates = new Set(["queued", "running", "waiting_approval", "blocked", "stalled"]);
   const active = workflows.filter((item) => activeStates.has(item.state));
   const native = workflows.filter((item) => item.native_backtest?.state === "running");

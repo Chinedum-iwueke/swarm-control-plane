@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ControlScopeType = Literal["global", "machine", "agent"]
+ControlScopeType = Literal["global", "machine", "agent", "workflow"]
 
 
 class ControlMutation(BaseModel):

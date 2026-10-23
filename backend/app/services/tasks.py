@@ -27,6 +27,7 @@ from app.models import (
 from app.schemas.agent_governance import EffectiveAuthorityRequest
 from app.schemas.task import TaskCreate
 from app.services.agent_governance import resolve as resolve_agent_authority
+from app.services.controls import paused_workflow_scopes, task_matches_control_scope
 from app.services.evaluator_routing import digest as evaluator_digest
 from app.services.evaluator_routing import producer_identity_for_lease
 from app.services.governance import (
@@ -274,6 +275,7 @@ def lease_next_task(
 ) -> tuple[Task | None, str | None, TaskEvent | None, dict[str, Any]]:
     now = utc_now()
     expire_approvals(db, now)
+    workflow_scopes = paused_workflow_scopes(db)
     predecessor = aliased(Task)
     blocked_dependency = (
         select(TaskDependency.id)
@@ -359,6 +361,16 @@ def lease_next_task(
 
     task = None
     for candidate in candidates:
+        blocking_workflow = next(
+            (
+                scope
+                for scope in workflow_scopes
+                if task_matches_control_scope(scope, candidate)
+            ),
+            None,
+        )
+        if blocking_workflow is not None:
+            continue
         authority_snapshots = resolve_task_authority(db, candidate, agent, now)
         if authority_snapshots and all(item["allowed"] for item in authority_snapshots):
             task = candidate

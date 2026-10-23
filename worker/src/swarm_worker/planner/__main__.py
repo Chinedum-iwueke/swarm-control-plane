@@ -42,7 +42,7 @@ async def _run_once(settings: PlannerSettings) -> int:
             settings, api=api, planner=planner
         ).run_once()
     print(json.dumps({"event": "planner_once_complete", "outcome": outcome.kind}))
-    return 0 if outcome.kind in {"no_work", "succeeded", "released"} else 1
+    return 0 if outcome.kind in {"no_work", "paused", "succeeded", "released"} else 1
 
 
 async def _run_forever(settings: PlannerSettings) -> int:

@@ -470,7 +470,12 @@ async def test_planner_lifecycle_submits_before_completion(tmp_path: Path) -> No
 
         async def lease_task(self, _):
             events.append("lease")
-            return SimpleNamespace(task=task, lease_token="lease-token")
+            return SimpleNamespace(
+                task=task,
+                lease_token="lease-token",
+                paused=False,
+                pause_reasons=[],
+            )
 
         async def start_task(self, *_):
             events.append("start")
@@ -516,3 +521,49 @@ async def test_planner_lifecycle_submits_before_completion(tmp_path: Path) -> No
         "submit_proposal",
         "complete",
     ]
+
+
+@pytest.mark.asyncio
+async def test_planner_reports_paused_lease_instead_of_no_work(tmp_path: Path) -> None:
+    class API:
+        async def get_identity(self):
+            return SimpleNamespace(
+                slug="vm1-founder-intake-planner",
+                machine="vm1-developer",
+                is_enabled=True,
+                capabilities=["founder-intake"],
+            )
+
+        async def send_agent_heartbeat(self, _):
+            return None
+
+        async def lease_task(self, _):
+            return SimpleNamespace(
+                task=None,
+                lease_token=None,
+                paused=True,
+                pause_reasons=["Research drain is active."],
+            )
+
+    class Planner:
+        async def plan(self, _):
+            raise AssertionError("A paused lease must not invoke the planner.")
+
+    settings = PlannerSettings(
+        swarm_api_url="http://control-plane.test",
+        swarm_agent_token="agent-token-that-is-long-enough",
+        swarm_planner_workspace=tmp_path,
+        swarm_role_package_manifest=(
+            Path(__file__).parents[1]
+            / "role-packages/founder-intake-planner/manifest.yaml"
+        ),
+        swarm_workflow_directory=Path(__file__).parents[1] / "workflows",
+    )
+
+    result = await FounderIntakePlannerService(
+        settings,
+        api=API(),  # type: ignore[arg-type]
+        planner=Planner(),  # type: ignore[arg-type]
+    ).run_once()
+
+    assert result.kind == "paused"

@@ -12,7 +12,9 @@ import httpx
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("pause", "resume", "status", "metrics"))
-    parser.add_argument("--scope", choices=("global", "machine", "agent"))
+    parser.add_argument(
+        "--scope", choices=("global", "machine", "agent", "workflow")
+    )
     parser.add_argument("--key")
     parser.add_argument("--reason")
     parser.add_argument("--actor", default="founder-operator")

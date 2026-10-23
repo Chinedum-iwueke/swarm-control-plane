@@ -465,8 +465,8 @@ def test_autonomy_drain_control_requires_founder_intent(
 ) -> None:
     fake = FakeControlPlane()
     payload = {
-        "scope_type": "global",
-        "scope_key": "all",
+        "scope_type": "workflow",
+        "scope_key": "autonomous-research",
         "reason": "Drain while the local authoring runtime is maintained.",
     }
     with TestClient(create_app(settings, control_plane=fake)) as client:
@@ -483,8 +483,8 @@ def test_autonomy_drain_control_requires_founder_intent(
     assert accepted.status_code == 200
     assert accepted.json() == {
         "paused": True,
-        "scope_type": "global",
-        "scope_key": "all",
+        "scope_type": "workflow",
+        "scope_key": "autonomous-research",
         "reason": payload["reason"],
     }
 

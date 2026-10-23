@@ -23,7 +23,7 @@ from swarm_worker.planner.engine import CodexProposalPlanner, PlannerError
 from swarm_worker.role_package import load_role_package
 
 PlannerOutcomeKind = Literal[
-    "no_work", "succeeded", "failed", "released", "lease_lost"
+    "no_work", "paused", "succeeded", "failed", "released", "lease_lost"
 ]
 
 
@@ -66,6 +66,8 @@ class FounderIntakePlannerService:
         lease = await self._api.lease_task(
             TaskLeaseRequest(lease_seconds=self._settings.swarm_lease_seconds)
         )
+        if lease.paused:
+            return PlannerOutcome("paused")
         if lease.task is None or lease.lease_token is None:
             return PlannerOutcome("no_work")
         task = lease.task

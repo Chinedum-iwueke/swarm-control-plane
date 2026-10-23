@@ -72,9 +72,15 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
     )
     no_expired_approvals = MagicMock()
     no_expired_approvals.all.return_value = []
+    no_paused_workflows = MagicMock()
+    no_paused_workflows.all.return_value = []
     lease_candidates = MagicMock()
     lease_candidates.all.return_value = [denied, allowed]
-    db.scalars.side_effect = [no_expired_approvals, lease_candidates]
+    db.scalars.side_effect = [
+        no_expired_approvals,
+        no_paused_workflows,
+        lease_candidates,
+    ]
     db.scalar.return_value = None
 
     with (
@@ -113,6 +119,88 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
     assert allowed.failure == {}
     assert append_event.call_args_list[0].args[1] is denied
     assert append_event.call_args_list[0].args[2] == "task_authority_denied"
+
+
+def test_research_drain_skips_alpha_work_but_leases_founder_intake() -> None:
+    db = MagicMock()
+    agent = Agent(
+        id="11111111-1111-4111-8111-111111111111",
+        slug="test-agent",
+        display_name="Test Agent",
+        role="test",
+        machine="vm1-developer",
+        hermes_profile="test",
+        capabilities=["founder-intake", "alpha-research-execution"],
+        risk_ceiling=1,
+    )
+    alpha_task = SimpleNamespace(
+        id="alpha",
+        task_type="alpha_research_execution",
+        project="bulletproof_bt",
+        created_by="alpha-campaign-director",
+        required_capabilities=["alpha-research-execution"],
+    )
+    founder_task = SimpleNamespace(
+        id="founder",
+        task_type="founder_request",
+        project="bulletproof_bt",
+        created_by="founder:primary",
+        input_contract={},
+        required_capabilities=["founder-intake"],
+        approval_required=False,
+        status="queued",
+        assigned_agent_id=None,
+        attempt_count=0,
+        leased_at=None,
+        lease_expires_at=None,
+        lease_token_prefix=None,
+        lease_token_digest=None,
+        failure={},
+    )
+    empty = MagicMock()
+    empty.all.return_value = []
+    paused = MagicMock()
+    paused.all.return_value = [
+        SimpleNamespace(
+            scope_type="workflow",
+            scope_key="autonomous-research",
+            is_paused=True,
+        )
+    ]
+    candidates = MagicMock()
+    candidates.all.return_value = [alpha_task, founder_task]
+    db.scalars.side_effect = [empty, paused, candidates]
+
+    with (
+        patch(
+            "app.services.tasks.resolve_task_authority",
+            return_value=[
+                {
+                    "allowed": True,
+                    "reasons": [],
+                    "snapshot_digest": "authority-snapshot",
+                    "charter_digest": "charter",
+                    "package_digest": "package",
+                    "grant_digest": "grant",
+                    "accountable_owner": "founder-operator",
+                }
+            ],
+        ) as resolve,
+        patch(
+            "app.services.tasks.create_task_lease_token",
+            return_value=SimpleNamespace(
+                token="lease-token", prefix="lease", digest="lease-digest"
+            ),
+        ),
+        patch("app.services.tasks.consume_task_approval"),
+        patch("app.services.tasks.append_task_event"),
+    ):
+        task, token, _event, _prior_failure = lease_next_task(db, agent, 300)
+
+    assert task is founder_task
+    assert token == "lease-token"
+    assert resolve.call_count == 1
+    assert resolve.call_args.args[1] is founder_task
 
 
 def test_no_work_lease_commits_approval_expiry_reconciliation() -> None:

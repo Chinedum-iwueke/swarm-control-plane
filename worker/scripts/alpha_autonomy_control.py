@@ -36,27 +36,27 @@ def atomic_json(path: Path, payload: dict) -> None:
 
 
 def drain_document(scopes: list[dict]) -> dict:
-    global_scope = next(
+    autonomy_scope = next(
         (
             scope
             for scope in scopes
-            if scope.get("scope_type") == "global"
-            and scope.get("scope_key") == "all"
+            if scope.get("scope_type") == "workflow"
+            and scope.get("scope_key") == "autonomous-research"
         ),
         None,
     )
-    paused = bool(global_scope and global_scope.get("is_paused"))
+    paused = bool(autonomy_scope and autonomy_scope.get("is_paused"))
     return {
         "schema_version": SCHEMA_VERSION,
         "paused": paused,
         "mode": "drain" if paused else "active",
         "reason": (
-            global_scope.get("reason")
-            if global_scope
-            else "No audited global pause is active."
+            autonomy_scope.get("reason")
+            if autonomy_scope
+            else "No audited autonomous-research pause is active."
         ),
         "control_updated_at": (
-            global_scope.get("updated_at") if global_scope else None
+            autonomy_scope.get("updated_at") if autonomy_scope else None
         ),
         "synchronized_at": utc_now(),
         "new_control_plane_leases_blocked": paused,
@@ -130,8 +130,8 @@ def main() -> int:
             response = http.post(
                 f"/v1/control/{args.action}",
                 json={
-                    "scope_type": "global",
-                    "scope_key": "all",
+                    "scope_type": "workflow",
+                    "scope_key": "autonomous-research",
                     "reason": args.reason.strip(),
                     "actor": args.actor,
                 },

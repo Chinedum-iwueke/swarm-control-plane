@@ -5,7 +5,7 @@
 This runbook covers:
 
 - supervised VM1 worker operation;
-- global, machine, and agent pause/resume;
+- global, machine, agent, and workflow pause/resume;
 - authenticated control-plane metrics and alerts;
 - workspace retention;
 - control-plane PostgreSQL backup and disposable restore verification.
@@ -68,6 +68,21 @@ exec .venv/bin/python scripts/operator_control.py pause \
 '
 ```
 
+Use the global scope only for a genuine fleet-wide stop. Autonomous research
+drain is narrower and keeps advisory founder conversations available:
+
+```bash
+sudo bash -c '
+set -a
+source /etc/invariance-swarm/pilot-operator.env
+set +a
+cd /home/omenka/Projects/swarm-control-plane
+exec worker/.venv/bin/python worker/scripts/alpha_autonomy_control.py pause \
+  --reason "Bounded autonomous research maintenance" \
+  --actor founder-operator
+'
+```
+
 Machine pause:
 
 ```bash
@@ -86,10 +101,13 @@ exec .venv/bin/python scripts/operator_control.py pause \
 Agent pause uses `--scope agent --key vm1-developer-coder`.
 
 Resume uses the same command with `resume` and a reason. The production VM1
-drain synchronizer projects this audited global state into Bulletproof. A pause
-therefore prevents new control-plane leases, DISC-010 replenishment, and native
-capacity launches. Work already running is allowed to finish and queued work is
-preserved unchanged. Resume reopens admission without rewriting evidence.
+drain synchronizer projects the audited `workflow/autonomous-research` state
+into Bulletproof. A research drain therefore prevents new alpha discovery,
+data-admission, strategy engineering/review, backtest leases, DISC-010
+replenishment, and native capacity launches. Advisory `founder_request`
+planning remains available, while materialization and downstream research stay
+queued. Work already running is allowed to finish and queued work is preserved
+unchanged. Resume reopens admission without rewriting evidence.
 
 Mission Control exposes the same operation under **Command -> Governance ->
 Control state**. Its Pause button is a drain control, not a cancellation or a
