@@ -5,11 +5,13 @@ import uuid
 import pytest
 
 from hermes_mission_control.research_copilot import (
+    CodexAnswerGenerator,
     CopilotClaim,
     CopilotDraft,
     CopilotError,
     CopilotQuestion,
     ResearchCopilot,
+    _resolve_codex_binary,
     _strict_schema,
 )
 
@@ -125,3 +127,26 @@ def test_codex_schema_requires_every_nested_property():
     assert set(schema["required"]) == set(schema["properties"])
     claim_schema = schema["$defs"]["CopilotClaim"]
     assert set(claim_schema["required"]) == set(claim_schema["properties"])
+
+
+def test_codex_binary_recovers_from_plugin_layout_change(tmp_path):
+    binary = tmp_path / "plugins/.plugin-appserver/codex-cli/bin/codex"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+
+    resolved = _resolve_codex_binary(str(tmp_path / "plugins/old/codex"), tmp_path)
+
+    assert resolved == binary
+
+
+def test_codex_generator_reports_unavailable_when_no_binary_exists(tmp_path):
+    generator = CodexAnswerGenerator(
+        binary=str(tmp_path / "missing-codex"),
+        codex_home=tmp_path,
+        model="test-model",
+        timeout_seconds=30,
+    )
+
+    with pytest.raises(CopilotError, match="reasoning model is unavailable"):
+        generator.generate("Question?", {"items": []})

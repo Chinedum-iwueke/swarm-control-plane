@@ -14,10 +14,12 @@ from app.services.evidence import (
     EvidenceAccessContext,
     canonical_payload_digest,
     get_evidence_object,
+    list_evidence_objects,
     register_evidence_object,
 )
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy.dialects import postgresql
 
 NOW = datetime(2026, 8, 10, tzinfo=UTC)
 DIGEST = "a" * 64
@@ -48,6 +50,22 @@ def test_canonical_payload_digest_normalizes_typed_json_values() -> None:
             "object_id": "10000000-0000-4000-8000-000000000001",
         }
     )
+
+
+def test_evidence_collections_exclude_lawfully_deleted_payloads() -> None:
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+
+    assert list_evidence_objects(db, ACCESS, object_type="source") == []
+
+    statement = str(
+        db.scalars.call_args.args[0].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "canonical_evidence_objects.payload" in statement
+    assert "tombstone" in statement
+    assert "IS NOT true" in statement
 
 
 def payloads() -> dict[str, tuple[str, dict]]:

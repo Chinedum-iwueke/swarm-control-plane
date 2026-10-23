@@ -75,8 +75,8 @@ class CodexAnswerGenerator:
         self._timeout = timeout_seconds
 
     def generate(self, question: str, context_pack: dict[str, Any]) -> CopilotDraft:
-        binary = shutil.which(self._binary) if "/" not in self._binary else self._binary
-        if not binary or not Path(binary).is_file():
+        binary = _resolve_codex_binary(self._binary, self._codex_home)
+        if binary is None:
             raise CopilotError(
                 "The configured research reasoning model is unavailable."
             )
@@ -293,6 +293,28 @@ def _terminate(process: subprocess.Popen[str]) -> None:
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()
+
+
+def _resolve_codex_binary(
+    configured: str, codex_home: Path
+) -> Optional[Path]:  # noqa: UP045 - macOS Python 3.9
+    candidates = []
+    if "/" in configured:
+        candidates.append(Path(configured).expanduser())
+    else:
+        discovered = shutil.which(configured)
+        if discovered:
+            candidates.append(Path(discovered))
+    candidates.extend(
+        (
+            codex_home / "plugins/.plugin-appserver/codex-cli/bin/codex",
+            codex_home / "bin/codex",
+        )
+    )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def _strict_schema(document: dict[str, Any]) -> dict[str, Any]:

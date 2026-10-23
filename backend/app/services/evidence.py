@@ -218,6 +218,9 @@ def list_evidence_objects(
         statement = statement.where(CanonicalEvidenceObject.project == project)
     if object_type is not None:
         statement = statement.where(CanonicalEvidenceObject.object_type == object_type)
+    statement = statement.where(
+        CanonicalEvidenceObject.payload["tombstone"].as_boolean().is_not(True)
+    )
     allowed_classes = [
         name
         for name, level in _ACCESS_LEVEL.items()
