@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Literal
 
+from pydantic import ValidationError
+
 from swarm_worker import __version__
 from swarm_worker.api_client import ConflictError, SwarmAPIClient
 from swarm_worker.models import (
@@ -111,7 +113,7 @@ class FounderIntakePlannerService:
             )
         except ConflictError:
             return PlannerOutcome("lease_lost", str(task.id))
-        except PlannerError as exc:
+        except (PlannerError, ValidationError) as exc:
             try:
                 await self._api.fail_task(
                     task.id,

@@ -119,19 +119,35 @@ class CodexProposalPlanner:
         task: Task,
         reasoning: FounderConversationReasoningDocument | None,
     ) -> FounderProposalDocument:
-        payload = await self._invoke(
-            self._codex_output_schema(), self._prompt(task, reasoning), "proposal"
-        )
-        try:
-            return FounderProposalDocument.model_validate(
-                self._normalize_output(payload)
-            )
-        except PlannerError:
-            raise
-        except ValueError as exc:
-            raise PlannerError(
-                "Planner output did not match the proposal contract."
-            ) from exc
+        schema = self._codex_output_schema()
+        prompt = self._prompt(task, reasoning)
+        feedback = ""
+        for attempt in range(2):
+            payload = await self._invoke(schema, prompt + feedback, "proposal")
+            try:
+                return FounderProposalDocument.model_validate(
+                    self._normalize_output(payload)
+                )
+            except PlannerError:
+                raise
+            except ValidationError as exc:
+                errors = [
+                    {"field": ".".join(map(str, item["loc"])), "type": item["type"]}
+                    for item in exc.errors(include_input=False, include_url=False)
+                ]
+                if attempt:
+                    raise PlannerError(
+                        "Planner proposal contract failed after bounded repair: "
+                        + json.dumps(errors)
+                    ) from exc
+                feedback = (
+                    "\nYour previous proposal failed semantic validation: "
+                    + json.dumps(errors)
+                    + "\nRegenerate the complete proposal from the original evidence. "
+                    "Keep the canonical route, risk, machine, capabilities, and authority "
+                    "boundaries unchanged. Do not invent missing data, mandates, permissions, "
+                    "or execution authority. Return the full corrected document only."
+                )
 
     async def _invoke(self, schema: dict, prompt: str, prefix: str) -> dict:
         self._working_directory.mkdir(parents=True, exist_ok=True, mode=0o700)

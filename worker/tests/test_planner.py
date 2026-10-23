@@ -54,6 +54,50 @@ async def test_reasoning_repairs_semantic_contract_once(tmp_path, monkeypatch, r
     assert "previous candidate failed validation" in prompts[1]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repair_valid", [True, False])
+async def test_proposal_repairs_semantic_contract_once(tmp_path, monkeypatch, repair_valid):
+    planner = CodexProposalPlanner(
+        codex_binary=tmp_path / "codex", codex_home=tmp_path, model="test-model",
+        timeout_seconds=1, working_directory=tmp_path,
+    )
+    candidate = valid_proposal()
+    candidate["recommended_action"] = "respond"
+    candidate["specification_format"] = []
+    prompts = []
+
+    async def invoke(schema, prompt, prefix):
+        prompts.append(prompt)
+        value = dict(candidate)
+        if len(prompts) == 2 and repair_valid:
+            value["proposed_task"] = None
+        return value
+
+    monkeypatch.setattr(planner, "_invoke", invoke)
+    task = Task.model_construct(
+        task_type="founder_request",
+        project="bulletproof_bt",
+        title="Test a bounded hypothesis",
+        risk_level=1,
+        acceptance_criteria=[],
+        input_contract={
+            "schema_version": 1,
+            "request_kind": "task",
+            "objective": "Test the supplied bounded hypothesis.",
+        },
+    )
+    if repair_valid:
+        response = await planner._generate_proposal(task, None)
+        assert response.recommended_action == "respond"
+        assert response.proposed_task is None
+    else:
+        with pytest.raises(PlannerError, match="after bounded repair"):
+            await planner._generate_proposal(task, None)
+    assert len(prompts) == 2
+    assert "previous proposal failed semantic validation" in prompts[1]
+    assert "Do not invent missing data" in prompts[1]
+
+
 def valid_proposal() -> dict:
     return {
         "schema_version": 1,
@@ -567,3 +611,71 @@ async def test_planner_reports_paused_lease_instead_of_no_work(tmp_path: Path) -
     ).run_once()
 
     assert result.kind == "paused"
+
+
+@pytest.mark.asyncio
+async def test_planner_records_validation_failure_without_crashing_daemon(
+    tmp_path: Path,
+) -> None:
+    failures = []
+    task = Task.model_construct(
+        id=UUID("44444444-4444-4444-8444-444444444444"),
+        task_type="founder_request",
+        input_contract={
+            "schema_version": 1,
+            "request_kind": "task",
+            "objective": "Create a bounded validation task.",
+        },
+    )
+
+    class API:
+        async def get_identity(self):
+            return SimpleNamespace(
+                slug="vm1-founder-intake-planner",
+                machine="vm1-developer",
+                is_enabled=True,
+                capabilities=["founder-intake"],
+            )
+
+        async def send_agent_heartbeat(self, _):
+            return None
+
+        async def lease_task(self, _):
+            return SimpleNamespace(
+                task=task,
+                lease_token="lease-token",
+                paused=False,
+                pause_reasons=[],
+            )
+
+        async def start_task(self, *_):
+            return None
+
+        async def fail_task(self, _task_id, failure):
+            failures.append(failure)
+
+    class Planner:
+        async def plan(self, _):
+            FounderProposalDocument.model_validate({"invalid": True})
+            raise AssertionError("validation must fail")
+
+    settings = PlannerSettings(
+        swarm_api_url="http://control-plane.test",
+        swarm_agent_token="agent-token-that-is-long-enough",
+        swarm_planner_workspace=tmp_path,
+        swarm_role_package_manifest=(
+            Path(__file__).parents[1]
+            / "role-packages/founder-intake-planner/manifest.yaml"
+        ),
+        swarm_workflow_directory=Path(__file__).parents[1] / "workflows",
+    )
+
+    result = await FounderIntakePlannerService(
+        settings,
+        api=API(),  # type: ignore[arg-type]
+        planner=Planner(),  # type: ignore[arg-type]
+    ).run_once()
+
+    assert result.kind == "failed"
+    assert len(failures) == 1
+    assert failures[0].failure["error_category"] == "ValidationError"

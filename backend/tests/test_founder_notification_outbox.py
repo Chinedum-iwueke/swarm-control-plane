@@ -1,9 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
 from app.services.founder_notifications import (
+    _reconcile_stalled_conversations,
     acknowledge_notification,
     reconcile_founder_notifications,
 )
@@ -22,6 +23,7 @@ class DB:
         self.scalar_groups = iter(scalar_groups)
         self.event = event
         self.task = task
+        self.get_calls = []
 
     def scalars(self, statement):
         return Rows(next(self.scalar_groups))
@@ -30,6 +32,7 @@ class DB:
         return self.event
 
     def get(self, model, identifier):
+        self.get_calls.append((model, identifier))
         return self.task
 
     def flush(self):
@@ -117,6 +120,21 @@ def test_task_ready_message_is_superseded_after_lease() -> None:
 
     assert reconcile_founder_notifications(db) == []  # type: ignore[arg-type]
     assert ready.state == "superseded"
+
+
+def test_active_founder_planner_lease_is_not_reported_as_stalled() -> None:
+    now = datetime.now(UTC)
+    task = SimpleNamespace(
+        status="running",
+        lease_expires_at=now + timedelta(minutes=3),
+        conversation_id=uuid4(),
+        conversation_revision=2,
+    )
+    db = DB([[task]], None)
+
+    _reconcile_stalled_conversations(db, now)  # type: ignore[arg-type]
+
+    assert db.get_calls == []
 
 
 def test_awaiting_alpha_mandate_enters_founder_outbox() -> None:

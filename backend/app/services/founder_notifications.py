@@ -206,6 +206,12 @@ def _reconcile_stalled_conversations(db: Session, now: datetime) -> None:
         )
     ).all()
     for task in tasks:
+        if (
+            task.status in {"leased", "running"}
+            and task.lease_expires_at is not None
+            and task.lease_expires_at > now
+        ):
+            continue
         if task.conversation_id is None:
             continue
         conversation = db.get(FounderConversation, task.conversation_id)
