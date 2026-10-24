@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -95,6 +96,68 @@ def test_conversation_workspace_contract_exposes_governed_work_lineage() -> None
         "tasks",
         "approvals",
         "artifacts",
+    }
+
+
+def test_work_event_contract_is_cursor_replayable_and_source_bound() -> None:
+    from app.services.conversation_work_events import conversation_work_events
+
+    conversation_id = UUID("22222222-2222-4222-8222-222222222222")
+    task_id = UUID("33333333-3333-4333-8333-333333333333")
+    now = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
+    task = SimpleNamespace(
+        id=task_id, created_at=now, status="running", task_number="MCUX-018-1",
+        title="Durable work", task_type="founder_request", plan_digest="a" * 64,
+        attempt_count=1, max_attempts=2,
+    )
+    task_event = SimpleNamespace(
+        id=7, task_id=task_id, created_at=now + timedelta(seconds=1),
+        event_type="worker_lease_acquired", message="Worker acquired bounded lease.",
+        attempt_number=1, agent_id=None, payload={"lease": "bounded"},
+    )
+    db = MagicMock()
+    db.scalars.side_effect = [
+        SimpleNamespace(all=lambda: [task]),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=lambda: [task_event]),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+    ]
+    first = conversation_work_events(db, conversation_id, limit=1)
+
+    assert first.events[0].source_type == "task"
+    assert first.events[0].task_id == task_id
+    assert first.events[0].payload["plan_digest"] == "a" * 64
+    assert first.has_more is True
+
+    db.scalars.side_effect = [
+        SimpleNamespace(all=lambda: [task]),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=lambda: [task_event]),
+        SimpleNamespace(all=list),
+        SimpleNamespace(all=list),
+    ]
+    resumed = conversation_work_events(
+        db, conversation_id, after=first.next_cursor, limit=10
+    )
+    assert [event.id for event in resumed.events] == ["task_event:7"]
+    assert resumed.events[0].category == "worker"
+    assert resumed.events[0].payload["lease"] == "bounded"
+
+
+def test_work_event_route_rejects_unparseable_cursor() -> None:
+    document = app.openapi()
+    route = document["paths"]["/v1/conversations/{conversation_id}/work-events"]
+    schema = document["components"]["schemas"]["ConversationWorkEventPage"]
+    assert set(route) == {"get"}
+    assert set(schema["required"]) == {
+        "conversation_id", "events", "next_cursor", "has_more", "high_watermark"
     }
 
 

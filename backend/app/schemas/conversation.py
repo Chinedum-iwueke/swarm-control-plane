@@ -101,3 +101,39 @@ class ConversationWorkspaceResponse(StrictModel):
     tasks: list[TaskDetailResponse]
     approvals: list[ApprovalResponse]
     artifacts: list[ArtifactResponse]
+
+
+class ConversationWorkEvent(StrictModel):
+    id: str
+    cursor: str
+    conversation_id: uuid.UUID
+    task_id: uuid.UUID | None = None
+    category: Literal[
+        "message",
+        "planning",
+        "clarification",
+        "proposal",
+        "approval",
+        "worker",
+        "tool",
+        "terminal",
+        "failure",
+        "evidence",
+        "notification",
+    ]
+    event_type: str
+    state: str
+    label: str
+    detail: str
+    source_type: str
+    source_id: str
+    payload: dict
+    occurred_at: datetime
+
+
+class ConversationWorkEventPage(StrictModel):
+    conversation_id: uuid.UUID
+    events: list[ConversationWorkEvent]
+    next_cursor: str | None
+    has_more: bool
+    high_watermark: str | None

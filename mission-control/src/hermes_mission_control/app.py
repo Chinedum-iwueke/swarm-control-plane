@@ -471,6 +471,16 @@ def create_app(
     async def conversation_workspace(conversation_id: str) -> dict:
         return await client.conversation_workspace(conversation_id)
 
+    @app.get("/api/conversations/{conversation_id}/work-events")
+    async def conversation_work_events(
+        conversation_id: str,
+        after: Annotated[str | None, Query(max_length=512)] = None,
+        limit: Annotated[int, Query(ge=1, le=250)] = 100,
+    ) -> dict:
+        return await client.conversation_work_events(
+            conversation_id, after=after, limit=limit
+        )
+
     @app.post("/api/conversations", dependencies=[Depends(_mutation_intent)])
     async def new_conversation(payload: ConversationCreateRequest) -> dict:
         return await client.create_conversation(payload.title, payload.message)

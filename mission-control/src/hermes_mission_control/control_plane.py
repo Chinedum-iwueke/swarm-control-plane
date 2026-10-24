@@ -616,6 +616,16 @@ class ControlPlaneClient:
             "GET", f"/v1/conversations/{conversation_id}/workspace"
         )
 
+    async def conversation_work_events(
+        self, conversation_id: str, *, after: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit}
+        if after:
+            params["after"] = after
+        return await self._request(
+            "GET", f"/v1/conversations/{conversation_id}/work-events", params=params
+        )
+
     async def create_conversation(self, title: str, message: str) -> dict[str, Any]:
         return await self._request(
             "POST",

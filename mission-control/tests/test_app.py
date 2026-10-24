@@ -87,6 +87,17 @@ class FakeControlPlane:
             "artifacts": [],
         }
 
+    async def conversation_work_events(
+        self, conversation_id: str, *, after: str | None = None, limit: int = 100
+    ) -> dict:
+        return {
+            "conversation_id": conversation_id,
+            "events": [],
+            "next_cursor": after,
+            "has_more": False,
+            "high_watermark": after,
+        }
+
     async def create_conversation(self, title: str, message: str) -> dict:
         self.conversation_turns.append((title, message))
         return {"conversation": {"id": "conversation-id", "revision": 1}}
@@ -548,6 +559,38 @@ def test_new_thread_dialog_cancel_bypasses_required_field_validation(
         in html
     )
     assert 'document.querySelectorAll("[data-close-dialog]")' in script
+
+
+def test_conversation_workbench_replays_durable_events_without_auto_scroll(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        page = client.get("/").text
+        script = client.get("/static/app.js").text
+
+    assert 'id="conversation-filter" type="search"' in page
+    assert 'id="conversation-live-status"' in page
+    assert 'role="status" aria-live="polite" aria-atomic="true"' in page
+    assert "/work-events?${query}" in script
+    assert "conversationEventIds.has(item.id)" in script
+    assert 'window.localStorage.setItem("hermes.activeConversationId"' in script
+    assert "if (revealLatest) progress.lastElementChild?.scrollIntoView" in script
+    assert "progress.lastElementChild?.scrollIntoView" not in script.split("if (revealLatest)", 1)[0]
+
+
+def test_approval_center_exposes_recovery_state_views_and_safe_close(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        page = client.get("/").text
+        script = client.get("/static/app.js").text
+
+    for state_name in ("actionable", "blocked", "expired", "decided", "superseded"):
+        assert f'data-approval-view="{state_name}"' in page
+    assert "classifyApproval" in script
+    assert 'approval.status === "expired" ? "Reissue review"' in script
+    assert 'JSON.stringify(approval.scope || {})' in script
+    assert '<button type="button" class="secondary" data-close-dialog>Cancel</button>' in page
 
 
 def test_codex_auth_retry_requires_founder_intent_and_preserves_incident(

@@ -28,6 +28,14 @@ const state = {
   activeConversationId: null,
   conversationWorkspace: null,
   conversationWorkspaceLoading: false,
+  conversationFilter: "open",
+  conversationSearch: "",
+  conversationWorkEvents: [],
+  conversationEventIds: new Set(),
+  conversationEventCursor: null,
+  conversationEventTimer: null,
+  conversationPendingUpdates: 0,
+  approvalView: "actionable",
   requestedApprovalOpened: false,
   executionEnvironment: "all",
   backtestPage: null,
@@ -204,6 +212,24 @@ document.getElementById("clear-research-context").addEventListener("click", () =
 document.getElementById("new-conversation").addEventListener("click", createConversation);
 document.getElementById("refresh-conversations").addEventListener("click", loadConversations);
 document.getElementById("conversation-form").addEventListener("submit", continueConversation);
+document.getElementById("conversation-filter").addEventListener("input", (event) => {
+  state.conversationSearch = event.target.value.trim().toLowerCase();
+  renderConversations();
+});
+document.querySelectorAll("[data-conversation-filter]").forEach((button) => button.addEventListener("click", () => {
+  state.conversationFilter = button.dataset.conversationFilter;
+  document.querySelectorAll("[data-conversation-filter]").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+  renderConversations();
+}));
+document.getElementById("conversation-new-events").addEventListener("click", () => {
+  state.conversationPendingUpdates = 0;
+  renderConversationWork({ revealLatest: true });
+});
+document.querySelectorAll("[data-approval-view]").forEach((button) => button.addEventListener("click", () => {
+  state.approvalView = button.dataset.approvalView;
+  document.querySelectorAll("[data-approval-view]").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+  renderApprovals();
+}));
 document.getElementById("new-conversation-form").addEventListener("submit", submitConversation);
 document.getElementById("walkthrough-finding-form").addEventListener("submit", submitWalkthroughFinding);
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
@@ -626,6 +652,8 @@ async function loadConversations() {
   try {
     state.conversations = await request("/api/conversations");
     if (state.activeConversationId && !state.conversations.some((item) => item.id === state.activeConversationId)) state.activeConversationId = null;
+    const retained = window.localStorage.getItem("hermes.activeConversationId");
+    if (!state.activeConversationId && retained && state.conversations.some((item) => item.id === retained)) state.activeConversationId = retained;
     if (!state.activeConversationId && state.conversations.length) state.activeConversationId = state.conversations[0].id;
     renderConversations();
     await loadConversationWorkspace();
@@ -636,7 +664,14 @@ async function loadConversations() {
 
 function renderConversations() {
   const list = document.getElementById("conversation-list");
-  list.innerHTML = state.conversations.length ? state.conversations.map((item) => `
+  const openStates = new Set(["collecting", "planning", "needs_clarification", "ready_for_review", "attention_required"]);
+  const filtered = state.conversations.filter((item) => {
+    const archived = item.status === "archived";
+    const stateMatch = state.conversationFilter === "all" || (state.conversationFilter === "archived" ? archived : openStates.has(item.status));
+    const text = `${item.title} ${item.short_id} ${item.project || ""} ${item.working_summary || ""}`.toLowerCase();
+    return stateMatch && (!state.conversationSearch || text.includes(state.conversationSearch));
+  });
+  list.innerHTML = filtered.length ? filtered.map((item) => `
     <button class="conversation-list-item ${item.id === state.activeConversationId ? "active" : ""}" data-conversation-id="${item.id}">
       <span>${escapeHtml(item.short_id)} · ${escapeHtml(humanize(item.status))}</span>
       <strong>${escapeHtml(item.title)}</strong>
@@ -644,7 +679,9 @@ function renderConversations() {
     </button>`).join("") : empty("No conversation threads yet.");
   document.querySelectorAll("[data-conversation-id]").forEach((button) => button.addEventListener("click", () => {
     state.activeConversationId = button.dataset.conversationId;
+    window.localStorage.setItem("hermes.activeConversationId", state.activeConversationId);
     state.conversationWorkspace = null;
+    resetConversationEventStream();
     renderConversations();
     loadConversationWorkspace();
   }));
@@ -691,6 +728,7 @@ async function loadConversationWorkspace() {
     const workspace = await request(`/api/conversations/${conversationId}/workspace`);
     if (state.activeConversationId !== conversationId) return;
     state.conversationWorkspace = workspace;
+    await loadConversationWorkEvents({ reset: true });
   } catch (error) {
     if (state.activeConversationId === conversationId) toast(error.message);
   } finally {
@@ -701,7 +739,39 @@ async function loadConversationWorkspace() {
   }
 }
 
-function renderConversationWork() {
+function resetConversationEventStream() {
+  window.clearTimeout(state.conversationEventTimer);
+  state.conversationWorkEvents = [];
+  state.conversationEventIds = new Set();
+  state.conversationEventCursor = null;
+  state.conversationPendingUpdates = 0;
+}
+
+async function loadConversationWorkEvents({ reset = false } = {}) {
+  const conversationId = state.activeConversationId;
+  if (state.demo || !conversationId) return;
+  if (reset) resetConversationEventStream();
+  const query = new URLSearchParams({ limit: "250" });
+  if (state.conversationEventCursor) query.set("after", state.conversationEventCursor);
+  try {
+    const page = await request(`/api/conversations/${conversationId}/work-events?${query}`);
+    if (state.activeConversationId !== conversationId) return;
+    const unseen = (page.events || []).filter((item) => !state.conversationEventIds.has(item.id));
+    unseen.forEach((item) => state.conversationEventIds.add(item.id));
+    state.conversationWorkEvents.push(...unseen);
+    state.conversationEventCursor = page.next_cursor || state.conversationEventCursor;
+    if (!reset && unseen.length) state.conversationPendingUpdates += unseen.length;
+    renderConversationWork();
+    document.getElementById("conversation-live-status").textContent = unseen.length ? `${unseen.length} durable work updates received.` : "Thread is current.";
+  } catch (error) {
+    document.getElementById("conversation-live-status").textContent = `Work updates paused: ${error.message}`;
+  } finally {
+    window.clearTimeout(state.conversationEventTimer);
+    if (state.activeConversationId === conversationId) state.conversationEventTimer = window.setTimeout(() => loadConversationWorkEvents(), 5000);
+  }
+}
+
+function renderConversationWork({ revealLatest = false } = {}) {
   const progress = document.getElementById("conversation-progress");
   const evidence = document.getElementById("conversation-evidence");
   if (!progress || !evidence) return;
@@ -718,14 +788,26 @@ function renderConversationWork() {
     document.getElementById("conversation-evidence-count").textContent = "0";
     return;
   }
-  const items = conversationTimeline(workspace);
+  const items = state.conversationWorkEvents.length ? state.conversationWorkEvents.map((event) => ({
+    kind: event.task_id ? "task" : event.source_type === "proposal" ? "proposal" : "event",
+    entityId: event.task_id || (event.source_type === "proposal" ? event.source_id : null),
+    label: event.label,
+    detail: event.detail,
+    state: event.state,
+    category: event.category,
+    createdAt: event.occurred_at,
+  })) : conversationTimeline(workspace);
   document.getElementById("conversation-progress-count").textContent = String(items.length);
   document.getElementById("conversation-evidence-count").textContent = String((workspace.artifacts || []).length);
   progress.innerHTML = items.length ? items.map((item) => `
-    <button class="conversation-progress-item" type="button" ${item.entityId ? `data-work-${item.kind}="${escapeHtml(item.entityId)}"` : ""}>
+    <button class="conversation-progress-item" type="button" data-event-category="${escapeHtml(item.category || "planning")}" ${item.entityId ? `data-work-${item.kind}="${escapeHtml(item.entityId)}"` : ""}>
       <span class="timeline-marker ${escapeHtml(item.state)}" aria-hidden="true"></span>
       <span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail)} · ${formatDate(item.createdAt)}</small></span>
     </button>`).join("") : '<div class="conversation-work-empty">No linked execution yet.</div>';
+  const updateButton = document.getElementById("conversation-new-events");
+  updateButton.hidden = state.conversationPendingUpdates === 0;
+  updateButton.textContent = `${state.conversationPendingUpdates} new work update${state.conversationPendingUpdates === 1 ? "" : "s"}`;
+  if (revealLatest) progress.lastElementChild?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   evidence.innerHTML = (workspace.artifacts || []).length ? workspace.artifacts.map((artifact) => `
     <button class="conversation-evidence-item" type="button" data-work-artifact="${escapeHtml(artifact.id)}">
       <span><strong>${escapeHtml(artifact.name)}</strong><small>${escapeHtml(humanize(artifact.artifact_type))} · ${formatBytes(artifact.size_bytes)}</small></span>
@@ -849,11 +931,23 @@ async function continueConversation(event) {
   event.preventDefault();
   if (state.demo || !state.activeConversationId) return;
   const textarea = document.getElementById("conversation-message");
+  const submit = event.currentTarget.querySelector("button[type=submit]");
   const message = textarea.value.trim();
   if (!message) return;
-  await mutate(`/api/conversations/${state.activeConversationId}/turns`, { message }, "Turn added to this thread.");
-  textarea.value = "";
-  await loadConversations();
+  submit.disabled = true;
+  submit.textContent = "Sending…";
+  document.getElementById("conversation-live-status").textContent = "Founder turn is being accepted.";
+  try {
+    await mutate(`/api/conversations/${state.activeConversationId}/turns`, { message }, "Turn added to this thread.");
+    textarea.value = "";
+    await loadConversations();
+  } catch (error) {
+    document.getElementById("conversation-live-status").textContent = `Turn was not accepted: ${error.message}`;
+    textarea.focus();
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "Send";
+  }
 }
 
 async function transitionConversation(action) {
@@ -1815,7 +1909,15 @@ function renderTasks() {
 function renderApprovals() {
   if (!state.dashboard) return;
   const center = state.dashboard.approval_center || { counts: {}, items: [] };
-  const items = center.items || [];
+  const allItems = center.items || [];
+  const classifyApproval = (item) => {
+    const status = item.approval.status;
+    if (status === "expired") return "expired";
+    if (["approved", "rejected", "consumed", "revoked"].includes(status)) return "decided";
+    if (!item.current || (item.changed_fields || []).length) return "superseded";
+    return item.actionable ? "actionable" : "blocked";
+  };
+  const items = state.approvalView === "all" ? allItems : allItems.filter((item) => classifyApproval(item) === state.approvalView);
   const counts = center.counts || {};
   document.getElementById("approval-summary").innerHTML = [
     metric(counts.actionable || 0, "Ready", "Current and executable"),
@@ -1825,6 +1927,7 @@ function renderApprovals() {
   document.getElementById("approval-list").innerHTML = items.length ? items.map((item) => {
     const approval = item.approval;
     const task = item.task || {};
+    const canResend = task.approval_required && ["pending_approval", "queued"].includes(task.status) && ["pending", "expired"].includes(approval.status);
     const readiness = approval.status !== "pending" ? approval.status : item.actionable ? "ready" : "blocked";
     const blockers = (item.blocked_by || []).map((entry) => `${humanize(entry.kind)}: ${entry.reference} (${humanize(entry.status)})`);
     return `
@@ -1837,7 +1940,7 @@ function renderApprovals() {
         ${blockers.length ? `<div class="approval-blockers"><strong>Not ready</strong>${bulletList(blockers, "")}</div>` : ""}
         <div class="approval-state">${statusBadge(approval.status)}<span class="readiness readiness-${escapeHtml(readiness)}">${escapeHtml(humanize(readiness))}</span></div>
       </div>
-      <div class="approval-actions"><a class="secondary button-link" href="?view=approvals&amp;approval=${encodeURIComponent(approval.id)}">Review link</a>${approval.status === "pending" ? `<button class="secondary" data-resend-approval="${task.id}" ${item.actionable ? "" : "disabled"}>Resend to Telegram</button><button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}" ${item.actionable ? "" : "disabled"}>Review & approve</button>` : `<button class="secondary" data-decision="review" data-id="${approval.id}">View receipt</button>`}</div>
+      <div class="approval-actions"><a class="secondary button-link" href="?view=approvals&amp;approval=${encodeURIComponent(approval.id)}">Review link</a>${canResend ? `<button class="secondary" data-resend-approval="${task.id}">${approval.status === "expired" ? "Reissue review" : "Resend to Telegram"}</button>` : ""}${approval.status === "pending" ? `<button class="secondary danger" data-decision="reject" data-id="${approval.id}">Reject</button><button class="command" data-decision="approve" data-id="${approval.id}" ${item.actionable ? "" : "disabled"}>Review & approve</button>` : `<button class="secondary" data-decision="review" data-id="${approval.id}">View receipt</button>`}</div>
     </article>`;
   }).join("") : empty("No approval gates recorded.");
   document.querySelectorAll("[data-decision]").forEach((button) => {
@@ -1859,7 +1962,7 @@ function renderApprovals() {
     });
   });
   if (requestedApproval && !state.requestedApprovalOpened) {
-    const requested = items.find((item) => String(item.approval.id) === requestedApproval);
+    const requested = allItems.find((item) => String(item.approval.id) === requestedApproval);
     state.requestedApprovalOpened = true;
     if (requested) openDecision(requestedApproval, "review");
     else toast("That approval review is unavailable or no longer retained.");
@@ -1904,6 +2007,7 @@ function openDecision(id, action) {
     <dt>Project</dt><dd>${escapeHtml(task.project || approval.scope?.project || "Unknown")}</dd>
     <dt>Operation</dt><dd>${escapeHtml(humanize(task.task_type || approval.scope?.task_type || "operation"))}</dd>
     <dt>Risk</dt><dd>${approval.risk_level}</dd>
+    <dt>Scope</dt><dd class="mono">${escapeHtml(JSON.stringify(approval.scope || {}))}</dd>
     <dt>Plan digest</dt><dd class="mono">${escapeHtml(approval.plan_digest)}</dd>
     <dt>Review digest</dt><dd class="mono">${escapeHtml(item.review_digest)}</dd>
     <dt>Authority policy</dt><dd class="mono">${escapeHtml(item.authority_policy?.manifest_digest || "Unavailable")}</dd>

@@ -363,7 +363,7 @@ explicitly states that projection time is unavailable.
 
 ## Track 3: Conversation Workbench and Decisions
 
-### [ ] MCUX-018 - Add durable conversation work-event contract
+### [x] MCUX-018 - Add durable conversation work-event contract
 
 **Scope:** Persist/replay ordered thread events for queued, planning,
 clarification, proposal, approval, worker lease, tool start/progress/result,
@@ -374,8 +374,11 @@ not require a long-running chat request to stay open.
 **Acceptance:** events are durable, ordered, scoped to thread/task, replayable
 after disconnect and tied to real worker/tool records. No synthetic progress or
 assistant chunks are produced.
+The protected cursor projection reads the durable conversation, proposal, task,
+approval, artifact and notification ledgers. Stable source-qualified IDs make
+reconnect idempotent; no assistant chunks or progress records are fabricated.
 
-### [ ] MCUX-019 - Build persistent Codex-style conversation workbench
+### [x] MCUX-019 - Build persistent Codex-style conversation workbench
 
 **Scope:** Thread list/search/archive/resume, chronological messages and
 structured work blocks, real async stage progress, editable plans when allowed,
@@ -387,8 +390,12 @@ actually streams; otherwise show truthful accepted/running states.
 approval, work progress, terminal result and evidence; refresh/reconnect does
 not lose thread, duplicate events or jump scroll; failures explain whether work
 is still active and how to recover.
+The workbench retains and searches threads, separates messages from real work
+blocks, polls independently with a durable cursor and exposes inline evidence.
+Background updates announce once and never move scroll until the user reveals
+them. Composer failure preserves input and focus.
 
-### [ ] MCUX-020 - Unify Telegram and Mission Control thread identity
+### [x] MCUX-020 - Unify Telegram and Mission Control thread identity
 
 **Scope:** Link channel messages/replies to durable conversation IDs, reflect
 cross-channel updates, expose notification delivery state and safe reissue for
@@ -398,8 +405,11 @@ expired/missed approval links without creating duplicate work.
 **Acceptance:** a thread started in either channel can be continued in the
 other with correct message ancestry; delivery retry is idempotent and cannot
 approve, extend or mutate an approval.
+Both channels share canonical message identity and reply ancestry. Notification
+delivery joins the same work timeline; governed resend only rearms an eligible
+existing approval and cannot decide it, create work or expand authority.
 
-### [ ] MCUX-021 - Complete approval and authority interaction recovery
+### [x] MCUX-021 - Complete approval and authority interaction recovery
 
 **Scope:** Separate actionable/blocked/expired/decided/superseded views; show
 exact plan digest, scope, risk, prerequisites, expected effect and expiry; make
@@ -409,10 +419,13 @@ cancel/close always available; support governed notification resend.
 **Acceptance:** incomplete acknowledgement/reason cannot trap a user in a
 dialog; stale digests fail closed with a useful refresh path; cancel never
 mutates an approval; retry does not duplicate a task or extend authority.
+Approval Center separates all five review states while retaining the immutable
+review envelope. The sheet exposes exact digests, scope, risk, prerequisites,
+outputs, effect and expiry. Cancel and close never depend on form completion.
 
 ## Track 4: Cross-System Quality and Release
 
-### [ ] MCUX-022 - Add Mission Control accessibility and resilience suite
+### [x] MCUX-022 - Add Mission Control accessibility and resilience suite
 
 **Scope:** Automated and manual keyboard/screen-reader/contrast/reflow/reduced-
 motion checks; mobile/desktop screenshots; service-worker/reconnect/API failure
@@ -425,6 +438,10 @@ MCUX-019, MCUX-021.
 requires pointer or color-only distinction; no auto-scroll jump on refresh;
 all configured viewport/performance budgets pass or have explicit waived
 exceptions with owners.
+The quality suite enforces skip navigation, labeled tabs, one atomic status
+region, keyboard focus, responsive/reduced-motion contracts, deduplicated
+reconnect, opt-in scroll reveal and owned static-asset budgets. No service
+worker is registered, preventing stale cached authority state.
 
 ### [ ] MCUX-023 - Release and verify investor-ready Mission Control
 
@@ -436,6 +453,9 @@ deploy smoke/canary.
 **Acceptance:** investor walkthrough passes using real evidence; exact deployed
 commit and UI asset version are recorded; health/status/source-reader/graph/
 conversation/venue smoke checks pass; rollback path is documented and tested.
+The technical procedure and rollback are recorded in
+`MCUX-018_023_VALIDATION.md`. MCUX-023 remains open because MCUX-024 requires
+real moderated participants and cannot be replaced by automated QA.
 
 ### [ ] MCUX-024 - Run moderated founder and investor baseline validation
 

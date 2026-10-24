@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
     <button class="mobile-menu icon-button" id="mobile-menu" aria-label="Open navigation" title="Open navigation">☰</button>
     <div class="brand">
@@ -59,7 +60,7 @@
       </div>
     </nav>
 
-    <main>
+    <main id="main-content" tabindex="-1">
       <div id="demo-banner" class="demo-banner" hidden>
         <strong>Demonstration data</strong>
         <span>This view is isolated from the live control plane.</span>
@@ -190,9 +191,12 @@
         <div class="conversation-workspace">
           <aside class="conversation-list-panel" aria-label="Conversation threads">
             <div class="band-heading"><div><p class="section-kicker">Threads</p><h2>Founder work</h2></div><button class="icon-button" id="refresh-conversations" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div>
+            <label class="conversation-search"><span class="visually-hidden">Search threads</span><input id="conversation-filter" type="search" placeholder="Search threads" autocomplete="off"></label>
+            <div class="conversation-list-tabs" role="tablist" aria-label="Thread state"><button type="button" role="tab" aria-selected="true" data-conversation-filter="open">Open</button><button type="button" role="tab" aria-selected="false" data-conversation-filter="archived">Archived</button><button type="button" role="tab" aria-selected="false" data-conversation-filter="all">All</button></div>
             <div id="conversation-list" class="conversation-list"></div>
           </aside>
-          <section class="conversation-main" aria-live="polite">
+          <section class="conversation-main">
+            <p id="conversation-live-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
             <div id="conversation-empty" class="empty-state">Start a thread to give Hermes a task in plain English.</div>
             <div id="conversation-detail" hidden>
               <header class="conversation-header">
@@ -202,6 +206,7 @@
               <div class="conversation-body">
                 <div class="conversation-dialogue">
                   <div id="conversation-messages" class="conversation-messages"></div>
+                  <button id="conversation-new-events" class="conversation-new-events" type="button" hidden>New work updates</button>
                   <form id="conversation-form" class="conversation-composer">
                     <label for="conversation-message">Continue this thread</label>
                     <textarea id="conversation-message" required maxlength="12000" placeholder="Answer a clarification, refine scope, or ask Hermes to choose reasonable defaults..."></textarea>
@@ -304,6 +309,14 @@
           <div><p class="eyebrow">Human authority</p><h1>Approvals</h1><p class="heading-context">Review scope and effect before authorizing change</p></div>
         </div>
         <div id="approval-summary" class="metric-row approval-summary"></div>
+        <div class="approval-view-tabs" role="tablist" aria-label="Approval states">
+          <button type="button" role="tab" aria-selected="true" data-approval-view="actionable">Actionable</button>
+          <button type="button" role="tab" aria-selected="false" data-approval-view="blocked">Blocked</button>
+          <button type="button" role="tab" aria-selected="false" data-approval-view="expired">Expired</button>
+          <button type="button" role="tab" aria-selected="false" data-approval-view="decided">Decided</button>
+          <button type="button" role="tab" aria-selected="false" data-approval-view="superseded">Superseded</button>
+          <button type="button" role="tab" aria-selected="false" data-approval-view="all">All</button>
+        </div>
         <div class="approval-layout">
           <div id="approval-list"></div>
           <aside class="policy-panel">

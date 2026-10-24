@@ -28,12 +28,14 @@ from app.schemas import (
     ConversationTransition,
     ConversationTurnCreate,
     ConversationTurnResponse,
+    ConversationWorkEventPage,
     ConversationWorkspaceResponse,
     FounderProposalResponse,
     TaskDetailResponse,
     TaskEventResponse,
     TaskResponse,
 )
+from app.services.conversation_work_events import conversation_work_events
 from app.services.conversations import (
     active_conversation,
     append_turn,
@@ -182,6 +184,20 @@ def conversation_workspace(
         approvals=[ApprovalResponse.model_validate(value) for value in approvals],
         artifacts=[ArtifactResponse.model_validate(value) for value in artifacts],
     )
+
+
+@router.get("/{conversation_id}/work-events", response_model=ConversationWorkEventPage)
+def work_events(
+    conversation_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    after: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=250)] = 100,
+) -> ConversationWorkEventPage:
+    item = _get(db, conversation_id)
+    try:
+        return conversation_work_events(db, item.id, after=after, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("", response_model=ConversationTurnResponse, status_code=201)

@@ -19,6 +19,37 @@ from hermes_mission_control.models import (
 
 
 @pytest.mark.asyncio
+async def test_conversation_work_event_cursor_is_forwarded_without_mutation(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "conversation_id": "conversation-id",
+                "events": [],
+                "next_cursor": "cursor-1",
+                "has_more": False,
+                "high_watermark": "cursor-1",
+            },
+        )
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.conversation_work_events(
+            "conversation-id", after="cursor-1", limit=25
+        )
+    finally:
+        await client.close()
+
+    assert seen[0].url.path == "/v1/conversations/conversation-id/work-events"
+    assert dict(seen[0].url.params) == {"limit": "25", "after": "cursor-1"}
+
+
+@pytest.mark.asyncio
 async def test_readiness_checks_health_and_operator_authentication(
     settings: MissionControlSettings,
 ) -> None:

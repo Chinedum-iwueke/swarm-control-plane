@@ -22,6 +22,8 @@ from app.schemas.control import (
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationEventResponse,
+    ConversationWorkEvent,
+    ConversationWorkEventPage,
     ConversationMessageResponse,
     ConversationResponse,
     ConversationTransition,
@@ -141,6 +143,8 @@ __all__ = [
     "ControlScopeResponse",
     "ConversationCreate",
     "ConversationEventResponse",
+    "ConversationWorkEvent",
+    "ConversationWorkEventPage",
     "ConversationMessageResponse",
     "ConversationResponse",
     "ConversationTransition",
