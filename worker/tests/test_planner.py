@@ -17,17 +17,25 @@ from swarm_worker.planner.service import FounderIntakePlannerService
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("repair_valid", [True, False])
-async def test_reasoning_repairs_semantic_contract_once(tmp_path, monkeypatch, repair_valid):
+async def test_reasoning_repairs_semantic_contract_once(
+    tmp_path, monkeypatch, repair_valid
+):
     planner = CodexProposalPlanner(
-        codex_binary=tmp_path / "codex", codex_home=tmp_path, model="test-model",
-        timeout_seconds=1, working_directory=tmp_path,
+        codex_binary=tmp_path / "codex",
+        codex_home=tmp_path,
+        model="test-model",
+        timeout_seconds=1,
+        working_directory=tmp_path,
     )
     candidate = {
-        "schema_version": 1, "response_kind": "compile_proposal",
+        "schema_version": 1,
+        "response_kind": "compile_proposal",
         "summary": "Prepare a planning-only research intake.",
         "interpretation": "The data and representation need downstream qualification.",
-        "grounding_citations": [], "clarification_questions": [],
-        "unresolved_fields": ["qualified representation"], "specification_format": [],
+        "grounding_citations": [],
+        "clarification_questions": [],
+        "unresolved_fields": ["qualified representation"],
+        "specification_format": [],
     }
     prompts = []
 
@@ -39,9 +47,13 @@ async def test_reasoning_repairs_semantic_contract_once(tmp_path, monkeypatch, r
         return value
 
     monkeypatch.setattr(planner, "_invoke", invoke)
-    task = Task.model_construct(project="bulletproof_bt", input_contract={
-        "objective": "Plan a BTC hypothesis, do not execute it.", "grounding_context": {},
-    })
+    task = Task.model_construct(
+        project="bulletproof_bt",
+        input_contract={
+            "objective": "Plan a BTC hypothesis, do not execute it.",
+            "grounding_context": {},
+        },
+    )
     if repair_valid:
         response = await planner._reason(task)
         assert response.response_kind == "compile_proposal"
@@ -56,10 +68,15 @@ async def test_reasoning_repairs_semantic_contract_once(tmp_path, monkeypatch, r
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("repair_valid", [True, False])
-async def test_proposal_repairs_semantic_contract_once(tmp_path, monkeypatch, repair_valid):
+async def test_proposal_repairs_semantic_contract_once(
+    tmp_path, monkeypatch, repair_valid
+):
     planner = CodexProposalPlanner(
-        codex_binary=tmp_path / "codex", codex_home=tmp_path, model="test-model",
-        timeout_seconds=1, working_directory=tmp_path,
+        codex_binary=tmp_path / "codex",
+        codex_home=tmp_path,
+        model="test-model",
+        timeout_seconds=1,
+        working_directory=tmp_path,
     )
     candidate = valid_proposal()
     candidate["recommended_action"] = "respond"
@@ -169,6 +186,36 @@ def test_planner_accepts_governed_founder_hypothesis_intake(universe_slices) -> 
     document = FounderProposalDocument.model_validate(payload)
     assert document.proposed_task.input_contract.minimum_history_days == 365
     assert document.proposed_task.input_contract.universe_slices == universe_slices
+
+
+def test_planner_can_compile_founder_hypothesis_before_mandate_binding() -> None:
+    payload = valid_proposal()
+    payload["proposed_task"].update(
+        {
+            "task_type": "founder_hypothesis_intake",
+            "input_contract": {
+                "repository": "swarm-control-plane",
+                "workflow": "founder-hypothesis-intake",
+                "base_ref": "main",
+                "research_idea": "Does funding pressure predict subsequent perpetual returns after costs?",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+                "universe_slices": ["all_eligible"],
+            },
+            "approval_policy": {"kind": "explicit", "risk": 0},
+            "required_capabilities": [
+                "research-intelligence",
+                "research-proposal",
+                "prior-art",
+            ],
+        }
+    )
+
+    document = FounderProposalDocument.model_validate(payload)
+
+    assert document.proposed_task.input_contract.mandate_id is None
+    assert document.proposed_task.input_contract.mandate_digest is None
 
 
 def test_clarification_requires_exact_field_and_format_guidance() -> None:

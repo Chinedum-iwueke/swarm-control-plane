@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
@@ -45,6 +45,21 @@ class ApprovalDecision(StrictModel):
 
 class ProposalDecision(StrictModel):
     reason: str = Field(min_length=10, max_length=1000)
+    mandate_id: UUID | None = None
+    mandate_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def complete_mandate_binding(self):
+        if (self.mandate_id is None) != (self.mandate_digest is None):
+            raise ValueError("mandate ID and digest must be supplied together")
+        return self
+
+
+class MandateRenewalRequest(StrictModel):
+    source_mandate_id: UUID
+    expected_source_mandate_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    cadence: Literal["weekly", "monthly"]
+    objective: str = Field(min_length=20, max_length=4000)
 
 
 class ResearchCycleDecision(StrictModel):

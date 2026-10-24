@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -43,6 +43,7 @@ from app.schemas.alpha_discovery import (
     AlphaRepresentationPlan,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
+    AlphaResearchMandateRenewal,
 )
 from app.schemas.authority import AuthorityResolutionRequest
 from app.schemas.discovery_portfolio import (
@@ -122,6 +123,10 @@ def now() -> datetime:
 
 def _mandate_kind(mandate: AlphaResearchMandate) -> str:
     return mandate.specification.get("mandate_kind", "canonical_weekly")
+
+
+def _is_canonical_mandate(mandate: AlphaResearchMandate) -> bool:
+    return _mandate_kind(mandate) in {"canonical_weekly", "canonical_monthly"}
 
 
 def _event(
@@ -227,9 +232,9 @@ def register_mandate(
                 AlphaResearchMandate.status == "active",
             )
         )
-        if parent is None or _mandate_kind(parent) != "canonical_weekly":
+        if parent is None or not _is_canonical_mandate(parent):
             raise HTTPException(
-                422, "Thematic mandate parent must be the active canonical week."
+                422, "Thematic mandate parent must be the active canonical mandate."
             )
     if (
         strategy_catalog.source_commit != payload.bulletproof_source_commit
@@ -286,6 +291,75 @@ def register_mandate(
     db.add(mandate)
     db.flush()
     _event(db, mandate, "mandate_registered", {"mandate_digest": mandate_digest})
+    return mandate
+
+
+def renew_mandate(
+    db: Session, payload: AlphaResearchMandateRenewal
+) -> AlphaResearchMandate:
+    source = db.scalar(
+        select(AlphaResearchMandate)
+        .where(AlphaResearchMandate.id == payload.source_mandate_id)
+        .with_for_update()
+    )
+    if source is None:
+        raise HTTPException(404, "Mandate template not found.")
+    if source.mandate_digest != payload.expected_source_mandate_digest:
+        raise HTTPException(409, "Mandate template digest changed before renewal.")
+    if not _is_canonical_mandate(source):
+        raise HTTPException(422, "Only a canonical mandate can be used as a template.")
+    boundary = source.specification.get("authority_boundary", {})
+    if source.specification.get("authority") != "no_capital_research" or any(
+        boundary.get(key) is not False
+        for key in ("capital", "orders", "shadow", "code_changes", "self_evaluation")
+    ):
+        raise HTTPException(422, "Mandate template exceeds no-capital authority.")
+
+    moment = now()
+    duration = timedelta(days=7 if payload.cadence == "weekly" else 30)
+    kind = f"canonical_{payload.cadence}"
+    key = f"ALPHA004-{payload.cadence.upper()}-{moment:%Y%m%dT%H%M%S}"
+    specification = deepcopy(source.specification)
+    specification.update(
+        {
+            "mandate_key": key,
+            "version": "1.0.0",
+            "objective": payload.objective,
+            "valid_from": moment.isoformat(),
+            "valid_until": (moment + duration).isoformat(),
+            "mandate_kind": kind,
+            "parent_mandate_digest": None,
+            "created_by": payload.created_by,
+        }
+    )
+    budget = deepcopy(source.budget)
+    mandate_digest = digest_document({"specification": specification, "budget": budget})
+    mandate = AlphaResearchMandate(
+        mandate_key=key,
+        version="1.0.0",
+        objective=payload.objective,
+        specification=specification,
+        budget=budget,
+        mandate_digest=mandate_digest,
+        status="awaiting_approval",
+        created_by=payload.created_by,
+        valid_from=moment,
+        valid_until=moment + duration,
+        heartbeat_at=moment,
+    )
+    db.add(mandate)
+    db.flush()
+    _event(
+        db,
+        mandate,
+        "mandate_renewal_prepared",
+        {
+            "source_mandate_id": str(source.id),
+            "source_mandate_digest": source.mandate_digest,
+            "cadence": payload.cadence,
+            "mandate_digest": mandate_digest,
+        },
+    )
     return mandate
 
 
@@ -353,7 +427,7 @@ def approve_mandate(
         "mandate_approved",
         {"reason": payload.reason, "expires_at": mandate.valid_until.isoformat()},
     )
-    if _mandate_kind(mandate) == "canonical_weekly":
+    if _is_canonical_mandate(mandate):
         _supersede_other_canonical_mandates(
             db,
             mandate,
@@ -367,7 +441,7 @@ def _supersede_other_canonical_mandates(
     *,
     reason: str,
 ) -> list[AlphaResearchMandate]:
-    """Enforce one current canonical week while retaining thematic mandates."""
+    """Enforce one current canonical mandate while retaining thematic mandates."""
     replaceable = db.scalars(
         select(AlphaResearchMandate)
         .where(
@@ -380,14 +454,14 @@ def _supersede_other_canonical_mandates(
     superseded = []
     moment = now()
     for item in replaceable:
-        if _mandate_kind(item) != "canonical_weekly":
+        if not _is_canonical_mandate(item):
             continue
         item.status = "superseded"
         item.heartbeat_at = moment
         _event(
             db,
             item,
-            "mandate_superseded_by_canonical_week",
+            "mandate_superseded_by_canonical_authority",
             {
                 "canonical_mandate_id": str(mandate.id),
                 "canonical_mandate_digest": mandate.mandate_digest,
@@ -403,12 +477,12 @@ def canonicalize_mandates(
     mandate: AlphaResearchMandate,
     payload: AlphaMandateCanonicalization,
 ) -> list[AlphaResearchMandate]:
-    """Retain one canonical weekly mandate without disturbing explicit themes."""
+    """Retain one canonical mandate without disturbing explicit themes."""
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before reconciliation.")
-    if mandate.status != "active" or _mandate_kind(mandate) != "canonical_weekly":
+    if mandate.status != "active" or not _is_canonical_mandate(mandate):
         raise HTTPException(
-            409, "Canonical reconciliation requires an active weekly mandate."
+            409, "Canonical reconciliation requires an active canonical mandate."
         )
     decision = resolve_authority(
         db,
@@ -1017,7 +1091,7 @@ def _task(
                 "no hidden holdout, capital, order, shadow or self-approval authority exists",
             ],
             approval_policy={
-                "kind": "weekly_research_mandate",
+                "kind": "canonical_research_mandate",
                 "mandate_digest": mandate.mandate_digest,
             },
             approval_required=False,
@@ -1468,7 +1542,7 @@ def queue_founder_idea(
         mandate.valid_from <= now() < mandate.valid_until
     ):
         raise HTTPException(
-            409, "Founder research ideas require an active weekly mandate."
+            409, "Founder research ideas require an active research mandate."
         )
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before the idea was queued.")
@@ -2202,7 +2276,7 @@ def _ensure_data_admission_task(
                 "no code, shadow, order, capital or promotion authority exists",
             ],
             approval_policy={
-                "kind": "weekly_research_mandate",
+                "kind": "canonical_research_mandate",
                 "mandate_digest": mandate.mandate_digest,
                 "catalog_receipt_digest": catalog["receipt_digest"],
                 "risk": 0,
@@ -2398,7 +2472,7 @@ def _portfolio_and_campaign(
         AlphaCampaignActivation(
             expected_campaign_digest=campaign.campaign_digest,
             actor="alpha-continuous-director",
-            reason="Activated within the exact founder-approved weekly no-capital mandate.",
+            reason="Activated within the exact founder-approved canonical no-capital mandate.",
         ),
     )
     cycle.discovery_portfolio_id = portfolio.id

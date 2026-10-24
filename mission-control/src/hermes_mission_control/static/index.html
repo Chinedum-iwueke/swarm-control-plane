@@ -417,6 +417,20 @@
         </section>
         <section class="operational-band">
           <div class="band-heading"><div><p class="section-kicker">Continuous alpha lab</p><h2>Discovery throughput and stalls</h2></div><span id="alpha-discovery-status" class="count" aria-live="polite">No active mandate</span></div>
+          <div id="alpha-mandate-workbench" class="mandate-workbench" aria-labelledby="alpha-mandate-workbench-title">
+            <div class="mandate-workbench-heading">
+              <div><p class="section-kicker">Research authority</p><h3 id="alpha-mandate-workbench-title">Weekly and monthly mandate control</h3><p id="alpha-mandate-workbench-copy" class="muted">Loading the current no-capital research authority.</p></div>
+              <span id="alpha-mandate-workbench-state" class="count" aria-live="polite">Checking</span>
+            </div>
+            <form id="alpha-mandate-form" class="mandate-form">
+              <label>Cadence<select name="cadence"><option value="weekly">Weekly · 7 days</option><option value="monthly">Monthly · 30 days</option></select></label>
+              <label>Canonical template<select name="source_mandate_id" aria-describedby="alpha-mandate-template-help"></select></label>
+              <label class="mandate-objective">Research objective<textarea name="objective" required minlength="20" maxlength="4000" placeholder="Define this mandate's research boundary."></textarea></label>
+              <div class="mandate-form-action"><button type="submit" class="secondary">Prepare</button></div>
+            </form>
+            <p id="alpha-mandate-template-help" class="muted">Preparation preserves reviewed scope; activation requires the exact digest.</p>
+            <div id="alpha-mandate-workbench-feedback" class="mandate-feedback" role="status" aria-live="polite"></div>
+          </div>
           <div id="alpha-discovery-throughput" class="status-strip" aria-label="Alpha discovery throughput"></div>
           <div id="alpha-discovery-mandates" class="entity-list"></div>
           <div class="subsection-heading"><h3>Founder hypothesis queue</h3></div>
@@ -675,8 +689,33 @@
       <div id="proposal-summary" class="decision-summary"></div>
       <input type="hidden" name="proposal_id">
       <input type="hidden" name="action">
+      <section id="proposal-mandate-panel" class="proposal-mandate-panel" aria-labelledby="proposal-mandate-title" hidden>
+        <div class="mandate-workbench-heading"><div><p class="section-kicker">Materialization authority</p><h3 id="proposal-mandate-title">Bind an active research mandate</h3></div><span id="proposal-mandate-state" class="count" aria-live="polite">Required</span></div>
+        <p class="muted">Choose an active mandate or prepare bounded authority here.</p>
+        <label>Active mandate<select name="mandate_id"></select></label>
+        <div id="proposal-mandate-create" class="proposal-mandate-create" hidden>
+          <label>Cadence<select name="mandate_cadence"><option value="weekly">Weekly · 7 days</option><option value="monthly">Monthly · 30 days</option></select></label>
+          <label>Canonical template<select name="mandate_source_id"></select></label>
+          <label>Research objective<textarea name="mandate_objective" minlength="20" maxlength="4000" placeholder="Define this mandate's research boundary."></textarea></label>
+          <button type="button" id="proposal-prepare-mandate" class="secondary">Prepare mandate</button>
+        </div>
+        <div id="proposal-mandate-feedback" class="mandate-feedback" role="status" aria-live="polite"></div>
+      </section>
       <label>Decision reason<textarea name="reason" required minlength="10" maxlength="1000" placeholder="Record why this proposal should or should not become a task."></textarea></label>
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command" id="proposal-submit">Create governed task</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="mandate-dialog" class="modal decision-modal">
+    <form id="mandate-approval-form" method="dialog">
+      <div class="dialog-heading"><div><p class="section-kicker">No-capital research authority</p><h2>Activate mandate</h2></div><button value="cancel" class="icon-button close" aria-label="Close" title="Close">×</button></div>
+      <div id="mandate-approval-summary" class="decision-summary"></div>
+      <input type="hidden" name="mandate_id">
+      <input type="hidden" name="mandate_digest">
+      <label>Activation rationale<textarea name="reason" required minlength="10" maxlength="2000" placeholder="Record why this research boundary is appropriate."></textarea></label>
+      <label class="decision-acknowledgement"><input type="checkbox" name="digest_acknowledged" value="yes" required> <span>I reviewed the exact digest, duration, scope, and no-capital boundary.</span></label>
+      <p id="mandate-approval-error" class="decision-error" role="alert" aria-live="assertive" hidden></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" class="command">Activate mandate</button></div>
     </form>
   </dialog>
 

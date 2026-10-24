@@ -239,9 +239,7 @@ class FakeControlPlane:
     async def research_evidence_lineage(self, object_id: str) -> dict:
         descendants = {
             "11111111-1111-4111-8111-111111111111": [
-                self._evidence_object(
-                    "22222222-2222-4222-8222-222222222222", "edition"
-                )
+                self._evidence_object("22222222-2222-4222-8222-222222222222", "edition")
             ],
             "22222222-2222-4222-8222-222222222222": [
                 self._evidence_object(
@@ -404,9 +402,7 @@ def test_investor_walkthrough_api_discloses_unavailable_canonical_steps(
 def test_investor_walkthrough_journal_binds_current_projection(
     settings: MissionControlSettings,
 ) -> None:
-    with TestClient(
-        create_app(settings, control_plane=FakeControlPlane())
-    ) as client:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
         projection = client.get("/api/investor-walkthrough").json()
         stale = client.post(
             "/api/investor-walkthrough/sessions",
@@ -575,7 +571,10 @@ def test_conversation_workbench_replays_durable_events_without_auto_scroll(
     assert "conversationEventIds.has(item.id)" in script
     assert 'window.localStorage.setItem("hermes.activeConversationId"' in script
     assert "if (revealLatest) progress.lastElementChild?.scrollIntoView" in script
-    assert "progress.lastElementChild?.scrollIntoView" not in script.split("if (revealLatest)", 1)[0]
+    assert (
+        "progress.lastElementChild?.scrollIntoView"
+        not in script.split("if (revealLatest)", 1)[0]
+    )
 
 
 def test_approval_center_exposes_recovery_state_views_and_safe_close(
@@ -589,8 +588,11 @@ def test_approval_center_exposes_recovery_state_views_and_safe_close(
         assert f'data-approval-view="{state_name}"' in page
     assert "classifyApproval" in script
     assert 'approval.status === "expired" ? "Reissue review"' in script
-    assert 'JSON.stringify(approval.scope || {})' in script
-    assert '<button type="button" class="secondary" data-close-dialog>Cancel</button>' in page
+    assert "JSON.stringify(approval.scope || {})" in script
+    assert (
+        '<button type="button" class="secondary" data-close-dialog>Cancel</button>'
+        in page
+    )
 
 
 def test_codex_auth_retry_requires_founder_intent_and_preserves_incident(
@@ -706,6 +708,8 @@ def test_application_routes_construct_for_supported_python(
     paths = {route.path for route in app.routes}
     assert "/api/intake" in paths
     assert "/api/proposals/{proposal_id}/{action}" in paths
+    assert "/api/research/alpha-discovery/mandates/renew" in paths
+    assert "/api/research/alpha-discovery/mandates/{mandate_id}/approve" in paths
     assert "/api/knowledge/search" in paths
     assert "/api/research/sources/upload" in paths
     assert "/api/research/memory-sync/proposals" in paths
@@ -850,9 +854,7 @@ def test_canonical_source_content_version_is_reflected_in_stable_citation(
     fake.evidence_version = "2"
     source_id = "11111111-1111-4111-8111-111111111111"
     with TestClient(create_app(settings, control_plane=fake)) as client:
-        response = client.get(
-            f"/api/knowledge/sources/canonical/{source_id}/content"
-        )
+        response = client.get(f"/api/knowledge/sources/canonical/{source_id}/content")
 
     assert response.status_code == 200
     assert response.json()["version"] == "2"
@@ -913,7 +915,9 @@ def test_private_graph_stays_local_and_supports_rooted_path_queries(
     fake = FakeControlPlane()
     app = create_app(settings, control_plane=fake)
     source = Path(settings.knowledge_roots) / "private-graph.md"
-    source.write_text("# Private graph\n\n[[Liquidity]] and [[Momentum]].", encoding="utf-8")
+    source.write_text(
+        "# Private graph\n\n[[Liquidity]] and [[Momentum]].", encoding="utf-8"
+    )
     app.state.knowledge.ingest(str(source))
 
     with TestClient(app) as client:

@@ -132,6 +132,98 @@ def test_founder_hypothesis_intake_is_bounded_before_execution() -> None:
         FounderProposalDocument.model_validate(payload)
 
 
+def test_founder_hypothesis_intake_can_defer_mandate_until_materialization() -> None:
+    payload = valid_document()
+    payload["proposed_task"].update(
+        {
+            "task_type": "founder_hypothesis_intake",
+            "title": "Challenge founder funding hypothesis",
+            "objective": "Compile the idea before binding execution authority.",
+            "input_contract": {
+                "repository": "swarm-control-plane",
+                "workflow": "founder-hypothesis-intake",
+                "base_ref": "main",
+                "research_idea": "Test whether elevated funding predicts subsequent perpetual returns.",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+                "universe_slices": ["all_eligible"],
+            },
+            "risk_level": 0,
+            "approval_policy": {"kind": "explicit", "risk": 0},
+            "required_capabilities": [
+                "research-intelligence",
+                "research-proposal",
+                "prior-art",
+            ],
+            "allowed_machines": ["vm1-developer"],
+        }
+    )
+
+    document = FounderProposalDocument.model_validate(payload)
+
+    assert document.proposed_task.input_contract.mandate_id is None
+    assert document.proposed_task.input_contract.mandate_digest is None
+
+    payload["proposed_task"]["input_contract"]["mandate_id"] = (
+        "11111111-1111-4111-8111-111111111111"
+    )
+    with pytest.raises(ValidationError, match="supplied together"):
+        FounderProposalDocument.model_validate(payload)
+
+
+def test_unbound_founder_hypothesis_is_gated_at_materialization(monkeypatch) -> None:
+    payload = valid_document()
+    payload["proposed_task"].update(
+        {
+            "task_type": "founder_hypothesis_intake",
+            "input_contract": {
+                "repository": "swarm-control-plane",
+                "workflow": "founder-hypothesis-intake",
+                "base_ref": "main",
+                "research_idea": "Test whether elevated funding predicts subsequent perpetual returns.",
+                "minimum_history_days": 365,
+                "maximum_variants": 8,
+                "universe_selection_policy": "preregistered_point_in_time",
+                "universe_slices": ["all_eligible"],
+            },
+            "risk_level": 0,
+            "approval_policy": {"kind": "explicit", "risk": 0},
+            "required_capabilities": [
+                "research-intelligence",
+                "research-proposal",
+                "prior-art",
+            ],
+            "allowed_machines": ["vm1-developer"],
+        }
+    )
+    source_id = UUID("11111111-1111-4111-8111-111111111111")
+    source = SimpleNamespace(
+        id=source_id, conversation_id=None, conversation_revision=None
+    )
+    proposal = SimpleNamespace(
+        status="proposed",
+        proposal=payload,
+        source_task_id=source_id,
+        conversation_id=None,
+        conversation_revision=None,
+    )
+    db = SimpleNamespace(get=lambda *_: source)
+    monkeypatch.setattr("app.services.proposals.persist_new_task", lambda *_: None)
+
+    with pytest.raises(Exception) as raised:
+        materialize_proposal(
+            db,
+            proposal,
+            actor="founder-mission-control",
+            reason="The idea is ready for governed research materialization.",
+            now=datetime.now(UTC),
+        )
+
+    assert getattr(raised.value, "status_code", None) == 409
+    assert "required at materialization" in str(raised.value.detail)
+
+
 def test_materialization_is_exactly_once() -> None:
     proposal = SimpleNamespace(
         status="materialized",

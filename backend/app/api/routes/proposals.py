@@ -106,7 +106,12 @@ def approve_and_materialize(
     proposal = _lock_proposal(db, proposal_id)
     try:
         task = materialize_proposal(
-            db, proposal, actor=payload.actor, reason=payload.reason
+            db,
+            proposal,
+            actor=payload.actor,
+            reason=payload.reason,
+            mandate_id=payload.mandate_id,
+            mandate_digest=payload.mandate_digest,
         )
         db.commit()
     except IntegrityError as exc:

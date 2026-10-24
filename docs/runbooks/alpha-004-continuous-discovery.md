@@ -14,7 +14,8 @@ before allocating DISC-009 attention and creating an ALPHA campaign.
 
 ## Authority
 
-A founder approves one digest-bound mandate for at most seven days. The mandate
+A founder approves one digest-bound weekly mandate for at most seven days or a
+monthly mandate for at most thirty-one days. The mandate
 may authorize only historical no-capital research against its exact dataset,
 window, instrument universe and trial budget. It replaces per-hypothesis card and
 execution approvals inside that envelope. It never authorizes strategy code
@@ -30,7 +31,8 @@ allowlist. Deterministic validation plus independent specification and
 causality/leakage reviews remain mandatory. Every other engineering mission remains
 approval-gated. A shadow candidate pauses the mandate for founder review.
 
-Only one active `canonical_weekly` mandate directs the general loop. An explicitly
+Only one active canonical mandate (`canonical_weekly` or `canonical_monthly`) directs
+the general loop. An explicitly
 scoped `thematic` mandate may coexist only when it names the canonical mandate digest
 as its parent. Canonicalization supersedes older general weekly mandates without
 deleting their evidence or disturbing thematic children.
@@ -85,10 +87,11 @@ invented, weaker or source-mismatched receipts are rejected from the campaign.
 3. Bootstrap the `intelligence`, `researcher` and `representation` profiles on VM1,
    then install their three systemd services. The representation identity must expose
    only `data-representation` and `market-data-read` capabilities.
-4. Run `worker/scripts/alpha004_mandate.py` on VM1. Inspect the exact dataset,
-   recent 365-day window, universe ceiling and budget in Mission Control, then approve
-   the mandate. Run `alpha004_canonicalize.py` against the selected active digest to
-   supersede overlapping legacy weekly mandates.
+4. Register the first reviewed template with `worker/scripts/alpha004_mandate.py` on
+   VM1. Thereafter use Research > Continuous alpha lab in Mission Control to prepare a
+   weekly or monthly renewal from a canonical template. Inspect its exact dataset,
+   recent 365-day window, universe ceiling, budget and digest, then activate it.
+   Activation atomically supersedes older canonical mandates while retaining evidence.
 5. Confirm the VM2 director and all three VM1 ALPHA-004 agents are active. Mission
    Control must report fresh heartbeats, `representation_selection` as a visible phase,
    the representation task ID/count, a running cycle and no unexplained stall.

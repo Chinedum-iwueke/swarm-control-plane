@@ -461,6 +461,38 @@ button.entity-row:hover { background: #fafbfa; }
 .entity-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; color: var(--muted); font-size: 10px; }
 .entity-meta .mono { overflow: hidden; text-overflow: ellipsis; }
 .entity-side { display: flex; align-items: center; gap: 10px; }
+.mandate-workbench {
+  margin: 2px -16px 12px;
+  padding: 14px 16px 15px;
+  background: var(--canvas);
+  border-block: 1px solid var(--line-soft);
+}
+.mandate-workbench-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.mandate-workbench-heading h3 { margin: 1px 0 3px; font-size: 14px; }
+.mandate-form {
+  display: grid;
+  grid-template-columns: minmax(130px, .7fr) minmax(220px, 1.3fr) minmax(280px, 2fr) auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.mandate-form label,
+.proposal-mandate-panel label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 650; }
+.mandate-form select,
+.mandate-form textarea,
+.proposal-mandate-panel select,
+.proposal-mandate-panel textarea { width: 100%; min-height: 42px; }
+.mandate-form textarea { height: 42px; min-height: 42px; resize: vertical; }
+.mandate-form-action { display: flex; align-items: flex-end; }
+.mandate-form-action button { min-height: 42px; white-space: nowrap; }
+.mandate-feedback { min-height: 17px; margin-top: 7px; color: var(--muted); font-size: 10px; }
+.mandate-feedback.is-error { color: var(--red); }
+.mandate-feedback.is-success { color: var(--green); }
+.proposal-mandate-panel { margin: 12px 0; padding: 13px 0; border-block: 1px solid var(--line-soft); }
+.proposal-mandate-panel > label { margin-top: 10px; }
+.proposal-mandate-create { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(180px, 1fr); gap: 10px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
+.proposal-mandate-create label:nth-of-type(3) { grid-column: 1 / -1; }
+.proposal-mandate-create button { justify-self: start; min-height: 42px; }
 .risk {
   width: 22px;
   height: 22px;
@@ -1405,6 +1437,10 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
   .research-mode-tabs button { padding-inline: 8px; }
   .research-mode-tabs small { font-size: 8px; }
   .operational-band { padding: 12px; }
+  .mandate-workbench { margin-inline: -12px; padding-inline: 12px; }
+  .mandate-form, .proposal-mandate-create { grid-template-columns: 1fr; }
+  .proposal-mandate-create label:nth-of-type(3) { grid-column: auto; }
+  .mandate-form-action button, .proposal-mandate-create button { width: 100%; }
   .workflow-list { grid-template-columns: 1fr; }
   .workflow-detail-panel, .workflow-list-panel { padding: 12px; }
   .workflow-facts { grid-template-columns: 1fr; gap: 2px; }

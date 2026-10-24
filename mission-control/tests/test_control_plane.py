@@ -14,6 +14,7 @@ from hermes_mission_control.control_plane import (
 from hermes_mission_control.models import (
     ApprovalDecision,
     IntakeRequest,
+    MandateRenewalRequest,
     ProposalDecision,
 )
 
@@ -781,6 +782,62 @@ async def test_proposal_materialization_is_an_explicit_founder_action(
             "reason": "Founder reviewed the complete bounded proposal.",
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_proposal_materialization_can_bind_exact_active_mandate(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(path=request.url.path, body=json.loads(request.content))
+        return httpx.Response(201, json={"id": "task-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.decide_proposal(
+            "proposal-id",
+            "materialize",
+            ProposalDecision(
+                reason="Founder reviewed the proposal and active authority.",
+                mandate_id="11111111-1111-4111-8111-111111111111",
+                mandate_digest="a" * 64,
+            ),
+        )
+    finally:
+        await client.close()
+
+    assert captured["body"]["mandate_id"] == "11111111-1111-4111-8111-111111111111"
+    assert captured["body"]["mandate_digest"] == "a" * 64
+
+
+@pytest.mark.asyncio
+async def test_monthly_mandate_renewal_preserves_exact_template_binding(
+    settings: MissionControlSettings,
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(path=request.url.path, body=json.loads(request.content))
+        return httpx.Response(201, json={"id": "mandate-id"})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.renew_alpha_mandate(
+            MandateRenewalRequest(
+                source_mandate_id="11111111-1111-4111-8111-111111111111",
+                expected_source_mandate_digest="b" * 64,
+                cadence="monthly",
+                objective="Test predictive hypotheses within the reviewed research boundary.",
+            ).model_dump(mode="json")
+        )
+    finally:
+        await client.close()
+
+    assert captured["path"] == "/v1/research/alpha-discovery/mandates/renew"
+    assert captured["body"]["cadence"] == "monthly"
+    assert captured["body"]["created_by"] == "founder-mission-control"
 
 
 @pytest.mark.asyncio

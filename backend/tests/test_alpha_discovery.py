@@ -15,6 +15,7 @@ from app.schemas.alpha_discovery import (
     AlphaRepresentationTransformation,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
+    AlphaResearchMandateRenewal,
     AlphaStrategyCapabilityCatalog,
 )
 from app.services.alpha_discovery import (
@@ -48,6 +49,7 @@ from app.services.alpha_discovery import (
     reconcile_mandate,
     recover_data_admission,
     recover_discovery_grounding,
+    renew_mandate,
     retry_invalid_discovery_stage,
 )
 from fastapi import HTTPException
@@ -2180,6 +2182,89 @@ def test_weekly_mandate_cannot_exceed_seven_days():
                 "created_by": "founder-operator",
             }
         )
+
+
+def test_monthly_mandate_accepts_thirty_days_but_rejects_thirty_two():
+    moment = datetime.now(UTC)
+    payload = {
+        "mandate_key": "month-1",
+        "version": "1.0.0",
+        "objective": "Run bounded monthly no-capital research on admitted exchange data.",
+        "valid_from": moment,
+        "valid_until": moment + timedelta(days=30),
+        "bulletproof_source_commit": COMMIT,
+        "execution_window_start": moment - timedelta(days=30),
+        "execution_window_end": moment - timedelta(days=1),
+        "dataset_bindings": [binding()],
+        "strategy_catalog": strategy_catalog(),
+        "allowed_venues": ["bybit"],
+        "allowed_instruments": ["BTCUSDT"],
+        "minimum_liquidity_usd": 0,
+        "mandate_kind": "canonical_monthly",
+        "budget": {
+            "maximum_cycles": 2,
+            "maximum_hypotheses": 4,
+            "maximum_total_trials": 8,
+            "maximum_variants_per_hypothesis": 2,
+            "maximum_candidates_per_cycle": 2,
+            "cadence_seconds": 60,
+            "maximum_consecutive_failures": 2,
+        },
+        "created_by": "founder-operator",
+    }
+    assert (
+        AlphaResearchMandateCreate.model_validate(payload).mandate_kind
+        == "canonical_monthly"
+    )
+
+    payload["valid_until"] = moment + timedelta(days=32)
+    with pytest.raises(ValidationError, match="no longer than 31 days"):
+        AlphaResearchMandateCreate.model_validate(payload)
+
+
+def test_monthly_renewal_clones_reviewed_no_capital_template(monkeypatch):
+    moment = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
+    source = SimpleNamespace(
+        id=uuid4(),
+        mandate_digest=DIGEST,
+        specification={
+            "mandate_kind": "canonical_weekly",
+            "authority": "no_capital_research",
+            "authority_boundary": {
+                "capital": False,
+                "orders": False,
+                "shadow": False,
+                "code_changes": False,
+                "self_evaluation": False,
+            },
+            "dataset_bindings": [{"dataset_digest": DIGEST}],
+        },
+        budget={"maximum_cycles": 24},
+    )
+    db = MagicMock()
+    db.scalar.return_value = source
+    monkeypatch.setattr("app.services.alpha_discovery.now", lambda: moment)
+    monkeypatch.setattr("app.services.alpha_discovery._event", MagicMock())
+
+    renewed = renew_mandate(
+        db,
+        AlphaResearchMandateRenewal(
+            source_mandate_id=source.id,
+            expected_source_mandate_digest=DIGEST,
+            cadence="monthly",
+            objective="Search admitted perpetual data for bounded predictive hypotheses.",
+            created_by="founder-mission-control",
+        ),
+    )
+
+    assert renewed.status == "awaiting_approval"
+    assert renewed.valid_until - renewed.valid_from == timedelta(days=30)
+    assert renewed.specification["mandate_kind"] == "canonical_monthly"
+    assert renewed.specification["authority_boundary"]["capital"] is False
+    assert (
+        renewed.specification["dataset_bindings"]
+        == source.specification["dataset_bindings"]
+    )
 
 
 def test_delegated_campaign_requires_mandate_digest():

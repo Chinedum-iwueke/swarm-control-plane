@@ -2,9 +2,10 @@
 
 ## Purpose
 
-ALPHA-005 lets the founder submit a research idea conversationally without treating
-the idea as a valid hypothesis or executable strategy. Approval records an immutable,
-digest-bound queue item under an active ALPHA-004 weekly no-capital mandate.
+ALPHA-005 lets the founder submit and compile a research idea conversationally without
+treating the idea as a valid hypothesis or executable strategy. Conversational intake
+does not require an active mandate. Materialization into the autonomous queue does:
+the founder binds the proposal to an exact active weekly or monthly no-capital mandate.
 
 The Research Intelligence director first retrieves relevant evidence and prior
 failures. A separately chartered senior researcher then challenges predictive meaning,
@@ -25,11 +26,16 @@ that passes deterministic gates may enter DISC-009 and the existing ALPHA/BT-009
 
 1. Submit the idea in a Telegram or Mission Control thread and ask Hermes to test or
    queue it.
-2. Review the generated `founder_hypothesis_intake` proposal and exact mandate digest.
-3. Approval writes the queue item and a completed intake receipt task.
+2. Review the generated `founder_hypothesis_intake` proposal. If no mandate is active,
+   use the inline Mission Control authority bar to prepare a seven-day weekly or
+   thirty-day monthly mandate from a reviewed canonical template.
+3. Review and activate the prepared mandate's exact digest, then bind it while
+   materializing the proposal. This writes the queue item and completed intake receipt.
 4. The ALPHA-004 director prioritizes the oldest queued founder idea after the current
    cycle reaches a terminal state.
 5. Follow queue, cycle, rejection and campaign state in Research > Continuous alpha lab.
 
-Rollback disables new intake at the proposal layer. Existing ideas, cycles, events and
+The materialization transaction fails closed if the mandate is absent, inactive,
+expired, or digest-mismatched. Ordinary conversation and proposal drafting remain
+available. Rollback disables new materialization; existing ideas, cycles, events and
 digests remain immutable evidence.

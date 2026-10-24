@@ -158,9 +158,7 @@ class CodexProposalPlanner:
             schema_path = root / "proposal.schema.json"
             output_path = root / "proposal.json"
             schema_path.write_text(
-                json.dumps(
-                    schema
-                ),
+                json.dumps(schema),
                 encoding="utf-8",
             )
             command = [
@@ -237,9 +235,7 @@ class CodexProposalPlanner:
 
     @classmethod
     def _codex_output_schema(cls) -> dict:
-        schema = cls._strict_output_schema(
-            FounderProposalDocument.model_json_schema()
-        )
+        schema = cls._strict_output_schema(FounderProposalDocument.model_json_schema())
         if not isinstance(schema, dict):
             raise PlannerError("Planner output schema is invalid.")
         properties = schema.get("properties")
@@ -370,13 +366,15 @@ class CodexProposalPlanner:
             '- founder_hypothesis_intake: allowed_machines ["vm1-developer"], '
             'required_capabilities ["research-intelligence", "research-proposal", "prior-art"]. '
             "Use this route when the founder asks to queue, challenge, formulate, or test their own "
-            "research idea and an active research mandate is supplied. It queues the idea; it does "
-            "not execute a backtest directly. Bind the exact mandate ID/digest, preserve the founder's "
+            "research idea. It records a reviewable proposal; it does not execute a backtest directly. "
+            "If an active mandate is supplied, bind its exact ID/digest. Otherwise omit both mandate "
+            "fields and still compile the proposal so the idea and feasibility contract are retained; "
+            "an active mandate must be selected later when the founder materializes execution. Preserve the founder's "
             "idea, require at least 365 history days, at most 8 variants, and use "
             "preregistered_point_in_time universe selection with all_eligible hints by default. "
             "Treat stable/volatile labels as optional founder-selected hints, not fixed basket boundaries. "
             "Preregister hypothesis-specific mixed baskets within admitted mandate scope before outcomes. "
-            "If no active mandate is supplied, explain that a mandate must be approved; do not invent one.\n"
+            "Never invent a mandate or imply that an unbound proposal has execution authority.\n"
             "- vm2-infrastructure runbook tasks: allowed_machines "
             '["vm2-deployment"], required_capabilities '
             '["infrastructure-observation", "service-health", '
@@ -412,8 +410,10 @@ class CodexProposalPlanner:
             "grounding_citations and never invent availability or consultation. This "
             "stage cannot create a task or approval. For clarification, provide exact "
             "accepted formats. A founder-supplied market hypothesis is executable work only at the "
-            "intake boundary: when an active mandate is supplied, choose compile_proposal so the "
-            "independent RI director and senior researcher can challenge it. Do not answer as though "
+            "intake boundary: choose compile_proposal even when no mandate is active so the idea, "
+            "feasibility checks and proposed scientific contract are retained. Mandate binding is a "
+            "materialization-time execution gate. The independent RI director and senior researcher "
+            "challenge work may start only after that binding. Do not answer as though "
             "the idea were already valid, and do not compile it directly as a legacy research_experiment. "
             "For respond and compile_proposal, return empty clarification_questions and "
             "unresolved_fields. Describe downstream data, scientific or approval blockers in "

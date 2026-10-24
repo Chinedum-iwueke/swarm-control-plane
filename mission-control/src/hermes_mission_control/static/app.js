@@ -313,13 +313,102 @@ document.getElementById("proposal-form").addEventListener("submit", async (event
   if (state.demo) return toast("Decisions are disabled in demonstration mode.");
   const form = new FormData(event.target);
   const action = form.get("action");
-  await mutate(
-    `/api/proposals/${form.get("proposal_id")}/${action}`,
-    { reason: form.get("reason") },
-    action === "materialize" ? "Governed task created." : "Proposal rejected.",
-  );
-  document.getElementById("proposal-dialog").close();
-  await loadDashboard();
+  const payload = { reason: form.get("reason") };
+  const mandatePanel = document.getElementById("proposal-mandate-panel");
+  if (action === "materialize" && !mandatePanel.hidden) {
+    const mandate = alphaMandates().find((item) => item.id === form.get("mandate_id") && item.status === "active");
+    if (!mandate) {
+      setMandateFeedback("proposal-mandate-feedback", "Select or activate a bounded research mandate before materialization.", "error");
+      return;
+    }
+    payload.mandate_id = mandate.id;
+    payload.mandate_digest = mandate.mandate_digest;
+  }
+  const button = document.getElementById("proposal-submit");
+  const idleLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = action === "materialize" ? "Materializing…" : "Rejecting…";
+  try {
+    await mutate(
+      `/api/proposals/${form.get("proposal_id")}/${action}`,
+      payload,
+      action === "materialize" ? "Governed task created." : "Proposal rejected.",
+    );
+    document.getElementById("proposal-dialog").close();
+    await loadDashboard();
+  } catch (error) {
+    if (!mandatePanel.hidden) {
+      setMandateFeedback("proposal-mandate-feedback", error.message || "Materialization could not be completed.", "error");
+    } else {
+      toast(error.message || "The proposal decision could not be recorded.");
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = idleLabel;
+  }
+});
+
+document.getElementById("alpha-mandate-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (state.demo) return toast("Mandate preparation is disabled in demonstration mode.");
+  const form = new FormData(event.target);
+  await prepareAlphaMandate({
+    sourceId: form.get("source_mandate_id"),
+    cadence: form.get("cadence"),
+    objective: form.get("objective"),
+    feedbackId: "alpha-mandate-workbench-feedback",
+  });
+});
+
+document.getElementById("proposal-prepare-mandate").addEventListener("click", async () => {
+  if (state.demo) return toast("Mandate preparation is disabled in demonstration mode.");
+  const form = document.getElementById("proposal-form");
+  const prepared = await prepareAlphaMandate({
+    sourceId: form.elements.mandate_source_id.value,
+    cadence: form.elements.mandate_cadence.value,
+    objective: form.elements.mandate_objective.value,
+    feedbackId: "proposal-mandate-feedback",
+  });
+  if (prepared) renderProposalMandatePanel(prepared.id);
+});
+
+document.getElementById("mandate-approval-form").addEventListener("submit", async (event) => {
+  if (event.submitter?.value === "cancel") return;
+  event.preventDefault();
+  if (state.demo) return toast("Mandate activation is disabled in demonstration mode.");
+  const form = new FormData(event.target);
+  const error = document.getElementById("mandate-approval-error");
+  if (form.get("digest_acknowledged") !== "yes") {
+    error.textContent = "Review and acknowledge the exact mandate boundary before activation.";
+    error.hidden = false;
+    return;
+  }
+  const reason = String(form.get("reason") || "").trim();
+  if (reason.length < 10) {
+    error.textContent = "A substantive activation rationale is required.";
+    error.hidden = false;
+    return;
+  }
+  const button = event.submitter;
+  button.disabled = true;
+  button.textContent = "Activating…";
+  try {
+    await mutate(`/api/research/alpha-discovery/mandates/${form.get("mandate_id")}/approve`, {
+      expected_mandate_digest: form.get("mandate_digest"),
+      reason,
+    }, "No-capital research mandate activated.");
+    document.getElementById("mandate-dialog").close();
+    await loadDashboard();
+    if (document.getElementById("proposal-dialog").open && !document.getElementById("proposal-mandate-panel").hidden) {
+      renderProposalMandatePanel(form.get("mandate_id"));
+    }
+  } catch (requestError) {
+    error.textContent = requestError.message || "The mandate could not be activated.";
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Activate mandate";
+  }
 });
 
 document.getElementById("ingest-form").addEventListener("submit", async (event) => {
@@ -2477,6 +2566,115 @@ for (const id of ["backtest-view", "backtest-tier"]) {
 document.getElementById("backtest-previous").addEventListener("click", () => { state.backtestOffset = Math.max(0, state.backtestOffset - 50); loadBacktests(); });
 document.getElementById("backtest-next").addEventListener("click", () => { state.backtestOffset += 50; loadBacktests(); });
 
+function alphaMandates() {
+  return state.dashboard?.alpha_discovery?.mandates || [];
+}
+
+function alphaMandateKind(mandate) {
+  return mandate?.specification?.mandate_kind || "canonical_weekly";
+}
+
+function canonicalMandateTemplates() {
+  const rank = { active: 0, awaiting_approval: 1, superseded: 2, expired: 3 };
+  return alphaMandates()
+    .filter((item) => ["canonical_weekly", "canonical_monthly"].includes(alphaMandateKind(item)))
+    .sort((left, right) => (rank[left.status] ?? 9) - (rank[right.status] ?? 9) || new Date(right.created_at) - new Date(left.created_at));
+}
+
+function mandateOption(mandate) {
+  const cadence = alphaMandateKind(mandate) === "canonical_monthly" ? "Monthly" : "Weekly";
+  return `<option value="${escapeHtml(mandate.id)}">${escapeHtml(cadence)} · ${escapeHtml(mandate.mandate_key)} · ${shortHash(mandate.mandate_digest)}</option>`;
+}
+
+function setMandateFeedback(id, message, tone = "") {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.textContent = message || "";
+  element.className = `mandate-feedback${tone ? ` is-${tone}` : ""}`;
+}
+
+function renderMandateWorkbench() {
+  const mandates = alphaMandates();
+  const active = mandates.filter((item) => item.status === "active" && ["canonical_weekly", "canonical_monthly"].includes(alphaMandateKind(item)));
+  const templates = canonicalMandateTemplates();
+  const select = document.querySelector("#alpha-mandate-form [name='source_mandate_id']");
+  const objective = document.querySelector("#alpha-mandate-form [name='objective']");
+  const submit = document.querySelector("#alpha-mandate-form button[type='submit']");
+  select.innerHTML = templates.length ? templates.map(mandateOption).join("") : '<option value="">No canonical template available</option>';
+  select.disabled = !templates.length;
+  submit.disabled = !templates.length;
+  if (!objective.value && templates[0]?.objective) objective.value = templates[0].objective;
+  document.getElementById("alpha-mandate-workbench-state").textContent = active.length ? `${active.length} active` : "Authority required";
+  document.getElementById("alpha-mandate-workbench-copy").textContent = active.length
+    ? `${active.map((item) => `${alphaMandateKind(item) === "canonical_monthly" ? "Monthly" : "Weekly"} authority ${shortHash(item.mandate_digest)}`).join(" · ")} is available for materialization and execution.`
+    : "Discovery can retain ideas, but materialization and execution pause until an exact bounded mandate is activated.";
+}
+
+async function prepareAlphaMandate({ sourceId, cadence, objective, feedbackId }) {
+  const source = alphaMandates().find((item) => item.id === sourceId);
+  const normalizedObjective = String(objective || "").trim();
+  if (!source) {
+    setMandateFeedback(feedbackId, "Choose a canonical mandate template first.", "error");
+    return null;
+  }
+  if (normalizedObjective.length < 20) {
+    setMandateFeedback(feedbackId, "The research objective must contain at least 20 characters.", "error");
+    return null;
+  }
+  setMandateFeedback(feedbackId, `Preparing a bounded ${cadence} mandate from ${shortHash(source.mandate_digest)}…`);
+  try {
+    const prepared = await mutate("/api/research/alpha-discovery/mandates/renew", {
+      source_mandate_id: source.id,
+      expected_source_mandate_digest: source.mandate_digest,
+      cadence,
+      objective: normalizedObjective,
+    }, `${humanize(cadence)} mandate prepared for exact-digest review.`);
+    await loadDashboard();
+    setMandateFeedback(feedbackId, `${prepared.mandate_key} is prepared. Review and activate its exact digest before use.`, "success");
+    openMandateApproval(prepared);
+    return prepared;
+  } catch (error) {
+    setMandateFeedback(feedbackId, error.message || "The mandate could not be prepared.", "error");
+    return null;
+  }
+}
+
+function openMandateApproval(mandate) {
+  if (!mandate || mandate.status !== "awaiting_approval") return;
+  const form = document.getElementById("mandate-approval-form");
+  form.reset();
+  form.elements.mandate_id.value = mandate.id;
+  form.elements.mandate_digest.value = mandate.mandate_digest;
+  document.getElementById("mandate-approval-error").hidden = true;
+  const cadence = alphaMandateKind(mandate) === "canonical_monthly" ? "Monthly · 30 days" : "Weekly · 7 days";
+  document.getElementById("mandate-approval-summary").innerHTML = `<p><strong>${escapeHtml(mandate.objective)}</strong></p><dl><dt>Cadence</dt><dd>${cadence}</dd><dt>Valid until</dt><dd>${formatDate(mandate.valid_until)}</dd><dt>Authority</dt><dd>No capital, orders, shadow admission, code changes, or self-evaluation</dd><dt>Exact digest</dt><dd class="mono">${escapeHtml(mandate.mandate_digest)}</dd></dl>`;
+  document.getElementById("mandate-dialog").showModal();
+}
+
+function renderProposalMandatePanel(preferredMandateId = null) {
+  const form = document.getElementById("proposal-form");
+  const active = alphaMandates().filter((item) => item.status === "active" && ["canonical_weekly", "canonical_monthly"].includes(alphaMandateKind(item)));
+  const awaiting = alphaMandates().filter((item) => item.status === "awaiting_approval" && ["canonical_weekly", "canonical_monthly"].includes(alphaMandateKind(item)));
+  const templates = canonicalMandateTemplates();
+  const activeSelect = form.elements.mandate_id;
+  activeSelect.innerHTML = active.length ? active.map(mandateOption).join("") : '<option value="">No active mandate</option>';
+  activeSelect.disabled = !active.length;
+  const preferred = active.find((item) => item.id === preferredMandateId);
+  if (preferred) activeSelect.value = preferred.id;
+  form.elements.mandate_source_id.innerHTML = templates.length ? templates.map(mandateOption).join("") : '<option value="">No canonical template available</option>';
+  form.elements.mandate_source_id.disabled = !templates.length;
+  document.getElementById("proposal-mandate-create").hidden = active.length > 0;
+  document.getElementById("proposal-mandate-state").textContent = active.length ? "Ready to bind" : awaiting.length ? "Activation pending" : "Authority required";
+  if (active.length) {
+    setMandateFeedback("proposal-mandate-feedback", "The selected active digest will be bound only when this proposal is materialized.", "success");
+  } else if (awaiting.length) {
+    document.getElementById("proposal-mandate-create").hidden = false;
+    setMandateFeedback("proposal-mandate-feedback", `${awaiting.length} prepared mandate${awaiting.length === 1 ? " is" : "s are"} awaiting activation.`);
+  } else {
+    setMandateFeedback("proposal-mandate-feedback", templates.length ? "Prepare a weekly or monthly mandate, then activate its exact digest." : "No canonical template is available. Register a reviewed no-capital template before continuing.", templates.length ? "" : "error");
+  }
+}
+
 function renderResearch() {
   renderBacktests();
   if (!state.demo) loadBacktests();
@@ -2603,10 +2801,11 @@ function renderResearch() {
   });
   const activeMandates = (alphaDiscovery.mandates || []).filter((item) => item.status === "active");
   document.getElementById("alpha-discovery-status").textContent = `${activeMandates.length} active mandate${activeMandates.length === 1 ? "" : "s"} · ${(alphaDiscovery.stalls || []).length} stalls`;
+  renderMandateWorkbench();
   const throughput = alphaDiscovery.throughput || {};
   const throughputKeys = ["generated", "rejected", "duplicated", "accepted", "compiled", "tested", "falsified", "invalid", "failed", "awaiting_engineering", "shadow_candidates"];
   document.getElementById("alpha-discovery-throughput").innerHTML = throughputKeys.map((key) => `<div class="machine-cell"><div><strong>${throughput[key] || 0}</strong><small>${escapeHtml(humanize(key))}</small></div></div>`).join("");
-  document.getElementById("alpha-discovery-mandates").innerHTML = (alphaDiscovery.mandates || []).length ? alphaDiscovery.mandates.map((mandate) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(mandate.mandate_key)} · v${escapeHtml(mandate.version)}</strong><div class="entity-meta"><span>${mandate.cycle_count} cycles</span><span>${mandate.hypothesis_count} hypotheses</span><span>${mandate.trial_count} trials</span><span>Expires ${formatDate(mandate.valid_until)}</span><span class="mono">${shortHash(mandate.mandate_digest)}</span></div><p>${escapeHtml(mandate.objective)}</p></div><div class="entity-side">${mandate.status === "awaiting_approval" ? `<button class="primary compact" data-alpha-mandate-approve="${mandate.id}">Approve week</button>` : ""}${statusBadge(mandate.status)}</div></article>`).join("") : empty("No bounded weekly research mandate has been registered.");
+  document.getElementById("alpha-discovery-mandates").innerHTML = (alphaDiscovery.mandates || []).length ? alphaDiscovery.mandates.map((mandate) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(mandate.mandate_key)} · v${escapeHtml(mandate.version)}</strong><div class="entity-meta"><span>${escapeHtml(humanize(alphaMandateKind(mandate)))}</span><span>${mandate.cycle_count} cycles</span><span>${mandate.hypothesis_count} hypotheses</span><span>${mandate.trial_count} trials</span><span>Expires ${formatDate(mandate.valid_until)}</span><span class="mono">${shortHash(mandate.mandate_digest)}</span></div><p>${escapeHtml(mandate.objective)}</p></div><div class="entity-side">${mandate.status === "awaiting_approval" ? `<button class="primary compact" data-alpha-mandate-approve="${mandate.id}">Review and activate</button>` : ""}${statusBadge(mandate.status)}</div></article>`).join("") : empty("No bounded weekly or monthly research mandate has been registered.");
   document.getElementById("alpha-founder-ideas").innerHTML = (alphaDiscovery.founder_ideas || []).length ? alphaDiscovery.founder_ideas.map((idea) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(idea.idea)}</strong><div class="entity-meta"><span>${idea.constraints?.minimum_history_days || 365} day minimum</span><span>${idea.constraints?.maximum_variants || 8} variants maximum</span><span>${escapeHtml((idea.constraints?.universe_slices || []).join(" / "))}</span><span class="mono">${shortHash(idea.idea_digest)}</span></div></div>${statusBadge(idea.status)}</article>`).join("") : empty("No founder hypothesis is queued. Ask Hermes in chat to challenge and test an idea.");
   document.getElementById("alpha-discovery-agents").innerHTML = (alphaDiscovery.agents || []).length ? alphaDiscovery.agents.map((agent) => `<article class="entity-row"><div class="entity-primary"><strong>${escapeHtml(humanize(agent.slug))}</strong><div class="entity-meta"><span>${escapeHtml(humanize(agent.status))}</span><span>Heartbeat ${relativeTime(agent.last_heartbeat_at)}</span></div></div>${statusBadge(agent.presence)}</article>`).join("") : empty("The supervised RI director and senior researcher have not been deployed.");
   const activeDiscoveryCycles = (alphaDiscovery.cycles || []).filter((cycle) => cycle.mandate_status === "active");
@@ -2621,13 +2820,10 @@ function renderResearch() {
   }).join("") : empty("No canonical native signal-screen receipt has been published yet.");
   document.getElementById("signal-surveillance-boundary").textContent = signalSurveillance.claim_boundary || "";
   document.querySelectorAll("[data-alpha-mandate-approve]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const mandate = (alphaDiscovery.mandates || []).find((item) => item.id === button.dataset.alphaMandateApprove);
       if (!mandate) return;
-      const reason = window.prompt("Approval rationale for this exact seven-day no-capital mandate:");
-      if (!reason || reason.trim().length < 10) return toast("A substantive approval rationale is required.");
-      await mutate(`/api/research/alpha-discovery/mandates/${mandate.id}/approve`, { expected_mandate_digest: mandate.mandate_digest, reason: reason.trim() }, "Weekly no-capital research mandate approved.");
-      await loadDashboard();
+      openMandateApproval(mandate);
     });
   });
   const activeCampaigns = alphaCampaigns.filter((item) => item.status === "running");
@@ -3062,6 +3258,14 @@ function openProposalDecision(proposal, action) {
   document.getElementById("proposal-submit").textContent = create ? "Create governed task" : "Reject proposal";
   document.getElementById("proposal-submit").className = create ? "command" : "secondary danger";
   document.getElementById("proposal-summary").innerHTML = `<p>${escapeHtml(proposal.proposal.summary)}</p><dl><dt>Target role</dt><dd>${escapeHtml(proposal.proposal.target_role || "Unassigned")}</dd><dt>Risk</dt><dd>${proposal.proposal.proposed_task?.risk_level ?? "–"}</dd></dl>`;
+  const mandatePanel = document.getElementById("proposal-mandate-panel");
+  const contract = proposal.proposal.proposed_task?.input_contract || {};
+  const needsMandate = create && proposal.proposal.proposed_task?.task_type === "founder_hypothesis_intake";
+  mandatePanel.hidden = !needsMandate;
+  if (needsMandate) {
+    form.elements.mandate_objective.value = proposal.proposal.summary || proposal.interpretation || "";
+    renderProposalMandatePanel(contract.mandate_id || null);
+  }
   document.getElementById("proposal-dialog").showModal();
 }
 

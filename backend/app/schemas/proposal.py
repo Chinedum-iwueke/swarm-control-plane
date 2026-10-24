@@ -78,7 +78,9 @@ class ProposalEngineeringMissionContract(StrictModel):
         try:
             parsed = json.loads(value)
         except RecursionError as error:
-            raise ValueError("engineering evidence nesting exceeds safe limits") from error
+            raise ValueError(
+                "engineering evidence nesting exceeds safe limits"
+            ) from error
         if not isinstance(parsed, dict) or len(parsed) > 20:
             raise ValueError("engineering evidence must be a bounded JSON object")
         pending = [(parsed, 0)]
@@ -86,7 +88,13 @@ class ProposalEngineeringMissionContract(StrictModel):
             node, depth = pending.pop()
             if depth > 32:
                 raise ValueError("engineering evidence nesting exceeds safe limits")
-            children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+            children = (
+                node.values()
+                if isinstance(node, dict)
+                else node
+                if isinstance(node, list)
+                else ()
+            )
             pending.extend((child, depth + 1) for child in children)
         json.dumps(parsed, allow_nan=False)
         return value
@@ -172,8 +180,8 @@ class ProposalFounderHypothesisIntakeContract(StrictModel):
     repository: Literal["swarm-control-plane"]
     workflow: Literal["founder-hypothesis-intake"]
     base_ref: Literal["main"]
-    mandate_id: uuid.UUID
-    mandate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mandate_id: uuid.UUID | None = None
+    mandate_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     research_idea: str = Field(min_length=20, max_length=12000)
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
@@ -188,6 +196,8 @@ class ProposalFounderHypothesisIntakeContract(StrictModel):
     def ordered_instrument_bounds(self):
         if self.minimum_instruments > self.maximum_instruments:
             raise ValueError("minimum instruments cannot exceed maximum instruments")
+        if (self.mandate_id is None) != (self.mandate_digest is None):
+            raise ValueError("mandate ID and digest must be supplied together")
         return self
 
 
@@ -343,6 +353,14 @@ class FounderProposalDecision(StrictModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
     )
     reason: str = Field(min_length=10, max_length=1000)
+    mandate_id: uuid.UUID | None = None
+    mandate_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def complete_mandate_binding(self):
+        if (self.mandate_id is None) != (self.mandate_digest is None):
+            raise ValueError("mandate ID and digest must be supplied together")
+        return self
 
 
 class FounderProposalResponse(StrictModel):

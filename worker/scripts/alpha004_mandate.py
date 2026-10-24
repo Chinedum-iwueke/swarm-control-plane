@@ -153,7 +153,7 @@ def main() -> int:
     parser.add_argument("--maximum-parallel-campaigns", type=int, default=3)
     parser.add_argument(
         "--mandate-kind",
-        choices=("canonical_weekly", "thematic"),
+        choices=("canonical_weekly", "canonical_monthly", "thematic"),
         default="canonical_weekly",
     )
     parser.add_argument("--parent-mandate-digest")
@@ -204,7 +204,10 @@ def main() -> int:
         parser.error("--maximum-parallel-campaigns must be between 1 and 8.")
     if args.mandate_kind == "thematic" and not args.parent_mandate_digest:
         parser.error("Thematic mandates require --parent-mandate-digest.")
-    if args.mandate_kind == "canonical_weekly" and args.parent_mandate_digest:
+    if (
+        args.mandate_kind in {"canonical_weekly", "canonical_monthly"}
+        and args.parent_mandate_digest
+    ):
         parser.error("Canonical mandates cannot declare --parent-mandate-digest.")
     if args.bulletproof_source_commit and not re.fullmatch(
         r"[0-9a-f]{40}", args.bulletproof_source_commit
@@ -332,7 +335,10 @@ def main() -> int:
             "version": args.version,
             "objective": args.objective,
             "valid_from": moment.isoformat(),
-            "valid_until": (moment + timedelta(days=7)).isoformat(),
+            "valid_until": (
+                moment
+                + timedelta(days=30 if args.mandate_kind == "canonical_monthly" else 7)
+            ).isoformat(),
             "bulletproof_source_commit": source_commit,
             "execution_window_start": window_start.isoformat(),
             "execution_window_end": window_end.isoformat(),

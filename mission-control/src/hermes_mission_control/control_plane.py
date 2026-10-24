@@ -388,6 +388,21 @@ class ControlPlaneClient:
             json={**payload, "actor": "founder-operator"},
         )
 
+    async def renew_alpha_mandate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        required = {
+            "source_mandate_id",
+            "expected_source_mandate_digest",
+            "cadence",
+            "objective",
+        }
+        if set(payload) != required:
+            raise ValueError("Alpha mandate renewal fields are invalid.")
+        return await self._request(
+            "POST",
+            "/v1/research/alpha-discovery/mandates/renew",
+            json={**payload, "created_by": "founder-mission-control"},
+        )
+
     async def retry_codex_auth(
         self, recovery_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -468,9 +483,7 @@ class ControlPlaneClient:
         )
 
     async def research_evidence_object(self, object_id: str) -> dict[str, Any]:
-        return await self._request(
-            "GET", f"/v1/research/evidence/objects/{object_id}"
-        )
+        return await self._request("GET", f"/v1/research/evidence/objects/{object_id}")
 
     async def research_evidence_lineage(self, object_id: str) -> dict[str, Any]:
         return await self._request(
@@ -668,13 +681,21 @@ class ControlPlaneClient:
     ) -> dict[str, Any]:
         if action not in {"materialize", "reject"}:
             raise ValueError("Unsupported proposal action.")
+        payload = {
+            "actor": "founder-mission-control",
+            "reason": decision.reason,
+        }
+        if decision.mandate_id is not None:
+            payload.update(
+                {
+                    "mandate_id": str(decision.mandate_id),
+                    "mandate_digest": decision.mandate_digest,
+                }
+            )
         return await self._request(
             "POST",
             f"/v1/proposals/{proposal_id}/{action}",
-            json={
-                "actor": "founder-mission-control",
-                "reason": decision.reason,
-            },
+            json=payload,
         )
 
     async def decide_approval(

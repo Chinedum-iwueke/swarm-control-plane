@@ -91,6 +91,8 @@ def materialize_proposal(
     *,
     actor: str,
     reason: str,
+    mandate_id: uuid.UUID | None = None,
+    mandate_digest: str | None = None,
     now: datetime | None = None,
 ) -> Task:
     if proposal.status != "proposed":
@@ -134,9 +136,26 @@ def materialize_proposal(
         from app.services.alpha_discovery import queue_founder_idea
 
         contract = document.proposed_task.input_contract
+        bound_mandate_id = contract.mandate_id or mandate_id
+        bound_mandate_digest = contract.mandate_digest or mandate_digest
+        if contract.mandate_id is not None and mandate_id not in {
+            None,
+            contract.mandate_id,
+        }:
+            raise HTTPException(409, "Proposal is already bound to another mandate.")
+        if contract.mandate_digest is not None and mandate_digest not in {
+            None,
+            contract.mandate_digest,
+        }:
+            raise HTTPException(409, "Proposal mandate digest cannot be replaced.")
+        if bound_mandate_id is None or bound_mandate_digest is None:
+            raise HTTPException(
+                409,
+                "An active research mandate is required at materialization, not intake.",
+            )
         mandate = db.scalar(
             select(AlphaResearchMandate)
-            .where(AlphaResearchMandate.id == contract.mandate_id)
+            .where(AlphaResearchMandate.id == bound_mandate_id)
             .with_for_update()
         )
         if mandate is None:
@@ -145,8 +164,8 @@ def materialize_proposal(
             db,
             mandate,
             AlphaFounderResearchIdeaCreate(
-                mandate_id=contract.mandate_id,
-                expected_mandate_digest=contract.mandate_digest,
+                mandate_id=bound_mandate_id,
+                expected_mandate_digest=bound_mandate_digest,
                 idea=contract.research_idea,
                 submitted_by="founder-operator",
                 conversation_id=source.conversation_id,

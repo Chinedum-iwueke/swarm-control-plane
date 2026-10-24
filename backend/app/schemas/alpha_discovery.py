@@ -132,7 +132,9 @@ class AlphaResearchMandateCreate(StrictModel):
     allowed_instruments: list[str] = Field(min_length=1, max_length=256)
     minimum_liquidity_usd: float = Field(ge=0, le=10_000_000_000)
     historical_window_policy: AlphaHistoricalWindowPolicy | None = None
-    mandate_kind: Literal["canonical_weekly", "thematic"] = "canonical_weekly"
+    mandate_kind: Literal["canonical_weekly", "canonical_monthly", "thematic"] = (
+        "canonical_weekly"
+    )
     parent_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
     budget: AlphaResearchBudget
     created_by: str = Field(pattern=_KEY, max_length=150)
@@ -144,7 +146,7 @@ class AlphaResearchMandateCreate(StrictModel):
     may_self_evaluate: Literal[False] = False
 
     @model_validator(mode="after")
-    def bounded_week(self):
+    def bounded_authority_window(self):
         values = (
             self.valid_from,
             self.valid_until,
@@ -153,13 +155,12 @@ class AlphaResearchMandateCreate(StrictModel):
         )
         if any(item.tzinfo is None for item in values):
             raise ValueError("mandate and execution clocks must be timezone aware")
-        if (
-            self.valid_until <= self.valid_from
-            or self.valid_until - self.valid_from > timedelta(days=7)
-        ):
-            raise ValueError(
-                "research mandates must be positive and no longer than seven days"
-            )
+        duration = self.valid_until - self.valid_from
+        maximum = timedelta(days=31 if self.mandate_kind == "canonical_monthly" else 7)
+        if duration <= timedelta(0) or duration > maximum:
+            if self.mandate_kind == "canonical_monthly":
+                raise ValueError("monthly mandates must be no longer than 31 days")
+            raise ValueError("research mandates must be no longer than seven days")
         if self.execution_window_end <= self.execution_window_start:
             raise ValueError("execution window must be increasing")
         if self.historical_window_policy is not None:
@@ -172,7 +173,10 @@ class AlphaResearchMandateCreate(StrictModel):
                 )
         if self.mandate_kind == "thematic" and self.parent_mandate_digest is None:
             raise ValueError("thematic mandates require a canonical parent digest")
-        if self.mandate_kind == "canonical_weekly" and self.parent_mandate_digest:
+        if (
+            self.mandate_kind in {"canonical_weekly", "canonical_monthly"}
+            and self.parent_mandate_digest
+        ):
             raise ValueError("canonical mandates cannot declare a parent mandate")
         normalized = [item.upper() for item in self.allowed_instruments]
         if len(normalized) != len(set(normalized)):
@@ -184,6 +188,14 @@ class AlphaResearchMandateApproval(StrictModel):
     expected_mandate_digest: str = Field(pattern=_DIGEST)
     actor: str = Field(pattern=_KEY, max_length=150)
     reason: str = Field(min_length=10, max_length=2000)
+
+
+class AlphaResearchMandateRenewal(StrictModel):
+    source_mandate_id: uuid.UUID
+    expected_source_mandate_digest: str = Field(pattern=_DIGEST)
+    cadence: Literal["weekly", "monthly"]
+    objective: str = Field(min_length=20, max_length=4000)
+    created_by: str = Field(pattern=_KEY, max_length=150)
 
 
 class AlphaMandateCanonicalization(StrictModel):
@@ -364,9 +376,7 @@ class AlphaRepresentationTransformation(StrictModel):
             if len(self.input_fields) != 2 or self.parameters:
                 raise ValueError(f"{self.operation} requires two inputs")
         elif self.operation == "cross_sectional_rank":
-            if len(self.input_fields) < 2 or set(self.parameters) != {
-                "target_index"
-            }:
+            if len(self.input_fields) < 2 or set(self.parameters) != {"target_index"}:
                 raise ValueError(
                     "cross-sectional rank requires multiple inputs and one target_index"
                 )

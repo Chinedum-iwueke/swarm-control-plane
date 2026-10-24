@@ -43,6 +43,7 @@ from .models import (
     ConversationTurnRequest,
     IntakeRequest,
     KnowledgeIngestRequest,
+    MandateRenewalRequest,
     ProposalDecision,
     ResearchCycleDecision,
     WalkthroughObservation,
@@ -168,9 +169,7 @@ def create_app(
     async def local_graph_error(_, exc: LocalGraphQueryError):
         from fastapi.responses import JSONResponse
 
-        return JSONResponse(
-            status_code=exc.status_code, content={"detail": str(exc)}
-        )
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
     @app.exception_handler(ResearchUploadError)
     async def upload_error(_, exc: ResearchUploadError):
@@ -371,7 +370,9 @@ def create_app(
         try:
             return walkthrough_journal.observe(session_id, body.model_dump())
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Rehearsal session not found.") from exc
+            raise HTTPException(
+                status_code=404, detail="Rehearsal session not found."
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -388,7 +389,9 @@ def create_app(
                 summary=body.summary,
             )
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Rehearsal session not found.") from exc
+            raise HTTPException(
+                status_code=404, detail="Rehearsal session not found."
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -402,6 +405,13 @@ def create_app(
     )
     async def approve_alpha_mandate(mandate_id: str, request: Request) -> dict:
         return await client.approve_alpha_mandate(mandate_id, await request.json())
+
+    @app.post(
+        "/api/research/alpha-discovery/mandates/renew",
+        dependencies=[Depends(_mutation_intent)],
+    )
+    async def renew_alpha_mandate(payload: MandateRenewalRequest) -> dict:
+        return await client.renew_alpha_mandate(payload.model_dump(mode="json"))
 
     @app.post(
         "/api/codex-auth/recoveries/{recovery_id}/retry",
@@ -834,7 +844,9 @@ def create_app(
     ) -> dict:
         _require_source_query_keys(request, {"unit", "start", "limit"})
         if unit == "page" and limit > 20:
-            raise HTTPException(status_code=422, detail="Page ranges are limited to 20.")
+            raise HTTPException(
+                status_code=422, detail="Page ranges are limited to 20."
+            )
         try:
             return await canonical_source_content(
                 client, str(object_id), unit=unit, start=start, limit=limit
@@ -901,7 +913,9 @@ def _mutation_intent(
 def _require_source_query_keys(request: Request, allowed: set[str]) -> None:
     unknown = set(request.query_params) - allowed
     if unknown:
-        raise HTTPException(status_code=422, detail="Unsupported source query parameter.")
+        raise HTTPException(
+            status_code=422, detail="Unsupported source query parameter."
+        )
 
 
 def _sse_event_frame(event: OverviewEvent) -> str:

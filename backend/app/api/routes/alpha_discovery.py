@@ -18,6 +18,7 @@ from app.schemas.alpha_discovery import (
     AlphaMandateCanonicalization,
     AlphaResearchMandateApproval,
     AlphaResearchMandateCreate,
+    AlphaResearchMandateRenewal,
     AlphaResearchMandateResponse,
 )
 from app.services.alpha_discovery import (
@@ -29,6 +30,7 @@ from app.services.alpha_discovery import (
     recover_data_admission,
     recover_discovery_grounding,
     register_mandate,
+    renew_mandate,
     retry_invalid_discovery_stage,
     serialize_mandate,
 )
@@ -92,6 +94,21 @@ def list_mandates(db: Annotated[Session, Depends(get_db)]):
         select(AlphaResearchMandate).order_by(AlphaResearchMandate.created_at.desc())
     ).all()
     return [serialize_mandate(item) for item in mandates]
+
+
+@router.post(
+    "/mandates/renew",
+    response_model=AlphaResearchMandateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def renew(
+    payload: AlphaResearchMandateRenewal,
+    db: Annotated[Session, Depends(get_db)],
+):
+    mandate = renew_mandate(db, payload)
+    db.commit()
+    db.refresh(mandate)
+    return serialize_mandate(mandate)
 
 
 @router.post("/ideas", response_model=AlphaFounderResearchIdeaResponse, status_code=201)

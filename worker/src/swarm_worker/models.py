@@ -322,8 +322,8 @@ class ProposalFounderHypothesisIntakeContract(StrictModel):
     repository: Literal["swarm-control-plane"]
     workflow: Literal["founder-hypothesis-intake"]
     base_ref: Literal["main"]
-    mandate_id: UUID
-    mandate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mandate_id: UUID | None = None
+    mandate_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     research_idea: str = Field(min_length=20, max_length=12000)
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
@@ -338,6 +338,8 @@ class ProposalFounderHypothesisIntakeContract(StrictModel):
     def ordered_instrument_bounds(self):
         if self.minimum_instruments > self.maximum_instruments:
             raise ValueError("minimum instruments cannot exceed maximum instruments")
+        if (self.mandate_id is None) != (self.mandate_digest is None):
+            raise ValueError("mandate ID and digest must be supplied together")
         return self
 
 
