@@ -123,8 +123,8 @@ Start with:
 - [Real-data alpha campaign](docs/runbooks/alpha-001-real-data-campaign.md)
 - [Scientific executor](docs/runbooks/alpha-002-scientific-executor.md)
 - [EXEC2 Lagos bootstrap](docs/runbooks/exec2-lagos-host-bootstrap.md)
-- [LLM runtime register](docs/book-xi-llm-runtime-register.md)
-- [Agent workflow and feedback-loop atlas](docs/book-xi-agent-workflow-atlas.md)
+- [Book XI Hermes Codex and LLM runtime register](https://github.com/Chinedum-iwueke/invariance-research-bible/blob/main/books/book-11-engineered-company-system/appendices/B-hermes-codex-and-llm-runtime-register.md)
+- [Book XI agent workflow and feedback-loop atlas](https://github.com/Chinedum-iwueke/invariance-research-bible/blob/main/books/book-11-engineered-company-system/appendices/A-agent-workflow-and-feedback-loop-atlas.md)
 
 Some older milestone documents describe the system at the time they were
 written. Validation records are historical evidence, not a substitute for
