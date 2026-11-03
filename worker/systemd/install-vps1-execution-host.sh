@@ -70,6 +70,25 @@ if [[ "$tailscale_backend" != "Running" || -z "$tailscale_ipv4" ]] || \
   echo "VPS1 must be authenticated, running, and assigned a Tailscale IPv4 before firewall admission." >&2
   exit 1
 fi
+if ! id omenka >/dev/null 2>&1 || \
+  [[ ! -s /home/omenka/.ssh/authorized_keys ]]; then
+  echo "VPS1 requires the key-authorized omenka administrator before SSH hardening." >&2
+  exit 1
+fi
+printf '%s\n' 'omenka ALL=(ALL:ALL) NOPASSWD: ALL' \
+  > /etc/sudoers.d/90-invariance-omenka
+chmod 0440 /etc/sudoers.d/90-invariance-omenka
+visudo -cf /etc/sudoers.d/90-invariance-omenka
+cat > /etc/ssh/sshd_config.d/00-invariance-hardening.conf <<'EOF'
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+X11Forwarding no
+AllowUsers omenka
+EOF
+chmod 0644 /etc/ssh/sshd_config.d/00-invariance-hardening.conf
+rm -f /etc/ssh/sshd_config.d/90-invariance-hardening.conf
+sshd -t
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow in on tailscale0 to any port 22 proto tcp
@@ -80,6 +99,8 @@ while ufw status | grep -Eq '^OpenSSH[[:space:]].*ALLOW IN'; do
   ufw --force delete allow OpenSSH
 done
 ufw --force enable
+systemctl restart ssh
+usermod -L root
 
 egress_ip="$(curl -4fsS --max-time 15 https://api.ipify.org)"
 egress_country="$(curl -4fsS --max-time 15 https://ipwho.is/ | jq -r '.country_code')"
