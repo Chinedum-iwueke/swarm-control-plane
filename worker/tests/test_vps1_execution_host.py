@@ -25,6 +25,10 @@ def test_vps1_installer_is_fail_closed_and_location_bound() -> None:
     source = installer.read_text(encoding="utf-8")
     assert 'egress_country" != "NG"' in source
     assert "ip link show tailscale0" in source
+    assert 'tailscale status --json' in source
+    assert 'tailscale_backend" != "Running"' in source
+    assert 'tailscale ip -4' in source
+    assert '"management_ipv4": sys.argv[7]' in source
     assert "ufw allow in on tailscale0 to any port 22 proto tcp" in source
     assert '"capital_authority": False' in source
     assert '"order_authority": False' in source
