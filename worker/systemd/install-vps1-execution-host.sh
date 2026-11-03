@@ -62,8 +62,12 @@ if ! swapon --show=NAME --noheadings | grep -q .; then
   grep -q '^/swapfile ' /etc/fstab || printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
 fi
 
-if ! ip link show tailscale0 >/dev/null 2>&1; then
-  echo "VPS1 must join Tailscale before firewall admission." >&2
+tailscale_status="$(tailscale status --json 2>/dev/null || true)"
+tailscale_backend="$(jq -r '.BackendState // empty' <<<"$tailscale_status")"
+tailscale_ipv4="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+if [[ "$tailscale_backend" != "Running" || -z "$tailscale_ipv4" ]] || \
+  ! ip link show tailscale0 >/dev/null 2>&1; then
+  echo "VPS1 must be authenticated, running, and assigned a Tailscale IPv4 before firewall admission." >&2
   exit 1
 fi
 ufw default deny incoming
@@ -102,7 +106,8 @@ done
 
 python3 - "$egress_ip" "$egress_country" \
   "${venue_status[bybit_main]}" "${venue_status[bybit_demo]}" \
-  "${venue_status[binance_spot]}" "${venue_status[binance_futures]}" <<'PY'
+  "${venue_status[binance_spot]}" "${venue_status[binance_futures]}" \
+  "$tailscale_ipv4" <<'PY'
 import json
 import os
 import platform
@@ -116,6 +121,7 @@ state = {
     "machine": "vps1-execution",
     "display_name": "VPS1 - Execution",
     "hostname": platform.node(),
+    "management_ipv4": sys.argv[7],
     "processor_count": os.cpu_count(),
     "observed_at": datetime.now(UTC).isoformat(),
     "egress_ip": sys.argv[1],
