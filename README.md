@@ -52,12 +52,15 @@ control-plane fixtures.
 | `mac-founder-control` | Loopback-only Mission Control, founder intake, approvals, private research inbox | No unattended worker or venue execution |
 | `vm1-developer` | Source development, Research Intelligence agents, data-representation work, Bulletproof lake and bounded compute | No production control-plane ownership or live venue role |
 | `vm2-deployment` | FastAPI control plane, PostgreSQL, Redis, directors, Telegram gateway, backups and observability | Pulls reviewed code; does not originate quantitative results |
-| `exec1-execution` | Independent fleet observer and watchdog | US egress is venue-restricted; no venue credentials or orders |
-| `exec2-lagos` | Nigerian venue-facing demo host and intended micro-live host | No control-plane database, research lake, or self-authorized trading |
+| `vps1-execution` | Nigerian venue-facing demo host and intended micro-live host | No control-plane database, research lake, independent-watchdog claim, or self-authorized trading |
 
 Management traffic uses the private Tailscale network. Venue traffic is kept on
-the dedicated eligible execution host. Loss of `exec2-lagos` freezes execution;
+the dedicated eligible execution host. Loss of `vps1-execution` freezes execution;
 it does not fail over to VM1 or VM2.
+
+Availability watching is distributed across VM1, VM2, and the founder Mac. This
+provides peer-outage detection but is explicitly not an independent always-on
+watchdog; a simultaneous outage of those three machines remains a visibility gap.
 
 ## What Is Implemented
 
@@ -79,7 +82,7 @@ The repository currently contains:
 - platform, research, fleet, execution, risk, portfolio, shadow, demo, and venue
   telemetry registries;
 - a restricted Telegram founder gateway and a Mac-local Mission Control app;
-- VM1/VM2/EXEC1/EXEC2 systemd installers, fleet probes, backup jobs, and recovery
+- VM1/VM2/VPS1 systemd installers, fleet probes, distributed watchdogs, backup jobs, and recovery
   runbooks.
 
 The Bybit demo and canonical venue-replay paths have produced retained
@@ -122,7 +125,7 @@ Start with:
 - [Mission Control](mission-control/README.md)
 - [Real-data alpha campaign](docs/runbooks/alpha-001-real-data-campaign.md)
 - [Scientific executor](docs/runbooks/alpha-002-scientific-executor.md)
-- [EXEC2 Lagos bootstrap](docs/runbooks/exec2-lagos-host-bootstrap.md)
+- [VPS1 execution bootstrap](docs/runbooks/vps1-execution-host-bootstrap.md)
 - [Book XI Hermes Codex and LLM runtime register](https://github.com/Chinedum-iwueke/invariance-research-bible/blob/main/books/book-11-engineered-company-system/appendices/B-hermes-codex-and-llm-runtime-register.md)
 - [Book XI agent workflow and feedback-loop atlas](https://github.com/Chinedum-iwueke/invariance-research-bible/blob/main/books/book-11-engineered-company-system/appendices/A-agent-workflow-and-feedback-loop-atlas.md)
 

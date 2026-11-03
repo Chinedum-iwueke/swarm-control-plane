@@ -517,7 +517,8 @@ def test_execution_workspace_is_environment_explicit_and_digest_safe(
         assert f'data-execution-environment="{environment}"' in html
     assert "renderExecution" in script
     assert "machineInventory" in script
-    assert "exec2" in script
+    assert "vps1-execution" in script
+    assert "exec2-lagos" not in script
     assert 'return agent.presence || agent.status || "offline"' in script
     assert "receipt_digest" in script
     assert "projection_digest" in script

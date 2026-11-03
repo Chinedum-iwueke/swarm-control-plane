@@ -32,15 +32,12 @@ def observation(key="control-plane-postgres", version="17", observed_at=None):
 
 def test_catalog_is_closed_owned_and_digest_stable():
     value = catalog()
-    assert len(value.entries) == 14
-    exec1 = next(item for item in value.entries if item.service_key == "fleet-probe-exec1")
-    assert exec1.intended_machines == ["exec1-execution"]
-    assert exec1.owner == "platform-operations"
-    exec2 = next(
-        item for item in value.entries if item.service_key == "fleet-probe-exec2-lagos"
+    assert len(value.entries) == 16
+    vps1 = next(
+        item for item in value.entries if item.service_key == "fleet-probe-vps1-execution"
     )
-    assert exec2.intended_machines == ["exec2-lagos"]
-    assert exec2.owner == "platform-operations"
+    assert vps1.intended_machines == ["vps1-execution"]
+    assert vps1.owner == "platform-operations"
     assert canonical_digest(manifest_document(value)) == canonical_digest(
         manifest_document(value)
     )

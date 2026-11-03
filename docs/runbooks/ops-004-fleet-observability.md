@@ -2,16 +2,17 @@
 
 ## Scope
 
-OPS-004 observes VM1, VM2, and approved independent hosts such as EXEC1 without collecting process arguments, process
+OPS-004 observes VM1, VM2, and VPS1 without collecting process arguments, process
 environments, credentials, protected payloads, or arbitrary files. Each Linux probe
 publishes a strict authenticated sample every 15–30 seconds. The control plane stores
 digest-bound samples, evaluates deterministic sustained-signal rules, records incident
 transitions, and uses the existing founder notification outbox for Telegram delivery.
 
-The independent watchdog is installed on an always-on host outside VM1 and VM2. It
-uses bounded TCP reachability only and retains its deduplication state locally, allowing
-one outage and one recovery notification even when the control plane is unavailable.
-The founder Mac is not an availability authority because it may sleep.
+Peer watchdogs run on VM1, VM2, and the founder Mac. Each uses bounded TCP
+reachability only and retains its own deduplication state locally, allowing one
+outage and one recovery notification even when the control plane is unavailable.
+This is distributed coverage, not an independent always-on watchdog: the Mac may
+sleep and a simultaneous outage of all three watchers cannot alert.
 
 ## Signals and policy
 
@@ -44,10 +45,10 @@ Register one agent for each manifest:
 ```text
 worker/role-packages/vm1-fleet-observer/manifest.yaml
 worker/role-packages/vm2-fleet-observer/manifest.yaml
-worker/role-packages/exec1-fleet-observer/manifest.yaml
+worker/role-packages/vps1-execution-fleet-observer/manifest.yaml
 ```
 
-Use `worker/scripts/ops004_bootstrap.py vm1`, `vm2`, or `exec1` with distinct mode-0600
+Use `worker/scripts/ops004_bootstrap.py vm1`, `vm2`, or `vps1` with distinct mode-0600
 `--state` paths and the full deployed source commit. The utility signs or reuses the
 exact package, creates the bounded agent and deployment, activates an exact-package
 charter and capability grants, binds a scoped workload identity, and writes the token
@@ -57,8 +58,8 @@ For a host registered by a pre-workload-identity version of the bootstrap, repai
 existing objects and credential without rotation:
 
 ```bash
-worker/.venv/bin/python worker/scripts/ops004_bootstrap.py exec1 \
-  --state /etc/invariance-swarm/ops004-exec1-state.json \
+worker/.venv/bin/python worker/scripts/ops004_bootstrap.py vps1 \
+  --state /etc/invariance-swarm/ops004-vps1-state.json \
   --repair-governance
 ```
 
@@ -87,12 +88,14 @@ systemctl is-active invariance-swarm-fleet-probe.service
 journalctl -u invariance-swarm-fleet-probe.service -n 30 --no-pager
 ```
 
-## Independent watcher
+## Distributed peer watchers
 
-On an always-on third observer, create a distinct Telegram bot credential file and:
+On each watcher, configure only the other peers as targets. Use a distinct alert-only
+Telegram credential file and identify the watcher explicitly:
 
 ```bash
 SWARM_WATCHDOG_TARGETS=vm1-developer=VM1_TAILSCALE_IP:22,vm2-deployment=100.112.117.59:8787
+SWARM_WATCHDOG_WATCHER_ID=founder-mac
 SWARM_WATCHDOG_TELEGRAM_TOKEN_FILE=/etc/invariance-swarm/fleet-watchdog-telegram.token
 SWARM_WATCHDOG_FOUNDER_CHAT_ID=8787936915
 SWARM_WATCHDOG_INTERVAL_SECONDS=30
@@ -100,8 +103,9 @@ SWARM_WATCHDOG_FAILURE_SAMPLES=3
 SWARM_WATCHDOG_RECOVERY_SAMPLES=3
 ```
 
-Install with `sudo worker/systemd/install-fleet-watchdog.sh --enable`. This credential
-is an alert-only fallback and must not be the founder intake bot token.
+Install Linux watchers with `sudo worker/systemd/install-fleet-watchdog.sh --enable`
+and the founder-Mac watcher with `worker/macos/install-fleet-watchdog.sh`. This
+credential is an alert-only fallback and must not be the founder intake bot token.
 
 ## Verification and rollback
 

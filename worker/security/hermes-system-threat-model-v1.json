@@ -36,7 +36,7 @@
       "stride": ["information_disclosure"],
       "severity": "critical",
       "abuse_case": "A channel, log, failure payload, or tool response leaks a service credential.",
-      "affected_services": ["telegram-gateway", "founder-planner", "control-plane-api", "control-plane-backup", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-exec1", "fleet-probe-exec2-lagos"],
+      "affected_services": ["telegram-gateway", "founder-planner", "control-plane-api", "control-plane-backup", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-vps1-execution"],
       "controls": ["file-backed secrets", "root-owned credentials", "bounded redacting clients", "no sudo password over Telegram"],
       "detection": ["synthetic secret canaries", "redacted error evidence", "service journal review"],
       "containment": ["revoke exposed credential", "stop affected channel", "rotate service-scoped secret"],
@@ -52,7 +52,7 @@
       "stride": ["spoofing", "elevation_of_privilege"],
       "severity": "critical",
       "abuse_case": "A worker claims a broader role, machine, repository, or privileged operation than its active package permits.",
-      "affected_services": ["deployment-architect", "founder-planner", "research-worker", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-exec1", "fleet-probe-exec2-lagos"],
+      "affected_services": ["deployment-architect", "founder-planner", "research-worker", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-vps1-execution"],
       "controls": ["active deployment attestation", "role-package risk ceiling", "allowed-machine binding", "systemd sandbox"],
       "detection": ["heartbeat conflict", "execution-policy failure", "fleet operation ledger"],
       "containment": ["reject heartbeat or lease", "revoke package deployment", "stop worker unit"],
@@ -164,14 +164,14 @@
       "stride": ["denial_of_service"],
       "severity": "high",
       "abuse_case": "A workload exhausts CPU, memory, storage, or queues while operators lose progress visibility.",
-      "affected_services": ["control-plane-postgres", "control-plane-redis", "control-plane-api", "research-worker", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-exec1", "fleet-probe-exec2-lagos", "mission-control"],
-      "controls": ["bounded inputs", "timeouts", "fleet probes", "operation ledger", "backup freshness enforcement"],
+      "affected_services": ["control-plane-postgres", "control-plane-redis", "control-plane-api", "research-worker", "fleet-probe-vm1", "fleet-probe-vm2", "fleet-probe-vps1-execution", "fleet-watchdog-vm1", "fleet-watchdog-vm2", "fleet-watchdog-mac", "mission-control"],
+      "controls": ["bounded inputs", "timeouts", "fleet probes", "distributed peer watchdogs", "operation ledger", "backup freshness enforcement"],
       "detection": ["sustained threshold observation", "stale heartbeat", "background-work status"],
       "containment": ["stop bounded worker", "retain resumable state", "founder alert"],
       "rollback": "Stop the offending operation, restore its last checkpoint, and scale down nonessential workers.",
       "owner": "platform-operations",
       "verification": [{"scenario_id": "ADV-002", "expected_outcome": "redacted"}],
-      "residual_risk": "Simultaneous VM1 and VM2 outage cannot alert without the deferred third-host watchdog."
+      "residual_risk": "The distributed watchdog loses independence during a simultaneous VM1, VM2, and founder-Mac outage."
     }
   ],
   "scenarios": [
@@ -214,7 +214,7 @@
   "accepted_residual_risks": [
     "Workflow network egress is not yet uniformly restricted to explicit destinations.",
     "Third-party dependency artifacts do not yet have a complete signed provenance chain.",
-    "A third always-on host is still required for independent simultaneous VM1/VM2 outage alerting.",
+    "Distributed VM1, VM2, and founder-Mac watching is not equivalent to an independent always-on watchdog.",
     "Host-root compromise is outside agent and infrastructure-broker containment boundaries."
   ]
 }

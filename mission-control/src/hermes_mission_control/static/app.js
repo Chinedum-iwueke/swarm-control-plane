@@ -1524,8 +1524,7 @@ function machineProfile(machine) {
   const value = String(machine || "").toLowerCase();
   if (value.includes("vm1")) return { order: 10, label: "VM1", role: "Engineering", symbol: "V1" };
   if (value.includes("vm2")) return { order: 20, label: "VM2", role: "Control plane", symbol: "V2" };
-  if (value.includes("exec1")) return { order: 30, label: "EXEC1", role: "Independent watchdog", symbol: "E1" };
-  if (value.includes("exec2")) return { order: 40, label: "EXEC2", role: "Lagos execution", symbol: "E2" };
+  if (value.includes("vps1")) return { order: 30, label: "VPS1", role: "Execution", symbol: "X1" };
   if (value.includes("mac")) return { order: 50, label: "Mac", role: "Founder control", symbol: "MC" };
   return { order: 45, label: humanize(machine), role: "Fleet host", symbol: String(machine || "??").slice(0, 2).toUpperCase() };
 }
@@ -1546,7 +1545,7 @@ function machineInventory(data) {
       incidents: machine.incidents || [],
     });
   });
-  (data.agents || []).forEach((agent) => {
+  (data.agents || []).filter((agent) => agent.is_enabled !== false).forEach((agent) => {
     const hasFleetRecord = inventory.has(agent.machine);
     const current = inventory.get(agent.machine) || {
       ...machineProfile(agent.machine), key: agent.machine, presence: "offline", health: "unknown",
@@ -4692,8 +4691,7 @@ function demoDashboard() {
       { id: "agent-eng", slug: "vm1-developer-coder", display_name: "VM1 Engineering Worker", machine: "vm1-developer", role: "Restricted engineering", status: "online", is_enabled: true, risk_ceiling: 1, capabilities: ["git", "python", "testing", "backtesting"] },
       { id: "23c62000-1fad-48bb-8ce5-3f4cb26f3779", slug: "vm1-research-runner", display_name: "VM1 Research Runner", machine: "vm1-developer", role: "Restricted research", status: "online", is_enabled: true, risk_ceiling: 1, capabilities: ["git", "python", "backtesting", "research-audit"] },
       { id: "agent-infra", slug: "vm2-infrastructure-operator", display_name: "VM2 Infrastructure Operator", machine: "vm2-deployment", role: "Approved infrastructure runbooks", status: "online", is_enabled: true, risk_ceiling: 3, capabilities: ["infrastructure-observation", "service-health", "controlled-restart"] },
-      { id: "agent-exec1", slug: "exec1-fleet-observer", display_name: "EXEC1 Fleet Observer", machine: "exec1-execution", role: "Read-only execution-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
-      { id: "agent-exec2", slug: "exec2-lagos-fleet-observer", display_name: "EXEC2 Lagos Fleet Observer", machine: "exec2-lagos", role: "Read-only venue-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
+      { id: "agent-vps1", slug: "vps1-execution-fleet-observer", display_name: "VPS1 Execution Fleet Observer", machine: "vps1-execution", role: "Read-only venue-host observability", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["fleet-observation", "resource-health", "service-health"] },
       { id: "agent-mac", slug: "mac-founder-control", display_name: "Mac Founder Control", machine: "mac-founder", role: "Founder command surface", status: "online", is_enabled: true, risk_ceiling: 0, capabilities: ["founder-intake", "knowledge-search"] },
     ],
     approvals: [
@@ -4759,8 +4757,7 @@ function demoDashboard() {
       machines: [
         { machine: "vm1-developer", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 12, memory_available_percent: 64, disk_used_percent: 42, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
         { machine: "vm2-deployment", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 18, memory_available_percent: 71, disk_used_percent: 28, cpu_pressure_avg10: 0, io_pressure_avg10: 0, control_plane_backup_verified: true, control_plane_backup_failed: false, control_plane_backup_age_seconds: 3600 }, incidents: [] },
-        { machine: "exec1-execution", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 4, memory_available_percent: 82, disk_used_percent: 8, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
-        { machine: "exec2-lagos", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 3, memory_available_percent: 88, disk_used_percent: 6, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
+        { machine: "vps1-execution", status: "healthy", last_observed_at: now, metrics: { cpu_utilization_percent: 3, memory_available_percent: 88, disk_used_percent: 6, cpu_pressure_avg10: 0, io_pressure_avg10: 0 }, incidents: [] },
       ],
     },
     operations: [
@@ -4801,7 +4798,7 @@ function demoDashboard() {
         { id: 3, name: "VM2", kind: "machine" },
         { id: 4, name: "Mac", kind: "machine" },
         { id: 5, name: "M8", kind: "milestone" },
-        { id: 6, name: "EXEC1", kind: "machine" },
+        { id: 6, name: "VPS1", kind: "machine" },
       ],
       edges: [
         { source: 1, target: 2, relation: "engineered_on" },
@@ -4826,7 +4823,7 @@ function demoDeployment(agentId, name, role, taskTypes, workflows, repositories,
         role,
         task_types: taskTypes,
         workflows: workflows.map((workflow) => ({ name: workflow })),
-        allowed_machines: [agentId === "agent-infra" ? "vm2-deployment" : agentId === "agent-exec1" ? "exec1-execution" : "vm1-developer"],
+        allowed_machines: [agentId === "agent-infra" ? "vm2-deployment" : agentId === "agent-vps1" ? "vps1-execution" : "vm1-developer"],
         risk_ceiling: riskCeiling,
         permission_profile: { name: name.replaceAll("vm1-", "restricted-"), network_access: "control-plane", privileged_operations: false, writable_roots: writableRoots },
         repository_profile: { repositories, primary_checkout_write: false, remote_write: false },

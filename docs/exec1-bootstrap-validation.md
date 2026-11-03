@@ -1,5 +1,9 @@
 # EXEC1 bootstrap validation
 
+> **Retired topology (2026-11-03):** This record is preserved as immutable
+> historical evidence. `exec1-execution` is no longer an active fleet role and
+> must not appear in current Mission Control inventory.
+
 Source implementation adds `exec1-execution` to the immutable platform catalog as the
 independent OPS-004 observer without introducing capital or order authority. Mission
 Control already renders arbitrary canonical fleet observations, so no parallel host

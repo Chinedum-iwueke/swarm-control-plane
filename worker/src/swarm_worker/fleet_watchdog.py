@@ -17,6 +17,7 @@ class WatchdogSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SWARM_WATCHDOG_", extra="ignore")
 
     targets: str
+    watcher_id: str = Field(pattern=r"^[a-z0-9-]+$")
     telegram_token_file: Path
     founder_chat_id: int
     interval_seconds: float = Field(default=30, ge=15, le=120)
@@ -88,7 +89,8 @@ def notify(settings: WatchdogSettings, event: dict) -> None:
         {
             "chat_id": str(settings.founder_chat_id),
             "text": (
-                f"Independent fleet {event['state']}\n"
+                f"Fleet peer {event['state']}\n"
+                f"Watcher: {settings.watcher_id}\n"
                 f"{event['machine']}\n{event['detail']}"
             ),
         }
@@ -120,7 +122,7 @@ def _write_state(path: Path, value: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Independent Hermes fleet watchdog")
+    parser = argparse.ArgumentParser(description="Distributed Hermes fleet watchdog")
     parser.add_argument("command", choices=("check", "once", "run"))
     args = parser.parse_args()
     settings = WatchdogSettings()
@@ -128,7 +130,15 @@ def main() -> int:
         raise RuntimeError("Fleet watchdog must not run as root.")
     if args.command == "check":
         _ = settings.parsed_targets
-        print(json.dumps({"event": "fleet_watchdog_check_succeeded"}))
+        print(
+            json.dumps(
+                {
+                    "event": "fleet_watchdog_check_succeeded",
+                    "watcher_id": settings.watcher_id,
+                    "targets": sorted(settings.parsed_targets),
+                }
+            )
+        )
         return 0
     while True:
         for event in cycle(settings):
