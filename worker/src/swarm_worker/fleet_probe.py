@@ -125,7 +125,7 @@ def publish(settings: ProbeSettings, payload: dict) -> None:
                 raise RuntimeError(f"Control plane returned HTTP {response.status}.")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"Control plane returned HTTP {exc.code}.") from exc
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError("Control plane is unreachable.") from exc
 
 
