@@ -65,6 +65,7 @@ def test_publish_does_not_put_token_in_payload(tmp_path: Path) -> None:
     with patch("urllib.request.urlopen", return_value=response) as urlopen:
         publish(probe_settings, {"machine": "vm1-developer"})
     request = urlopen.call_args.args[0]
+    assert urlopen.call_args.kwargs["timeout"] == 30
     assert request.headers["Authorization"].startswith("Bearer swarm_ag_")
     assert b"swarm_ag_" not in request.data
 
