@@ -25,6 +25,7 @@ class ProbeSettings(BaseSettings):
     agent_token_file: Path
     machine: str = Field(pattern=r"^[a-z0-9-]+$")
     interval_seconds: float = Field(default=20, ge=15, le=60)
+    request_timeout_seconds: float = Field(default=30, ge=5, le=120)
     services: str = ""
     disk_path: Path = Path("/")
     state_path: Path = Path("/var/lib/invariance-swarm-fleet-probe/state.json")
@@ -120,7 +121,9 @@ def publish(settings: ProbeSettings, payload: dict) -> None:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(
+            request, timeout=settings.request_timeout_seconds
+        ) as response:
             if response.status not in {200, 201}:
                 raise RuntimeError(f"Control plane returned HTTP {response.status}.")
     except urllib.error.HTTPError as exc:
