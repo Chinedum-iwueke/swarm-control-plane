@@ -69,6 +69,14 @@ def test_publish_does_not_put_token_in_payload(tmp_path: Path) -> None:
     assert b"swarm_ag_" not in request.data
 
 
+def test_publish_normalizes_socket_timeout_for_retry(tmp_path: Path) -> None:
+    with (
+        patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")),
+        pytest.raises(RuntimeError, match="Control plane is unreachable"),
+    ):
+        publish(settings(tmp_path), {"machine": "vm1-developer"})
+
+
 def test_run_probe_recovers_from_transient_publish_failure(tmp_path: Path) -> None:
     probe_settings = settings(tmp_path)
     sleeps: list[float] = []
