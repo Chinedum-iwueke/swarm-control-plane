@@ -6,9 +6,9 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-expected_hostname="exec2-lagos.invarianceresearch.xyz"
+expected_hostname="vps1.invarianceresearch.xyz"
 if [[ "$(hostnamectl --static)" != "$expected_hostname" ]]; then
-  echo "EXEC2 hostname must be $expected_hostname." >&2
+  echo "VPS1 hostname must be $expected_hostname." >&2
   exit 1
 fi
 
@@ -42,9 +42,17 @@ id swarm-execution >/dev/null 2>&1 || useradd \
 
 install -d -o root -g root -m 0755 /srv/invariance/swarm/repositories
 install -d -o root -g invariance-execution -m 0750 /etc/invariance-swarm/execution
+install -d -o root -g root -m 0700 /etc/invariance-swarm/execution/credentials
 install -d -o swarm-execution -g invariance-execution -m 0700 \
   /var/lib/invariance-execution/artifacts \
   /var/lib/invariance-execution/state
+
+for credential in bybit-demo.env bybit-live.env; do
+  path="/etc/invariance-swarm/execution/credentials/$credential"
+  if [[ ! -e "$path" ]]; then
+    install -o root -g root -m 0600 /dev/null "$path"
+  fi
+done
 
 if ! swapon --show=NAME --noheadings | grep -q .; then
   fallocate -l 2G /swapfile
@@ -54,12 +62,12 @@ if ! swapon --show=NAME --noheadings | grep -q .; then
   grep -q '^/swapfile ' /etc/fstab || printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
 fi
 
-ufw default deny incoming
-ufw default allow outgoing
 if ! ip link show tailscale0 >/dev/null 2>&1; then
-  echo "EXEC2 must join Tailscale before firewall admission." >&2
+  echo "VPS1 must join Tailscale before firewall admission." >&2
   exit 1
 fi
+ufw default deny incoming
+ufw default allow outgoing
 ufw allow in on tailscale0 to any port 22 proto tcp
 while ufw status | grep -Eq '^22/tcp[[:space:]].*ALLOW IN'; do
   ufw --force delete allow 22/tcp
@@ -70,9 +78,9 @@ done
 ufw --force enable
 
 egress_ip="$(curl -4fsS --max-time 15 https://api.ipify.org)"
-egress_country="$(curl -4fsS --max-time 15 https://ipinfo.io/country | tr -d '[:space:]')"
+egress_country="$(curl -4fsS --max-time 15 https://ipwho.is/ | jq -r '.country_code')"
 if [[ "$egress_country" != "NG" ]]; then
-  echo "EXEC2 egress must resolve to Nigeria; observed $egress_country." >&2
+  echo "VPS1 egress must resolve to Nigeria; observed $egress_country." >&2
   exit 1
 fi
 
@@ -102,9 +110,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+credentials = Path("/etc/invariance-swarm/execution/credentials")
 state = {
-    "schema_version": "exec2-lagos-host-foundation-v1.0.0",
-    "machine": "exec2-lagos",
+    "schema_version": "vps1-execution-host-foundation-v1.0.0",
+    "machine": "vps1-execution",
+    "display_name": "VPS1 - Execution",
     "hostname": platform.node(),
     "processor_count": os.cpu_count(),
     "observed_at": datetime.now(UTC).isoformat(),
@@ -118,7 +128,10 @@ state = {
     },
     "capital_authority": False,
     "order_authority": False,
-    "venue_credentials_installed": False,
+    "venue_credentials_installed": all(
+        (credentials / name).stat().st_size > 0
+        for name in ("bybit-demo.env", "bybit-live.env")
+    ),
     "execution_runtime_enabled": False,
 }
 path = Path("/var/lib/invariance-execution/host-foundation.json")
@@ -128,4 +141,4 @@ PY
 chown swarm-execution:invariance-execution \
   /var/lib/invariance-execution/host-foundation.json
 
-echo "EXEC2 Lagos host foundation installed without capital or order authority."
+echo "VPS1 execution-host foundation installed without capital or order authority."

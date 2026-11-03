@@ -1,5 +1,9 @@
 # EXEC2 Lagos bootstrap validation
 
+> **Retired topology (2026-11-03):** This record is preserved as immutable
+> historical evidence. Its venue-host responsibilities moved to
+> `vps1-execution`; the old certification does not qualify the replacement host.
+
 The 2026-09-13 admission preflight observed public egress `176.97.192.188` from the
 server itself. IPinfo mapped it to Lagos, Nigeria on AS8849, consistent with independent
 prefix data for `176.97.192.0/24`. Bybit mainnet and demo plus Binance spot and futures

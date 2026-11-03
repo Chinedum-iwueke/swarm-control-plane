@@ -53,9 +53,10 @@ def fleet_health(db: Annotated[Session, Depends(get_db)]):
     now = datetime.now(UTC)
     evaluate_staleness(db, now)
     machines = []
-    agents = list(db.scalars(select(Agent)).all())
-    names = set(db.scalars(select(MachineObservation.machine).distinct()).all())
-    names.update(agent.machine for agent in agents)
+    # Retired machines retain immutable observations, but they are not active fleet
+    # members once every identity bound to them has been revoked.
+    agents = list(db.scalars(select(Agent).where(Agent.is_enabled.is_(True))).all())
+    names = {agent.machine for agent in agents}
     for name in sorted(names):
         latest = db.scalar(
             select(MachineObservation)

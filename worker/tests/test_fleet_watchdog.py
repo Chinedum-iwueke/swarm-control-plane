@@ -9,6 +9,7 @@ def settings(tmp_path: Path) -> WatchdogSettings:
     token.write_text("1234567890:telegram-token-value", encoding="utf-8")
     return WatchdogSettings(
         targets="vm1-developer=100.64.0.1:22,vm2-deployment=100.64.0.2:8787",
+        watcher_id="founder-mac",
         telegram_token_file=token,
         founder_chat_id=12345,
         failure_samples=3,

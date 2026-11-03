@@ -1,5 +1,5 @@
 [Unit]
-Description=Hermes independent fleet outage watchdog
+Description=Hermes distributed fleet peer watchdog
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -10,7 +10,7 @@ Type=simple
 User=invariance-fleet-watchdog
 Group=invariance-fleet-watchdog
 EnvironmentFile=/etc/invariance-swarm/fleet-watchdog.env
-Environment=PATH=/opt/invariance-swarm-worker/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PATH=/opt/invariance-swarm-fleet-watchdog/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/env invariance-swarm-fleet-watchdog run
 Restart=on-failure
 RestartSec=10

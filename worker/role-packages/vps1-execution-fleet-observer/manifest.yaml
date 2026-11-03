@@ -1,11 +1,11 @@
 schema_version: 1
-name: exec2-lagos-fleet-observer
+name: vps1-execution-fleet-observer
 version: 1.0.0
-role: Bounded EXEC2 Lagos resource, pressure, capacity, uptime, and approved service observer
+role: Bounded VPS1 Lagos execution-host resource, pressure, capacity, uptime, and approved service observer
 task_types: [fleet_observation]
 workflows: []
 required_capabilities: [fleet-observation, resource-health, service-health]
-allowed_machines: [exec2-lagos]
+allowed_machines: [vps1-execution]
 risk_ceiling: 0
 compatibility:
   worker_version_min: 0.3.0
