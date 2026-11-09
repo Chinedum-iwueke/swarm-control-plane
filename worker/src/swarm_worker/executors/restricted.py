@@ -63,6 +63,20 @@ class RestrictedExecutor:
                 if settings is not None
                 else "codex"
             ),
+            copilot_binary=(
+                settings.swarm_copilot_binary if settings is not None else None
+            ),
+            copilot_home=(
+                settings.swarm_copilot_home if settings is not None else None
+            ),
+            copilot_model=(
+                settings.swarm_copilot_model if settings is not None else "auto"
+            ),
+            copilot_codex_fallback=(
+                settings.swarm_copilot_codex_fallback
+                if settings is not None
+                else True
+            ),
             local_author_url=(
                 settings.swarm_local_author_url if settings is not None else None
             ),

@@ -10,8 +10,8 @@ complete lifecycle from predictive-question and falsifiability gates through DAT
 availability, hypothesis compilation, mandate binding, exclusive engineering lease,
 independent review, execution approval, bounded results, BT-009-style publication,
 and campaign replenishment. The active route performs deterministic feasibility and
-typed-intent scaffolding before a real Codex authoring pass, which may change only the
-explicitly unresolved strategy logic. Focused tests, a separate read-only Codex review
+typed-intent scaffolding before a real GitHub Copilot authoring pass, which may change
+only the explicitly unresolved strategy logic. Focused tests, a separate read-only Codex review
 and the complete deterministic validator must pass. The quantitative stage is a
 deterministic mock receipt retaining eight positive, negative, invalid, or failed
 variant outcomes over a declared 365-day research window. It does not read market
@@ -45,14 +45,14 @@ capacity is classified as retryable and distinguished from coding, validation, o
 independent-review rejection; the installer still refuses activation in every
 failure case.
 
-The systemd boundary gives the independent Codex reviewer a private writable runtime
-under `/var/lib` while
+The systemd boundary gives Copilot authoring and the independent Codex reviewer
+separate private writable runtimes under `/var/lib` while
 bind-mounting only the canonical `auth.json` read-only. The protected canonical
 Codex home remains read-only; configuration, durable credentials and repository
 permissions cannot be rewritten by the agent.
 
-The worker daemon continues to run from its narrow control-plane virtualenv. Codex
-authoring and review commands and all engineering validation commands run with Bulletproof's pinned
+The worker daemon continues to run from its narrow control-plane virtualenv. Copilot
+authoring, Codex correction/review commands and all engineering validation commands run with Bulletproof's pinned
 Python 3.11 environment at `/home/omenka/Projects/bulletproof_bt/.venv`, installed
 from `requirements/dev-py311.lock`. This supplies the same NumPy, pandas, PyArrow,
 pytest and scientific dependencies used for operator-run Bulletproof experiments.
@@ -70,7 +70,8 @@ It followed 15 declared states through mock publication and replenishment after 
 coding, validation and structured review. This fixture evidence does not qualify the
 outer systemd boundary. A fresh production-parity systemd rehearsal is required by
 the installer before the production service may start. That rehearsal explicitly
-selects the Codex author provider; the packaged local author remains dormant. Every failed attempt is
+selects the GitHub Copilot author provider while preserving Codex correction and
+independent review; the packaged local author remains dormant. Every failed attempt is
 retained rather than being presented as scientific failure or success.
 
 ## Real-data commissioning

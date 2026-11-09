@@ -23,7 +23,22 @@ test "$(stat -c '%u:%a' "$environment")" = 0:600 || {
 }
 test "$(sed -n 's/^SWARM_AGENT_SLUG=//p' "$environment")" = \
   vm1-alpha-strategy-engineer
-test -f /etc/invariance-swarm/codex-worker/auth.json
+codex_credential_source=/home/omenka/.codex/auth.json
+test -s "$codex_credential_source" || {
+  echo "Authenticate the current Codex user runtime before activation." >&2
+  echo "Run: codex login --device-auth" >&2
+  exit 1
+}
+test -x /usr/local/bin/copilot || {
+  echo "GitHub Copilot CLI is required for strategy authoring." >&2
+  echo "Install the pinned binary at /usr/local/bin/copilot." >&2
+  exit 1
+}
+copilot_version=$(/usr/local/bin/copilot version | sed -n 's/^GitHub Copilot CLI //p')
+test "$copilot_version" = 1.0.105 || {
+  echo "Require pinned GitHub Copilot CLI 1.0.105; found: ${copilot_version:-unknown}." >&2
+  exit 1
+}
 
 # The CPU-local author remains packaged for later evaluation, but is deliberately
 # absent from the production authoring path until suitable inference compute exists.
@@ -62,12 +77,31 @@ install -d -o omenka -g omenka -m 0700 "$runtime"
 test ! -L "$runtime/auth.json"
 if [[ ! -s "$runtime/auth.json" ]]; then
   install -o omenka -g omenka -m 0600 \
-    /etc/invariance-swarm/codex-worker/auth.json "$runtime/auth.json"
+    "$codex_credential_source" "$runtime/auth.json"
 fi
 chown omenka:omenka "$runtime/auth.json"
 chmod 0600 "$runtime/auth.json"
 install -o root -g root -m 0600 "$source_dir/codex-discovery-runtime.env" \
   /etc/invariance-swarm/codex-discovery-runtime.env
+
+copilot_runtime=/var/lib/invariance-swarm/copilot-author-runtime
+copilot_credential_source=/home/omenka/.local/state/invariance-swarm/copilot-hybrid-runtime/config.json
+test ! -L "$copilot_runtime"
+install -d -o omenka -g omenka -m 0700 "$copilot_runtime"
+test -f "$copilot_credential_source" || {
+  echo "Authenticate the dedicated GitHub Copilot runtime before activation." >&2
+  echo "Run: sudo -u omenka env COPILOT_HOME=/home/omenka/.local/state/invariance-swarm/copilot-hybrid-runtime /usr/local/bin/copilot login --device-code" >&2
+  exit 1
+}
+test ! -L "$copilot_runtime/config.json"
+install -o omenka -g omenka -m 0600 \
+  "$copilot_credential_source" "$copilot_runtime/config.json"
+chown omenka:omenka "$copilot_runtime/config.json"
+chmod 0600 "$copilot_runtime/config.json"
+# Authentication is proven by the production-parity rehearsal below. If it fails
+# for authentication, use the device flow and rerun this idempotent installer:
+# sudo -u omenka env COPILOT_HOME="$copilot_runtime" \
+#   /usr/local/bin/copilot login --device-code
 
 install -d -o omenka -g omenka -m 0700 \
   /home/omenka/.local/state/invariance-swarm/alpha-loop-rehearsal \
@@ -97,11 +131,16 @@ systemd-run \
   --property=CapabilityBoundingSet= \
   --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
   --property=ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime \
+  --property=ReadWritePaths=/var/lib/invariance-swarm/copilot-author-runtime \
   --property=ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
   --setenv=NODE_OPTIONS=--jitless \
-  --setenv=SWARM_ENGINEERING_AUTHOR_PROVIDER=codex \
+  --setenv=SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot \
+  --setenv=SWARM_COPILOT_BINARY=/usr/local/bin/copilot \
+  --setenv=SWARM_COPILOT_HOME=/var/lib/invariance-swarm/copilot-author-runtime \
+  --setenv=SWARM_COPILOT_MODEL=auto \
+  --setenv=SWARM_COPILOT_CODEX_FALLBACK=true \
   --setenv=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv \
   --setenv=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin \
   --setenv=VIRTUAL_ENV=/home/omenka/Projects/swarm-control-plane/worker/.venv \

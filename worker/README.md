@@ -105,12 +105,19 @@ sudo install -o root -g root -m 0600 /secure/source/vm1-worker.env \
 The source repositories named by `worker/workflows/code-validation.yaml` must
 exist as direct children of `SWARM_REPOSITORY_ROOT`.
 
-Engineering missions additionally require the dedicated Codex identity and
-setup described in `docs/runbooks/m4-engineering-missions.md`. They produce a
-local patch and PR bundle; they do not push, merge, or deploy.
-Codex-backed task executions share a credential-read lock and can run in
-parallel. Device authentication and credential mutation take the exclusive
-writer lock, so login recovery waits for active tasks without serializing them.
+Engineering missions require the dedicated Codex review identity described in
+`docs/runbooks/m4-engineering-missions.md`. Native alpha strategy missions use
+GitHub Copilot CLI for the bounded first authoring pass, then deterministic focused
+tests and an independent read-only Codex review. Copilot may read, search and patch
+files in the disposable worktree, but it receives no shell, network or MCP
+tools. The worker rejects changes outside the immutable task contract. A Copilot
+authentication, quota or provider outage may fall back to Codex; a semantic failure
+may not. All routes produce a local patch and evidence bundle; they do not push,
+merge or deploy.
+
+Codex-backed task executions share a credential-read lock and can run in parallel.
+Device authentication and credential mutation take the exclusive writer lock, so
+login recovery waits for active tasks without serializing them.
 
 ## Commands
 

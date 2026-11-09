@@ -281,6 +281,9 @@ async def execute(
     codex_home: Path,
     model: str,
     author_provider: str,
+    copilot_binary: Path,
+    copilot_home: Path,
+    copilot_model: str,
     local_author_url: str,
     local_author_model: str,
     local_author_max_turns: int,
@@ -306,6 +309,9 @@ async def execute(
             process_runner=process_runner,
         ),
         author_provider=author_provider,
+        copilot_binary=copilot_binary,
+        copilot_home=copilot_home,
+        copilot_model=copilot_model,
         local_author_url=local_author_url,
         local_author_model=local_author_model,
         local_author_max_turns=local_author_max_turns,
@@ -396,8 +402,27 @@ def main() -> int:
     parser.add_argument("--model", default="gpt-5.6-sol")
     parser.add_argument(
         "--author-provider",
-        choices=("codex", "ollama"),
+        choices=("codex", "copilot", "ollama"),
         default=os.environ.get("SWARM_ENGINEERING_AUTHOR_PROVIDER", "ollama"),
+    )
+    parser.add_argument(
+        "--copilot-binary",
+        type=Path,
+        default=Path(os.environ.get("SWARM_COPILOT_BINARY", "/usr/local/bin/copilot")),
+    )
+    parser.add_argument(
+        "--copilot-home",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "SWARM_COPILOT_HOME",
+                "/var/lib/invariance-swarm/copilot-author-runtime",
+            )
+        ),
+    )
+    parser.add_argument(
+        "--copilot-model",
+        default=os.environ.get("SWARM_COPILOT_MODEL", "auto"),
     )
     parser.add_argument(
         "--local-author-url",
@@ -452,6 +477,9 @@ def main() -> int:
                 codex_home=args.codex_home,
                 model=args.model,
                 author_provider=args.author_provider,
+                copilot_binary=args.copilot_binary,
+                copilot_home=args.copilot_home,
+                copilot_model=args.copilot_model,
                 local_author_url=args.local_author_url,
                 local_author_model=args.local_author_model,
                 local_author_max_turns=args.local_author_max_turns,
