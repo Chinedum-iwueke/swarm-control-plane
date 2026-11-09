@@ -39,6 +39,7 @@ class EngineeringMissionExecutor:
     _CODEX_NODE_OPTIONS = "--jitless"
     _MAX_HEARTBEAT_FAILURES = 20
     _MAX_FAILURE_DIAGNOSTIC_CHARS = 6_000
+    _COPILOT_ALLOWED_TOOLS = frozenset({"apply_patch", "glob", "rg", "view"})
 
     def __init__(
         self,
@@ -51,14 +52,20 @@ class EngineeringMissionExecutor:
         git_runner: SubprocessRunner | None = None,
         validation_executor: CodeValidationExecutor | None = None,
         author_provider: str = "codex",
+        copilot_binary: Path | None = None,
+        copilot_home: Path | None = None,
+        copilot_model: str = "auto",
+        copilot_codex_fallback: bool = True,
         local_author_url: str | None = None,
         local_author_model: str | None = None,
         local_author_max_turns: int = 6,
         local_author_num_ctx: int = 8192,
         effective_uid: Callable[[], int] = os.geteuid,
     ) -> None:
-        if author_provider not in {"codex", "ollama"}:
-            raise ValueError("author_provider must be 'codex' or 'ollama'")
+        if author_provider not in {"codex", "copilot", "ollama"}:
+            raise ValueError("author_provider must be 'codex', 'copilot', or 'ollama'")
+        if author_provider == "copilot" and not (copilot_binary and copilot_home):
+            raise ValueError("copilot authoring requires a binary and dedicated home")
         if author_provider == "ollama" and not (
             local_author_url and local_author_model
         ):
@@ -78,6 +85,10 @@ class EngineeringMissionExecutor:
         )
         self._effective_uid = effective_uid
         self._author_provider = author_provider
+        self._copilot_binary = copilot_binary
+        self._copilot_home = copilot_home
+        self._copilot_model = copilot_model
+        self._copilot_codex_fallback = copilot_codex_fallback
         self._local_author_url = local_author_url
         self._local_author_model = local_author_model
         self._local_author_max_turns = local_author_max_turns
@@ -129,7 +140,7 @@ class EngineeringMissionExecutor:
                 task.prior_failure,
                 inherited_parent_patch=inherited_parent_patch,
             )
-            if self._author_provider == "codex"
+            if self._author_provider in {"codex", "copilot"}
             else self._local_coding_prompt(
                 contract,
                 task.prior_failure,
@@ -178,6 +189,7 @@ class EngineeringMissionExecutor:
                 )
         changed = self._changed_paths(workspace)
         self._enforce_scope(contract, changed, workspace)
+        focused_failed = False
         if self._requires_strategy_scaffold(contract):
             focused = await self._run_strategy_focused_tests(
                 workspace=workspace,
@@ -187,19 +199,23 @@ class EngineeringMissionExecutor:
             )
             steps.append(focused)
             if not focused.success:
-                return self._result(
-                    task,
-                    workflow,
-                    workspace,
-                    started,
-                    steps,
-                    False,
-                    "focused_strategy_tests_failed",
-                    heartbeat_failures=heartbeat_failures,
-                )
-        if self._author_provider == "ollama" and not self._local_tests_passed(
-            workspace
-        ):
+                focused_failed = True
+                if self._author_provider == "codex":
+                    return self._result(
+                        task,
+                        workflow,
+                        workspace,
+                        started,
+                        steps,
+                        False,
+                        "focused_strategy_tests_failed",
+                        heartbeat_failures=heartbeat_failures,
+                    )
+        needs_correction = focused_failed or (
+            self._author_provider == "ollama"
+            and not self._local_tests_passed(workspace)
+        )
+        if self._author_provider in {"copilot", "ollama"} and needs_correction:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return self._result(
@@ -248,6 +264,39 @@ class EngineeringMissionExecutor:
                 )
             changed = self._changed_paths(workspace)
             self._enforce_scope(contract, changed, workspace)
+            if self._requires_strategy_scaffold(contract):
+                corrected_scaffold = self._verify_strategy_scaffold(workspace)
+                steps.append(corrected_scaffold)
+                if not corrected_scaffold.success:
+                    return self._result(
+                        task,
+                        workflow,
+                        workspace,
+                        started,
+                        steps,
+                        False,
+                        "strategy_scaffold_contract_violated",
+                        heartbeat_failures=heartbeat_failures,
+                    )
+                corrected_focused = await self._run_strategy_focused_tests(
+                    workspace=workspace,
+                    heartbeat=heartbeat,
+                    heartbeat_failures=heartbeat_failures,
+                    timeout_seconds=min(300.0, max(1.0, deadline - time.monotonic())),
+                    name="focused-strategy-tests-after-correction",
+                )
+                steps.append(corrected_focused)
+                if not corrected_focused.success:
+                    return self._result(
+                        task,
+                        workflow,
+                        workspace,
+                        started,
+                        steps,
+                        False,
+                        "focused_strategy_tests_failed_after_correction",
+                        heartbeat_failures=heartbeat_failures,
+                    )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return self._result(
@@ -416,6 +465,82 @@ class EngineeringMissionExecutor:
                 timeout_seconds=timeout_seconds,
             )
 
+        if self._author_provider == "copilot":
+            try:
+                copilot = await self._run_copilot_author(
+                    prompt=prompt,
+                    workspace=workspace,
+                    heartbeat=heartbeat,
+                    heartbeat_failures=heartbeat_failures,
+                    timeout_seconds=timeout_seconds,
+                )
+            except OSError as exc:
+                copilot = self._provider_launch_failure_step(
+                    provider="copilot",
+                    workspace=workspace,
+                    error=exc,
+                )
+            if copilot.success:
+                self._write_author_route(
+                    workspace,
+                    requested="copilot",
+                    effective="copilot",
+                    effective_model=self._copilot_result_model(workspace),
+                    fallback_reason=None,
+                )
+                return copilot.model_copy(update={"name": "coding-agent"})
+            fallback_reason = self._copilot_unavailable_reason(copilot, workspace)
+            if not (self._copilot_codex_fallback and fallback_reason):
+                self._write_author_route(
+                    workspace,
+                    requested="copilot",
+                    effective=None,
+                    effective_model=None,
+                    fallback_reason=fallback_reason,
+                )
+                return copilot.model_copy(update={"name": "coding-agent"})
+            remaining = timeout_seconds - copilot.duration_seconds
+            if remaining <= 0:
+                self._write_author_route(
+                    workspace,
+                    requested="copilot",
+                    effective=None,
+                    effective_model=None,
+                    fallback_reason=fallback_reason,
+                )
+                return copilot.model_copy(update={"name": "coding-agent"})
+            fallback = await self._run_codex(
+                name="coding-agent",
+                args=[
+                    "codex",
+                    "exec",
+                    "--ignore-user-config",
+                    "--ephemeral",
+                    "--sandbox",
+                    "workspace-write",
+                    "-c",
+                    "sandbox_workspace_write.network_access=false",
+                    "--model",
+                    self._codex_model,
+                    "--output-last-message",
+                    str(workspace.artifacts / "coder-summary.md"),
+                    "-",
+                ],
+                prompt=prompt,
+                workspace=workspace,
+                heartbeat=heartbeat,
+                heartbeat_failures=heartbeat_failures,
+                timeout_seconds=remaining,
+            )
+            self._write_author_route(
+                workspace,
+                requested="copilot",
+                effective="codex" if fallback.success else None,
+                effective_model=self._codex_model if fallback.success else None,
+                fallback_reason=fallback_reason,
+            )
+            return fallback
+
         policy_path = workspace.artifacts / "local-author-policy.json"
         policy_path.write_text(
             json.dumps(
@@ -462,6 +587,71 @@ class EngineeringMissionExecutor:
             timeout_seconds=timeout_seconds,
         )
 
+    async def _run_copilot_author(
+        self,
+        *,
+        prompt: str,
+        workspace: TaskWorkspace,
+        heartbeat: HeartbeatCallback,
+        heartbeat_failures: list[str],
+        timeout_seconds: float,
+    ) -> StepExecutionResult:
+        assert self._copilot_binary is not None
+        assert self._copilot_home is not None
+        result_path = workspace.artifacts / "copilot-author-result.json"
+        usage_path = workspace.artifacts / "copilot-author-usage.json"
+        args = [
+            str(self._copilot_binary),
+            "--trust-folder",
+            "--no-custom-instructions",
+            "--no-ask-user",
+            "--no-auto-update",
+            "--disable-client-telemetry",
+            "--disable-builtin-mcps",
+            "--allow-all-tools",
+            "--available-tools=apply_patch,glob,rg,view",
+            "--output-format=json",
+            "--usage-output-file",
+            str(usage_path),
+        ]
+        if self._copilot_model and self._copilot_model != "auto":
+            args.extend(("--model", self._copilot_model))
+        step = await self._run_external_author(
+            name="copilot-author",
+            args=args,
+            prompt=(
+                prompt
+                + "\nThe deterministic worker runs all tests after you finish. Do not "
+                "invoke a shell or network tool. Read only repository context and edit "
+                "only the allowed paths. End with a concise implementation summary."
+            ),
+            workspace=workspace,
+            heartbeat=heartbeat,
+            heartbeat_failures=heartbeat_failures,
+            timeout_seconds=timeout_seconds,
+            environment_overrides={
+                "COPILOT_HOME": str(self._copilot_home),
+                "COPILOT_AUTO_UPDATE": "false",
+                "GITHUB_COPILOT_PROMPT_MODE_EXTENSIONS": "false",
+                "NODE_OPTIONS": self._CODEX_NODE_OPTIONS,
+            },
+            heartbeat_phase="copilot-author",
+            heartbeat_model=self._copilot_model,
+        )
+        if step.success:
+            observed_tools = self._write_copilot_result(result_path, workspace)
+            if observed_tools != self._COPILOT_ALLOWED_TOOLS:
+                with (workspace.logs / "copilot-author.stderr.log").open(
+                    "a", encoding="utf-8"
+                ) as stream:
+                    stream.write(
+                        "Copilot tool contract violation: expected "
+                        f"{sorted(self._COPILOT_ALLOWED_TOOLS)}, observed "
+                        f"{sorted(observed_tools)}\n"
+                    )
+                return step.model_copy(update={"success": False})
+        return step
+
     async def _run_local_author(
         self,
         *,
@@ -472,7 +662,36 @@ class EngineeringMissionExecutor:
         heartbeat_failures: list[str],
         timeout_seconds: float,
     ) -> StepExecutionResult:
-        name = "coding-agent"
+        return await self._run_external_author(
+            name="coding-agent",
+            args=args,
+            prompt=prompt,
+            workspace=workspace,
+            heartbeat=heartbeat,
+            heartbeat_failures=heartbeat_failures,
+            timeout_seconds=timeout_seconds,
+            environment_overrides={
+                "NO_PROXY": "127.0.0.1,localhost",
+                "no_proxy": "127.0.0.1,localhost",
+            },
+            heartbeat_phase="local-author",
+            heartbeat_model=str(self._local_author_model),
+        )
+
+    async def _run_external_author(
+        self,
+        *,
+        name: str,
+        args: list[str],
+        prompt: str,
+        workspace: TaskWorkspace,
+        heartbeat: HeartbeatCallback,
+        heartbeat_failures: list[str],
+        timeout_seconds: float,
+        environment_overrides: dict[str, str],
+        heartbeat_phase: str,
+        heartbeat_model: str,
+    ) -> StepExecutionResult:
         stdout_path = workspace.logs / f"{name}.stdout.log"
         stderr_path = workspace.logs / f"{name}.stderr.log"
         prompt_path = workspace.artifacts / f"{name}.prompt.txt"
@@ -496,10 +715,7 @@ class EngineeringMissionExecutor:
                 stdin=stdin_file,
                 stdout=stdout_file,
                 stderr=stderr_file,
-                environment_overrides={
-                    "NO_PROXY": "127.0.0.1,localhost",
-                    "no_proxy": "127.0.0.1,localhost",
-                },
+                environment_overrides=environment_overrides,
             )
             while running.process.returncode is None:
                 remaining = deadline - time.monotonic()
@@ -516,8 +732,8 @@ class EngineeringMissionExecutor:
                     try:
                         await heartbeat(
                             {
-                                "current_step": "local-author",
-                                "model": self._local_author_model,
+                                "current_step": heartbeat_phase,
+                                "model": heartbeat_model,
                                 "elapsed_seconds": time.monotonic() - monotonic,
                             }
                         )
@@ -528,7 +744,7 @@ class EngineeringMissionExecutor:
                     except (ConnectionError, ServerError) as exc:
                         if len(heartbeat_failures) < self._MAX_HEARTBEAT_FAILURES:
                             heartbeat_failures.append(
-                                f"local-author: temporary {type(exc).__name__}"
+                                f"{heartbeat_phase}: temporary {type(exc).__name__}"
                             )
             return_code = running.process.returncode
         self._secure_evidence(workspace)
@@ -550,6 +766,197 @@ class EngineeringMissionExecutor:
                 )
             )
         return result
+
+    @staticmethod
+    def _write_copilot_result(
+        result_path: Path, workspace: TaskWorkspace
+    ) -> frozenset[str]:
+        summary = "GitHub Copilot completed the bounded authoring pass."
+        model = None
+        session_id = None
+        observed_tools: set[str] = set()
+        try:
+            lines = (
+                (workspace.logs / "copilot-author.stdout.log")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            )
+        except OSError:
+            lines = []
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            event_type = event.get("type")
+            data = event.get("data")
+            if event_type == "assistant.message" and isinstance(data, dict):
+                candidate = data.get("content")
+                if isinstance(candidate, str) and candidate.strip():
+                    summary = candidate.strip()
+                candidate_model = data.get("model")
+                if isinstance(candidate_model, str) and candidate_model:
+                    model = candidate_model
+            elif event_type == "session.auto_mode_resolved" and isinstance(data, dict):
+                candidate_model = data.get("chosenModel")
+                if isinstance(candidate_model, str) and candidate_model:
+                    model = candidate_model
+            elif event_type == "result":
+                candidate_session = event.get("sessionId")
+                if isinstance(candidate_session, str) and candidate_session:
+                    session_id = candidate_session
+            elif event_type == "session.usage_checkpoint" and isinstance(data, dict):
+                for cache_state in data.get("promptCacheBreakState", []):
+                    if not isinstance(cache_state, dict):
+                        continue
+                    models = cache_state.get("models", {})
+                    if not isinstance(models, dict):
+                        continue
+                    for model_state in models.values():
+                        if not isinstance(model_state, dict):
+                            continue
+                        for tool in model_state.get("tools", []):
+                            if isinstance(tool, dict) and isinstance(
+                                tool.get("name"), str
+                            ):
+                                observed_tools.add(tool["name"])
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "copilot-author-result-v1.0.0",
+                    "model": model,
+                    "observed_tools": sorted(observed_tools),
+                    "session_id": session_id,
+                    "summary": summary[:20_000],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result_path.chmod(0o600)
+        destination = workspace.artifacts / "coder-summary.md"
+        destination.write_text(summary[:20_000] + "\n", encoding="utf-8")
+        destination.chmod(0o600)
+        return frozenset(observed_tools)
+
+    @staticmethod
+    def _write_author_route(
+        workspace: TaskWorkspace,
+        *,
+        requested: str,
+        effective: str | None,
+        effective_model: str | None,
+        fallback_reason: str | None,
+    ) -> None:
+        route = workspace.artifacts / "author-provider-route.json"
+        route.write_text(
+            json.dumps(
+                {
+                    "schema_version": "engineering-author-route-v1.0.0",
+                    "requested_provider": requested,
+                    "effective_provider": effective,
+                    "effective_model": effective_model,
+                    "fallback_reason": fallback_reason,
+                    "semantic_fallback_allowed": False,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        route.chmod(0o600)
+
+    @staticmethod
+    def _copilot_result_model(workspace: TaskWorkspace) -> str | None:
+        try:
+            result = json.loads(
+                (workspace.artifacts / "copilot-author-result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            return None
+        model = result.get("model") if isinstance(result, dict) else None
+        return model if isinstance(model, str) and model else None
+
+    @staticmethod
+    def _provider_launch_failure_step(
+        *, provider: str, workspace: TaskWorkspace, error: OSError
+    ) -> StepExecutionResult:
+        started = datetime.now(timezone.utc)
+        stdout = workspace.logs / f"{provider}-author.stdout.log"
+        stderr = workspace.logs / f"{provider}-author.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text(
+            f"provider unavailable: {type(error).__name__}: {error}\n",
+            encoding="utf-8",
+        )
+        stdout.chmod(0o600)
+        stderr.chmod(0o600)
+        return StepExecutionResult(
+            name=f"{provider}-author",
+            success=False,
+            return_code=None,
+            started_at=started,
+            ended_at=datetime.now(timezone.utc),
+            duration_seconds=0.0,
+            timed_out=False,
+            stdout_log=f"logs/{provider}-author.stdout.log",
+            stderr_log=f"logs/{provider}-author.stderr.log",
+        )
+
+    @staticmethod
+    def _copilot_unavailable_reason(
+        step: StepExecutionResult, workspace: TaskWorkspace
+    ) -> str | None:
+        if step.timed_out:
+            return "provider_timeout"
+        message_parts = []
+        # Prompt-mode stdout contains model-authored prose. Never use it to
+        # authorize a provider switch; only the CLI diagnostic channel may
+        # establish an infrastructure failure.
+        for name in ("copilot-author.stderr.log",):
+            try:
+                message_parts.append(
+                    (workspace.logs / name).read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                )
+            except OSError:
+                continue
+        message = "\n".join(message_parts).lower()
+        categories = {
+            "authentication": ("login", "authenticate", "unauthorized", "forbidden"),
+            "provider_capacity": (
+                "credit limit",
+                "credits exhausted",
+                "quota exceeded",
+                "quota exhausted",
+                "no premium requests remaining",
+                "premium request limit",
+                "rate limit",
+                "too many requests",
+                "at capacity",
+                "usage limit",
+            ),
+            "provider_unavailable": (
+                "provider unavailable",
+                "service unavailable",
+                "temporarily unavailable",
+                "connection refused",
+                "connection reset",
+                "network error",
+                "timed out",
+                "timeout",
+            ),
+        }
+        for category, markers in categories.items():
+            if any(marker in message for marker in markers):
+                return category
+        return None
 
     @staticmethod
     def _requires_strategy_scaffold(contract: EngineeringMissionContract) -> bool:
@@ -692,6 +1099,7 @@ class EngineeringMissionExecutor:
         heartbeat: HeartbeatCallback,
         heartbeat_failures: list[str],
         timeout_seconds: float,
+        name: str = "focused-strategy-tests",
     ) -> StepExecutionResult:
         manifest = json.loads(
             (workspace.artifacts / "strategy-scaffold-manifest.json").read_text(
@@ -708,7 +1116,7 @@ class EngineeringMissionExecutor:
                 "Strategy scaffold must identify exactly one focused test module."
             )
         return await self._run_bounded_command(
-            name="focused-strategy-tests",
+            name=name,
             args=["python", "-m", "pytest", "-q", tests[0]],
             workspace=workspace,
             heartbeat=heartbeat,
@@ -1092,6 +1500,19 @@ class EngineeringMissionExecutor:
         started = datetime.now(timezone.utc)
         monotonic = time.monotonic()
         self._write_patch(changed, workspace)
+        route_path = workspace.artifacts / "author-provider-route.json"
+        route = None
+        if route_path.is_file():
+            try:
+                candidate = json.loads(route_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                candidate = None
+            if isinstance(candidate, dict):
+                route = candidate
+        effective_provider = (
+            route.get("effective_provider") if route else self._author_provider
+        )
+        effective_model = route.get("effective_model") if route else None
         bundle = {
             "milestone_id": contract.milestone_id,
             "work_item_id": contract.work_item_id,
@@ -1100,11 +1521,22 @@ class EngineeringMissionExecutor:
             "patch": "artifacts/changes.patch",
             "review": "artifacts/review.json",
             "coder_summary": "artifacts/coder-summary.md",
-            "author_provider": self._author_provider,
+            "requested_author_provider": self._author_provider,
+            "author_provider": effective_provider,
             "author_model": (
-                self._local_author_model
-                if self._author_provider == "ollama"
-                else self._codex_model
+                effective_model
+                or (
+                    self._local_author_model
+                    if self._author_provider == "ollama"
+                    else (
+                        self._copilot_model
+                        if effective_provider == "copilot"
+                        else self._codex_model
+                    )
+                )
+            ),
+            "author_provider_route": (
+                "artifacts/author-provider-route.json" if route else None
             ),
             "acceptance_criteria": contract.acceptance_criteria,
         }
@@ -1501,6 +1933,9 @@ class EngineeringMissionExecutor:
     ) -> WorkflowExecutionResult:
         artifact_candidates = (
             "artifacts/coder-summary.md",
+            "artifacts/copilot-author-result.json",
+            "artifacts/copilot-author-usage.json",
+            "artifacts/author-provider-route.json",
             "artifacts/strategy-engineering-evidence.json",
             "artifacts/strategy-scaffold-manifest.json",
             "artifacts/local-author-audit.jsonl",

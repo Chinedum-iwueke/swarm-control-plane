@@ -93,6 +93,18 @@ def test_local_author_requires_complete_endpoint_configuration(tmp_path: Path) -
         )
 
 
+def test_copilot_author_requires_binary_and_dedicated_home(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="binary and dedicated home"):
+        EngineeringMissionExecutor(
+            codex_home=tmp_path,
+            codex_model="review-model",
+            timeout_seconds=10,
+            heartbeat_interval_seconds=1,
+            author_provider="copilot",
+            effective_uid=lambda: 1000,
+        )
+
+
 def test_unknown_author_provider_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="author_provider"):
         EngineeringMissionExecutor(
@@ -103,6 +115,374 @@ def test_unknown_author_provider_is_rejected(tmp_path: Path) -> None:
             author_provider="unbounded",
             effective_uid=lambda: 1000,
         )
+
+
+@pytest.mark.asyncio
+async def test_copilot_author_is_sandboxed_without_shell_or_extensions(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    copilot_home = tmp_path / "copilot-home"
+    for path in (repository, artifacts, logs, copilot_home):
+        path.mkdir()
+    workspace = SimpleNamespace(
+        repository=repository,
+        artifacts=artifacts,
+        logs=logs,
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="review-model",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        author_provider="copilot",
+        copilot_binary=Path("/usr/local/bin/copilot"),
+        copilot_home=copilot_home,
+        effective_uid=lambda: 1000,
+    )
+    captured = {}
+
+    async def run_external(**kwargs):
+        captured.update(kwargs)
+        (logs / "copilot-author.stdout.log").write_text(
+            json.dumps(
+                {
+                    "type": "session.usage_checkpoint",
+                    "data": {
+                        "promptCacheBreakState": [
+                            {
+                                "models": {
+                                    "auto": {
+                                        "tools": [
+                                            {"name": name}
+                                            for name in (
+                                                "apply_patch",
+                                                "glob",
+                                                "rg",
+                                                "view",
+                                            )
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return successful_step("copilot-author")
+
+    executor._run_external_author = run_external
+    result = await executor._run_copilot_author(
+        prompt="bounded implementation",
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+        heartbeat_failures=[],
+        timeout_seconds=5,
+    )
+
+    assert result.success is True
+    assert "--trust-folder" in captured["args"]
+    assert "--no-custom-instructions" in captured["args"]
+    assert "--disable-builtin-mcps" in captured["args"]
+    assert "--allow-all-tools" in captured["args"]
+    assert "--allow-all-paths" not in captured["args"]
+    assert "--available-tools=apply_patch,glob,rg,view" in captured["args"]
+    assert not any(arg.startswith("--excluded-tools=") for arg in captured["args"])
+    assert "--allow-all" not in captured["args"]
+    assert "--model" not in captured["args"]
+    assert captured["environment_overrides"]["COPILOT_HOME"] == str(copilot_home)
+    assert captured["environment_overrides"]["COPILOT_AUTO_UPDATE"] == "false"
+    assert (artifacts / "coder-summary.md").is_file()
+
+
+def test_copilot_jsonl_is_reduced_to_model_and_summary_receipt(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    artifacts.mkdir()
+    logs.mkdir()
+    events = [
+        {
+            "type": "session.auto_mode_resolved",
+            "data": {"chosenModel": "copilot-selected-model"},
+        },
+        {
+            "type": "assistant.message",
+            "data": {
+                "model": "copilot-selected-model",
+                "content": "Implemented the bounded signal logic.",
+            },
+        },
+        {
+            "type": "session.usage_checkpoint",
+            "data": {
+                "promptCacheBreakState": [
+                    {
+                        "models": {
+                            "copilot-selected-model": {
+                                "tools": [
+                                    {"name": name}
+                                    for name in ("apply_patch", "glob", "rg", "view")
+                                ]
+                            }
+                        }
+                    }
+                ]
+            },
+        },
+        {"type": "result", "sessionId": "copilot-session-1"},
+    ]
+    (logs / "copilot-author.stdout.log").write_text(
+        "\n".join(json.dumps(event) for event in events) + "\n",
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(artifacts=artifacts, logs=logs)
+
+    observed_tools = EngineeringMissionExecutor._write_copilot_result(
+        artifacts / "copilot-author-result.json", workspace
+    )
+
+    result = json.loads(
+        (artifacts / "copilot-author-result.json").read_text(encoding="utf-8")
+    )
+    assert result["model"] == "copilot-selected-model"
+    assert result["session_id"] == "copilot-session-1"
+    assert result["summary"] == "Implemented the bounded signal logic."
+    assert result["observed_tools"] == ["apply_patch", "glob", "rg", "view"]
+    assert observed_tools == frozenset({"apply_patch", "glob", "rg", "view"})
+    assert EngineeringMissionExecutor._copilot_result_model(workspace) == (
+        "copilot-selected-model"
+    )
+    assert (artifacts / "coder-summary.md").read_text(encoding="utf-8") == (
+        "Implemented the bounded signal logic.\n"
+    )
+
+
+def test_copilot_launch_failure_is_infrastructure_fallback_evidence(
+    tmp_path: Path,
+) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    workspace = SimpleNamespace(logs=logs)
+
+    step = EngineeringMissionExecutor._provider_launch_failure_step(
+        provider="copilot",
+        workspace=workspace,
+        error=FileNotFoundError("missing copilot binary"),
+    )
+
+    assert step.success is False
+    assert (
+        EngineeringMissionExecutor._copilot_unavailable_reason(step, workspace)
+        == "provider_unavailable"
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Copilot quota exceeded for this account",
+        "No premium requests remaining",
+        "Premium request limit reached",
+    ),
+)
+def test_copilot_quota_messages_are_capacity_fallback_evidence(
+    tmp_path: Path, message: str
+) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "copilot-author.stderr.log").write_text(message, encoding="utf-8")
+    workspace = SimpleNamespace(logs=logs)
+    step = successful_step("copilot-author").model_copy(
+        update={"success": False, "return_code": 1}
+    )
+
+    assert (
+        EngineeringMissionExecutor._copilot_unavailable_reason(step, workspace)
+        == "provider_capacity"
+    )
+
+
+def test_copilot_model_output_cannot_authorize_fallback(tmp_path: Path) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "copilot-author.stdout.log").write_text(
+        "The strategy handles login timeout and forbidden states.", encoding="utf-8"
+    )
+    (logs / "copilot-author.stderr.log").write_text("", encoding="utf-8")
+    workspace = SimpleNamespace(logs=logs)
+    step = successful_step("copilot-author").model_copy(
+        update={"success": False, "return_code": 1}
+    )
+
+    assert EngineeringMissionExecutor._copilot_unavailable_reason(step, workspace) is None
+
+
+@pytest.mark.asyncio
+async def test_copilot_capacity_failure_falls_back_to_codex_author(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    artifacts.mkdir()
+    logs.mkdir()
+    (logs / "copilot-author.stderr.log").write_text(
+        "GitHub AI credits exhausted", encoding="utf-8"
+    )
+    workspace = SimpleNamespace(
+        repository=tmp_path,
+        artifacts=artifacts,
+        logs=logs,
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="review-model",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        author_provider="copilot",
+        copilot_binary=Path("/usr/local/bin/copilot"),
+        copilot_home=tmp_path / "copilot-home",
+        effective_uid=lambda: 1000,
+    )
+    executor._run_copilot_author = lambda **_kwargs: asyncio.sleep(
+        0,
+        result=successful_step("copilot-author").model_copy(
+            update={"success": False, "return_code": 1}
+        ),
+    )
+
+    async def run_codex(*, name, **_kwargs):
+        return successful_step(name)
+
+    executor._run_codex = run_codex
+    result = await executor._run_author(
+        contract=contract(),
+        prompt="bounded implementation",
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+        heartbeat_failures=[],
+        timeout_seconds=5,
+    )
+
+    assert result.success is True
+    route = json.loads(
+        (artifacts / "author-provider-route.json").read_text(encoding="utf-8")
+    )
+    assert route["requested_provider"] == "copilot"
+    assert route["effective_provider"] == "codex"
+    assert route["fallback_reason"] == "provider_capacity"
+    assert route["semantic_fallback_allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_copilot_timeout_does_not_extend_author_budget(tmp_path: Path) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    artifacts.mkdir()
+    logs.mkdir()
+    workspace = SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=logs)
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="review-model",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        author_provider="copilot",
+        copilot_binary=Path("/usr/local/bin/copilot"),
+        copilot_home=tmp_path / "copilot-home",
+        effective_uid=lambda: 1000,
+    )
+    executor._run_copilot_author = lambda **_kwargs: asyncio.sleep(
+        0,
+        result=successful_step("copilot-author").model_copy(
+            update={
+                "success": False,
+                "return_code": None,
+                "timed_out": True,
+                "duration_seconds": 5.0,
+            }
+        ),
+    )
+
+    async def forbidden_codex(**_kwargs):
+        raise AssertionError("exhausted author budget must not start a fallback")
+
+    executor._run_codex = forbidden_codex
+    result = await executor._run_author(
+        contract=contract(),
+        prompt="bounded implementation",
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+        heartbeat_failures=[],
+        timeout_seconds=5,
+    )
+
+    assert result.success is False
+    assert result.timed_out is True
+    route = json.loads(
+        (artifacts / "author-provider-route.json").read_text(encoding="utf-8")
+    )
+    assert route["effective_provider"] is None
+    assert route["fallback_reason"] == "provider_timeout"
+
+
+@pytest.mark.asyncio
+async def test_copilot_semantic_failure_does_not_model_shop(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    artifacts.mkdir()
+    logs.mkdir()
+    (logs / "copilot-author.stderr.log").write_text(
+        "implementation could not satisfy the contract", encoding="utf-8"
+    )
+    workspace = SimpleNamespace(
+        repository=tmp_path,
+        artifacts=artifacts,
+        logs=logs,
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="review-model",
+        timeout_seconds=10,
+        heartbeat_interval_seconds=1,
+        author_provider="copilot",
+        copilot_binary=Path("/usr/local/bin/copilot"),
+        copilot_home=tmp_path / "copilot-home",
+        effective_uid=lambda: 1000,
+    )
+    executor._run_copilot_author = lambda **_kwargs: asyncio.sleep(
+        0,
+        result=successful_step("copilot-author").model_copy(
+            update={"success": False, "return_code": 1}
+        ),
+    )
+
+    async def forbidden_codex(**_kwargs):
+        raise AssertionError("semantic failure must not switch providers")
+
+    executor._run_codex = forbidden_codex
+    result = await executor._run_author(
+        contract=contract(),
+        prompt="bounded implementation",
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+        heartbeat_failures=[],
+        timeout_seconds=5,
+    )
+
+    assert result.success is False
+    route = json.loads(
+        (artifacts / "author-provider-route.json").read_text(encoding="utf-8")
+    )
+    assert route["effective_provider"] is None
+    assert route["fallback_reason"] is None
 
 
 def test_alpha_review_prompt_separates_portable_fixture_from_production_receipt() -> (

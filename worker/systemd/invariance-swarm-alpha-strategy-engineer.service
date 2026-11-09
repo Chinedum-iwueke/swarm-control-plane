@@ -12,7 +12,11 @@ EnvironmentFile=/etc/invariance-swarm/alpha-strategy-engineer.env
 EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env
 Environment=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv
 Environment=SWARM_ENGINEERING_TIMEOUT_SECONDS=7200
-Environment=SWARM_ENGINEERING_AUTHOR_PROVIDER=codex
+Environment=SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot
+Environment=SWARM_COPILOT_BINARY=/usr/local/bin/copilot
+Environment=SWARM_COPILOT_HOME=/var/lib/invariance-swarm/copilot-author-runtime
+Environment=SWARM_COPILOT_MODEL=auto
+Environment=SWARM_COPILOT_CODEX_FALLBACK=true
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=NODE_OPTIONS=--jitless
 Environment=PATH=/home/omenka/Projects/swarm-control-plane/worker/.venv/bin:/usr/bin:/bin
@@ -39,6 +43,7 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadOnlyPaths=/home/omenka/Projects/bulletproof_bt
 ReadWritePaths=/var/lib/invariance-swarm/codex-discovery-runtime
+ReadWritePaths=/var/lib/invariance-swarm/copilot-author-runtime
 ReadWritePaths=/home/omenka/Projects/swarm-agent-workspaces
 ReadWritePaths=/home/omenka/Projects/bulletproof_bt/.git/worktrees
 ReadWritePaths=/home/omenka/.local/state/invariance-swarm
