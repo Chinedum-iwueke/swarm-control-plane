@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 import time
+from collections import Counter
 from datetime import UTC, datetime
 
 from swarm_worker import __version__
@@ -18,6 +19,25 @@ from swarm_worker.workspace import TaskWorkspace
 
 class AlphaDiscoveryError(RuntimeError):
     """A bounded discovery agent failed closed."""
+
+
+_MAX_PROMPT_CHARS = 900_000
+_CAPABILITY_SUMMARY_FIELDS = (
+    "bounded_weekly_reuse_eligible",
+    "contract_digest",
+    "contract_path",
+    "description",
+    "hypothesis_family",
+    "hypothesis_id",
+    "input_mode",
+    "maximum_instruments",
+    "research_contract_digest",
+    "reuse_blockers",
+    "signal_timeframes",
+    "strategy",
+    "title",
+    "variant_count",
+)
 
 
 def _runtime_options(attempt_directory):
@@ -81,7 +101,12 @@ class AlphaDiscoveryExecutor:
         schema_path.write_text(
             json.dumps(_schema(contract.stage), sort_keys=True), encoding="utf-8"
         )
-        prompt_path.write_text(_prompt(contract), encoding="utf-8")
+        prompt_document = _prompt(contract)
+        if len(prompt_document) > _MAX_PROMPT_CHARS:
+            raise AlphaDiscoveryError(
+                "Compacted discovery prompt exceeds the bounded inference envelope."
+            )
+        prompt_path.write_text(prompt_document, encoding="utf-8")
         for path in (schema_path, prompt_path):
             path.chmod(0o600)
         runtime_options = _runtime_options(workspace.plan.attempt_directory)
@@ -684,6 +709,81 @@ def _schema(stage: str) -> dict:
     }
 
 
+def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
+    """Remove duplicated catalog bodies without changing scientific inputs."""
+
+    context = dict(contract.context)
+    lake = context.get("lake_catalog")
+    if isinstance(lake, dict):
+        compact_lake = dict(lake)
+        records = compact_lake.pop("membership_records", None)
+        if isinstance(records, list):
+            counts = Counter(
+                (
+                    str(record.get("venue", "unknown")),
+                    str(record.get("group", "unclassified")),
+                )
+                for record in records
+                if isinstance(record, dict)
+            )
+            compact_lake["membership_record_summary"] = [
+                {"venue": venue, "group": group, "count": count}
+                for (venue, group), count in sorted(counts.items())
+            ]
+            if contract.stage == "representation":
+                instruments = {
+                    instrument
+                    for candidate in context.get("raw_candidates", [])
+                    if isinstance(candidate, dict)
+                    for instrument in candidate.get("data", {}).get(
+                        "instruments", []
+                    )
+                    if isinstance(instrument, str)
+                }
+                compact_lake["selected_membership_records"] = [
+                    record
+                    for record in records
+                    if isinstance(record, dict)
+                    and record.get("instrument") in instruments
+                ]
+        context["lake_catalog"] = compact_lake
+
+    catalog = context.get("strategy_catalog")
+    if isinstance(catalog, dict):
+        compact_catalog = dict(catalog)
+        capabilities = compact_catalog.get("capabilities")
+        if isinstance(capabilities, list):
+            compact_catalog["capabilities"] = [
+                {
+                    key: capability[key]
+                    for key in _CAPABILITY_SUMMARY_FIELDS
+                    if key in capability
+                }
+                for capability in capabilities
+                if isinstance(capability, dict)
+            ]
+        context["strategy_catalog"] = compact_catalog
+
+    if contract.stage == "representation":
+        relevant = {
+            "datasets",
+            "equation_policy",
+            "lake_catalog",
+            "mandate_digest",
+            "objective",
+            "prior_attempts",
+            "raw_candidates",
+            "research_constraints",
+            "schema_version",
+            "strategy_catalog",
+        }
+        context = {key: value for key, value in context.items() if key in relevant}
+        prior_attempts = context.get("prior_attempts")
+        if isinstance(prior_attempts, list):
+            context["prior_attempts"] = prior_attempts[-10:]
+    return context
+
+
 def _prompt(contract: AlphaDiscoveryContract) -> str:
     role = {
         "intelligence": "Research Intelligence director: synthesize mechanisms and contradictions",
@@ -800,5 +900,5 @@ research timeframe. Otherwise use null; never distort a question merely to reuse
 MANDATE DIGEST: {contract.mandate_digest}
 STAGE: {contract.stage}
 CONTEXT:
-{json.dumps(contract.context, ensure_ascii=True, sort_keys=True)}
+{json.dumps(_prompt_context(contract), ensure_ascii=True, sort_keys=True)}
 """

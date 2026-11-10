@@ -9,6 +9,7 @@ from swarm_worker.executors.alpha_discovery import (
     AlphaDiscoveryExecutor,
     _normalize_output,
     _prompt,
+    _prompt_context,
     _runtime_options,
     _schema,
 )
@@ -269,6 +270,66 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     assert "only exact pairs listed under" in prompt
     assert "Founder-idea IDs" in prompt
     assert "right-closed, left-labeled" not in prompt
+
+
+def test_representation_prompt_compacts_duplicate_catalog_bodies():
+    document = alpha_discovery_contract()
+    document["stage"] = "representation"
+    document["context"].update(
+        {
+            "raw_candidates": [
+                {
+                    "candidate_key": "candidate-1",
+                    "data": {"instruments": ["ETHUSDT"]},
+                }
+            ],
+            "lake_catalog": {
+                "assets": [["perp", "bybit", "ETHUSDT"]],
+                "membership_records": [
+                    {
+                        "venue": "bybit",
+                        "group": "stable",
+                        "instrument": "ETHUSDT",
+                    },
+                    {
+                        "venue": "bybit",
+                        "group": "volatile",
+                        "instrument": "SOLUSDT",
+                    },
+                ],
+            },
+            "strategy_catalog": {
+                "capabilities": [
+                    {
+                        "hypothesis_id": "H-1",
+                        "description": "Exact native capability.",
+                        "research_contract": {"payload": "x" * 100_000},
+                        "logging_requirements": ["x" * 100_000],
+                    }
+                ]
+            },
+            "native_signal_surveillance": {"payload": "x" * 100_000},
+            "prior_attempts": [{"ordinal": value} for value in range(20)],
+        }
+    )
+    contract = AlphaDiscoveryContract.model_validate(document)
+
+    context = _prompt_context(contract)
+
+    assert "membership_records" not in context["lake_catalog"]
+    assert context["lake_catalog"]["selected_membership_records"] == [
+        {"venue": "bybit", "group": "stable", "instrument": "ETHUSDT"}
+    ]
+    capability = context["strategy_catalog"]["capabilities"][0]
+    assert capability == {
+        "description": "Exact native capability.",
+        "hypothesis_id": "H-1",
+    }
+    assert "native_signal_surveillance" not in context
+    assert context["prior_attempts"] == [
+        {"ordinal": value} for value in range(10, 20)
+    ]
+    assert len(_prompt(contract)) < 50_000
 
 
 def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
