@@ -129,6 +129,64 @@ def test_alpha_discovery_contract_and_fixed_workflow():
     assert workflow.steps == []
 
 
+@pytest.mark.asyncio
+async def test_alpha_discovery_usage_limit_defers_through_provider_circuit(
+    tmp_path, monkeypatch
+):
+    for name in ("artifacts", "logs", "repository", "codex-home"):
+        (tmp_path / name).mkdir()
+    workspace = SimpleNamespace(
+        artifacts=tmp_path / "artifacts",
+        logs=tmp_path / "logs",
+        repository=tmp_path / "repository",
+        plan=SimpleNamespace(
+            attempt_directory=tmp_path,
+            resolved_base_commit="a" * 40,
+        ),
+    )
+
+    class Process:
+        returncode = 1
+
+        async def wait(self):
+            return self.returncode
+
+    async def create_process(*_args, **kwargs):
+        kwargs["stderr"].write(
+            b"ERROR: You have hit your usage limit. Retry in 30 minutes.\n"
+        )
+        kwargs["stderr"].flush()
+        return Process()
+
+    async def heartbeat(_progress):
+        return None
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", create_process)
+    executor = AlphaDiscoveryExecutor(
+        codex_home=tmp_path / "codex-home",
+        codex_model="test",
+        timeout_seconds=60,
+        heartbeat_interval_seconds=5,
+        effective_uid=lambda: 1000,
+    )
+    result = await executor.execute(
+        task=SimpleNamespace(
+            input_contract=alpha_discovery_contract(), attempt_count=1
+        ),
+        workflow=SimpleNamespace(
+            name="alpha-discovery", steps=[], timeout_seconds=60
+        ),
+        workspace=workspace,
+        heartbeat=heartbeat,
+    )
+
+    assert not result.success
+    assert result.termination_reason == "provider_capacity"
+    assert result.retryable is False
+    assert result.summary["provider_capacity"]["provider"] == "codex"
+    assert result.summary["provider_capacity"]["retry_after_seconds"] == 1800
+
+
 def test_alpha_data_admission_fixed_workflow_is_allowlisted():
     workflow = WorkflowLoader(Path("worker/workflows")).load("alpha-data-admission")
 

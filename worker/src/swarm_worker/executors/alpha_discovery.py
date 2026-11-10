@@ -11,6 +11,7 @@ from swarm_worker import __version__
 from swarm_worker.executors.code_validation import HeartbeatCallback, RootExecutionError
 from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResult
 from swarm_worker.policy import AlphaDiscoveryContract
+from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.workflows import WorkflowDefinition
 from swarm_worker.workspace import TaskWorkspace
 
@@ -192,6 +193,11 @@ class AlphaDiscoveryExecutor:
                 workspace.plan.attempt_directory
             ).as_posix(),
         )
+        provider_capacity = detect_provider_capacity(
+            [step],
+            workspace.plan.attempt_directory,
+            {step.name: "codex"},
+        )
         return WorkflowExecutionResult(
             workflow=workflow.name,
             repository=contract.repository,
@@ -200,15 +206,27 @@ class AlphaDiscoveryExecutor:
             total_duration_seconds=step.duration_seconds,
             steps=[step],
             success=success,
-            termination_reason=None if success else "alpha_discovery_failed",
+            termination_reason=(
+                None
+                if success
+                else "provider_capacity"
+                if provider_capacity
+                else "alpha_discovery_failed"
+            ),
             worker_version=__version__,
             artifacts=[
                 output_path.relative_to(workspace.plan.attempt_directory).as_posix()
             ]
             if output_path.is_file()
             else [],
-            retryable=not success,
-            summary={"alpha_discovery_output": output} if success else {},
+            retryable=not success and provider_capacity is None,
+            summary=(
+                {"alpha_discovery_output": output}
+                if success
+                else {"provider_capacity": provider_capacity}
+                if provider_capacity
+                else {}
+            ),
         )
 
 

@@ -108,9 +108,7 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
 
 
 @pytest.mark.asyncio
-async def test_reviewer_retries_transient_model_capacity_inside_one_task_attempt(
-    tmp_path, monkeypatch
-):
+async def test_reviewer_defers_model_capacity_without_local_retry(tmp_path):
     payload = contract()
     for name in ("artifacts", "logs", "repository"):
         (tmp_path / name).mkdir()
@@ -125,31 +123,15 @@ async def test_reviewer_retries_transient_model_capacity_inside_one_task_attempt
 
         async def start(self, _args, **kwargs):
             self.calls += 1
-            if self.calls == 1:
-                kwargs["stderr"].write(
-                    b"ERROR: Selected model is at capacity. Please try a different model.\n"
-                )
-                kwargs["stderr"].flush()
-                return SimpleNamespace(process=SimpleNamespace(returncode=1))
-            output = {
-                "subject_digest": payload["subject_digest"],
-                "verdict": "approve",
-                "rationale": "Reviewed the exact frozen card after transient capacity cleared.",
-                "checks": ["semantic fidelity"],
-                "blockers": [],
-            }
-            (workspace.artifacts / "strategy-review.json").write_text(
-                json.dumps(output), encoding="utf-8"
+            kwargs["stderr"].write(
+                b"ERROR: Selected model is at capacity. Please try again in 2 hours.\n"
             )
-            return SimpleNamespace(process=SimpleNamespace(returncode=0))
-
-    async def no_sleep(_seconds):
-        return None
+            kwargs["stderr"].flush()
+            return SimpleNamespace(process=SimpleNamespace(returncode=1))
 
     async def heartbeat(_metadata):
         return None
 
-    monkeypatch.setattr(asyncio, "sleep", no_sleep)
     runner = Runner()
     executor = AlphaStrategyReviewExecutor(
         codex_home=tmp_path, codex_model="test-model",
@@ -169,8 +151,17 @@ async def test_reviewer_retries_transient_model_capacity_inside_one_task_attempt
         heartbeat=heartbeat,
     )
 
-    assert result.success
-    assert runner.calls == 2
+    assert not result.success
+    assert result.termination_reason == "provider_capacity"
+    assert result.retryable is False
+    assert result.summary["provider_capacity"] == {
+        "provider": "codex",
+        "failure_summary": (
+            "ERROR: Selected model is at capacity. Please try again in 2 hours."
+        ),
+        "retry_after_seconds": 7200,
+    }
+    assert runner.calls == 1
     assert "Selected model is at capacity" in (
         workspace.logs / "review.stderr.log"
     ).read_text(encoding="utf-8")

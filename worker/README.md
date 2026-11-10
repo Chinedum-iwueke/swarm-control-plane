@@ -127,6 +127,12 @@ to `queued`, restores its execution-attempt budget, and opens a durable
 control-plane circuit for the provider. Workers requiring the same capability set
 stop leasing while unrelated deterministic workers continue normally.
 
+Detection is shared by every model-dependent worker path: Codex research-
+intelligence, hypothesis and representation stages; Codex independent strategy
+review; Codex engineering review and correction; and Copilot strategy authoring.
+The first matching failure opens the provider circuit. Executors must not consume
+local retry loops before reporting that capacity event.
+
 Each circuit emits one generation-scoped founder notification. After the bounded
 cooldown, the control plane assigns one matching worker a half-open probe. A
 non-capacity result closes the circuit and queued work resumes; another capacity

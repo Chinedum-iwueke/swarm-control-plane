@@ -14,6 +14,7 @@ from swarm_worker.executors.code_validation import (
     RootExecutionError,
 )
 from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResult
+from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.strategy_review_contract import (
     AlphaStrategyReviewContract,
     StrategyReviewVerdict,
@@ -32,13 +33,6 @@ class AlphaStrategyReviewExecutor:
         self._interval = max(1.0, heartbeat_interval_seconds)
         self._runner = process_runner or AsyncProcessRunner()
         self._uid = effective_uid
-
-    @staticmethod
-    def _capacity_limited(stderr: Path) -> bool:
-        if not stderr.is_file():
-            return False
-        message = stderr.read_text(encoding="utf-8", errors="replace").lower()
-        return "selected model is at capacity" in message
 
     async def execute(self, *, task: Task, workflow: WorkflowDefinition,
                       workspace: TaskWorkspace, heartbeat: HeartbeatCallback):
@@ -116,7 +110,23 @@ class AlphaStrategyReviewExecutor:
                             await asyncio.gather(wait_task, return_exceptions=True)
             if timed_out or running.process.returncode == 0:
                 break
-            if capacity_attempt == 2 or not self._capacity_limited(stderr_path):
+            capacity_step = StepExecutionResult(
+                name="independent-strategy-review",
+                success=False,
+                return_code=running.process.returncode,
+                started_at=started_at,
+                ended_at=datetime.now(UTC),
+                duration_seconds=time.monotonic() - started,
+                stdout_log="logs/review.stdout.log",
+                stderr_log="logs/review.stderr.log",
+            )
+            if detect_provider_capacity(
+                [capacity_step],
+                workspace.logs.parent,
+                {"independent-strategy-review": "codex"},
+            ):
+                break
+            if capacity_attempt == 2:
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -142,11 +152,21 @@ class AlphaStrategyReviewExecutor:
             duration_seconds=time.monotonic() - started, timed_out=timed_out,
             stdout_log="logs/review.stdout.log", stderr_log="logs/review.stderr.log",
         )
+        provider_capacity = detect_provider_capacity(
+            [step],
+            workspace.logs.parent,
+            {"independent-strategy-review": "codex"},
+        )
         return WorkflowExecutionResult(
             workflow=workflow.name, repository=contract.repository, base_commit=contract.base_ref,
             task_attempt=task.attempt_count, total_duration_seconds=step.duration_seconds,
-            steps=[step], success=success, termination_reason=None if success else "strategy_review_failed",
+            steps=[step], success=success,
+            termination_reason=(None if success else "provider_capacity" if provider_capacity
+                                else "strategy_review_failed"),
             worker_version=__version__, artifacts=["artifacts/strategy-review.json"] if output.is_file() else [],
-            retryable=not success, summary={"alpha_strategy_review": result.model_dump(mode="json"),
-                                          "review_digest": review_digest(result.model_dump(mode="json"))} if result else {},
+            retryable=not success and provider_capacity is None,
+            summary=({"alpha_strategy_review": result.model_dump(mode="json"),
+                      "review_digest": review_digest(result.model_dump(mode="json"))}
+                     if result else {"provider_capacity": provider_capacity}
+                     if provider_capacity else {}),
         )
