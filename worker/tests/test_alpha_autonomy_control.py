@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -44,3 +45,19 @@ def test_pause_marker_follows_projected_state(tmp_path) -> None:
     assert marker.stat().st_mode & 0o777 == 0o600
     control.project_pause_marker(marker, paused=False)
     assert not marker.exists()
+
+
+def test_root_atomic_write_preserves_existing_state_owner(tmp_path) -> None:
+    state = tmp_path / "drain.json"
+    state.write_text("{}\n", encoding="utf-8")
+    owner = state.stat()
+
+    with patch.object(control.os, "geteuid", return_value=0), patch.object(
+        control.os, "chown"
+    ) as chown:
+        control.atomic_json(state, {"paused": False})
+
+    temporary = chown.call_args.args[0]
+    assert temporary.parent == state.parent
+    assert chown.call_args.args[1:] == (owner.st_uid, owner.st_gid)
+    assert state.stat().st_mode & 0o777 == 0o600

@@ -23,6 +23,7 @@ def utc_now() -> str:
 
 def atomic_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    owner = path.stat() if path.exists() else path.parent.stat()
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, delete=False
     ) as handle:
@@ -32,6 +33,8 @@ def atomic_json(path: Path, payload: dict) -> None:
         handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
+    if os.geteuid() == 0:
+        os.chown(temporary, owner.st_uid, owner.st_gid)
     temporary.replace(path)
 
 
