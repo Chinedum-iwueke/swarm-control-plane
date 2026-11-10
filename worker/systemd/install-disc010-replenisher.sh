@@ -13,8 +13,8 @@ for commit in "$control_commit" "$source_commit"; do
 case "$commit" in
   *[!0-9a-f]*|'') echo 'Source commits must be lowercase hexadecimal.' >&2; exit 1 ;;
 esac
-test "${#commit}" -eq 40 -o "${#commit}" -eq 64 || {
-  echo 'Source commits must be full Git commits.' >&2
+test "${#commit}" -eq 40 || {
+  echo 'Source commits must be full 40-character Git commits.' >&2
   exit 1
 }
 done

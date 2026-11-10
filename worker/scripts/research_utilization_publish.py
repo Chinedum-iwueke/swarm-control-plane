@@ -19,6 +19,12 @@ STATUSES = ("PENDING", "LOCKED", "DONE", "FAILED")
 ITEM_TYPES = ("governed_alpha_assignment", "disc010_signal_screen")
 
 
+def require_full_git_commit(value: str, *, label: str) -> str:
+    if len(value) != 40 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError(f"{label} must be a full lowercase 40-character Git commit")
+    return value
+
+
 def read_secret(path: Path) -> str:
     value = path.read_text(encoding="utf-8").strip()
     if not value:
@@ -34,6 +40,12 @@ def load_snapshot(
     control_commit: str,
     bulletproof_commit: str,
 ) -> dict:
+    control_commit = require_full_git_commit(
+        control_commit, label="control-plane commit"
+    )
+    bulletproof_commit = require_full_git_commit(
+        bulletproof_commit, label="Bulletproof commit"
+    )
     state = json.loads(state_path.read_text(encoding="utf-8"))
     observed_at = datetime.now(UTC)
     uri = f"file:{database.resolve(strict=True)}?mode=ro"

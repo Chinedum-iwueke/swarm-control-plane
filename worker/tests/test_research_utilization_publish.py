@@ -2,6 +2,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from worker.scripts.research_utilization_publish import load_snapshot
 
 
@@ -64,3 +66,42 @@ def test_load_snapshot_reports_productive_fallback_capacity(tmp_path):
     assert result["queue_counts"]["PENDING"] == 1
     assert result["allocations"][0]["item_type"] == "disc010_signal_screen"
     assert result["capital_or_order_authority"] is False
+
+
+@pytest.mark.parametrize(
+    "control_commit,bulletproof_commit",
+    [
+        ("a" * 7, "b" * 40),
+        ("a" * 40, "b" * 64),
+        ("A" * 40, "b" * 40),
+    ],
+)
+def test_load_snapshot_rejects_noncanonical_source_commits(
+    tmp_path, control_commit, bulletproof_commit
+):
+    database = tmp_path / "capacity.sqlite"
+    state = tmp_path / "state.json"
+    create_database(database)
+    state.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "target_workers": 12,
+                    "max_concurrent_jobs": 2,
+                    "max_workers_per_job": 6,
+                },
+                "worker_slots": {"target": 12, "paused": 0, "external_locked": 0},
+                "memory": {"available_gb": 40},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="full lowercase 40-character Git commit"):
+        load_snapshot(
+            database=database,
+            state_path=state,
+            machine="vm1-developer",
+            control_commit=control_commit,
+            bulletproof_commit=bulletproof_commit,
+        )
