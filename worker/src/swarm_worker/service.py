@@ -551,7 +551,15 @@ class WorkerService:
                     ),
                 )
 
-            await self._close_healthy_provider_probes(api, provider_probes)
+            exercised_providers = self._exercised_providers(execution_result)
+            await self._close_healthy_provider_probes(
+                api,
+                [
+                    provider
+                    for provider in provider_probes
+                    if provider in exercised_providers
+                ],
+            )
 
             if not execution_result.success:
                 failed_step = next(
@@ -752,6 +760,20 @@ class WorkerService:
             failure=failure,
             retryable=retryable,
         )
+
+    @staticmethod
+    def _exercised_providers(execution: WorkflowExecutionResult) -> set[str]:
+        step_providers = {
+            "coding-agent": "codex",
+            "coding-correction": "codex",
+            "independent-review": "codex",
+            "copilot-author": "copilot",
+        }
+        return {
+            provider
+            for step in execution.steps
+            if (provider := step_providers.get(step.name)) is not None
+        }
 
     @staticmethod
     async def _close_healthy_provider_probes(

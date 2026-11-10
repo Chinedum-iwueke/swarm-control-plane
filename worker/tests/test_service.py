@@ -623,13 +623,35 @@ async def test_successful_half_open_probe_closes_circuit(tmp_path: Path) -> None
         ),
     )
 
-    outcome = await make_service(tmp_path, api, events).run_once()
+    result = make_execution_result()
+    result.steps[0] = result.steps[0].model_copy(update={"name": "independent-review"})
+    outcome = await make_service(
+        tmp_path, api, events, execution_result=result
+    ).run_once()
 
     assert isinstance(outcome, SucceededOutcome)
     assert events.index("provider_probe") < events.index("complete")
     provider, request = api.requests["provider_probe"][0]
     assert provider == "codex"
     assert request.outcome == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_unexercised_half_open_probe_is_not_closed(tmp_path: Path) -> None:
+    events: list[str] = []
+    api = FakeAPI(
+        events,
+        lease=LeaseResponse(
+            task=make_task(),
+            lease_token=LEASE_TOKEN,
+            provider_probes=["codex"],
+        ),
+    )
+
+    outcome = await make_service(tmp_path, api, events).run_once()
+
+    assert isinstance(outcome, SucceededOutcome)
+    assert not api.requests["provider_probe"]
 
 
 @pytest.mark.asyncio
