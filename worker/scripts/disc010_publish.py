@@ -61,15 +61,7 @@ def publish(
     ] != "disc010-publisher-state-v1.0.0":
         raise ValueError("DISC-010 publisher state is malformed")
     registrations = state["registrations"]
-    remote = client.get("/v1/research/quantitative-receipts")
-    remote.raise_for_status()
-    registered = {
-        item["receipt_digest"]: item["id"]
-        for item in remote.json()
-        if item.get("milestone") == "DISC-010"
-    }
     published = 0
-    recovered = 0
     skipped = 0
     for path in receipt_files(output_root):
         receipt = json.loads(path.read_text(encoding="utf-8"))
@@ -85,13 +77,8 @@ def publish(
         if digest in registrations:
             skipped += 1
             continue
-        if digest in registered:
-            registrations[digest] = {
-                "receipt_id": registered[digest],
-                "path": str(path),
-            }
-            recovered += 1
-            continue
+        # Canonical registration is idempotent by receipt digest. Avoid reading the
+        # complete remote registry, whose cost grows with all retained history.
         response = client.post(
             "/v1/research/quantitative-receipts",
             json={"receipt": receipt, "registered_by": "disc010-vm1-publisher"},
@@ -107,7 +94,7 @@ def publish(
     return {
         "event": "disc010_publication_complete",
         "published": published,
-        "recovered": recovered,
+        "recovered": 0,
         "already_registered": skipped,
         "registered_total": len(registrations),
         "authority": "research_only",

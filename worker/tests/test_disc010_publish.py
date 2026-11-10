@@ -26,7 +26,7 @@ def receipt(digest: str) -> dict:
     }
 
 
-def test_publisher_registers_once_and_recovers_remote_state(tmp_path: Path) -> None:
+def test_publisher_registers_only_receipts_missing_from_local_state(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     first = root / "family-a"
     second = root / "family-b"
@@ -37,19 +37,10 @@ def test_publisher_registers_once_and_recovers_remote_state(tmp_path: Path) -> N
     posted = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "GET":
-            return httpx.Response(
-                200,
-                json=[
-                    {
-                        "id": "remote-b",
-                        "milestone": "DISC-010",
-                        "receipt_digest": "b" * 64,
-                    }
-                ],
-            )
+        assert request.method == "POST"
         posted.append(json.loads(request.content))
-        return httpx.Response(201, json={"id": "new-a"})
+        digest = posted[-1]["receipt"]["receipt_digest"]
+        return httpx.Response(201, json={"id": f"record-{digest[0]}"})
 
     state = tmp_path / "publisher-state.json"
     with httpx.Client(
@@ -61,14 +52,14 @@ def test_publisher_registers_once_and_recovers_remote_state(tmp_path: Path) -> N
 
     assert result == {
         "event": "disc010_publication_complete",
-        "published": 1,
-        "recovered": 1,
+        "published": 2,
+        "recovered": 0,
         "already_registered": 0,
         "registered_total": 2,
         "authority": "research_only",
     }
     assert replay["already_registered"] == 2
-    assert len(posted) == 1
+    assert len(posted) == 2
     assert posted[0]["registered_by"] == "disc010-vm1-publisher"
     assert state.stat().st_mode & 0o777 == 0o600
 
