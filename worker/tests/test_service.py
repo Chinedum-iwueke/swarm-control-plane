@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from swarm_worker.policy import (
 from swarm_worker.role_package import load_role_package
 from swarm_worker.service import (
     AgentDisabled,
+    DeferredOutcome,
     FailedOutcome,
     IdentityMismatch,
     LeaseLostOutcome,
@@ -253,6 +255,8 @@ class FakeAPI:
             "fail": [],
             "release": [],
             "heartbeat_task": [],
+            "provider_defer": [],
+            "provider_probe": [],
         }
         self.closed = False
 
@@ -332,6 +336,20 @@ class FakeAPI:
         self.requests["fail"].append(request)
         if self.fail_error:
             raise self.fail_error
+        return object()
+
+    async def defer_provider_capacity(self, task_id: UUID, request: object) -> object:
+        self.events.append("provider_defer")
+        self.requests["provider_defer"].append(request)
+        return SimpleNamespace(
+            circuit=SimpleNamespace(
+                next_probe_at=datetime.now(timezone.utc),
+            )
+        )
+
+    async def report_provider_probe(self, provider: str, request: object) -> object:
+        self.events.append("provider_probe")
+        self.requests["provider_probe"].append((provider, request))
         return object()
 
     async def release_task(self, task_id: UUID, request: object) -> object:
@@ -561,6 +579,57 @@ async def test_failure_path_exact_order_and_fail_once(
         "retryable": False,
         "worker_version": __version__,
     }
+
+
+@pytest.mark.asyncio
+async def test_provider_capacity_defers_without_failing_task(tmp_path: Path) -> None:
+    events: list[str] = []
+    api = FakeAPI(events)
+    result = make_execution_result(success=False).model_copy(
+        update={
+            "termination_reason": "provider_capacity",
+            "retryable": False,
+            "summary": {
+                "provider_capacity": {
+                    "provider": "codex",
+                    "failure_summary": "usage limit reached",
+                    "retry_after_seconds": 1800,
+                }
+            },
+        }
+    )
+
+    outcome = await make_service(
+        tmp_path, api, events, execution_result=result
+    ).run_once()
+
+    assert isinstance(outcome, DeferredOutcome)
+    assert outcome.provider == "codex"
+    assert events[-1] == "provider_defer"
+    assert not api.requests["fail"]
+    request = api.requests["provider_defer"][0]
+    assert request.retry_after_seconds == 1800
+
+
+@pytest.mark.asyncio
+async def test_successful_half_open_probe_closes_circuit(tmp_path: Path) -> None:
+    events: list[str] = []
+    api = FakeAPI(
+        events,
+        lease=LeaseResponse(
+            task=make_task(),
+            lease_token=LEASE_TOKEN,
+            provider_probes=["codex"],
+        ),
+    )
+
+    outcome = await make_service(tmp_path, api, events).run_once()
+
+    assert isinstance(outcome, SucceededOutcome)
+    assert events.index("provider_probe") < events.index("complete")
+    provider, request = api.requests["provider_probe"][0]
+    assert provider == "codex"
+    assert request.outcome == "healthy"
 
 
 @pytest.mark.asyncio

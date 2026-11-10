@@ -99,6 +99,7 @@ class LeaseResponse(BaseModel):
     prior_failure: dict[str, Any] = Field(default_factory=dict)
     paused: bool = False
     pause_reasons: list[str] = Field(default_factory=list)
+    provider_probes: list[str] = Field(default_factory=list)
 
 
 class AgentContextManifest(BaseModel):
@@ -165,6 +166,42 @@ class TaskFailRequest(BaseModel):
     retryable: bool = False
 
 
+class ProviderCapacityDeferral(BaseModel):
+    lease_token: str = Field(min_length=1)
+    provider: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]*$", max_length=50)
+    failure_summary: str = Field(min_length=1, max_length=2000)
+    retry_after_seconds: int = Field(default=900, ge=60, le=21_600)
+
+
+class ProviderProbeReport(BaseModel):
+    outcome: Literal["healthy", "exhausted"]
+    failure_summary: str | None = Field(default=None, max_length=2000)
+    retry_after_seconds: int = Field(default=900, ge=60, le=21_600)
+
+
+class ProviderCapacityCircuit(BaseModel):
+    id: UUID
+    provider: str
+    state: Literal["closed", "open", "half_open"]
+    generation: int
+    consecutive_failures: int
+    blocked_capabilities: list[str]
+    failure_summary: str | None = None
+    source_task_id: UUID | None = None
+    probe_agent_id: UUID | None = None
+    opened_at: datetime | None = None
+    next_probe_at: datetime | None = None
+    probe_expires_at: datetime | None = None
+    recovered_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProviderProbeResponse(BaseModel):
+    circuit: ProviderCapacityCircuit
+    notification_created: bool = False
+
+
 class TaskReleaseRequest(BaseModel):
     lease_token: str = Field(min_length=1)
     message: str = Field(
@@ -183,6 +220,13 @@ class TaskEvent(BaseModel):
     message: str
     payload: dict[str, Any]
     created_at: datetime
+
+
+class ProviderCapacityDeferralResponse(BaseModel):
+    task: Task
+    event: TaskEvent
+    circuit: ProviderCapacityCircuit
+    notification_created: bool = False
 
 
 class TaskMutationResponse(BaseModel):

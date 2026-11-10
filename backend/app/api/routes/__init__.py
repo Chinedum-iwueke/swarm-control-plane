@@ -92,6 +92,10 @@ from app.api.routes.portfolio_solvers import router as portfolio_solvers_router
 from app.api.routes.prompt_policies import router as prompt_policies_router
 from app.api.routes.proposals import agent_router as agent_proposals_router
 from app.api.routes.proposals import router as proposals_router
+from app.api.routes.provider_capacity import (
+    agent_router as agent_provider_capacity_router,
+)
+from app.api.routes.provider_capacity import router as provider_capacity_router
 from app.api.routes.quantitative_receipts import router as quantitative_receipts_router
 from app.api.routes.realtime_risk_schemas import router as realtime_risk_schemas_router
 from app.api.routes.reference_data import router as reference_data_router
@@ -128,6 +132,7 @@ __all__ = [
     "agent_notes_router",
     "agent_packages_router",
     "agent_proposals_router",
+    "agent_provider_capacity_router",
     "agent_research_router",
     "agent_runtime_router",
     "agents_router",
@@ -192,6 +197,7 @@ __all__ = [
     "portfolio_solvers_router",
     "prompt_policies_router",
     "proposals_router",
+    "provider_capacity_router",
     "quantitative_receipts_router",
     "realtime_risk_schemas_router",
     "reference_data_router",

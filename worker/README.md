@@ -119,6 +119,20 @@ Codex-backed task executions share a credential-read lock and can run in paralle
 Device authentication and credential mutation take the exclusive writer lock, so
 login recovery waits for active tasks without serializing them.
 
+### Provider-capacity circuit
+
+Model-provider quota and account usage limits are capacity events, not task or
+scientific failures. A recognized capacity diagnostic atomically returns the task
+to `queued`, restores its execution-attempt budget, and opens a durable
+control-plane circuit for the provider. Workers requiring the same capability set
+stop leasing while unrelated deterministic workers continue normally.
+
+Each circuit emits one generation-scoped founder notification. After the bounded
+cooldown, the control plane assigns one matching worker a half-open probe. A
+non-capacity result closes the circuit and queued work resumes; another capacity
+result reopens it with exponential cooldown capped at six hours. This prevents a
+24/7 fleet from turning one account-level limit into parallel retries.
+
 ## Commands
 
 Validate configuration, identity, workflows, repository roots, and workspace

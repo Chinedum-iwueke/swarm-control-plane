@@ -309,6 +309,29 @@ def test_copilot_quota_messages_are_capacity_fallback_evidence(
     )
 
 
+def test_codex_usage_limit_becomes_provider_capacity_deferral(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempt"
+    logs = attempt / "logs"
+    logs.mkdir(parents=True)
+    (logs / "independent-review.stderr.log").write_text(
+        "Usage limit reached. Try again in 2 hours.", encoding="utf-8"
+    )
+    workspace = SimpleNamespace(
+        plan=SimpleNamespace(attempt_directory=attempt),
+    )
+    failed = successful_step("independent-review").model_copy(
+        update={"success": False, "return_code": 1}
+    )
+
+    capacity = EngineeringMissionExecutor._provider_capacity_failure(
+        [failed], workspace
+    )
+
+    assert capacity is not None
+    assert capacity["provider"] == "codex"
+    assert capacity["retry_after_seconds"] == 7200
+
+
 def test_copilot_model_output_cannot_authorize_fallback(tmp_path: Path) -> None:
     logs = tmp_path / "logs"
     logs.mkdir()

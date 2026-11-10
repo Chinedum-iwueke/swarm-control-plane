@@ -22,6 +22,10 @@ from swarm_worker.models import (
     FounderProposalCreate,
     FounderProposalResponse,
     LeaseResponse,
+    ProviderCapacityDeferral,
+    ProviderCapacityDeferralResponse,
+    ProviderProbeReport,
+    ProviderProbeResponse,
     ResearchMemoryRegistrationRequest,
     ResearchMemoryRegistrationResponse,
     TaskCompleteRequest,
@@ -152,6 +156,29 @@ class SwarmAPIClient:
         request: TaskFailRequest,
     ) -> TaskMutationResponse:
         return await self._task_mutation(task_id, "fail", request)
+
+    async def defer_provider_capacity(
+        self,
+        task_id: UUID | str,
+        request: ProviderCapacityDeferral,
+    ) -> ProviderCapacityDeferralResponse:
+        return await self._request(
+            "POST",
+            f"/v1/agent/tasks/{task_id}/defer-provider-capacity",
+            ProviderCapacityDeferralResponse,
+            payload=request,
+            secrets=(request.lease_token,),
+        )
+
+    async def report_provider_probe(
+        self, provider: str, request: ProviderProbeReport
+    ) -> ProviderProbeResponse:
+        return await self._request(
+            "POST",
+            f"/v1/agent/provider-capacity/{provider}/probe",
+            ProviderProbeResponse,
+            payload=request,
+        )
 
     async def release_task(
         self,

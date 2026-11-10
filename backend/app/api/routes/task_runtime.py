@@ -14,6 +14,9 @@ from app.models import Agent, EngineeringMission
 from app.schemas import (
     BrokerTicketRequest,
     BrokerTicketResponse,
+    ProviderCapacityCircuitResponse,
+    ProviderCapacityDeferral,
+    ProviderCapacityDeferralResponse,
     TaskCompleteRequest,
     TaskEventResponse,
     TaskExecutionHeartbeatRequest,
@@ -34,6 +37,7 @@ from app.services.controls import matching_control_scopes
 from app.services.evaluator_routing import complete_strategy_review_task
 from app.services.governance import rearm_task_approval
 from app.services.missions import refresh_mission
+from app.services.provider_capacity import claim_due_probes_or_block, open_circuit
 from app.services.tasks import (
     append_task_event,
     clear_lease,
@@ -188,6 +192,15 @@ def lease_task(
                 scope.reason or "Paused by operator." for scope in paused_scopes
             ],
         )
+    provider_probes, provider_blocks = claim_due_probes_or_block(db, agent)
+    if provider_blocks:
+        db.commit()
+        return TaskLeaseResponse(
+            task=None,
+            lease_token=None,
+            paused=True,
+            pause_reasons=provider_blocks,
+        )
     # A restarted worker cannot release its old lease. Reconcile those leases
     # before selecting work so recovery does not depend on an operator call.
     reap_expired_leases(db)
@@ -205,6 +218,7 @@ def lease_task(
         return TaskLeaseResponse(
             task=None,
             lease_token=None,
+            provider_probes=provider_probes,
         )
 
     db.commit()
@@ -214,6 +228,59 @@ def lease_task(
         task=TaskResponse.model_validate(serialize_task(task)),
         lease_token=raw_token,
         prior_failure=prior_failure,
+        provider_probes=provider_probes,
+    )
+
+
+@router.post(
+    "/{task_id}/defer-provider-capacity",
+    response_model=ProviderCapacityDeferralResponse,
+)
+def defer_provider_capacity(
+    task_id: uuid.UUID,
+    payload: ProviderCapacityDeferral,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ProviderCapacityDeferralResponse:
+    task = lock_task(db, task_id)
+    verify_task_lease(
+        task,
+        agent,
+        payload.lease_token,
+        allowed_statuses={"leased", "running"},
+    )
+    event = _append_terminal_event(
+        db,
+        task,
+        "task_provider_capacity_deferred",
+        "Task deferred without consuming an attempt because provider capacity is exhausted.",
+        agent_id=agent.id,
+        payload={
+            "provider": payload.provider,
+            "retry_after_seconds": payload.retry_after_seconds,
+        },
+    )
+    task.attempt_count = max(0, task.attempt_count - 1)
+    task.status = "queued"
+    task.failure = {}
+    task.completed_at = None
+    clear_lease(task)
+    circuit, notification_created = open_circuit(
+        db,
+        provider=payload.provider,
+        task=task,
+        agent=agent,
+        failure_summary=payload.failure_summary,
+        retry_after_seconds=payload.retry_after_seconds,
+    )
+    db.commit()
+    db.refresh(task)
+    db.refresh(circuit)
+    return ProviderCapacityDeferralResponse(
+        task=TaskResponse.model_validate(serialize_task(task)),
+        event=TaskEventResponse.model_validate(event),
+        circuit=ProviderCapacityCircuitResponse.model_validate(circuit),
+        notification_created=notification_created,
     )
 
 

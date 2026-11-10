@@ -91,9 +91,7 @@ class RestrictedTelegramGateway:
             notification_id = str(notification["id"])
             delivered = self._store.notification_delivery(notification_id)
             if delivered is not None:
-                await self._channel.acknowledge_notification(
-                    notification_id, delivered
-                )
+                await self._channel.acknowledge_notification(notification_id, delivered)
                 continue
             payload = notification["payload"]
             kind = notification["kind"]
@@ -190,6 +188,16 @@ class RestrictedTelegramGateway:
                     f"queued={counts.get('PENDING', 0)} · locked={counts.get('LOCKED', 0)}\n"
                     f"Snapshot: {payload['record_digest']}",
                 )
+            elif kind == "provider_capacity_exhausted":
+                sent = await self._telegram.send(
+                    self._settings.founder_chat_id,
+                    "Model provider capacity paused\n"
+                    f"{payload['provider']} · incident {payload['generation']}\n"
+                    f"Task deferred without consuming an attempt: "
+                    f"{payload['task_number']}\n"
+                    f"Next single recovery probe: {payload['next_probe_at']}\n"
+                    f"{payload['failure_summary']}",
+                )
             elif kind == "alpha_campaign_update":
                 sent = await self._telegram.send(
                     self._settings.founder_chat_id,
@@ -239,9 +247,7 @@ class RestrictedTelegramGateway:
                 f"telegram:{self._settings.founder_chat_id}:"
                 f"{','.join(message_ids) or 'accepted'}"
             )
-            self._store.mark_notification_delivered(
-                notification_id, delivery_reference
-            )
+            self._store.mark_notification_delivered(notification_id, delivery_reference)
             await self._channel.acknowledge_notification(
                 notification_id, delivery_reference
             )
@@ -1253,9 +1259,12 @@ class RestrictedTelegramGateway:
             f"{status}: {count}" for status, count in sorted(counts.items())
         )
         security_counts = self._store.security_event_counts()
-        security = ", ".join(
-            f"{key}: {value}" for key, value in sorted(security_counts.items())
-        ) or "none"
+        security = (
+            ", ".join(
+                f"{key}: {value}" for key, value in sorted(security_counts.items())
+            )
+            or "none"
+        )
         await self._telegram.send(
             self._settings.founder_chat_id,
             f"Hermes status\n{rendered or 'No tasks recorded.'}\n"

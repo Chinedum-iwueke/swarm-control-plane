@@ -157,6 +157,7 @@ from app.models.prompt_policy import (
     PromptPolicyEvent,
 )
 from app.models.proposal import FounderProposal
+from app.models.provider_capacity import ProviderCapacityCircuit, ProviderCapacityEvent
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
 from app.models.realtime_risk_schema import RealtimeRiskSchemaRegistry
 from app.models.reference_data import ReferenceDataSnapshot
@@ -359,6 +360,8 @@ __all__ = [
     "PromptPolicyBundle",
     "PromptPolicyEvaluation",
     "PromptPolicyEvent",
+    "ProviderCapacityCircuit",
+    "ProviderCapacityEvent",
     "QuantitativeProducerReceipt",
     "RealtimeRiskSchemaRegistry",
     "ReferenceDataSnapshot",

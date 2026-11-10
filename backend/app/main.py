@@ -9,6 +9,7 @@ from app.api.routes import (
     agent_notes_router,
     agent_packages_router,
     agent_proposals_router,
+    agent_provider_capacity_router,
     agent_research_router,
     agent_runtime_router,
     agents_router,
@@ -73,6 +74,7 @@ from app.api.routes import (
     portfolio_solvers_router,
     prompt_policies_router,
     proposals_router,
+    provider_capacity_router,
     quantitative_receipts_router,
     realtime_risk_schemas_router,
     reference_data_router,
@@ -108,6 +110,8 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(provider_capacity_router)
+app.include_router(agent_provider_capacity_router)
 app.include_router(adapter_certification_schemas_router)
 app.include_router(alpha_campaign_router)
 app.include_router(alpha_discovery_router)

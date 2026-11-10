@@ -30,6 +30,10 @@ from swarm_worker.models import (
     ArtifactCreateRequest,
     ArtifactResponse,
     LeaseResponse,
+    ProviderCapacityDeferral,
+    ProviderCapacityDeferralResponse,
+    ProviderProbeReport,
+    ProviderProbeResponse,
     Task,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
@@ -111,6 +115,14 @@ class ReleasedOutcome(ResultModel):
     reason_category: str
 
 
+class DeferredOutcome(ResultModel):
+    status: Literal["deferred"] = "deferred"
+    task_id: UUID
+    task_number: str
+    provider: str
+    next_probe_at: str | None = None
+
+
 class LeaseLostOutcome(ResultModel):
     status: Literal["lease_lost"] = "lease_lost"
     task_id: UUID
@@ -126,6 +138,7 @@ RunOnceOutcome = (
     | SucceededOutcome
     | FailedOutcome
     | ReleasedOutcome
+    | DeferredOutcome
     | LeaseLostOutcome
 )
 
@@ -165,6 +178,16 @@ class AgentAPI(Protocol):
         task_id: UUID | str,
         request: TaskFailRequest,
     ) -> TaskMutationResponse: ...
+
+    async def defer_provider_capacity(
+        self,
+        task_id: UUID | str,
+        request: ProviderCapacityDeferral,
+    ) -> ProviderCapacityDeferralResponse: ...
+
+    async def report_provider_probe(
+        self, provider: str, request: ProviderProbeReport
+    ) -> ProviderProbeResponse: ...
 
     async def release_task(
         self,
@@ -331,6 +354,7 @@ class WorkerService:
                 update={"prior_failure": dict(lease.prior_failure)}
             )
             lease_token = lease.lease_token
+            provider_probes = list(lease.provider_probes)
 
             try:
                 if task.task_type not in role_package.manifest.task_types:
@@ -488,6 +512,46 @@ class WorkerService:
                     retryable=False,
                     detail=str(exc),
                 )
+
+            capacity = execution_result.summary.get("provider_capacity")
+            if (
+                not execution_result.success
+                and execution_result.termination_reason == "provider_capacity"
+                and isinstance(capacity, dict)
+                and isinstance(capacity.get("provider"), str)
+            ):
+                provider = capacity["provider"]
+                summary = str(
+                    capacity.get("failure_summary") or "Provider capacity exhausted."
+                )
+                retry_after = capacity.get("retry_after_seconds", 900)
+                retry_after_seconds = (
+                    retry_after if isinstance(retry_after, int) else 900
+                )
+                try:
+                    deferred = await api.defer_provider_capacity(
+                        task.id,
+                        ProviderCapacityDeferral(
+                            lease_token=lease_token,
+                            provider=provider,
+                            failure_summary=summary[:2000],
+                            retry_after_seconds=retry_after_seconds,
+                        ),
+                    )
+                except (AuthenticationError, ConflictError):
+                    return self._lease_lost(task, "provider_capacity", workspace)
+                return DeferredOutcome(
+                    task_id=task.id,
+                    task_number=task.task_number,
+                    provider=provider,
+                    next_probe_at=(
+                        deferred.circuit.next_probe_at.isoformat()
+                        if deferred.circuit.next_probe_at
+                        else None
+                    ),
+                )
+
+            await self._close_healthy_provider_probes(api, provider_probes)
 
             if not execution_result.success:
                 failed_step = next(
@@ -688,6 +752,21 @@ class WorkerService:
             failure=failure,
             retryable=retryable,
         )
+
+    @staticmethod
+    async def _close_healthy_provider_probes(
+        api: AgentAPI, providers: list[str]
+    ) -> None:
+        for provider in providers:
+            try:
+                await api.report_provider_probe(
+                    provider,
+                    ProviderProbeReport(outcome="healthy"),
+                )
+            except WorkerAPIError:
+                # A stale half-open probe expires and is reclaimed. Provider
+                # bookkeeping must never corrupt the scientific task result.
+                continue
 
     async def _register_execution_artifacts(
         self,

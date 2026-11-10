@@ -1380,6 +1380,43 @@ async def test_research_utilization_alert_reports_exact_capacity_state(
 
 
 @pytest.mark.asyncio
+async def test_provider_capacity_alert_is_single_and_actionable(tmp_path: Path) -> None:
+    telegram = Telegram()
+    channel = Channel()
+    channel.notification_values = [
+        {
+            "id": "provider-capacity-1",
+            "kind": "provider_capacity_exhausted",
+            "payload": {
+                "circuit_id": "circuit-1",
+                "provider": "codex",
+                "generation": 2,
+                "failure_summary": "Usage limit reached.",
+                "next_probe_at": "2026-11-10T12:00:00+00:00",
+                "task_number": "A3-CAPACITY-G1",
+            },
+        }
+    ]
+    store = HandoffStore(tmp_path / "gateway.sqlite3")
+    store.initialize()
+    gateway = RestrictedTelegramGateway(
+        settings(tmp_path),
+        telegram=telegram,  # type: ignore[arg-type]
+        channel=channel,  # type: ignore[arg-type]
+        store=store,
+    )
+    await gateway.check()
+
+    await gateway._notify_outbox()
+
+    assert "Model provider capacity paused" in telegram.sent[0][1]
+    assert "Task deferred without consuming an attempt" in telegram.sent[0][1]
+    assert channel.acknowledged == [
+        ("provider-capacity-1", "telegram:456:10001")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_codex_auth_notification_contains_only_device_handoff(tmp_path: Path) -> None:
     telegram = Telegram()
     channel = Channel()

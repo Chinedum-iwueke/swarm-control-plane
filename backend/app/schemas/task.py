@@ -126,6 +126,7 @@ class TaskLeaseResponse(BaseModel):
     prior_failure: dict = Field(default_factory=dict)
     paused: bool = False
     pause_reasons: list[str] = Field(default_factory=list)
+    provider_probes: list[str] = Field(default_factory=list)
 
 
 class TaskLeaseMutation(BaseModel):

@@ -22,13 +22,13 @@ from app.schemas.control import (
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationEventResponse,
-    ConversationWorkEvent,
-    ConversationWorkEventPage,
     ConversationMessageResponse,
     ConversationResponse,
     ConversationTransition,
     ConversationTurnCreate,
     ConversationTurnResponse,
+    ConversationWorkEvent,
+    ConversationWorkEventPage,
     ConversationWorkspaceResponse,
 )
 from app.schemas.founder_channel import (
@@ -81,6 +81,13 @@ from app.schemas.proposal import (
     FounderProposalDocument,
     FounderProposalResponse,
     ProposedTask,
+)
+from app.schemas.provider_capacity import (
+    ProviderCapacityCircuitResponse,
+    ProviderCapacityDeferral,
+    ProviderCapacityDeferralResponse,
+    ProviderProbeReport,
+    ProviderProbeResponse,
 )
 from app.schemas.runbook_package import (
     RunbookPackageCreate,
@@ -143,13 +150,13 @@ __all__ = [
     "ControlScopeResponse",
     "ConversationCreate",
     "ConversationEventResponse",
-    "ConversationWorkEvent",
-    "ConversationWorkEventPage",
     "ConversationMessageResponse",
     "ConversationResponse",
     "ConversationTransition",
     "ConversationTurnCreate",
     "ConversationTurnResponse",
+    "ConversationWorkEvent",
+    "ConversationWorkEventPage",
     "ConversationWorkspaceResponse",
     "CredentialSecretResponse",
     "EffectiveControlResponse",
@@ -177,6 +184,11 @@ __all__ = [
     "PackageDeploymentCreate",
     "PackageDeploymentResponse",
     "ProposedTask",
+    "ProviderCapacityCircuitResponse",
+    "ProviderCapacityDeferral",
+    "ProviderCapacityDeferralResponse",
+    "ProviderProbeReport",
+    "ProviderProbeResponse",
     "RolePackageCreate",
     "RolePackageManifest",
     "RolePackageResponse",
