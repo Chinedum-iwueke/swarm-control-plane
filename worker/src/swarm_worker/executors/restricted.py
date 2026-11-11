@@ -73,9 +73,12 @@ class RestrictedExecutor:
                 settings.swarm_copilot_model if settings is not None else "auto"
             ),
             copilot_codex_fallback=(
-                settings.swarm_copilot_codex_fallback
+                settings.swarm_copilot_codex_fallback if settings is not None else True
+            ),
+            copilot_author_timeout_seconds=(
+                settings.swarm_copilot_author_timeout_seconds
                 if settings is not None
-                else True
+                else 900.0
             ),
             local_author_url=(
                 settings.swarm_local_author_url if settings is not None else None

@@ -105,6 +105,77 @@ def test_copilot_author_requires_binary_and_dedicated_home(tmp_path: Path) -> No
         )
 
 
+def test_copilot_author_timeout_must_be_positive(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        EngineeringMissionExecutor(
+            codex_home=tmp_path,
+            codex_model="review-model",
+            timeout_seconds=10,
+            heartbeat_interval_seconds=1,
+            copilot_author_timeout_seconds=0,
+            effective_uid=lambda: 1000,
+        )
+
+
+def test_strategy_scaffold_manifest_is_embedded_for_sandboxed_author(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    manifest = '{"paths":["tests/hypotheses/test_scaffold.py"]}\n'
+    (artifacts / "strategy-scaffold-manifest.json").write_text(
+        manifest,
+        encoding="utf-8",
+    )
+
+    context = EngineeringMissionExecutor._strategy_scaffold_author_context(
+        SimpleNamespace(artifacts=artifacts)
+    )
+
+    assert manifest in context
+    assert "outside the author's readable repository boundary" in context
+
+
+@pytest.mark.asyncio
+async def test_copilot_first_pass_has_separate_timeout_budget(tmp_path: Path) -> None:
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    for path in (artifacts, logs):
+        path.mkdir()
+    workspace = SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=logs)
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path,
+        codex_model="review-model",
+        timeout_seconds=7200,
+        heartbeat_interval_seconds=1,
+        author_provider="copilot",
+        copilot_binary=Path("/usr/local/bin/copilot"),
+        copilot_home=tmp_path / "copilot-home",
+        copilot_author_timeout_seconds=900,
+        effective_uid=lambda: 1000,
+    )
+    captured: dict[str, float] = {}
+
+    async def run_copilot(**kwargs):
+        captured["timeout_seconds"] = kwargs["timeout_seconds"]
+        return successful_step("copilot-author")
+
+    executor._run_copilot_author = run_copilot
+    executor._copilot_result_model = lambda _workspace: "test-model"
+
+    result = await executor._run_author(
+        contract=contract(),
+        prompt="bounded implementation",
+        workspace=workspace,
+        heartbeat=lambda _progress: None,
+        heartbeat_failures=[],
+        timeout_seconds=7200,
+    )
+
+    assert result.success is True
+    assert captured["timeout_seconds"] == 900
+
+
 def test_unknown_author_provider_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="author_provider"):
         EngineeringMissionExecutor(
@@ -264,6 +335,62 @@ def test_copilot_jsonl_is_reduced_to_model_and_summary_receipt(
     )
 
 
+def test_copilot_typed_quota_event_is_trusted_capacity_evidence(
+    tmp_path: Path,
+) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    events = [
+        {
+            "type": "assistant.message",
+            "data": {"content": "quota exceeded"},
+        },
+        {
+            "type": "session.error",
+            "data": {
+                "errorType": "quota",
+                "errorCode": "quota_exceeded",
+                "statusCode": 402,
+                "message": "You have exceeded your monthly quota.",
+            },
+        },
+    ]
+    (logs / "copilot-author.stdout.log").write_text(
+        "\n".join(json.dumps(event) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    diagnostic = EngineeringMissionExecutor._copilot_structured_error(
+        SimpleNamespace(logs=logs)
+    )
+
+    assert diagnostic is not None
+    assert "provider capacity quota exceeded" in diagnostic
+    assert "monthly quota" in diagnostic
+
+
+def test_copilot_model_prose_is_not_a_structured_provider_error(
+    tmp_path: Path,
+) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "copilot-author.stdout.log").write_text(
+        json.dumps(
+            {
+                "type": "assistant.message",
+                "data": {"content": "quota exceeded while modeling a failure"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        EngineeringMissionExecutor._copilot_structured_error(SimpleNamespace(logs=logs))
+        is None
+    )
+
+
 def test_copilot_launch_failure_is_infrastructure_fallback_evidence(
     tmp_path: Path,
 ) -> None:
@@ -344,7 +471,9 @@ def test_copilot_model_output_cannot_authorize_fallback(tmp_path: Path) -> None:
         update={"success": False, "return_code": 1}
     )
 
-    assert EngineeringMissionExecutor._copilot_unavailable_reason(step, workspace) is None
+    assert (
+        EngineeringMissionExecutor._copilot_unavailable_reason(step, workspace) is None
+    )
 
 
 @pytest.mark.asyncio

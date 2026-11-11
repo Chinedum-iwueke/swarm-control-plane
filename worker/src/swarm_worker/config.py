@@ -35,6 +35,11 @@ class WorkerSettings(BaseSettings):
     swarm_copilot_home: Path = Path("/var/lib/invariance-swarm/copilot-author-runtime")
     swarm_copilot_model: str = "auto"
     swarm_copilot_codex_fallback: bool = True
+    swarm_copilot_author_timeout_seconds: float = Field(
+        default=900.0,
+        gt=0,
+        le=3600,
+    )
     swarm_local_author_url: str = "http://127.0.0.1:11434"
     swarm_local_author_model: str = "qwen2.5-coder:7b"
     swarm_local_author_max_turns: int = Field(default=6, ge=2, le=30)

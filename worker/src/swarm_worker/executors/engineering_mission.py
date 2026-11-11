@@ -57,6 +57,7 @@ class EngineeringMissionExecutor:
         copilot_home: Path | None = None,
         copilot_model: str = "auto",
         copilot_codex_fallback: bool = True,
+        copilot_author_timeout_seconds: float = 900.0,
         local_author_url: str | None = None,
         local_author_model: str | None = None,
         local_author_max_turns: int = 6,
@@ -71,6 +72,8 @@ class EngineeringMissionExecutor:
             local_author_url and local_author_model
         ):
             raise ValueError("ollama authoring requires a URL and model")
+        if copilot_author_timeout_seconds <= 0:
+            raise ValueError("copilot author timeout must be positive")
         self._codex_home = codex_home
         self._codex_model = codex_model
         self._timeout = timeout_seconds
@@ -90,6 +93,7 @@ class EngineeringMissionExecutor:
         self._copilot_home = copilot_home
         self._copilot_model = copilot_model
         self._copilot_codex_fallback = copilot_codex_fallback
+        self._copilot_author_timeout_seconds = copilot_author_timeout_seconds
         self._local_author_url = local_author_url
         self._local_author_model = local_author_model
         self._local_author_max_turns = local_author_max_turns
@@ -149,10 +153,7 @@ class EngineeringMissionExecutor:
             )
         )
         if self._requires_strategy_scaffold(contract):
-            author_prompt += (
-                "\nDeterministic scaffold manifest (read-only evidence): "
-                f"{workspace.artifacts / 'strategy-scaffold-manifest.json'}\n"
-            )
+            author_prompt += self._strategy_scaffold_author_context(workspace)
         coder = await self._run_author(
             contract=contract,
             prompt=author_prompt,
@@ -473,7 +474,10 @@ class EngineeringMissionExecutor:
                     workspace=workspace,
                     heartbeat=heartbeat,
                     heartbeat_failures=heartbeat_failures,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=min(
+                        timeout_seconds,
+                        self._copilot_author_timeout_seconds,
+                    ),
                 )
             except OSError as exc:
                 copilot = self._provider_launch_failure_step(
@@ -639,6 +643,11 @@ class EngineeringMissionExecutor:
             heartbeat_phase="copilot-author",
             heartbeat_model=self._copilot_model,
         )
+        diagnostic = self._copilot_structured_error(workspace)
+        if diagnostic:
+            stderr_path = workspace.logs / "copilot-author.stderr.log"
+            with stderr_path.open("a", encoding="utf-8") as stream:
+                stream.write(diagnostic + "\n")
         if step.success:
             observed_tools = self._write_copilot_result(result_path, workspace)
             if observed_tools != self._COPILOT_ALLOWED_TOOLS:
@@ -652,6 +661,41 @@ class EngineeringMissionExecutor:
                     )
                 return step.model_copy(update={"success": False})
         return step
+
+    @staticmethod
+    def _copilot_structured_error(workspace: TaskWorkspace) -> str | None:
+        """Extract only typed CLI diagnostics, never model-authored stdout prose."""
+
+        path = workspace.logs / "copilot-author.stdout.log"
+        diagnostic: str | None = None
+        try:
+            stream = path.open(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        with stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") != "session.error":
+                    continue
+                data = event.get("data")
+                if not isinstance(data, dict):
+                    continue
+                error_type = data.get("errorType")
+                error_code = data.get("errorCode")
+                status_code = data.get("statusCode")
+                message = data.get("message")
+                if not isinstance(message, str):
+                    message = "Provider returned a typed session error."
+                if (
+                    error_type == "quota"
+                    or error_code == "quota_exceeded"
+                    or status_code == 402
+                ):
+                    diagnostic = f"provider capacity quota exceeded: {message[:1000]}"
+        return diagnostic
 
     async def _run_local_author(
         self,
@@ -964,6 +1008,19 @@ class EngineeringMissionExecutor:
         return (
             contract.repository == "bulletproof_bt"
             and contract.milestone_id == "ALPHA-003"
+        )
+
+    @staticmethod
+    def _strategy_scaffold_author_context(workspace: TaskWorkspace) -> str:
+        manifest = (workspace.artifacts / "strategy-scaffold-manifest.json").read_text(
+            encoding="utf-8"
+        )
+        return (
+            "\nThe worker-private artifact directory is intentionally outside the "
+            "author's readable repository boundary. The complete deterministic "
+            "scaffold manifest is embedded below as read-only evidence. Use its "
+            "exact paths and replace every placeholder before finishing:\n"
+            f"{manifest}\n"
         )
 
     def _run_strategy_scaffold(
@@ -1590,7 +1647,7 @@ class EngineeringMissionExecutor:
         scientific_strategy_contract = (
             "A deterministic feasibility preflight has already compiled the research "
             "handoff into a typed StrategyIntent and created a digest-bound scaffold. "
-            "Read artifacts/strategy-scaffold-manifest.json, the generated intent JSON, "
+            "Use the scaffold manifest embedded later in this prompt, then read the generated intent JSON, "
             "YAML, strategy, documentation and tests before editing. Never change the "
             "intent JSON, immutable_contract, question, dataset identities, representation "
             "plan, clocks, authority or intent digest. Replace every __CODEX_REQUIRED__ "
