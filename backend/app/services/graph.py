@@ -51,16 +51,31 @@ _TYPE_RULES: dict[str, set[tuple[str, str]]] = {
         ("result", "claim"),
         ("claim", "claim"),
     },
-    "uses_method": {("run", "method")},
-    "uses_dataset": {("run", "dataset"), ("method", "dataset")},
+    "uses_method": {("run", "method"), ("hypothesis", "method")},
+    "uses_dataset": {
+        ("run", "dataset"),
+        ("method", "dataset"),
+        ("hypothesis", "dataset"),
+    },
     "produced_result": {("run", "result")},
-    "reviews": {("review", "claim"), ("review", "run"), ("review", "result")},
+    "reviews": {
+        ("review", "claim"),
+        ("review", "hypothesis"),
+        ("review", "method"),
+        ("review", "run"),
+        ("review", "result"),
+    },
     "decides_on": {
         ("decision", "result"),
         ("decision", "claim"),
         ("decision", "belief"),
     },
-    "belongs_to_trial_family": {("run", "claim"), ("result", "claim")},
+    "belongs_to_trial_family": {
+        ("run", "claim"),
+        ("result", "claim"),
+        ("run", "hypothesis"),
+        ("result", "hypothesis"),
+    },
     "depends_on": {
         ("claim", "assumption"),
         ("method", "assumption"),
@@ -71,6 +86,8 @@ _TYPE_RULES: dict[str, set[tuple[str, str]]] = {
 _PROJECTION_BATCH_SIZE = 2_000
 _LANDSCAPE_SEMANTIC_TYPES = (
     "claim",
+    "hypothesis",
+    "research_candidate",
     "method",
     "assumption",
     "dataset",
@@ -110,6 +127,8 @@ def register_edge(
     db: Session,
     payload: CanonicalEdgeCreate,
     access: EvidenceAccessContext,
+    *,
+    commit: bool = True,
 ) -> CanonicalEvidenceEdge:
     if not access.may_write:
         raise HTTPException(status_code=403, detail="Canonical edge write denied.")
@@ -160,8 +179,11 @@ def register_edge(
         record_digest=record_digest,
     )
     db.add(record)
-    db.commit()
-    db.refresh(record)
+    if commit:
+        db.commit()
+        db.refresh(record)
+    else:
+        db.flush()
     return record
 
 
@@ -1507,6 +1529,7 @@ def _object_label(item: CanonicalEvidenceObject) -> str:
     payload = item.payload
     for key in (
         "title",
+        "research_question",
         "proposition",
         "name",
         "statement",

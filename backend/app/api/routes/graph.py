@@ -32,12 +32,21 @@ from app.services.graph import (
     register_edge,
 )
 from app.services.operations import OperationReporter
+from app.services.research_evidence import backfill_research_evidence
 
 router = APIRouter(
     prefix="/v1/research/graph",
     tags=["canonical-knowledge-graph"],
     dependencies=[Depends(require_orchestrator)],
 )
+
+
+@router.post("/research-registry/backfill")
+def backfill_research_registry(
+    db: Annotated[Session, Depends(get_db)],
+    limit_per_type: Annotated[int, Query(ge=1, le=500)] = 500,
+):
+    return backfill_research_evidence(db, limit_per_type=limit_per_type)
 
 
 @router.post("/edges", response_model=CanonicalEdgeResponse, status_code=201)

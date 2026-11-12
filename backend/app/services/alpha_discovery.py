@@ -2200,6 +2200,12 @@ def _materialize_candidates(
         db.add(record)
         records.append(record)
     db.flush()
+    if isinstance(db, Session):
+        from app.services.research_evidence import publish_research_record
+
+        for record in records:
+            if record.disposition in {"accepted", "awaiting_data_admission", "rejected"} and "evidence_object_ids" in record.document:
+                publish_research_record(db, record)
     for record in records:
         if record.disposition == "awaiting_data_admission":
             _ensure_data_admission_task(db, mandate, record)

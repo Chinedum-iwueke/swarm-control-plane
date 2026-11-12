@@ -15,6 +15,8 @@ EvidenceObjectType = Literal[
     "artifact",
     "scientific_object",
     "claim",
+    "hypothesis",
+    "research_candidate",
     "method",
     "assumption",
     "dataset",
@@ -90,6 +92,44 @@ class ClaimPayload(StrictModel):
     evidence_object_ids: list[UUID] = Field(min_length=1, max_length=100)
     qualifiers: list[str] = Field(default_factory=list, max_length=50)
     status: Literal["proposed", "supported", "disputed", "invalidated", "retired"]
+
+
+class HypothesisPayload(StrictModel):
+    kind: Literal["hypothesis"]
+    research_question: str = Field(min_length=10, max_length=2000)
+    rationale: str = Field(min_length=10, max_length=4000)
+    mechanism: str = Field(min_length=10, max_length=4000)
+    prediction: str = Field(min_length=10, max_length=2000)
+    universe: list[str] = Field(min_length=1, max_length=100)
+    target: str = Field(min_length=1, max_length=500)
+    horizon: str = Field(min_length=1, max_length=200)
+    null_hypothesis: str = Field(min_length=10, max_length=2000)
+    failure_conditions: list[str] = Field(min_length=1, max_length=30)
+    rival_explanations: list[str] = Field(min_length=1, max_length=30)
+    maximum_trials: int = Field(ge=1, le=100)
+    status: Literal["proposed", "approved", "rejected", "retired"] = "proposed"
+
+
+class ResearchCandidatePayload(StrictModel):
+    kind: Literal["research_candidate"]
+    title: str = Field(min_length=10, max_length=300)
+    research_question: str = Field(min_length=20, max_length=2000)
+    predictor: str = Field(min_length=3, max_length=1000)
+    target: str = Field(min_length=3, max_length=300)
+    horizon: str = Field(min_length=2, max_length=100)
+    causal_timing: str = Field(min_length=20, max_length=2000)
+    null_hypothesis: str = Field(min_length=20, max_length=2000)
+    predicted_direction: Literal["positive", "negative", "nonlinear", "conditional"]
+    mechanism: str = Field(min_length=20, max_length=4000)
+    rival_explanations: list[str] = Field(min_length=1, max_length=10)
+    falsification_criteria: list[str] = Field(min_length=1, max_length=20)
+    universe: list[str] = Field(min_length=1, max_length=128)
+    parameter_budget: dict
+    data_contract: dict
+    representation_plan: dict | None = None
+    evidence_object_ids: list[UUID] = Field(min_length=1, max_length=20)
+    disposition: Literal["accepted", "awaiting_data_admission", "rejected"]
+    reason_codes: list[str] = Field(default_factory=list, max_length=50)
 
 
 class MethodPayload(StrictModel):
@@ -235,6 +275,8 @@ EvidencePayload = Annotated[
     | ArtifactPayload
     | ScientificObjectPayload
     | ClaimPayload
+    | HypothesisPayload
+    | ResearchCandidatePayload
     | MethodPayload
     | AssumptionPayload
     | DatasetPayload
@@ -293,6 +335,8 @@ class EvidenceObjectCreate(StrictModel):
             "artifact": {"primary"},
             "scientific_object": {"derived"},
             "claim": {"derived"},
+            "hypothesis": {"derived"},
+            "research_candidate": {"derived"},
             "method": {"derived"},
             "assumption": {"derived"},
             "dataset": {"primary", "derived"},

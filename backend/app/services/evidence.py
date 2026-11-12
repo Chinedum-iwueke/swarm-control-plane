@@ -29,6 +29,8 @@ _REFERENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "artifact": ("edition_object_id",),
     "scientific_object": ("artifact_object_id", "parent_object_id"),
     "claim": ("evidence_object_ids",),
+    "hypothesis": (),
+    "research_candidate": ("evidence_object_ids",),
     "method": ("evidence_object_ids", "assumption_object_ids"),
     "assumption": ("evidence_object_ids",),
     "dataset": ("source_object_ids", "correction_object_ids"),

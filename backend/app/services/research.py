@@ -64,10 +64,19 @@ def _require_digest(actual: str, supplied: str, label: str) -> None:
 def _commit(db: Session, record: Any, conflict: str) -> Any:
     db.add(record)
     try:
+        db.flush()
+        db.refresh(record)
+        if isinstance(db, Session) and isinstance(getattr(record, "id", None), UUID):
+            from app.services.research_evidence import publish_research_record
+
+            publish_research_record(db, record)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=conflict) from exc
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(record)
     return record
 

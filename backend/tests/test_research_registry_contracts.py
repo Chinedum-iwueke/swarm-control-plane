@@ -168,8 +168,10 @@ def test_valid_source_is_committed_and_returned() -> None:
     assert record.source_key == payload.source_key
     assert record.record_digest == payload.record_digest
     db.add.assert_called_once_with(record)
+    db.flush.assert_called_once_with()
     db.commit.assert_called_once_with()
-    db.refresh.assert_called_once_with(record)
+    assert db.refresh.call_count == 2
+    db.refresh.assert_called_with(record)
 
 
 def test_trial_requires_exact_approved_manifest() -> None:
