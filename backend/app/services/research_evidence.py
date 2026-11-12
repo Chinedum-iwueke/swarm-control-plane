@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    CanonicalEvidenceEdge,
     ResearchDataSnapshot,
     ResearchDecision,
     ResearchExperiment,
@@ -78,14 +79,14 @@ def _object(
     content_version: str,
 ) -> EvidenceObjectCreate:
     native_id = str(record.id)
-    return EvidenceObjectCreate.model_validate(
+    request = EvidenceObjectCreate.model_validate(
         {
             "schema_version": _SCHEMA_VERSION,
             "object_schema_version": _OBJECT_SCHEMA_VERSION,
             "object_id": record.id,
             "object_type": object_type,
             "content_version": content_version,
-            "content_digest": canonical_payload_digest(payload),
+            "content_digest": "0" * 64,
             "producer": {
                 "system": "research-registry",
                 "native_type": object_type,
@@ -106,6 +107,13 @@ def _object(
             "created_by": _authority(actor),
         }
     )
+    return request.model_copy(
+        update={
+            "content_digest": canonical_payload_digest(
+                request.payload.model_dump(mode="json")
+            )
+        }
+    )
 
 
 def _edge(
@@ -117,6 +125,15 @@ def _edge(
     provenance_object_id,
     actor: str,
 ) -> None:
+    existing = db.scalar(
+        select(CanonicalEvidenceEdge).where(
+            CanonicalEvidenceEdge.subject_id == subject_id,
+            CanonicalEvidenceEdge.predicate == predicate,
+            CanonicalEvidenceEdge.object_id == object_id,
+        )
+    )
+    if existing is not None:
+        return
     register_edge(
         db,
         CanonicalEdgeCreate.model_validate(

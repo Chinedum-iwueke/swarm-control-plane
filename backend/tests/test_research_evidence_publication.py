@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from app.models import (
+    CanonicalEvidenceEdge,
     ResearchDataSnapshot,
     ResearchDecision,
     ResearchExperiment,
@@ -13,6 +14,7 @@ from app.models import (
     ResearchTrial,
 )
 from app.models.alpha_discovery import AlphaDiscoveryCandidate
+from app.services.evidence import canonical_payload_digest
 from app.services.research_evidence import publish_research_record
 
 NOW = datetime(2026, 11, 12, tzinfo=UTC)
@@ -108,6 +110,7 @@ def test_research_lifecycle_publishes_canonical_objects_and_typed_edges() -> Non
     lookup = {item.id: item for item in records}
     db = MagicMock()
     db.get.side_effect = lambda _model, object_id: lookup.get(object_id)
+    db.scalar.return_value = None
 
     with patch("app.services.research_evidence.register_evidence_object") as objects, patch(
         "app.services.research_evidence.register_edge"
@@ -151,3 +154,51 @@ def test_legacy_candidate_instrument_is_normalized_to_universe() -> None:
         publish_research_record(MagicMock(), candidate)
 
     assert objects.call_args.args[1].payload.universe == ["BTCUSDT"]
+
+
+def test_typed_payload_defaults_are_included_in_content_digest() -> None:
+    trial = ResearchTrial(
+        id=IDS[4], experiment_id=IDS[3], trial_family="family-1",
+        run_id="run-1", trial_number=1,
+        plan={"code_commit": "b" * 40, "engine_digest": DIGESTS[4]},
+        record_digest=DIGESTS[4], executed_by="research-runner", registered_at=NOW,
+    )
+    experiment = ResearchExperiment(
+        id=IDS[3], experiment_key="experiment-1", hypothesis_id=IDS[2],
+        source_id=IDS[0], snapshot_id=IDS[1],
+        manifest={"repository": "bulletproof_bt"}, manifest_digest=DIGESTS[3],
+        registered_by="strategy-engineer", registered_at=NOW,
+    )
+    db = MagicMock()
+    db.get.return_value = experiment
+    db.scalar.return_value = None
+
+    with patch("app.services.research_evidence.register_evidence_object") as objects, patch(
+        "app.services.research_evidence.register_edge"
+    ):
+        publish_research_record(db, trial)
+
+    request = objects.call_args.args[1]
+    assert request.content_digest == canonical_payload_digest(
+        request.payload.model_dump(mode="json")
+    )
+
+
+def test_existing_semantic_edge_is_idempotent_without_metadata_rewrite() -> None:
+    experiment = ResearchExperiment(
+        id=IDS[3], experiment_key="experiment-1", hypothesis_id=IDS[2],
+        source_id=IDS[0], snapshot_id=IDS[1],
+        manifest={"repository": "bulletproof_bt"}, manifest_digest=DIGESTS[3],
+        registered_by="strategy-engineer", registered_at=NOW,
+    )
+    db = MagicMock()
+    db.scalar.return_value = CanonicalEvidenceEdge(
+        subject_id=IDS[2], predicate="uses_method", object_id=IDS[3]
+    )
+
+    with patch("app.services.research_evidence.register_evidence_object"), patch(
+        "app.services.research_evidence.register_edge"
+    ) as edges:
+        publish_research_record(db, experiment)
+
+    edges.assert_not_called()
