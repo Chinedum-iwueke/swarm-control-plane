@@ -34,6 +34,7 @@ class ControlPlaneClient:
             },
             timeout=settings.request_timeout_seconds,
             transport=transport,
+            limits=httpx.Limits(max_connections=16, max_keepalive_connections=8),
         )
         self._dashboard_cache: dict[str, Any] | None = None
         self._dashboard_refresh_task: asyncio.Task[dict[str, Any]] | None = None
@@ -439,8 +440,11 @@ class ControlPlaneClient:
     ) -> dict[str, Any]:
         try:
             response = await self._client.get(path)
-        except httpx.TransportError as exc:
-            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        except httpx.TransportError:
+            unavailable = copy.deepcopy(fallback)
+            unavailable["unavailable"] = True
+            unavailable["unavailable_reason"] = "transport_error"
+            return unavailable
         if response.status_code == 404:
             unavailable = copy.deepcopy(fallback)
             unavailable["unavailable"] = True
@@ -478,6 +482,16 @@ class ControlPlaneClient:
     async def knowledge_landscape(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST", "/v1/research/graph/landscape", json=payload
+        )
+
+    async def episode_replay(self, episode_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/graph/episodes/{episode_id}/replay"
+        )
+
+    async def quantitative_receipt(self, receipt_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/v1/research/quantitative-receipts/{receipt_id}"
         )
 
     async def knowledge_catalog(self, *, limit: int = 500) -> dict[str, Any]:
@@ -921,8 +935,8 @@ class ControlPlaneClient:
     async def _optional_collection(self, path: str) -> list[dict[str, Any]]:
         try:
             response = await self._client.get(path)
-        except httpx.TransportError as exc:
-            raise ControlPlaneError("Control plane is currently unreachable.") from exc
+        except httpx.TransportError:
+            return []
         if response.status_code == 404:
             return []
         if response.is_success:

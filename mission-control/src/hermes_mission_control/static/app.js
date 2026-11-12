@@ -21,6 +21,8 @@ const state = {
   graphScope: "canonical",
   graphPath: [],
   graphFocusId: null,
+  graphFocusDepth: 1,
+  graphPresentation: false,
   graphSelectedEdgeId: null,
   graphTransform: { scale: 1, x: 0, y: 0 },
   researchMode: allowedResearchModes.has(requestedResearchMode) ? requestedResearchMode : "ask",
@@ -132,6 +134,8 @@ document.querySelectorAll("[data-library-unit]").forEach((button) => {
   button.addEventListener("click", () => switchLibraryUnit(button.dataset.libraryUnit));
 });
 document.getElementById("refresh-graph").addEventListener("click", loadGraph);
+document.getElementById("graph-presentation").addEventListener("click", toggleGraphPresentation);
+document.getElementById("graph-presentation-exit").addEventListener("click", () => toggleGraphPresentation(false));
 document.getElementById("graph-find").addEventListener("input", scheduleGraphSearch);
 document.getElementById("execution-environments").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-execution-environment]");
@@ -3913,7 +3917,7 @@ function renderGraph(graph) {
   if (!nodeMap.has(String(state.graphSelectedId))) state.graphSelectedId = String(nodes[0].id);
   if (state.graphFocusId && !nodeMap.has(String(state.graphFocusId))) state.graphFocusId = null;
   const selected = nodeMap.get(String(state.graphSelectedId));
-  const focus = graphFocusSets(edges, state.graphFocusId);
+  const focus = graphFocusSets(edges, state.graphFocusId, state.graphFocusDepth);
   document.getElementById("graph-expand").disabled = !selected;
   const positions = graphPositions(nodes, edges);
   renderGraphLandscapeSummary(graph, nodes, edges);
@@ -4090,17 +4094,29 @@ function graphEdgeInFocusedPath(edge) {
   return false;
 }
 
-function graphFocusSets(edges, focusId) {
+function graphFocusSets(edges, focusId, maxDepth = 1) {
   const nodes = new Set(focusId ? [String(focusId)] : []);
+  const expanded = new Set();
   const relations = new Set();
   if (!focusId) return { active: false, nodes, relations };
-  edges.forEach((edge) => {
-    if (String(edge.source) !== String(focusId) && String(edge.target) !== String(focusId)) return;
-    nodes.add(String(edge.source));
-    nodes.add(String(edge.target));
-    relations.add(String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`));
-  });
-  return { active: true, nodes, relations };
+  let frontier = new Set([String(focusId)]);
+  for (let depth = 0; depth < Math.max(1, Math.min(5, maxDepth)); depth += 1) {
+    const next = new Set();
+    edges.forEach((edge) => {
+      const source = String(edge.source);
+      const target = String(edge.target);
+      if (!frontier.has(source) && !frontier.has(target)) return;
+      nodes.add(source);
+      nodes.add(target);
+      next.add(source);
+      next.add(target);
+      relations.add(String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`));
+    });
+    frontier.forEach((id) => expanded.add(id));
+    frontier = new Set([...next].filter((id) => !expanded.has(id)));
+    if (!frontier.size) break;
+  }
+  return { active: true, nodes, relations, depth: maxDepth };
 }
 
 function clearGraphPath() {
@@ -4149,7 +4165,9 @@ function openGraphEdgeInspector(edge, nodeMap) {
   const source = nodeMap.get(String(edge.source));
   const target = nodeMap.get(String(edge.target));
   const provenance = edge.provenance_object_id || edge.provenance_id;
-  openInspector("Relationship evidence", humanize(edge.predicate || edge.relation || "related"), `<section class="detail-section"><h3>Directed relation</h3><p class="edge-statement"><strong>${escapeHtml(source?.label || source?.name || edge.source)}</strong><span>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</span><strong>${escapeHtml(target?.label || target?.name || edge.target)}</strong></p><dl class="detail-grid"><dt>Boundary</dt><dd>${escapeHtml(state.graphScope)}</dd><dt>Access</dt><dd>${statusBadge(edge.access_class || "private")}</dd><dt>Valid from</dt><dd>${escapeHtml(edge.valid_from || "Unbounded")}</dd><dt>Valid until</dt><dd>${escapeHtml(edge.valid_until || "Current")}</dd><dt>Record digest</dt><dd class="mono">${escapeHtml(edge.record_digest || "Unavailable")}</dd><dt>Provenance</dt><dd class="mono">${escapeHtml(provenance || "Unavailable")}</dd></dl></section>${provenance && state.graphScope === "canonical" ? `<div class="inspector-actions"><button class="secondary" id="replay-edge-provenance" type="button">Replay provenance</button></div><div id="edge-provenance-result"></div>` : '<p class="local-only-boundary">Private relationship evidence remains local to this Mission Control host.</p>'}`);
+  const semantics = graphRelationSemantics(edge.predicate || edge.relation);
+  openInspector("Relationship evidence", humanize(edge.predicate || edge.relation || "related"), `<section class="detail-section"><h3>Directed recorded relation</h3><p class="edge-statement"><strong>${escapeHtml(source?.label || source?.name || edge.source)}</strong><span>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))} →</span><strong>${escapeHtml(target?.label || target?.name || edge.target)}</strong></p><p class="relation-semantics ${escapeHtml(edge.predicate || edge.relation || "related")}">${escapeHtml(semantics)}</p><dl class="detail-grid"><dt>Boundary</dt><dd>${escapeHtml(state.graphScope)}</dd><dt>Access</dt><dd>${statusBadge(edge.access_class || "private")}</dd><dt>Valid from</dt><dd>${escapeHtml(edge.valid_from || "Unbounded")}</dd><dt>Valid until</dt><dd>${escapeHtml(edge.valid_until || "Current")}</dd><dt>Record digest</dt><dd class="mono">${escapeHtml(edge.record_digest || "Unavailable")}</dd><dt>Provenance</dt><dd class="mono">${escapeHtml(provenance || "Unavailable")}</dd></dl></section>${provenance && state.graphScope === "canonical" ? `<div class="inspector-actions"><button class="secondary" id="replay-edge-provenance" type="button">Replay exact citation</button><button class="secondary" id="inspect-edge-provenance" type="button">Inspect provenance record</button></div><div id="edge-provenance-result" class="edge-provenance-result"><span class="muted">Loading provenance excerpt…</span></div>` : '<p class="local-only-boundary">Private relationship evidence remains local to this Mission Control host.</p>'}`);
+  if (provenance && state.graphScope === "canonical") hydrateEdgeProvenance(provenance);
   const replay = document.getElementById("replay-edge-provenance");
   if (replay) replay.onclick = async () => {
     replay.disabled = true;
@@ -4162,6 +4180,49 @@ function openGraphEdgeInspector(edge, nodeMap) {
       replay.disabled = false;
     }
   };
+  const inspect = document.getElementById("inspect-edge-provenance");
+  if (inspect) inspect.onclick = async () => {
+    const detail = await graphEvidenceDetail(provenance);
+    openGraphEvidenceRecord(detail);
+  };
+}
+
+function graphRelationSemantics(predicate) {
+  if (predicate === "supports") return "The source record contains evidence recorded in favor of the target proposition. This is not proof or endorsement.";
+  if (predicate === "contradicts") return "The source record contains evidence recorded against the target proposition. The conflict remains preserved for review.";
+  return `Direction is source → target. ${humanize(predicate || "related")} is an explicitly registered canonical edge.`;
+}
+
+async function graphEvidenceDetail(objectId) {
+  const id = String(objectId);
+  let detail = state.graphEvidenceCache.get(id);
+  if (!detail) {
+    detail = await request(`/api/knowledge/evidence/${encodeURIComponent(id)}`);
+    state.graphEvidenceCache.set(id, detail);
+  }
+  return detail;
+}
+
+function graphEvidenceExcerpt(detail) {
+  const payload = detail?.record?.payload || {};
+  return payload.excerpt || payload.normalized_content || payload.proposition || payload.research_question || payload.summary || payload.title || payload.name || payload.decision || "No bounded excerpt is recorded on this provenance object.";
+}
+
+async function hydrateEdgeProvenance(provenance) {
+  const target = document.getElementById("edge-provenance-result");
+  if (!target) return;
+  try {
+    const detail = await graphEvidenceDetail(provenance);
+    if (!document.getElementById("edge-provenance-result")) return;
+    target.innerHTML = `<p class="section-kicker">Recorded provenance excerpt</p><p class="replay-excerpt">${escapeHtml(truncate(graphEvidenceExcerpt(detail), 900))}</p><span class="mono">${escapeHtml(detail.record?.content_digest || "Digest unavailable")}</span>`;
+  } catch (error) {
+    target.innerHTML = `<span class="muted">Provenance unavailable: ${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function openGraphEvidenceRecord(detail) {
+  const record = detail?.record || {};
+  openInspector("Canonical provenance", record.object_type ? humanize(record.object_type) : "Evidence record", `<section class="detail-section"><h3>Recorded excerpt</h3><p class="replay-excerpt">${escapeHtml(truncate(graphEvidenceExcerpt(detail), 1600))}</p></section><dl class="detail-grid"><dt>Object</dt><dd class="mono">${escapeHtml(record.id || "Unavailable")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(record.content_digest || "Unavailable")}</dd><dt>Authority</dt><dd>${escapeHtml(record.authority_class || "Unavailable")}</dd><dt>Project</dt><dd>${escapeHtml(record.project || "Unavailable")}</dd></dl>`);
 }
 
 function graphPositions(nodes, edges) {
@@ -4189,7 +4250,7 @@ function graphEdgeSvg(edge, positions, inPath = false, focus = { active: false, 
   const id = String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`);
   const focused = focus.active && focus.relations.has(id);
   const label = humanize(edge.predicate || edge.relation || "related");
-  return `<g class="graph-edge-group${focus.active && !focused ? " dimmed" : ""}"><line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}${focused ? " evidence-focus" : ""}" data-graph-edge="${escapeHtml(id)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect ${escapeHtml(label)} relationship"><title>${escapeHtml(label)}</title></line>${focused ? `<text class="graph-edge-label" data-edge-label-source="${escapeHtml(edge.source)}" data-edge-label-target="${escapeHtml(edge.target)}" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}">${escapeHtml(label)}</text>` : ""}</g>`;
+  return `<g class="graph-edge-group${focus.active && !focused ? " dimmed" : ""}"><line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}${focused ? " evidence-focus" : ""}" data-graph-edge="${escapeHtml(id)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect directed ${escapeHtml(label)} relationship"><title>${escapeHtml(label)} · source to target</title></line>${!focus.active || focused ? `<text class="graph-edge-label" data-edge-label-source="${escapeHtml(edge.source)}" data-edge-label-target="${escapeHtml(edge.target)}" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}">${escapeHtml(label)} →</text>` : ""}</g>`;
 }
 
 function graphRelationshipRow(edge, nodeMap, inPath = false, focus = { active: false, relations: new Set() }) {
@@ -4207,7 +4268,8 @@ function graphSelectionPanel(node, edges, nodeMap) {
   return `<aside class="graph-selection" aria-label="Selected graph node">
     <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
     <dl class="detail-grid"><dt>Record</dt><dd>${escapeHtml(recordClass)}</dd><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(state.demo ? "demo" : node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || "Unavailable"))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd><dt>Evidence</dt><dd>${supporting} supporting / ${opposing} opposing</dd></dl>
-    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-focus="${escapeHtml(node.id)}" aria-pressed="${String(String(state.graphFocusId) === String(node.id))}">${String(state.graphFocusId) === String(node.id) ? "Clear focus" : "Focus evidence"}</button><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Expand neighbors</button></div>
+    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-focus="${escapeHtml(node.id)}" aria-pressed="${String(String(state.graphFocusId) === String(node.id))}">${String(state.graphFocusId) === String(node.id) ? "Clear focus" : "Focus evidence"}</button>${String(state.graphFocusId) === String(node.id) ? `<button class="secondary" type="button" data-graph-focus-expand="${escapeHtml(node.id)}" ${state.graphFocusDepth >= 5 ? "disabled" : ""}>Expand focus · ${state.graphFocusDepth} hop${state.graphFocusDepth === 1 ? "" : "s"}</button>` : ""}<button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">${(node.object_type || node.kind) === "episode" ? "Replay episode" : "Replay evidence"}</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Query wider neighborhood</button></div>
+    <div class="graph-guided-navigation" role="group" aria-label="Guided neighborhood navigation"><button type="button" class="text-button" data-graph-guide="previous">← Previous</button><span>${related.length} recorded adjacent relation${related.length === 1 ? "" : "s"}</span><button type="button" class="text-button" data-graph-guide="next">Next →</button></div>
     <div id="graph-selection-hydration" class="graph-selection-hydration"><span class="muted">Loading canonical record…</span></div>
     <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
   </aside>`;
@@ -4223,8 +4285,7 @@ async function hydrateGraphSelection(node) {
   try {
     let detail = state.graphEvidenceCache.get(id);
     if (!detail) {
-      detail = await request(`/api/knowledge/evidence/${encodeURIComponent(id)}`);
-      state.graphEvidenceCache.set(id, detail);
+      detail = await graphEvidenceDetail(id);
     }
     if (String(state.graphSelectedId) !== id || !document.getElementById("graph-selection-hydration")) return;
     const payload = detail.record?.payload || {};
@@ -4249,9 +4310,18 @@ function bindGraphInteractions(nodeMap) {
     }
     const focus = event.target.closest("[data-graph-focus]");
     if (focus) {
-      state.graphFocusId = String(state.graphFocusId) === String(focus.dataset.graphFocus) ? null : focus.dataset.graphFocus;
+      const clearing = String(state.graphFocusId) === String(focus.dataset.graphFocus);
+      state.graphFocusId = clearing ? null : focus.dataset.graphFocus;
+      state.graphFocusDepth = 1;
       return renderGraph(state.graphData);
     }
+    const focusExpand = event.target.closest("[data-graph-focus-expand]");
+    if (focusExpand) {
+      state.graphFocusDepth = Math.min(5, state.graphFocusDepth + 1);
+      return renderGraph(state.graphData);
+    }
+    const guide = event.target.closest("[data-graph-guide]");
+    if (guide) return navigateGraphNeighborhood(guide.dataset.graphGuide, nodeMap);
     const replay = event.target.closest("[data-graph-replay]");
     if (replay) return replayGraphEvidence(nodeMap.get(replay.dataset.graphReplay));
     const neighbors = event.target.closest("[data-graph-neighbors]");
@@ -4355,11 +4425,40 @@ function bindGraphInteractions(nodeMap) {
   }, { passive: false });
 }
 
+function navigateGraphNeighborhood(direction, nodeMap) {
+  const edges = state.graphData?.edges || [];
+  const related = edges.filter((edge) => String(edge.source) === String(state.graphSelectedId) || String(edge.target) === String(state.graphSelectedId));
+  if (!related.length) return;
+  const edge = direction === "previous" ? related.at(-1) : related[0];
+  const otherId = String(edge.source) === String(state.graphSelectedId) ? String(edge.target) : String(edge.source);
+  if (!nodeMap.has(otherId)) return;
+  state.graphSelectedId = otherId;
+  renderGraph(state.graphData);
+  fitGraphSelection();
+}
+
 function fitGraphSelection() {
   const position = state.graphLayout.get(String(state.graphSelectedId));
   if (!position) return;
   state.graphTransform = { scale: 1.55, x: 450 - position.x * 1.55, y: 260 - position.y * 1.55 };
   saveGraphViewState();
+}
+
+function toggleGraphPresentation(force) {
+  state.graphPresentation = typeof force === "boolean" ? force : !state.graphPresentation;
+  if (state.graphPresentation && !state.graphFocusId) {
+    state.graphFocusId = state.graphSelectedId;
+    state.graphFocusDepth = 1;
+  }
+  document.body.classList.toggle("graph-presentation", state.graphPresentation);
+  document.getElementById("graph-presentation").setAttribute("aria-pressed", String(state.graphPresentation));
+  document.getElementById("graph-presentation").textContent = state.graphPresentation ? "Exit" : "Present";
+  document.getElementById("graph-presentation-banner").hidden = !state.graphPresentation;
+  document.getElementById("graph-presentation-demo").hidden = !(state.graphPresentation && state.demo);
+  if (state.graphPresentation) {
+    fitGraphSelection();
+  }
+  if (state.graphData) renderGraph(state.graphData);
 }
 
 function updateGraphSvgPositions() {
@@ -4439,10 +4538,46 @@ async function replayGraphEvidence(node) {
     openInspector("Private graph evidence", node.label || node.name, `<section class="detail-section"><h3>Local evidence identity</h3><dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind || "private evidence")}</dd><dt>Access</dt><dd>${statusBadge("private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(node.content_digest || "Unavailable")}</dd></dl></section><p class="local-only-boundary">Private graph content remains on this Mission Control host. Open the matching source from the Library to inspect its stored text.</p>`);
     return;
   }
+  if ((node.object_type || node.kind) === "episode") {
+    return replayGraphEpisode(node);
+  }
   openInspector("Canonical graph evidence", node.label || node.name, `<div id="graph-replay-result" class="empty-state">Replaying canonical evidence…</div>`);
   try {
     const replay = await request(`/api/research/copilot/citations/${encodeURIComponent(node.id)}`);
     document.getElementById("graph-replay-result").innerHTML = `<pre class="citation-replay">${escapeHtml(JSON.stringify(replay, null, 2))}</pre>`;
+  } catch (error) {
+    document.getElementById("graph-replay-result").innerHTML = empty(error.message);
+  }
+}
+
+async function replayGraphEpisode(node) {
+  openInspector("Episode replay", node.label || node.name, `<div id="graph-replay-result" class="empty-state">Joining explicit episode records…</div>`);
+  try {
+    const replay = await request(`/api/knowledge/episodes/${encodeURIComponent(node.id)}/replay`);
+    const task = replay.task;
+    const manifests = replay.context_manifests || [];
+    const events = replay.task_events || [];
+    const receipts = replay.receipts || [];
+    document.getElementById("graph-replay-result").innerHTML = `<div class="episode-replay">
+      <p class="episode-replay-policy">Recorded events only. No inferred causal narrative.</p>
+      <section><p class="section-kicker">Episode and task</p><dl class="detail-grid"><dt>Episode</dt><dd class="mono">${escapeHtml(replay.episode_id)}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(replay.episode_digest)}</dd><dt>Task</dt><dd>${task ? escapeHtml(`${task.task_number} · ${task.title}`) : "No explicit task identifier"}</dd><dt>Status</dt><dd>${task ? statusBadge(task.status) : "Not applicable"}</dd><dt>Boundary</dt><dd>${replay.bounded ? `Bounded: ${escapeHtml(replay.truncation_reasons.join(", "))}` : "Complete within projection limits"}</dd></dl></section>
+      <section><p class="section-kicker">Context manifests</p>${manifests.length ? manifests.map((item) => `<article class="episode-record"><strong>Attempt ${item.attempt_number} · ${escapeHtml(item.purpose)}</strong><span>${item.item_count} items · ${escapeHtml(item.status)}</span><code>${escapeHtml(item.manifest_digest)}</code></article>`).join("") : '<p class="muted">No explicit context manifest is recorded.</p>'}</section>
+      <section><p class="section-kicker">Task events</p><ol class="episode-timeline">${events.map((item) => `<li><time>${escapeHtml(formatDate(item.created_at))}</time><strong>${escapeHtml(humanize(item.event_type))}</strong><span>${escapeHtml(item.message)}</span><small>Attempt ${item.attempt_number}</small></li>`).join("") || '<li class="muted">No task events recorded.</li>'}</ol></section>
+      <section><p class="section-kicker">Receipt navigation</p>${receipts.length ? receipts.map((item) => `<article class="episode-receipt"><div><strong>${item.registered ? "Registered receipt" : "Recorded reference"}</strong><span>${escapeHtml(item.source)}</span></div><code>${escapeHtml(item.receipt_digest || item.receipt_id || item.receipt_path || "Reference unavailable")}</code>${item.receipt_id ? `<button class="secondary" type="button" data-receipt-id="${escapeHtml(item.receipt_id)}">Open receipt</button>` : ""}</article>`).join("") : '<p class="muted">No explicit receipt references were recorded.</p>'}</section>
+    </div>`;
+    document.querySelectorAll("[data-receipt-id]").forEach((button) => {
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          const receipt = await request(`/api/knowledge/receipts/${encodeURIComponent(button.dataset.receiptId)}`);
+          openInspector("Quantitative receipt", receipt.milestone || button.dataset.receiptId, `<dl class="detail-grid"><dt>Receipt</dt><dd class="mono">${escapeHtml(receipt.id)}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(receipt.receipt_digest)}</dd><dt>Producer</dt><dd>${escapeHtml(receipt.producer)}</dd><dt>Commit</dt><dd class="mono">${escapeHtml(receipt.source_commit)}</dd><dt>Dataset</dt><dd class="mono">${escapeHtml(receipt.dataset_digest)}</dd></dl><pre class="citation-replay">${escapeHtml(JSON.stringify(receipt.receipt, null, 2))}</pre>`);
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      };
+    });
   } catch (error) {
     document.getElementById("graph-replay-result").innerHTML = empty(error.message);
   }

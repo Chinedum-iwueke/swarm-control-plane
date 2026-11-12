@@ -9,6 +9,7 @@ import pytest
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
+    EpisodeReplayResponse,
     GraphLandscapeRequest,
     GraphLandscapeResponse,
     GraphQueryRequest,
@@ -21,8 +22,10 @@ from app.services.graph import (
     _allocate_landscape_type_slots,
     _authorized_edges,
     _decode_graph_cursor,
+    _deduplicate_receipt_references,
     _edge_response,
     _encode_graph_cursor,
+    _explicit_receipt_references,
     _frontier_edges,
     _landscape_edge_facets,
     _node_response,
@@ -168,9 +171,7 @@ def test_graph_node_replay_path_targets_canonical_evidence_route() -> None:
 
     response = _node_response(node)
 
-    assert response["replay_path"] == (
-        f"/v1/research/evidence/objects/{ONE}"
-    )
+    assert response["replay_path"] == (f"/v1/research/evidence/objects/{ONE}")
 
 
 def test_graph_cursor_is_bounded_to_exact_query_fingerprint() -> None:
@@ -290,6 +291,48 @@ def test_landscape_response_discloses_selection_and_corpus_bounds() -> None:
     assert response.corpus_node_count == 784_270
 
 
+def test_episode_receipt_projection_uses_only_explicit_recorded_fields() -> None:
+    receipt_id = "44444444-4444-4444-8444-444444444444"
+    references = _explicit_receipt_references(
+        {
+            "summary": "This prose mentions no actionable receipt.",
+            "terminal": {
+                "receipt_id": receipt_id,
+                "receipt_digest": "a" * 64,
+                "receipt_path": f"/v1/research/quantitative-receipts/{receipt_id}",
+            },
+            "nested": [{"receipt_digest": "a" * 64}],
+        },
+        "task.result",
+    )
+
+    assert len(references) == 2
+    deduplicated = _deduplicate_receipt_references(references)
+    assert len(deduplicated) == 2
+    assert deduplicated[0]["receipt_id"] == receipt_id
+    assert all("summary" not in item["source"] for item in references)
+
+
+def test_episode_replay_contract_marks_explicit_only_narrative_boundary() -> None:
+    response = EpisodeReplayResponse.model_validate(
+        {
+            "schema_version": "episode-replay-v1.0.0",
+            "episode_id": ONE,
+            "episode_digest": "a" * 64,
+            "project": "systematic-research",
+            "task": None,
+            "context_manifests": [],
+            "task_events": [],
+            "receipts": [],
+            "bounded": False,
+            "truncation_reasons": [],
+            "narrative_policy": "explicit-records-only",
+        }
+    )
+
+    assert response.narrative_policy == "explicit-records-only"
+
+
 def test_canonical_neighborhood_pages_are_deterministic_and_keep_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -385,9 +428,7 @@ def test_legacy_projection_adopts_epoch_only_after_digest_match(
     db = MagicMock()
     db.get.return_value = state
     monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
-    monkeypatch.setattr(
-        "app.services.graph.graph_corpus_digest", lambda _: "1" * 64
-    )
+    monkeypatch.setattr("app.services.graph.graph_corpus_digest", lambda _: "1" * 64)
 
     assert graph_projection_status(db) == (state, False)
     assert state.source_epoch == 42
@@ -401,9 +442,7 @@ def test_legacy_projection_does_not_adopt_epoch_when_digest_changed(
     db = MagicMock()
     db.get.return_value = state
     monkeypatch.setattr("app.services.graph.corpus_epoch", lambda _: 42)
-    monkeypatch.setattr(
-        "app.services.graph.graph_corpus_digest", lambda _: "2" * 64
-    )
+    monkeypatch.setattr("app.services.graph.graph_corpus_digest", lambda _: "2" * 64)
 
     assert graph_projection_status(db) == (state, True)
     assert state.source_epoch == 0

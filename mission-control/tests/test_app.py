@@ -235,6 +235,21 @@ class FakeControlPlane:
             "edges": [],
         }
 
+    async def episode_replay(self, episode_id: str) -> dict:
+        self.episode_requested = episode_id
+        return {
+            "schema_version": "episode-replay-v1.0.0",
+            "episode_id": episode_id,
+            "narrative_policy": "explicit-records-only",
+            "task_events": [],
+            "context_manifests": [],
+            "receipts": [],
+        }
+
+    async def quantitative_receipt(self, receipt_id: str) -> dict:
+        self.receipt_requested = receipt_id
+        return {"id": receipt_id, "receipt_digest": "a" * 64}
+
     async def knowledge_catalog(self, *, limit: int = 500) -> dict:
         return {"items": [], "count": 0}
 
@@ -944,6 +959,23 @@ def test_knowledge_landscape_rejects_executable_or_unbounded_input(
             json={"max_nodes": 500, "command": "shell"},
         )
     assert response.status_code == 422
+
+
+def test_episode_and_receipt_replay_are_read_only_typed_proxies(
+    settings: MissionControlSettings,
+) -> None:
+    episode_id = "11111111-1111-4111-8111-111111111111"
+    receipt_id = "44444444-4444-4444-8444-444444444444"
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        episode = client.get(f"/api/knowledge/episodes/{episode_id}/replay")
+        receipt = client.get(f"/api/knowledge/receipts/{receipt_id}")
+
+    assert episode.status_code == 200
+    assert episode.json()["narrative_policy"] == "explicit-records-only"
+    assert receipt.status_code == 200
+    assert fake.episode_requested == episode_id
+    assert fake.receipt_requested == receipt_id
 
 
 def test_landscape_search_uses_canonical_hybrid_retrieval(

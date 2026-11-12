@@ -922,6 +922,14 @@ def create_app(
         lineage = await client.research_evidence_lineage(str(object_id))
         return {"record": record, "lineage": lineage}
 
+    @app.get("/api/knowledge/episodes/{episode_id}/replay")
+    async def graph_episode_replay(episode_id: UUID) -> dict:
+        return await client.episode_replay(str(episode_id))
+
+    @app.get("/api/knowledge/receipts/{receipt_id}")
+    async def graph_receipt(receipt_id: UUID) -> dict:
+        return await client.quantitative_receipt(str(receipt_id))
+
     @app.post("/api/research/copilot/questions")
     async def ask_research_copilot(question: CopilotQuestion) -> dict:
         return await copilot.ask(question)

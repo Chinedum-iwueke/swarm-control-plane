@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.agent_context import AgentContextManifest
 from app.models.evidence import CanonicalEvidenceEdge, CanonicalEvidenceObject
 from app.models.graph import (
     CognitiveToolReceipt,
@@ -25,6 +26,9 @@ from app.models.graph import (
     EvidenceGraphProjectionNode,
     EvidenceGraphProjectionState,
 )
+from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.models.task import Task
+from app.models.task_event import TaskEvent
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
@@ -99,6 +103,237 @@ _LANDSCAPE_SEMANTIC_TYPES = (
     "episode",
 )
 _LANDSCAPE_SEMANTIC_SHARE = 0.65
+_EPISODE_CONTEXT_LIMIT = 20
+_EPISODE_EVENT_LIMIT = 200
+_EPISODE_RECEIPT_LIMIT = 100
+
+
+def episode_replay(
+    db: Session,
+    episode_id: UUID,
+    access: EvidenceAccessContext,
+) -> dict[str, Any]:
+    """Project an episode from explicit immutable and operational records only."""
+    episode = get_evidence_object(db, episode_id, access, audit=False)
+    if episode.object_type != "episode":
+        raise HTTPException(
+            status_code=422, detail="Replay requires an episode object."
+        )
+    raw_task_id = episode.payload.get("task_id")
+    task_id: UUID | None = None
+    if raw_task_id:
+        try:
+            task_id = UUID(str(raw_task_id))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Episode contains an invalid explicit task identifier.",
+            ) from exc
+    task = db.get(Task, task_id) if task_id else None
+    if task_id and task is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode task identifier does not resolve to a task.",
+        )
+    if task is not None and task.project != episode.project:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode and task project boundaries do not match.",
+        )
+
+    manifests: list[AgentContextManifest] = []
+    events: list[TaskEvent] = []
+    manifest_truncated = event_truncated = False
+    if task_id:
+        manifests = list(
+            db.scalars(
+                select(AgentContextManifest)
+                .where(AgentContextManifest.task_id == task_id)
+                .order_by(
+                    AgentContextManifest.attempt_number,
+                    AgentContextManifest.created_at,
+                    AgentContextManifest.id,
+                )
+                .limit(_EPISODE_CONTEXT_LIMIT + 1)
+            ).all()
+        )
+        manifest_truncated = len(manifests) > _EPISODE_CONTEXT_LIMIT
+        manifests = manifests[:_EPISODE_CONTEXT_LIMIT]
+        events = list(
+            db.scalars(
+                select(TaskEvent)
+                .where(TaskEvent.task_id == task_id)
+                .order_by(TaskEvent.created_at, TaskEvent.id)
+                .limit(_EPISODE_EVENT_LIMIT + 1)
+            ).all()
+        )
+        event_truncated = len(events) > _EPISODE_EVENT_LIMIT
+        events = events[:_EPISODE_EVENT_LIMIT]
+
+    references: list[dict[str, Any]] = []
+    documents: list[tuple[str, Any]] = [("episode", episode.payload)]
+    if task is not None:
+        documents.extend([("task.result", task.result), ("task.failure", task.failure)])
+    documents.extend((f"event.{item.id}", item.payload) for item in events)
+    for source, document in documents:
+        references.extend(_explicit_receipt_references(document, source))
+    references = _deduplicate_receipt_references(references)
+    receipt_truncated = len(references) > _EPISODE_RECEIPT_LIMIT
+    references = references[:_EPISODE_RECEIPT_LIMIT]
+    registered_ids = (
+        {
+            str(item)
+            for item in db.scalars(
+                select(QuantitativeProducerReceipt.id).where(
+                    QuantitativeProducerReceipt.id.in_(
+                        [
+                            UUID(item["receipt_id"])
+                            for item in references
+                            if item.get("receipt_id")
+                        ]
+                    )
+                )
+            ).all()
+        }
+        if any(item.get("receipt_id") for item in references)
+        else set()
+    )
+    registered_digests = (
+        {
+            item
+            for item in db.scalars(
+                select(QuantitativeProducerReceipt.receipt_digest).where(
+                    QuantitativeProducerReceipt.receipt_digest.in_(
+                        [
+                            item["receipt_digest"]
+                            for item in references
+                            if item.get("receipt_digest")
+                        ]
+                    )
+                )
+            ).all()
+        }
+        if any(item.get("receipt_digest") for item in references)
+        else set()
+    )
+    for item in references:
+        item["registered"] = bool(
+            item.get("receipt_id") in registered_ids
+            or item.get("receipt_digest") in registered_digests
+        )
+
+    truncation_reasons = []
+    if manifest_truncated:
+        truncation_reasons.append("context_manifests")
+    if event_truncated:
+        truncation_reasons.append("task_events")
+    if receipt_truncated:
+        truncation_reasons.append("receipts")
+    return {
+        "schema_version": "episode-replay-v1.0.0",
+        "episode_id": episode.id,
+        "episode_digest": episode.content_digest,
+        "project": episode.project,
+        "task": _episode_task(task) if task else None,
+        "context_manifests": [_episode_manifest(item) for item in manifests],
+        "task_events": [_episode_event(item) for item in events],
+        "receipts": references,
+        "bounded": bool(truncation_reasons),
+        "truncation_reasons": truncation_reasons,
+        "narrative_policy": "explicit-records-only",
+    }
+
+
+def _episode_task(task: Task) -> dict[str, Any]:
+    return {
+        "id": str(task.id),
+        "task_number": task.task_number,
+        "task_type": task.task_type,
+        "title": task.title,
+        "status": task.status,
+        "attempt_count": task.attempt_count,
+        "plan_digest": task.plan_digest,
+        "created_at": task.created_at,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+    }
+
+
+def _episode_manifest(item: AgentContextManifest) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "agent_id": item.agent_id,
+        "attempt_number": item.attempt_number,
+        "purpose": item.purpose,
+        "manifest_digest": item.manifest_digest,
+        "context_pack_digest": item.context_pack_digest,
+        "item_count": item.item_count,
+        "status": item.status,
+        "created_at": item.created_at,
+    }
+
+
+def _episode_event(item: TaskEvent) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "event_type": item.event_type,
+        "attempt_number": item.attempt_number,
+        "agent_id": item.agent_id,
+        "message": item.message,
+        "payload": item.payload,
+        "created_at": item.created_at,
+    }
+
+
+def _explicit_receipt_references(value: Any, source: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        receipt_id = value.get("receipt_id")
+        receipt_digest = value.get("receipt_digest")
+        receipt_path = value.get("receipt_path")
+        valid_id = None
+        if receipt_id:
+            try:
+                valid_id = str(UUID(str(receipt_id)))
+            except ValueError:
+                valid_id = None
+        valid_digest = (
+            str(receipt_digest)
+            if isinstance(receipt_digest, str)
+            and len(receipt_digest) == 64
+            and all(char in "0123456789abcdef" for char in receipt_digest)
+            else None
+        )
+        valid_path = str(receipt_path) if isinstance(receipt_path, str) else None
+        if valid_id or valid_digest or valid_path:
+            found.append(
+                {
+                    "source": source,
+                    "receipt_id": valid_id,
+                    "receipt_digest": valid_digest,
+                    "receipt_path": valid_path,
+                }
+            )
+        for key, child in value.items():
+            found.extend(_explicit_receipt_references(child, f"{source}.{key}"))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found.extend(_explicit_receipt_references(child, f"{source}[{index}]"))
+    return found
+
+
+def _deduplicate_receipt_references(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    unique: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for item in items:
+        key = (
+            item.get("receipt_id"),
+            item.get("receipt_digest"),
+            item.get("receipt_path"),
+        )
+        unique.setdefault(key, item)
+    return list(unique.values())
 
 
 def _stream_digest(
@@ -620,9 +855,7 @@ def query_graph(
     cursor_fingerprint = digest_document(
         {
             "corpus_digest": state.corpus_digest,
-            "query": request.model_dump(
-                mode="json", exclude={"cursor", "page_size"}
-            ),
+            "query": request.model_dump(mode="json", exclude={"cursor", "page_size"}),
         }
     )
     offset = _decode_graph_cursor(request.cursor, cursor_fingerprint)
@@ -682,9 +915,7 @@ def query_graph(
             depth_limited = True
     node_limited = len(by_id) > request.max_nodes
     edges = [
-        edge
-        for edge in edges
-        if edge.subject_id in by_id and edge.object_id in by_id
+        edge for edge in edges if edge.subject_id in by_id and edge.object_id in by_id
     ]
     adjacency = _adjacency(edges, request.direction)
     visited, paths = _traverse(request, adjacency)
@@ -890,9 +1121,7 @@ def graph_landscape(
             {item: available_types.get(item, 0) for item in explicit_other_types},
             request.max_nodes - len(selected),
         )
-        other_nodes = _landscape_nodes_by_type(
-            db, access, request.project, other_slots
-        )
+        other_nodes = _landscape_nodes_by_type(db, access, request.project, other_slots)
         for item in other_nodes:
             selected[item.object_id] = item
     nodes = list(selected.values())[: request.max_nodes]
@@ -985,7 +1214,11 @@ def _allocate_landscape_type_slots(
 def _validate_landscape_project(
     access: EvidenceAccessContext, project: str | None
 ) -> None:
-    if project is not None and "*" not in access.projects and project not in access.projects:
+    if (
+        project is not None
+        and "*" not in access.projects
+        and project not in access.projects
+    ):
         raise HTTPException(status_code=403, detail="Graph project access denied.")
 
 
@@ -997,7 +1230,9 @@ def _landscape_access_classes(access: EvidenceAccessContext) -> list[str]:
     ]
 
 
-def _landscape_node_scope(statement, access: EvidenceAccessContext, project: str | None):
+def _landscape_node_scope(
+    statement, access: EvidenceAccessContext, project: str | None
+):
     if access.max_access_class != "protected":
         statement = statement.where(
             EvidenceGraphProjectionNode.access_class.in_(
@@ -1053,10 +1288,8 @@ def _landscape_edge_facets(
             EvidenceGraphProjectionEdge.object_id.in_(authorized_nodes),
             EvidenceGraphProjectionEdge.provenance_object_id.in_(authorized_nodes),
         )
-    statement = (
-        statement
-        .group_by(EvidenceGraphProjectionEdge.predicate)
-        .order_by(EvidenceGraphProjectionEdge.predicate)
+    statement = statement.group_by(EvidenceGraphProjectionEdge.predicate).order_by(
+        EvidenceGraphProjectionEdge.predicate
     )
     if as_of is not None:
         point = as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=UTC)

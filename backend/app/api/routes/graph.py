@@ -1,5 +1,5 @@
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.schemas.graph import (
     CognitiveToolResponse,
     ContextPackRequest,
     ContextPackResponse,
+    EpisodeReplayResponse,
     GraphLandscapeRequest,
     GraphLandscapeResponse,
     GraphProjectionResponse,
@@ -24,6 +25,7 @@ from app.services.evidence import ORCHESTRATOR_ACCESS
 from app.services.graph import (
     assemble_context_pack,
     build_graph_projection,
+    episode_replay,
     execute_cognitive_tool,
     graph_landscape,
     graph_overview,
@@ -123,6 +125,14 @@ def read_graph_landscape(
     db: Annotated[Session, Depends(get_db)],
 ):
     return graph_landscape(db, payload, ORCHESTRATOR_ACCESS)
+
+
+@router.get("/episodes/{episode_id}/replay", response_model=EpisodeReplayResponse)
+def replay_episode(
+    episode_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return episode_replay(db, episode_id, ORCHESTRATOR_ACCESS)
 
 
 @router.post("/context-packs", response_model=ContextPackResponse)

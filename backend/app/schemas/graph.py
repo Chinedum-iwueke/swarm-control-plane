@@ -182,6 +182,50 @@ class GraphLandscapeResponse(StrictModel):
     truncation_reasons: list[Literal["max_nodes", "max_edges"]]
 
 
+class EpisodeReplayManifest(StrictModel):
+    id: UUID
+    agent_id: UUID
+    attempt_number: int = Field(ge=1)
+    purpose: str
+    manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    context_pack_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    item_count: int = Field(ge=0)
+    status: str
+    created_at: datetime
+
+
+class EpisodeReplayEvent(StrictModel):
+    id: int = Field(ge=1)
+    event_type: str
+    attempt_number: int = Field(ge=0)
+    agent_id: UUID | None = None
+    message: str
+    payload: dict
+    created_at: datetime
+
+
+class EpisodeReceiptReference(StrictModel):
+    source: str
+    receipt_id: UUID | None = None
+    receipt_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    receipt_path: str | None = None
+    registered: bool
+
+
+class EpisodeReplayResponse(StrictModel):
+    schema_version: Literal["episode-replay-v1.0.0"]
+    episode_id: UUID
+    episode_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    project: str
+    task: dict | None
+    context_manifests: list[EpisodeReplayManifest]
+    task_events: list[EpisodeReplayEvent]
+    receipts: list[EpisodeReceiptReference]
+    bounded: bool
+    truncation_reasons: list[Literal["context_manifests", "task_events", "receipts"]]
+    narrative_policy: Literal["explicit-records-only"]
+
+
 class ContextPackRequest(StrictModel):
     query: str = Field(min_length=2, max_length=1000)
     object_ids: list[UUID] = Field(min_length=1, max_length=50)

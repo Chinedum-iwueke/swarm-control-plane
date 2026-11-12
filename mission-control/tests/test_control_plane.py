@@ -544,6 +544,55 @@ async def test_landscape_uses_authenticated_read_only_query(
 
 
 @pytest.mark.asyncio
+async def test_episode_and_receipt_replay_use_bounded_read_routes(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        return httpx.Response(200, json={})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        await client.episode_replay("episode-id")
+        await client.quantitative_receipt("receipt-id")
+    finally:
+        await client.close()
+
+    assert seen == [
+        ("GET", "/v1/research/graph/episodes/episode-id/replay"),
+        ("GET", "/v1/research/quantitative-receipts/receipt-id"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_optional_dashboard_transport_failure_degrades_only_optional_panel(
+    settings: MissionControlSettings,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("bounded optional timeout", request=request)
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        object_result = await client._optional_object(
+            "/v1/optional-object", {"items": []}
+        )
+        collection_result = await client._optional_collection(
+            "/v1/optional-collection"
+        )
+    finally:
+        await client.close()
+
+    assert object_result == {
+        "items": [],
+        "unavailable": True,
+        "unavailable_reason": "transport_error",
+    }
+    assert collection_result == []
+
+
+@pytest.mark.asyncio
 async def test_conversation_client_uses_canonical_cross_channel_identity(
     settings: MissionControlSettings,
 ) -> None:

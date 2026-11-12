@@ -47,7 +47,17 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
     assert 'data-graph-focus="${escapeHtml(node.id)}"' in script
     assert 'aria-label="Fit selected evidence"' in script
     assert "function graphFocusSets" in script
-    assert 'aria-label="Inspect ${escapeHtml(label)} relationship"' in script
+    assert 'aria-label="Inspect directed ${escapeHtml(label)} relationship"' in script
+    assert 'id="graph-presentation"' in html
+    assert "function toggleGraphPresentation" in script
+    assert "function replayGraphEpisode" in script
+    assert 'narrative_policy' not in script  # server policy is rendered, not re-authored
+    assert "No inferred causal narrative" in script
+    assert "function graphEvidenceExcerpt" in script
+    assert "state.graphFocusDepth + 1" in script
+    assert "Recorded provenance excerpt" in script
+    assert "body.graph-presentation .topbar" in styles
+    assert "Synthetic demonstration. Not canonical evidence." in html
     assert ".landscape-facet:focus-visible" in styles
     assert ".graph-edge-group.dimmed, .graph-node-svg.dimmed" in styles
     assert ".graph-edge-label" in styles
