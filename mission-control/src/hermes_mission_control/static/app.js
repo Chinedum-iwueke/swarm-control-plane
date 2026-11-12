@@ -7,6 +7,9 @@ const requestedWalkthrough = new URLSearchParams(window.location.search).get("wa
 const requestedLibrarySource = new URLSearchParams(window.location.search).get("source");
 const requestedLibraryKind = new URLSearchParams(window.location.search).get("sourceKind");
 const requestedLibraryCitation = new URLSearchParams(window.location.search).get("cite");
+const GRAPH_CANVAS_WIDTH = 1200;
+const GRAPH_CANVAS_HEIGHT = 720;
+const GRAPH_LABELED_NODE_TYPES = new Set(["claim", "hypothesis", "research_candidate", "method"]);
 const state = {
   dashboard: null,
   activeView: allowedViews.has(requestedView) ? requestedView : "command",
@@ -3930,7 +3933,7 @@ function renderGraph(graph) {
         <button type="button" class="icon-button graph-fit" data-graph-zoom="fit" aria-label="Fit graph" title="Fit graph">Fit</button>
         <button type="button" class="icon-button graph-fit" data-graph-zoom="selection" aria-label="Fit selected evidence" title="Fit selected evidence">Selection</button>
       </div>
-      <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="900" height="520" viewBox="0 0 900 520" role="application" aria-labelledby="graph-svg-title graph-svg-desc" aria-label="Interactive evidence graph. Drag nodes to arrange, drag the background to pan, and scroll to zoom.">
+      <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="${GRAPH_CANVAS_WIDTH}" height="${GRAPH_CANVAS_HEIGHT}" viewBox="0 0 ${GRAPH_CANVAS_WIDTH} ${GRAPH_CANVAS_HEIGHT}" role="application" aria-labelledby="graph-svg-title graph-svg-desc" aria-label="Interactive evidence graph. Drag nodes to arrange, drag the background to pan, and scroll to zoom.">
         <title id="graph-svg-title">Canonical research relationship graph</title>
         <desc id="graph-svg-desc">${nodes.length} evidence nodes and ${edges.length} visible relationships. Use the Relationships view for a keyboard-first adjacency list.</desc>
         <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
@@ -4239,9 +4242,27 @@ function graphPositions(nodes, edges) {
 function graphNodeSvg(node, position, index, selected, inPath = false, focus = { active: false, nodes: new Set() }) {
   const type = String(node.object_type || node.kind || "evidence");
   const label = String(node.label || node.name || node.id);
-  const shape = type === "claim" || type === "dataset" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" || type === "decision" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
+  const shape = type === "claim" || type === "dataset" ? `<rect x="-10" y="-10" width="20" height="20" rx="2"></rect>` : type === "result" || type === "decision" ? `<path d="M 0 -12 L 12 0 L 0 12 L -12 0 Z"></path>` : `<circle r="10"></circle>`;
   const dimmed = focus.active && !focus.nodes.has(String(node.id));
-  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}"><title>${escapeHtml(label)} · ${escapeHtml(humanize(type))}</title>${shape}${(index < 14 || selected || inPath || (focus.active && !dimmed)) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
+  const showLabel = GRAPH_LABELED_NODE_TYPES.has(type) || index < 10 || selected || inPath || (focus.active && !dimmed);
+  const labelLines = graphNodeLabelLines(label);
+  const labelSvg = showLabel ? `<text class="graph-node-label" x="15" y="${labelLines.length > 1 ? -3 : 4}">${labelLines.map((line, lineIndex) => `<tspan x="15" dy="${lineIndex === 0 ? 0 : 13}">${escapeHtml(line)}</tspan>`).join("")}</text>` : "";
+  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}"><title>${escapeHtml(label)} · ${escapeHtml(humanize(type))}</title>${shape}${labelSvg}</g>`;
+}
+
+function graphNodeLabelLines(label) {
+  const words = String(label).trim().split(/\s+/);
+  const lines = [];
+  for (const word of words) {
+    const candidate = lines.length ? `${lines.at(-1)} ${word}` : word;
+    if (candidate.length <= 30 && lines.length) lines[lines.length - 1] = candidate;
+    else if (lines.length < 2) lines.push(truncate(word, 30));
+    else break;
+  }
+  if (!lines.length) return [truncate(String(label), 30)];
+  const represented = lines.join(" ");
+  if (represented.length < String(label).trim().length) lines[lines.length - 1] = `${truncate(lines.at(-1), 27)}…`;
+  return lines;
 }
 
 function graphEdgeSvg(edge, positions, inPath = false, focus = { active: false, relations: new Set() }) {
@@ -4250,7 +4271,7 @@ function graphEdgeSvg(edge, positions, inPath = false, focus = { active: false, 
   const id = String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`);
   const focused = focus.active && focus.relations.has(id);
   const label = humanize(edge.predicate || edge.relation || "related");
-  return `<g class="graph-edge-group${focus.active && !focused ? " dimmed" : ""}"><line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}${focused ? " evidence-focus" : ""}" data-graph-edge="${escapeHtml(id)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect directed ${escapeHtml(label)} relationship"><title>${escapeHtml(label)} · source to target</title></line>${!focus.active || focused ? `<text class="graph-edge-label" data-edge-label-source="${escapeHtml(edge.source)}" data-edge-label-target="${escapeHtml(edge.target)}" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}">${escapeHtml(label)} →</text>` : ""}</g>`;
+  return `<g class="graph-edge-group${focus.active && !focused ? " dimmed" : ""}${focused || inPath ? " label-visible" : ""}"><line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}${focused ? " evidence-focus" : ""}" data-graph-edge="${escapeHtml(id)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect directed ${escapeHtml(label)} relationship"><title>${escapeHtml(label)} · source to target</title></line>${!focus.active || focused ? `<text class="graph-edge-label" data-edge-label-source="${escapeHtml(edge.source)}" data-edge-label-target="${escapeHtml(edge.target)}" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}">${escapeHtml(label)} →</text>` : ""}</g>`;
 }
 
 function graphRelationshipRow(edge, nodeMap, inPath = false, focus = { active: false, relations: new Set() }) {
@@ -4371,8 +4392,8 @@ function bindGraphInteractions(nodeMap) {
   let gesture = null;
   const graphPoint = (event) => {
     const bounds = svg.getBoundingClientRect();
-    const screenX = (event.clientX - bounds.left) / bounds.width * 900;
-    const screenY = (event.clientY - bounds.top) / bounds.height * 520;
+    const screenX = (event.clientX - bounds.left) / bounds.width * GRAPH_CANVAS_WIDTH;
+    const screenY = (event.clientY - bounds.top) / bounds.height * GRAPH_CANVAS_HEIGHT;
     return { x: (screenX - state.graphTransform.x) / state.graphTransform.scale, y: (screenY - state.graphTransform.y) / state.graphTransform.scale, screenX, screenY };
   };
   svg.addEventListener("pointerdown", (event) => {
@@ -4393,8 +4414,8 @@ function bindGraphInteractions(nodeMap) {
       updateGraphSvgPositions();
     } else {
       const bounds = svg.getBoundingClientRect();
-      state.graphTransform.x += dx / bounds.width * 900;
-      state.graphTransform.y += dy / bounds.height * 520;
+      state.graphTransform.x += dx / bounds.width * GRAPH_CANVAS_WIDTH;
+      state.graphTransform.y += dy / bounds.height * GRAPH_CANVAS_HEIGHT;
       gesture.x = event.clientX;
       gesture.y = event.clientY;
       document.getElementById("graph-viewport").setAttribute("transform", `translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})`);
@@ -4440,7 +4461,7 @@ function navigateGraphNeighborhood(direction, nodeMap) {
 function fitGraphSelection() {
   const position = state.graphLayout.get(String(state.graphSelectedId));
   if (!position) return;
-  state.graphTransform = { scale: 1.55, x: 450 - position.x * 1.55, y: 260 - position.y * 1.55 };
+  state.graphTransform = { scale: 1.55, x: GRAPH_CANVAS_WIDTH / 2 - position.x * 1.55, y: GRAPH_CANVAS_HEIGHT / 2 - position.y * 1.55 };
   saveGraphViewState();
 }
 

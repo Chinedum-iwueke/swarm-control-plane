@@ -61,6 +61,10 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
     assert ".landscape-facet:focus-visible" in styles
     assert ".graph-edge-group.dimmed, .graph-node-svg.dimmed" in styles
     assert ".graph-edge-label" in styles
+    assert "GRAPH_CANVAS_WIDTH = 1200" in script
+    assert "GRAPH_LABELED_NODE_TYPES" in script
+    assert ".graph-edge-group:hover .graph-edge-label" in styles
+    assert "min-height: clamp(620px, 72vh, 860px)" in styles
     assert "prefers-reduced-motion: reduce" in styles
     assert (STATIC_ROOT / "vendor" / "knowledge-layout.js").exists()
 

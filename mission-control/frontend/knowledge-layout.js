@@ -7,9 +7,9 @@ import {
   forceY,
 } from "d3-force";
 
-const WIDTH = 900;
-const HEIGHT = 520;
-const SNAPSHOT_VERSION = "d3-force-layout-v1";
+const WIDTH = 1200;
+const HEIGHT = 720;
+const SNAPSHOT_VERSION = "d3-force-layout-v2";
 
 function hash(value) {
   let result = 2166136261;
@@ -35,10 +35,10 @@ function anchorsFor(nodes) {
   const types = [...new Set(nodes.map((node) => node.type))].sort();
   return new Map(types.map((type, index) => {
     const angle = types.length === 1 ? 0 : index / types.length * Math.PI * 2 - Math.PI / 2;
-    const radius = types.length === 1 ? 0 : Math.min(190, 82 + types.length * 12);
+    const radius = types.length === 1 ? 0 : Math.min(275, 118 + types.length * 14);
     return [type, {
       x: WIDTH / 2 + Math.cos(angle) * radius,
-      y: HEIGHT / 2 + Math.sin(angle) * radius * 0.68,
+      y: HEIGHT / 2 + Math.sin(angle) * radius * 0.72,
     }];
   }));
 }
@@ -82,7 +82,7 @@ function layout(rawNodes, rawEdges, signature) {
     offsets.set(node.type, index + 1);
     const anchor = anchors.get(node.type);
     const angle = index * 2.399963229728653;
-    const radius = Math.min(76, 12 + Math.sqrt(index) * 18);
+    const radius = Math.min(104, 14 + Math.sqrt(index) * 22);
     node.x = anchor.x + Math.cos(angle) * radius;
     node.y = anchor.y + Math.sin(angle) * radius * 0.72;
   });
@@ -92,9 +92,9 @@ function layout(rawNodes, rawEdges, signature) {
     .map((edge) => ({ source: String(edge.source), target: String(edge.target) }));
   const simulation = forceSimulation(nodes)
     .randomSource(seededRandom(hash(signature)))
-    .force("link", forceLink(links).id((node) => node.id).distance(104).strength(0.16))
-    .force("charge", forceManyBody().strength(-145).distanceMax(260))
-    .force("collision", forceCollide().radius(24).strength(0.9).iterations(2))
+    .force("link", forceLink(links).id((node) => node.id).distance(132).strength(0.16))
+    .force("charge", forceManyBody().strength(-180).distanceMax(340))
+    .force("collision", forceCollide().radius(30).strength(0.92).iterations(2))
     .force("category-x", forceX((node) => anchors.get(node.type).x).strength(0.12))
     .force("category-y", forceY((node) => anchors.get(node.type).y).strength(0.12))
     .stop();

@@ -29,6 +29,8 @@ from app.services.graph import (
     _frontier_edges,
     _landscape_edge_facets,
     _node_response,
+    _object_label,
+    _select_connected_landscape_nodes,
     _stream_digest,
     _traverse,
     _validate_edge_types,
@@ -242,6 +244,38 @@ def test_landscape_type_slots_preserve_sparse_categories() -> None:
     )
     assert slots == {"claim": 1, "run": 4, "result": 3, "episode": 2}
     assert sum(slots.values()) == 10
+
+
+def test_projection_labels_expose_recorded_method_semantics() -> None:
+    item = SimpleNamespace(
+        id=ONE,
+        object_type="method",
+        payload={
+            "procedure": '{"model_or_rule":"sol_to_eth_tail_return",'
+            '"timeframe":"2h","instrument_universe":["SOLUSDT","ETHUSDT"]}'
+        },
+    )
+
+    assert _object_label(item) == ("Sol to eth tail return · 2h · SOLUSDT, ETHUSDT")
+
+
+def test_landscape_selection_prefers_recorded_connections_within_type() -> None:
+    disconnected = SimpleNamespace(
+        object_id=ONE, object_type="hypothesis", label="A disconnected question"
+    )
+    connected = SimpleNamespace(
+        object_id=TWO, object_type="hypothesis", label="Z connected question"
+    )
+    method = SimpleNamespace(object_id=THREE, object_type="method", label="Method")
+    recorded_edge = SimpleNamespace(subject_id=TWO, object_id=THREE)
+
+    selected = _select_connected_landscape_nodes(
+        [disconnected, connected, method],
+        [recorded_edge],
+        {"hypothesis": 1, "method": 1},
+    )
+
+    assert [item.object_id for item in selected] == [TWO, THREE]
 
 
 def test_landscape_edge_facets_filter_authorized_endpoint_projects() -> None:

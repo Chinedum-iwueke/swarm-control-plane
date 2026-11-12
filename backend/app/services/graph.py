@@ -102,7 +102,7 @@ _LANDSCAPE_SEMANTIC_TYPES = (
     "belief",
     "episode",
 )
-_LANDSCAPE_SEMANTIC_SHARE = 0.65
+_LANDSCAPE_SEMANTIC_SHARE = 0.82
 _EPISODE_CONTEXT_LIMIT = 20
 _EPISODE_EVENT_LIMIT = 200
 _EPISODE_RECEIPT_LIMIT = 100
@@ -1088,7 +1088,7 @@ def graph_landscape(
         {item: available_types.get(item, 0) for item in semantic_types},
         semantic_budget,
     )
-    semantic_nodes = _landscape_nodes_by_type(
+    semantic_nodes = _landscape_connected_nodes_by_type(
         db, access, request.project, semantic_slots
     )
     selected: dict[UUID, EvidenceGraphProjectionNode] = {
@@ -1130,6 +1130,7 @@ def graph_landscape(
         db,
         selected_ids,
         access,
+        project=request.project,
         predicates=request.predicates,
         as_of=request.as_of,
         limit=request.max_edges + 1,
@@ -1160,7 +1161,7 @@ def graph_landscape(
         "as_of": request.as_of.isoformat() if request.as_of else None,
         "node_ids": [str(item.object_id) for item in nodes],
         "edge_digests": [item.record_digest for item in edges],
-        "selection_strategy": "representative-landscape-v1",
+        "selection_strategy": "connected-semantic-landscape-v2",
     }
     return {
         "schema_version": "knowledge-landscape-v1.0.0",
@@ -1176,7 +1177,7 @@ def graph_landscape(
         "nodes": [_node_response(item) for item in nodes],
         "edges": [_edge_response(item) for item in edges],
         "selection": {
-            "strategy": "representative-landscape-v1",
+            "strategy": "connected-semantic-landscape-v2",
             "semantic_node_count": len(semantic_nodes),
             "source_node_count": len(source_nodes),
             "edition_node_count": len(edition_nodes),
@@ -1329,6 +1330,59 @@ def _landscape_nodes_by_type(
     return result
 
 
+def _landscape_connected_nodes_by_type(
+    db: Session,
+    access: EvidenceAccessContext,
+    project: str | None,
+    slots: dict[str, int],
+) -> list[EvidenceGraphProjectionNode]:
+    """Prefer recorded, connected evidence while retaining the type budget."""
+    candidate_slots = {
+        object_type: min(max(limit * 8, limit), 64)
+        for object_type, limit in slots.items()
+    }
+    candidates = _landscape_nodes_by_type(db, access, project, candidate_slots)
+    candidate_ids = {item.object_id for item in candidates}
+    candidate_edges = _landscape_edges(
+        db,
+        candidate_ids,
+        access,
+        project=project,
+        predicates=[],
+        as_of=None,
+        limit=1_280,
+    )
+    return _select_connected_landscape_nodes(candidates, candidate_edges, slots)
+
+
+def _select_connected_landscape_nodes(
+    candidates: list[EvidenceGraphProjectionNode],
+    edges: list[EvidenceGraphProjectionEdge],
+    slots: dict[str, int],
+) -> list[EvidenceGraphProjectionNode]:
+    degree: dict[UUID, int] = {item.object_id: 0 for item in candidates}
+    for edge in edges:
+        if edge.subject_id in degree:
+            degree[edge.subject_id] += 1
+        if edge.object_id in degree:
+            degree[edge.object_id] += 1
+    by_type: dict[str, list[EvidenceGraphProjectionNode]] = {}
+    for item in candidates:
+        by_type.setdefault(item.object_type, []).append(item)
+    selected: list[EvidenceGraphProjectionNode] = []
+    for object_type, limit in slots.items():
+        ranked = sorted(
+            by_type.get(object_type, []),
+            key=lambda item: (
+                -degree[item.object_id],
+                item.label,
+                str(item.object_id),
+            ),
+        )
+        selected.extend(ranked[:limit])
+    return selected
+
+
 def _landscape_source_edition_pairs(
     db: Session,
     access: EvidenceAccessContext,
@@ -1398,18 +1452,23 @@ def _landscape_edges(
     node_ids: set[UUID],
     access: EvidenceAccessContext,
     *,
+    project: str | None,
     predicates: list[str],
     as_of: datetime | None,
     limit: int,
 ) -> list[EvidenceGraphProjectionEdge]:
     if not node_ids:
         return []
+    authorized_provenance = select(EvidenceGraphProjectionNode.object_id)
+    authorized_provenance = _landscape_node_scope(
+        authorized_provenance, access, project
+    )
     statement = (
         select(EvidenceGraphProjectionEdge)
         .where(
             EvidenceGraphProjectionEdge.subject_id.in_(node_ids),
             EvidenceGraphProjectionEdge.object_id.in_(node_ids),
-            EvidenceGraphProjectionEdge.provenance_object_id.in_(node_ids),
+            EvidenceGraphProjectionEdge.provenance_object_id.in_(authorized_provenance),
             EvidenceGraphProjectionEdge.access_class.in_(
                 _landscape_access_classes(access)
             ),
@@ -1771,7 +1830,43 @@ def _object_label(item: CanonicalEvidenceObject) -> str:
     ):
         if payload.get(key):
             return str(payload[key])[:500]
+    if item.object_type == "method":
+        procedure = payload.get("procedure") or {}
+        if isinstance(procedure, str):
+            try:
+                procedure = json.loads(procedure)
+            except (TypeError, ValueError):
+                procedure = {}
+        if isinstance(procedure, dict):
+            rule = procedure.get("model_or_rule") or procedure.get("strategy")
+            timeframe = procedure.get("timeframe") or procedure.get("signal_timeframe")
+            universe = procedure.get("instrument_universe") or procedure.get("symbols")
+            parts = [_display_token(rule)] if rule else []
+            if timeframe:
+                parts.append(str(timeframe))
+            if isinstance(universe, list) and universe:
+                symbols = ", ".join(map(str, universe[:3]))
+                parts.append(f"{symbols}{' +' if len(universe) > 3 else ''}")
+            if parts:
+                return " · ".join(parts)[:500]
+    lifecycle_fields = {
+        "run": ("run_label", "attempt_number", "trial_ordinal", "status"),
+        "result": ("outcome", "classification", "status"),
+        "review": ("verdict", "review_kind", "status"),
+        "episode": ("question", "objective", "status"),
+    }
+    for key in lifecycle_fields.get(item.object_type, ()):
+        if payload.get(key) is not None:
+            return (
+                f"{_display_token(item.object_type)} · {_display_token(payload[key])}"[
+                    :500
+                ]
+            )
     return f"{item.object_type}:{str(item.id)[:8]}"
+
+
+def _display_token(value: Any) -> str:
+    return str(value).replace("_", " ").strip().capitalize()
 
 
 def _object_text(item: CanonicalEvidenceObject) -> str:

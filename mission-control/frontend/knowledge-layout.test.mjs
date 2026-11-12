@@ -26,8 +26,8 @@ const second = window.InvarianceGraphLayout.layout(nodes, edges, signature);
 assert.deepEqual([...first], [...second]);
 assert.equal(first.size, nodes.length);
 for (const position of first.values()) {
-  assert.ok(position.x >= 28 && position.x <= 872);
-  assert.ok(position.y >= 28 && position.y <= 492);
+  assert.ok(position.x >= 28 && position.x <= 1172);
+  assert.ok(position.y >= 28 && position.y <= 692);
 }
 let nearest = Number.POSITIVE_INFINITY;
 const positions = [...first.values()];
