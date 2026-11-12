@@ -20,6 +20,7 @@ const state = {
   graphExtent: "global",
   graphScope: "canonical",
   graphPath: [],
+  graphFocusId: null,
   graphSelectedEdgeId: null,
   graphTransform: { scale: 1, x: 0, y: 0 },
   researchMode: allowedResearchModes.has(requestedResearchMode) ? requestedResearchMode : "ask",
@@ -3537,8 +3538,14 @@ async function loadGraph() {
       return;
     }
     state.graphExtent = "global";
-    const parameters = new URLSearchParams({ scope: state.graphScope, limit: "100" });
-    renderGraph(await request(`/api/knowledge/graph?${parameters}`));
+    const graph = state.graphScope === "canonical"
+      ? await request("/api/knowledge/graph/landscape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ max_nodes: 100, max_edges: 240 }),
+      })
+      : await request("/api/knowledge/graph?scope=private&limit=100");
+    renderGraph(graph);
     saveGraphViewState();
   } catch (error) {
     document.getElementById("graph").innerHTML = empty(`Knowledge graph unavailable: ${error.message}`);
@@ -3895,37 +3902,43 @@ function renderGraph(graph) {
   const nodeMap = new Map(nodes.map((node) => [String(node.id), node]));
   const edges = (graph.edges || []).filter((edge) => nodeMap.has(String(edge.source)) && nodeMap.has(String(edge.target))).slice(0, 240);
   if (!nodes.length) {
+    renderGraphLandscapeSummary(graph, [], []);
     document.getElementById("graph").innerHTML = empty("Build the canonical graph projection to explore research lineage.");
     return;
   }
   if (!nodeMap.has(String(state.graphSelectedId))) state.graphSelectedId = String(nodes[0].id);
+  if (state.graphFocusId && !nodeMap.has(String(state.graphFocusId))) state.graphFocusId = null;
   const selected = nodeMap.get(String(state.graphSelectedId));
+  const focus = graphFocusSets(edges, state.graphFocusId);
   document.getElementById("graph-expand").disabled = !selected;
   const positions = graphPositions(nodes, edges);
+  renderGraphLandscapeSummary(graph, nodes, edges);
+  const visibleTypes = [...new Set(nodes.map((node) => String(node.object_type || node.kind || "evidence")))];
   const visual = `
     <div class="graph-canvas-shell">
       <div class="graph-canvas-toolbar" role="group" aria-label="Graph zoom controls">
         <button type="button" class="icon-button" data-graph-zoom="in" aria-label="Zoom in" title="Zoom in">+</button>
         <button type="button" class="icon-button" data-graph-zoom="out" aria-label="Zoom out" title="Zoom out">−</button>
         <button type="button" class="icon-button graph-fit" data-graph-zoom="fit" aria-label="Fit graph" title="Fit graph">Fit</button>
+        <button type="button" class="icon-button graph-fit" data-graph-zoom="selection" aria-label="Fit selected evidence" title="Fit selected evidence">Selection</button>
       </div>
       <svg id="knowledge-graph-svg" class="knowledge-graph-svg" width="900" height="520" viewBox="0 0 900 520" role="application" aria-labelledby="graph-svg-title graph-svg-desc" aria-label="Interactive evidence graph. Drag nodes to arrange, drag the background to pan, and scroll to zoom.">
         <title id="graph-svg-title">Canonical research relationship graph</title>
         <desc id="graph-svg-desc">${nodes.length} evidence nodes and ${edges.length} visible relationships. Use the Relationships view for a keyboard-first adjacency list.</desc>
         <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
         <g id="graph-viewport" transform="translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})">
-          <g class="graph-links">${edges.map((edge) => graphEdgeSvg(edge, positions, graphEdgeInFocusedPath(edge))).join("")}</g>
-          <g class="graph-nodes">${nodes.map((node, index) => graphNodeSvg(node, positions.get(String(node.id)), index, String(node.id) === String(state.graphSelectedId), state.graphPath.includes(String(node.id)))).join("")}</g>
+          <g class="graph-links">${edges.map((edge) => graphEdgeSvg(edge, positions, graphEdgeInFocusedPath(edge), focus)).join("")}</g>
+          <g class="graph-nodes">${nodes.map((node, index) => graphNodeSvg(node, positions.get(String(node.id)), index, String(node.id) === String(state.graphSelectedId), state.graphPath.includes(String(node.id)), focus)).join("")}</g>
         </g>
       </svg>
-      <div class="graph-legend"><span><i class="legend-shape claim"></i>Claim</span><span><i class="legend-shape result"></i>Result</span><span><i class="legend-shape source"></i>Source</span><span><i class="legend-line supports"></i>Supports</span><span><i class="legend-line contradicts"></i>Contradicts</span></div>
+      <div class="graph-legend">${visibleTypes.slice(0, 9).map((type) => `<span><i class="legend-shape ${escapeHtml(type)}"></i>${escapeHtml(humanize(type))}</span>`).join("")}${edges.some((edge) => edge.predicate === "supports") ? '<span><i class="legend-line supports"></i>Supports</span>' : ""}${edges.some((edge) => edge.predicate === "contradicts") ? '<span><i class="legend-line contradicts"></i>Contradicts</span>' : ""}</div>
     </div>`;
   const relationships = `
     <div class="graph-adjacency" role="list" aria-label="Visible graph relationships">
-      ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap, graphEdgeInFocusedPath(edge))).join("") : empty("The selected bounded view contains no explicit relationships.")}
+      ${edges.length ? edges.map((edge) => graphRelationshipRow(edge, nodeMap, graphEdgeInFocusedPath(edge), focus)).join("") : empty("The selected bounded view contains no explicit relationships.")}
     </div>`;
   document.getElementById("graph").innerHTML = `
-    <div class="projection-meta"><span>${escapeHtml(state.graphExtent === "global" ? "Global map" : "Local focus")}</span><span>${escapeHtml(state.graphScope)} boundary</span><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${nodes.length.toLocaleString()} / 100 nodes</span><span>${edges.length.toLocaleString()} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? `<span>${escapeHtml(graph.truncation?.reasons?.length ? `Bounded: ${graph.truncation.reasons.map(humanize).join(", ")}` : "Bounded at query limit")}</span>` : ""}<span>${graph.built_at || graph.generated_at ? `Published ${escapeHtml(relativeTime(graph.built_at || graph.generated_at))}` : "Projection time unavailable"}</span></div>
+    <div class="projection-meta"><span>${escapeHtml(state.graphExtent === "global" ? "Knowledge landscape" : "Local focus")}</span><span>${escapeHtml(state.graphScope)} boundary</span><span>${escapeHtml(graph.projection_version || "local-knowledge-v1")}</span><span>${nodes.length.toLocaleString()} visible nodes</span><span>${edges.length.toLocaleString()} relationships</span><span class="mono">${escapeHtml(shortHash(graph.query_digest || graph.corpus_digest || ""))}</span>${graph.truncated ? `<span>${escapeHtml(graphTruncationLabel(graph))}</span>` : ""}<span>${graph.built_at || graph.generated_at ? `Published ${escapeHtml(relativeTime(graph.built_at || graph.generated_at))}` : "Projection time unavailable"}</span></div>
     <div class="graph-workspace">
       <div class="graph-primary">${state.graphView === "visual" ? visual : relationships}</div>
       ${graphSelectionPanel(selected, edges, nodeMap)}
@@ -3934,6 +3947,44 @@ function renderGraph(graph) {
   populateGraphPathControls(nodes);
   renderGraphFindResults();
   saveGraphViewState();
+}
+
+function graphTruncationLabel(graph) {
+  const reasons = graph.truncation_reasons || graph.truncation?.reasons || [];
+  return reasons.length ? `Bounded: ${reasons.map(humanize).join(", ")}` : "Bounded at query limit";
+}
+
+function renderGraphLandscapeSummary(graph, visibleNodes, visibleEdges) {
+  const element = document.getElementById("graph-landscape-summary");
+  if (!element) return;
+  if (state.graphExtent !== "global" || state.graphScope !== "canonical" || !graph.selection) {
+    element.hidden = true;
+    element.innerHTML = "";
+    return;
+  }
+  const facets = graph.node_facets || [];
+  const selectedType = document.getElementById("graph-object-type").value;
+  const corpusNodes = Number(graph.corpus_node_count || visibleNodes.length);
+  const corpusEdges = Number(graph.corpus_edge_count || visibleEdges.length);
+  const corpusLabel = state.demo ? "Demonstration corpus" : "Institutional corpus";
+  element.hidden = false;
+  element.innerHTML = `
+    <div class="landscape-measure"><span>${corpusLabel}</span><strong>${corpusNodes.toLocaleString()}</strong><small>${state.demo ? "synthetic objects" : "canonical objects"}</small></div>
+    <div class="landscape-measure"><span>Recorded relations</span><strong>${corpusEdges.toLocaleString()}</strong><small>projected edges</small></div>
+    <div class="landscape-measure"><span>Representative view</span><strong>${visibleNodes.length} / ${visibleEdges.length}</strong><small>nodes / relations</small></div>
+    <div class="landscape-facets" role="group" aria-label="Filter landscape by evidence category">
+      <button type="button" class="landscape-facet${selectedType ? "" : " active"}" data-landscape-type="" aria-pressed="${String(!selectedType)}"><span>All visible</span><strong>${(graph.nodes || []).length}</strong></button>
+      ${facets.filter((facet) => (graph.nodes || []).some((node) => String(node.object_type || node.kind) === String(facet.value))).map((facet) => `<button type="button" class="landscape-facet${selectedType === facet.value ? " active" : ""}" data-landscape-type="${escapeHtml(facet.value)}" aria-pressed="${String(selectedType === facet.value)}"><span>${escapeHtml(humanize(facet.value))}</span><strong>${Number(facet.count).toLocaleString()}</strong></button>`).join("")}
+    </div>
+    <p class="landscape-disclosure">${state.demo ? "Synthetic demonstration view. No displayed object is canonical evidence." : `Representative sample, not corpus completeness. Selection is ${escapeHtml(humanize(graph.selection.strategy || "bounded"))}; filters and access policy are applied by the canonical evidence service.`}</p>`;
+  element.querySelectorAll("[data-landscape-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById("graph-object-type").value = button.dataset.landscapeType;
+      state.graphObjectType = button.dataset.landscapeType;
+      saveGraphViewState();
+      renderGraph(state.graphData);
+    });
+  });
 }
 
 function restoreGraphViewState() {
@@ -4009,6 +4060,19 @@ function graphEdgeInFocusedPath(edge) {
   return false;
 }
 
+function graphFocusSets(edges, focusId) {
+  const nodes = new Set(focusId ? [String(focusId)] : []);
+  const relations = new Set();
+  if (!focusId) return { active: false, nodes, relations };
+  edges.forEach((edge) => {
+    if (String(edge.source) !== String(focusId) && String(edge.target) !== String(focusId)) return;
+    nodes.add(String(edge.source));
+    nodes.add(String(edge.target));
+    relations.add(String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`));
+  });
+  return { active: true, nodes, relations };
+}
+
 function clearGraphPath() {
   state.graphPath = [];
   document.getElementById("graph-path-status").textContent = "Path focus cleared.";
@@ -4076,13 +4140,25 @@ function graphPositions(nodes, edges) {
   if (signature === state.graphLayoutSignature && state.graphLayout.size) return state.graphLayout;
   const positions = new Map();
   const center = { x: 450, y: 260 };
-  nodes.forEach((node, index) => {
+  const nodeTypes = new Map(nodes.map((node) => [String(node.id), String(node.object_type || node.kind || "evidence")]));
+  const types = [...new Set(nodes.map((node) => String(node.object_type || node.kind || "evidence")))].sort();
+  const anchors = new Map(types.map((type, index) => {
+    const angle = types.length === 1 ? 0 : index / types.length * Math.PI * 2 - Math.PI / 2;
+    const radius = types.length === 1 ? 0 : Math.min(190, 82 + types.length * 12);
+    return [type, { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius * .68 }];
+  }));
+  const typeOffsets = new Map();
+  nodes.forEach((node) => {
+    const type = String(node.object_type || node.kind || "evidence");
+    const index = typeOffsets.get(type) || 0;
+    typeOffsets.set(type, index + 1);
+    const anchor = anchors.get(type);
     const angle = index * 2.399963;
-    const radius = Math.min(220, 36 + Math.sqrt(index) * 30);
-    positions.set(String(node.id), { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius * .78 });
+    const radius = Math.min(74, 15 + Math.sqrt(index) * 18);
+    positions.set(String(node.id), { x: anchor.x + Math.cos(angle) * radius, y: anchor.y + Math.sin(angle) * radius * .72 });
   });
   const usableEdges = edges.filter((edge) => positions.has(String(edge.source)) && positions.has(String(edge.target)));
-  for (let iteration = 0; iteration < 72; iteration += 1) {
+  for (let iteration = 0; iteration < 24; iteration += 1) {
     const forces = new Map(ids.map((id) => [id, { x: 0, y: 0 }]));
     for (let left = 0; left < ids.length; left += 1) {
       const a = positions.get(ids[left]);
@@ -4114,12 +4190,13 @@ function graphPositions(nodes, edges) {
       forces.get(String(edge.target)).x -= fx;
       forces.get(String(edge.target)).y -= fy;
     }
-    const cooling = 1 - iteration / 88;
+    const cooling = 1 - iteration / 32;
     for (const id of ids) {
       const position = positions.get(id);
       const force = forces.get(id);
-      position.x = Math.max(28, Math.min(872, position.x + force.x * cooling + (center.x - position.x) * .006));
-      position.y = Math.max(28, Math.min(492, position.y + force.y * cooling + (center.y - position.y) * .006));
+      const anchor = anchors.get(nodeTypes.get(id));
+      position.x = Math.max(28, Math.min(872, position.x + force.x * cooling + (anchor.x - position.x) * .012));
+      position.y = Math.max(28, Math.min(492, position.y + force.y * cooling + (anchor.y - position.y) * .012));
     }
   }
   state.graphLayoutSignature = signature;
@@ -4127,31 +4204,39 @@ function graphPositions(nodes, edges) {
   return positions;
 }
 
-function graphNodeSvg(node, position, index, selected, inPath = false) {
+function graphNodeSvg(node, position, index, selected, inPath = false, focus = { active: false, nodes: new Set() }) {
   const type = String(node.object_type || node.kind || "evidence");
   const label = String(node.label || node.name || node.id);
-  const shape = type === "claim" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
-  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}">${shape}${(index < 14 || selected || inPath) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
+  const shape = type === "claim" || type === "dataset" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" || type === "decision" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
+  const dimmed = focus.active && !focus.nodes.has(String(node.id));
+  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}">${shape}${(index < 14 || selected || inPath || (focus.active && !dimmed)) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
 }
 
-function graphEdgeSvg(edge, positions, inPath = false) {
+function graphEdgeSvg(edge, positions, inPath = false, focus = { active: false, relations: new Set() }) {
   const source = positions.get(String(edge.source));
   const target = positions.get(String(edge.target));
-  return `<line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}" data-graph-edge="${escapeHtml(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect ${escapeHtml(humanize(edge.predicate || edge.relation || "related"))} relationship"><title>${escapeHtml(humanize(edge.predicate || edge.relation || "related"))}</title></line>`;
+  const id = String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`);
+  const focused = focus.active && focus.relations.has(id);
+  const label = humanize(edge.predicate || edge.relation || "related");
+  return `<g class="graph-edge-group${focus.active && !focused ? " dimmed" : ""}"><line class="graph-link predicate-${escapeHtml(edge.predicate || edge.relation || "related")}${inPath ? " path-focus" : ""}${focused ? " evidence-focus" : ""}" data-graph-edge="${escapeHtml(id)}" data-edge-source="${escapeHtml(edge.source)}" data-edge-target="${escapeHtml(edge.target)}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#graph-arrow)" tabindex="0" role="button" aria-label="Inspect ${escapeHtml(label)} relationship"><title>${escapeHtml(label)}</title></line>${focused ? `<text class="graph-edge-label" data-edge-label-source="${escapeHtml(edge.source)}" data-edge-label-target="${escapeHtml(edge.target)}" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}">${escapeHtml(label)}</text>` : ""}</g>`;
 }
 
-function graphRelationshipRow(edge, nodeMap, inPath = false) {
+function graphRelationshipRow(edge, nodeMap, inPath = false, focus = { active: false, relations: new Set() }) {
   const source = nodeMap.get(String(edge.source));
   const target = nodeMap.get(String(edge.target));
-  return `<div class="graph-relationship${inPath ? " path-focus" : ""}" role="listitem"><button type="button" data-graph-node="${escapeHtml(source.id)}">${escapeHtml(source.label || source.name)}</button><button class="relationship-predicate ${escapeHtml(edge.predicate || edge.relation)}" type="button" data-graph-edge="${escapeHtml(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`)}" aria-label="Inspect ${escapeHtml(humanize(edge.predicate || edge.relation))} relationship">${escapeHtml(humanize(edge.predicate || edge.relation))}</button><button type="button" data-graph-node="${escapeHtml(target.id)}">${escapeHtml(target.label || target.name)}</button></div>`;
+  const id = String(edge.id || `${edge.source}:${edge.target}:${edge.predicate}`);
+  return `<div class="graph-relationship${inPath ? " path-focus" : ""}${focus.active && !focus.relations.has(id) ? " dimmed" : ""}" role="listitem"><button type="button" data-graph-node="${escapeHtml(source.id)}">${escapeHtml(source.label || source.name)}</button><button class="relationship-predicate ${escapeHtml(edge.predicate || edge.relation)}" type="button" data-graph-edge="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(humanize(edge.predicate || edge.relation))} relationship">${escapeHtml(humanize(edge.predicate || edge.relation))}</button><button type="button" data-graph-node="${escapeHtml(target.id)}">${escapeHtml(target.label || target.name)}</button></div>`;
 }
 
 function graphSelectionPanel(node, edges, nodeMap) {
   const related = edges.filter((edge) => String(edge.source) === String(node.id) || String(edge.target) === String(node.id));
+  const recordClass = state.demo ? "Synthetic demonstration" : state.graphScope === "canonical" ? "Canonical evidence object" : "Private local projection";
+  const supporting = related.filter((edge) => edge.predicate === "supports").length;
+  const opposing = related.filter((edge) => edge.predicate === "contradicts").length;
   return `<aside class="graph-selection" aria-label="Selected graph node">
     <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
-    <dl class="detail-grid"><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || ""))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd></dl>
-    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Expand neighbors</button></div>
+    <dl class="detail-grid"><dt>Record</dt><dd>${escapeHtml(recordClass)}</dd><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(state.demo ? "demo" : node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || "Unavailable"))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd><dt>Evidence</dt><dd>${supporting} supporting / ${opposing} opposing</dd></dl>
+    <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-focus="${escapeHtml(node.id)}" aria-pressed="${String(String(state.graphFocusId) === String(node.id))}">${String(state.graphFocusId) === String(node.id) ? "Clear focus" : "Focus evidence"}</button><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Expand neighbors</button></div>
     <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
   </aside>`;
 }
@@ -4162,7 +4247,13 @@ function bindGraphInteractions(nodeMap) {
     const zoom = event.target.closest("[data-graph-zoom]");
     if (zoom) {
       if (zoom.dataset.graphZoom === "fit") state.graphTransform = { scale: 1, x: 0, y: 0 };
+      else if (zoom.dataset.graphZoom === "selection") fitGraphSelection();
       else state.graphTransform.scale = Math.max(.45, Math.min(2.8, state.graphTransform.scale * (zoom.dataset.graphZoom === "in" ? 1.2 : .8)));
+      return renderGraph(state.graphData);
+    }
+    const focus = event.target.closest("[data-graph-focus]");
+    if (focus) {
+      state.graphFocusId = String(state.graphFocusId) === String(focus.dataset.graphFocus) ? null : focus.dataset.graphFocus;
       return renderGraph(state.graphData);
     }
     const replay = event.target.closest("[data-graph-replay]");
@@ -4266,6 +4357,12 @@ function bindGraphInteractions(nodeMap) {
   }, { passive: false });
 }
 
+function fitGraphSelection() {
+  const position = state.graphLayout.get(String(state.graphSelectedId));
+  if (!position) return;
+  state.graphTransform = { scale: 1.55, x: 450 - position.x * 1.55, y: 260 - position.y * 1.55 };
+}
+
 function updateGraphSvgPositions() {
   document.querySelectorAll(".graph-node-svg[data-graph-node]").forEach((element) => {
     const position = state.graphLayout.get(String(element.dataset.graphNode));
@@ -4279,6 +4376,13 @@ function updateGraphSvgPositions() {
     element.setAttribute("y1", source.y);
     element.setAttribute("x2", target.x);
     element.setAttribute("y2", target.y);
+  });
+  document.querySelectorAll(".graph-edge-label[data-edge-label-source]").forEach((element) => {
+    const source = state.graphLayout.get(String(element.dataset.edgeLabelSource));
+    const target = state.graphLayout.get(String(element.dataset.edgeLabelTarget));
+    if (!source || !target) return;
+    element.setAttribute("x", (source.x + target.x) / 2);
+    element.setAttribute("y", (source.y + target.y) / 2 - 5);
   });
 }
 
@@ -4792,20 +4896,28 @@ function demoDashboard() {
     control_scopes: [],
     knowledge: { sources: 2, chunks: 209, entities: 7, edges: 5 },
     graph: {
+      projection_version: "demonstration-knowledge-landscape-v1",
+      corpus_node_count: 6,
+      corpus_edge_count: 5,
+      node_facets: [
+        { value: "source", count: 1 }, { value: "claim", count: 1 }, { value: "dataset", count: 1 },
+        { value: "run", count: 1 }, { value: "review", count: 1 }, { value: "result", count: 1 },
+      ],
+      selection: { strategy: "representative-landscape-v1", semantic_node_count: 5, source_node_count: 1, edition_node_count: 0, other_node_count: 0, visible_node_limit: 100, visible_edge_limit: 240 },
       nodes: [
-        { id: 1, name: "Hermes", kind: "system" },
-        { id: 2, name: "VM1", kind: "machine" },
-        { id: 3, name: "VM2", kind: "machine" },
-        { id: 4, name: "Mac", kind: "machine" },
-        { id: 5, name: "M8", kind: "milestone" },
-        { id: 6, name: "VPS1", kind: "machine" },
+        { id: 1, name: "Market microstructure study", kind: "source" },
+        { id: 2, name: "Liquidity predicts short-horizon reversal", kind: "claim" },
+        { id: 3, name: "Point-in-time perpetual bars", kind: "dataset" },
+        { id: 4, name: "Bounded walk-forward run", kind: "run" },
+        { id: 5, name: "Independent leakage review", kind: "review" },
+        { id: 6, name: "Negative result retained", kind: "result" },
       ],
       edges: [
-        { source: 1, target: 2, relation: "engineered_on" },
-        { source: 1, target: 3, relation: "operates_on" },
-        { source: 1, target: 4, relation: "directed_from" },
-        { source: 5, target: 2, relation: "executed_on" },
-        { source: 1, target: 6, relation: "venue_executes_on" },
+        { source: 2, target: 1, relation: "derived_from" },
+        { source: 4, target: 2, relation: "derived_from" },
+        { source: 4, target: 3, relation: "uses_dataset" },
+        { source: 5, target: 4, relation: "reviews" },
+        { source: 6, target: 4, relation: "produced_result" },
       ],
     },
   };

@@ -75,6 +75,22 @@ class GraphExplorerQuery(BaseModel):
         )
 
 
+class KnowledgeLandscapeQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project: Optional[str] = Field(  # noqa: UP045 - macOS Python 3.9
+        default=None, pattern=r"^[a-z][a-z0-9._-]{0,99}$"
+    )
+    object_types: list[str] = Field(default_factory=list, max_length=20)
+    predicates: list[GraphPredicate] = Field(default_factory=list, max_length=12)
+    as_of: Optional[datetime] = None  # noqa: UP045 - macOS Python 3.9
+    max_nodes: int = Field(default=100, ge=10, le=100)
+    max_edges: int = Field(default=240, ge=1, le=240)
+
+    def canonical_payload(self) -> dict:
+        return self.model_dump(mode="json", exclude_none=True)
+
+
 def _private_graph_id(value: str) -> bool:
     return value.startswith(("private-source:", "private-entity:")) and (
         20 <= len(value) <= 96

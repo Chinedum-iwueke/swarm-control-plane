@@ -1,0 +1,85 @@
+{
+  "schema_version": "knowledge-landscape-real-data-benchmark-v1.0.0",
+  "measured_at": "2026-11-12T06:31:33.982093+00:00",
+  "request": {
+    "max_nodes": 100,
+    "max_edges": 240
+  },
+  "warmups": 2,
+  "trials": 20,
+  "corpus": {
+    "nodes": 784270,
+    "edges": 1368847,
+    "node_facets": [
+      {"value": "artifact", "count": 265},
+      {"value": "claim", "count": 1},
+      {"value": "dataset", "count": 3},
+      {"value": "decision", "count": 8},
+      {"value": "edition", "count": 265},
+      {"value": "episode", "count": 8},
+      {"value": "result", "count": 8},
+      {"value": "review", "count": 16},
+      {"value": "run", "count": 9},
+      {"value": "scientific_object", "count": 783417},
+      {"value": "source", "count": 270}
+    ],
+    "edge_facets": [
+      {"value": "derived_from", "count": 1368847}
+    ]
+  },
+  "visible": {
+    "nodes": 100,
+    "edges": 121,
+    "node_types": [
+      "claim",
+      "dataset",
+      "decision",
+      "edition",
+      "episode",
+      "result",
+      "review",
+      "run",
+      "source"
+    ],
+    "selection": {
+      "strategy": "representative-landscape-v1",
+      "semantic_node_count": 53,
+      "source_node_count": 24,
+      "edition_node_count": 23,
+      "other_node_count": 0,
+      "visible_node_limit": 100,
+      "visible_edge_limit": 240
+    },
+    "truncated": true,
+    "truncation_reasons": ["max_nodes"]
+  },
+  "latency_ms": {
+    "minimum": 443.92,
+    "median": 530.83,
+    "p95": 646.49,
+    "maximum": 686.23,
+    "samples": [
+      536.03,
+      493.02,
+      545.86,
+      646.49,
+      543.81,
+      686.23,
+      540.83,
+      517.33,
+      525.63,
+      446.17,
+      469.16,
+      566.81,
+      614.58,
+      546.27,
+      500.61,
+      461.44,
+      443.92,
+      522.03,
+      582.29,
+      485.76
+    ]
+  },
+  "query_digest": "99e353c75d047d4c00763703622b2396016736b4e22c5496544f7951fa5c6304"
+}

@@ -1,5 +1,5 @@
+import json
 from pathlib import Path
-
 
 STATIC_ROOT = Path(__file__).parents[1] / "src" / "hermes_mission_control" / "static"
 PROJECT_ROOT = Path(__file__).parents[1]
@@ -8,6 +8,7 @@ PROJECT_ROOT = Path(__file__).parents[1]
 def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls() -> None:
     html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
     script = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
 
     for marker in (
         'data-graph-extent="global"',
@@ -18,6 +19,10 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
         'id="graph-path-source"',
         'id="graph-path-target"',
         'id="graph-path-status"',
+        'id="graph-landscape-summary"',
+        '<option value="edition">Edition</option>',
+        '<option value="episode">Episode</option>',
+        '<option value="run">Run</option>',
     ):
         assert marker in html
 
@@ -28,6 +33,19 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
     assert '["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"]' in script
     assert 'window.localStorage.setItem("hermes.graph-view.v1"' in script
     assert "Projection time unavailable" in script
+    assert 'request("/api/knowledge/graph/landscape"' in script
+    assert "Representative sample, not corpus completeness" in script
+    assert "const anchors = new Map(types.map" in script
+    assert 'role="group" aria-label="Filter landscape by evidence category"' in script
+    assert 'data-graph-zoom="selection"' in script
+    assert 'data-graph-focus="${escapeHtml(node.id)}"' in script
+    assert 'aria-label="Fit selected evidence"' in script
+    assert "function graphFocusSets" in script
+    assert 'aria-label="Inspect ${escapeHtml(label)} relationship"' in script
+    assert ".landscape-facet:focus-visible" in styles
+    assert ".graph-edge-group.dimmed, .graph-node-svg.dimmed" in styles
+    assert ".graph-edge-label" in styles
+    assert "prefers-reduced-motion: reduce" in styles
 
 
 def test_renderer_benchmark_and_decision_are_reproducible_and_pinned() -> None:
@@ -43,3 +61,27 @@ def test_renderer_benchmark_and_decision_are_reproducible_and_pinned() -> None:
     assert (harness / "result.json").exists()
     assert "Retain the dependency-free SVG renderer" in decision
     assert "does not claim Obsidian parity" in decision
+
+
+def test_landscape_renderer_benchmark_meets_bounded_interaction_budget() -> None:
+    result = json.loads(
+        (
+            PROJECT_ROOT
+            / "benchmarks"
+            / "knowledge-landscape"
+            / "renderer-result.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert result["fixture"] == {"nodes": 100, "edges": 121, "object_types": 9}
+    assert result["cold_layout_ms"]["p95"] < 100
+    assert result["warm_rerender_ms"]["p95"] < 50
+    assert result["keyboard_nodes"] == 100
+    assert result["deterministic_layout"] is True
+    assert result["mobile_viewport"]["horizontal_overflow"] is False
+    focus = result["evidence_focus_verification"]
+    assert focus["surface"] == "explicitly-labelled-synthetic-demo"
+    assert focus["unrelated_nodes_dimmed"] == 4
+    assert focus["unrelated_edges_dimmed"] == 4
+    assert focus["fit_to_selection_scale"] == 1.55
+    assert focus["keyboard_traversal"] is True

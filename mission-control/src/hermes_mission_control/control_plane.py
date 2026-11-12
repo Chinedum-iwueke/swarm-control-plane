@@ -475,6 +475,11 @@ class ControlPlaneClient:
             "GET", "/v1/research/graph/overview", params={"limit": limit}
         )
 
+    async def knowledge_landscape(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/research/graph/landscape", json=payload
+        )
+
     async def knowledge_catalog(self, *, limit: int = 500) -> dict[str, Any]:
         return await self._request(
             "GET",

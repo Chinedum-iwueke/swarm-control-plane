@@ -63,7 +63,7 @@ from .research_copilot import (
     CopilotQuestion,
     ResearchCopilot,
 )
-from .research_graph import GraphExplorerQuery
+from .research_graph import GraphExplorerQuery, KnowledgeLandscapeQuery
 from .research_inbox import sync_research_inbox
 from .research_upload import (
     ResearchUploadError,
@@ -882,6 +882,18 @@ def create_app(
         if query.scope == "private":
             return store.query_graph(query.model_dump(mode="json", exclude_none=True))
         result = await client.query_knowledge_graph(query.canonical_payload())
+        return {
+            **result,
+            "scope": "canonical",
+            "authorization": {
+                "boundary": "control-plane-evidence-access",
+                "mixed_scope_allowed": False,
+            },
+        }
+
+    @app.post("/api/knowledge/graph/landscape")
+    async def knowledge_landscape(query: KnowledgeLandscapeQuery) -> dict:
+        result = await client.knowledge_landscape(query.canonical_payload())
         return {
             **result,
             "scope": "canonical",

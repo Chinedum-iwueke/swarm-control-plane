@@ -525,29 +525,14 @@
         </div>
         <div id="research-panel-explore" class="research-mode-panel" role="tabpanel" aria-labelledby="research-tab-explore" data-research-panel="explore" hidden>
           <section class="operational-band graph-explorer-band" aria-labelledby="graph-title">
-            <div class="band-heading graph-heading">
-              <div><p class="section-kicker">Canonical relationships</p><h2 id="graph-title">Knowledge graph explorer</h2></div>
-              <div class="graph-view-toggle" role="group" aria-label="Graph view">
-                <button class="secondary active" type="button" data-graph-view="visual" aria-pressed="true">Visual</button>
-                <button class="secondary" type="button" data-graph-view="list" aria-pressed="false">Relationships</button>
-                <button class="secondary" id="refresh-graph" type="button" title="Refresh graph data">↻ Refresh</button>
-              </div>
-            </div>
-            <div class="graph-scope-bar">
-              <div class="graph-scope-toggle" role="group" aria-label="Graph extent">
-                <button class="secondary active" type="button" data-graph-extent="global" aria-pressed="true">Global map</button>
-                <button class="secondary" type="button" data-graph-extent="local" aria-pressed="false">Local focus</button>
-              </div>
+            <div class="band-heading graph-heading"><div><p class="section-kicker">Canonical relationships</p><h2 id="graph-title">Knowledge graph explorer</h2></div><div class="graph-view-toggle" role="group" aria-label="Graph view"><button class="secondary active" type="button" data-graph-view="visual" aria-pressed="true">Visual</button><button class="secondary" type="button" data-graph-view="list" aria-pressed="false">Relationships</button><button class="secondary" id="refresh-graph" type="button" title="Refresh graph data">↻ Refresh</button></div></div>
+            <div class="graph-scope-bar"><div class="graph-scope-toggle" role="group" aria-label="Graph extent"><button class="secondary active" type="button" data-graph-extent="global" aria-pressed="true">Global map</button><button class="secondary" type="button" data-graph-extent="local" aria-pressed="false">Local focus</button></div>
               <label>Evidence boundary<select id="graph-scope"><option value="canonical">Canonical corpus</option><option value="private">Private local notes</option></select></label>
               <p id="graph-boundary" class="graph-boundary">Canonical evidence only. Views are capped at 100 nodes and never mix access boundaries.</p>
             </div>
-            <form id="graph-query-form" class="graph-query-form">
-              <label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label>
-              <label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
-              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option><option value="mentions">Mentions (private)</option></select></label>
-              <label>Evidence type<select id="graph-object-type"><option value="">All types</option><option value="source">Source</option><option value="claim">Claim</option><option value="result">Result</option><option value="method">Method</option><option value="dataset">Dataset</option><option value="review">Review</option><option value="decision">Decision</option></select></label>
-              <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button>
-            </form>
+            <div id="graph-landscape-summary" class="graph-landscape-summary" aria-live="polite"></div><form id="graph-query-form" class="graph-query-form"><label>Direction<select id="graph-direction"><option value="both">Both</option><option value="outgoing">Outgoing</option><option value="incoming">Incoming</option></select></label><label>Depth<select id="graph-depth"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select></label>
+              <label>Relationships<select id="graph-predicate"><option value="">All types</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="derived_from">Derived from</option><option value="uses_method">Uses method</option><option value="uses_dataset">Uses dataset</option><option value="produced_result">Produced result</option><option value="reviews">Reviews</option><option value="decides_on">Decides on</option><option value="cites">Cites</option><option value="mentions">Mentions (private)</option></select></label><label>Evidence type<select id="graph-object-type"><option value="">All types</option><option value="source">Source</option><option value="edition">Edition</option><option value="claim">Claim</option><option value="method">Method</option><option value="dataset">Dataset</option><option value="episode">Episode</option><option value="run">Run</option><option value="result">Result</option><option value="review">Review</option><option value="decision">Decision</option><option value="belief">Belief</option></select></label>
+              <button id="graph-expand" class="secondary" type="submit" disabled>Explore selected</button></form>
             <div class="graph-find-row"><label class="search-field"><span>⌕</span><input id="graph-find" type="search" placeholder="Find a node by title"></label><span id="graph-find-count" class="muted"></span><div id="graph-find-results" class="graph-find-results" role="listbox" aria-label="Matching graph nodes"></div></div>
             <form id="graph-path-form" class="graph-path-form">
               <div><p class="section-kicker">Evidence path</p><span>Trace an explicit relation chain between two visible records.</span></div>

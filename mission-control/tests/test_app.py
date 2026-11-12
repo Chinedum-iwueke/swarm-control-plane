@@ -224,6 +224,17 @@ class FakeControlPlane:
             "truncated": False,
         }
 
+    async def knowledge_landscape(self, payload: dict) -> dict:
+        self.landscape_query = payload
+        return {
+            "schema_version": "knowledge-landscape-v1.0.0",
+            "projection_version": "knowledge-graph-v1.0.0",
+            "corpus_digest": "a" * 64,
+            "query_digest": "b" * 64,
+            "nodes": [],
+            "edges": [],
+        }
+
     async def knowledge_catalog(self, *, limit: int = 500) -> dict:
         return {"items": [], "count": 0}
 
@@ -896,6 +907,42 @@ def test_graph_explorer_forwards_only_typed_bounded_query(
     assert fake.graph_query["root_ids"] == [root_id]
     assert fake.graph_query["max_nodes"] == 80
     assert "command" not in fake.graph_query
+
+
+def test_knowledge_landscape_forwards_only_typed_bounded_query(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.post(
+            "/api/knowledge/graph/landscape",
+            json={
+                "project": "systematic-research",
+                "object_types": ["run", "result"],
+                "max_nodes": 80,
+                "max_edges": 160,
+            },
+        )
+    assert response.status_code == 200
+    assert fake.landscape_query == {
+        "project": "systematic-research",
+        "object_types": ["run", "result"],
+        "predicates": [],
+        "max_nodes": 80,
+        "max_edges": 160,
+    }
+    assert response.json()["authorization"]["mixed_scope_allowed"] is False
+
+
+def test_knowledge_landscape_rejects_executable_or_unbounded_input(
+    settings: MissionControlSettings,
+) -> None:
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.post(
+            "/api/knowledge/graph/landscape",
+            json={"max_nodes": 500, "command": "shell"},
+        )
+    assert response.status_code == 422
 
 
 def test_graph_explorer_rejects_unbounded_or_executable_input(

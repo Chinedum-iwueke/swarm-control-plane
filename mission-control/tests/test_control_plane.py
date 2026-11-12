@@ -519,6 +519,31 @@ async def test_graph_explorer_uses_authenticated_read_only_query(
 
 
 @pytest.mark.asyncio
+async def test_landscape_uses_authenticated_read_only_query(
+    settings: MissionControlSettings,
+) -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.method,
+                request.url.path,
+                json.loads(request.content) if request.content else None,
+            )
+        )
+        return httpx.Response(200, json={"nodes": [], "edges": []})
+
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    payload = {"max_nodes": 80, "max_edges": 160}
+    try:
+        await client.knowledge_landscape(payload)
+    finally:
+        await client.close()
+    assert seen == [("POST", "/v1/research/graph/landscape", payload)]
+
+
+@pytest.mark.asyncio
 async def test_conversation_client_uses_canonical_cross_channel_identity(
     settings: MissionControlSettings,
 ) -> None:

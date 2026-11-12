@@ -9,6 +9,8 @@ import pytest
 from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
+    GraphLandscapeRequest,
+    GraphLandscapeResponse,
     GraphQueryRequest,
     GraphQueryResponse,
 )
@@ -16,11 +18,13 @@ from app.services.evidence import EvidenceAccessContext
 from app.services.graph import (
     _active,
     _adjacency,
+    _allocate_landscape_type_slots,
     _authorized_edges,
     _decode_graph_cursor,
     _edge_response,
     _encode_graph_cursor,
     _frontier_edges,
+    _landscape_edge_facets,
     _node_response,
     _stream_digest,
     _traverse,
@@ -220,6 +224,70 @@ def test_graph_response_exposes_edge_access_and_explicit_truncation() -> None:
     )
     assert response.page.next_cursor == cursor
     assert response.truncation.reasons == ["page_size", "max_nodes"]
+
+
+def test_landscape_contract_is_bounded_and_rejects_unknown_fields() -> None:
+    request = GraphLandscapeRequest(max_nodes=80, max_edges=160)
+    assert request.max_nodes == 80
+    with pytest.raises(ValidationError):
+        GraphLandscapeRequest(max_nodes=101)
+    with pytest.raises(ValidationError):
+        GraphLandscapeRequest.model_validate({"max_nodes": 80, "command": "shell"})
+
+
+def test_landscape_type_slots_preserve_sparse_categories() -> None:
+    slots = _allocate_landscape_type_slots(
+        {"claim": 1, "run": 100, "result": 8, "episode": 2}, 10
+    )
+    assert slots == {"claim": 1, "run": 4, "result": 3, "episode": 2}
+    assert sum(slots.values()) == 10
+
+
+def test_landscape_edge_facets_filter_authorized_endpoint_projects() -> None:
+    db = MagicMock()
+    db.execute.return_value.all.return_value = []
+    access = EvidenceAccessContext(
+        actor="reader",
+        projects=frozenset({"systematic-research"}),
+        max_access_class="internal",
+    )
+    _landscape_edge_facets(db, access, None, project="systematic-research")
+    statement = db.execute.call_args.args[0]
+    compiled = repr(statement.compile().params)
+    assert "systematic-research" in compiled
+    assert "protected" not in compiled
+
+
+def test_landscape_response_discloses_selection_and_corpus_bounds() -> None:
+    response = GraphLandscapeResponse.model_validate(
+        {
+            "schema_version": "knowledge-landscape-v1.0.0",
+            "projection_version": "knowledge-graph-v1.0.0",
+            "corpus_digest": "a" * 64,
+            "query_digest": "b" * 64,
+            "built_at": datetime.now(UTC),
+            "source_epoch": 1,
+            "corpus_node_count": 784_270,
+            "corpus_edge_count": 1_368_847,
+            "node_facets": [{"value": "result", "count": 8}],
+            "edge_facets": [{"value": "derived_from", "count": 1_368_847}],
+            "nodes": [],
+            "edges": [],
+            "selection": {
+                "strategy": "representative-landscape-v1",
+                "semantic_node_count": 0,
+                "source_node_count": 0,
+                "edition_node_count": 0,
+                "other_node_count": 0,
+                "visible_node_limit": 100,
+                "visible_edge_limit": 240,
+            },
+            "filters_applied": False,
+            "truncated": True,
+            "truncation_reasons": ["max_nodes"],
+        }
+    )
+    assert response.corpus_node_count == 784_270
 
 
 def test_canonical_neighborhood_pages_are_deterministic_and_keep_provenance(

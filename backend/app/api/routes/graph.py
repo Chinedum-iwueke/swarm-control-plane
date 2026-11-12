@@ -13,6 +13,8 @@ from app.schemas.graph import (
     CognitiveToolResponse,
     ContextPackRequest,
     ContextPackResponse,
+    GraphLandscapeRequest,
+    GraphLandscapeResponse,
     GraphProjectionResponse,
     GraphQueryRequest,
     GraphQueryResponse,
@@ -23,6 +25,7 @@ from app.services.graph import (
     assemble_context_pack,
     build_graph_projection,
     execute_cognitive_tool,
+    graph_landscape,
     graph_overview,
     graph_projection_status,
     query_graph,
@@ -103,6 +106,14 @@ def read_graph_overview(
     limit: int = Query(default=100, ge=1, le=500),
 ):
     return graph_overview(db, ORCHESTRATOR_ACCESS, project=project, limit=limit)
+
+
+@router.post("/landscape", response_model=GraphLandscapeResponse)
+def read_graph_landscape(
+    payload: GraphLandscapeRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return graph_landscape(db, payload, ORCHESTRATOR_ACCESS)
 
 
 @router.post("/context-packs", response_model=ContextPackResponse)

@@ -1,0 +1,53 @@
+{
+  "schema_version": "knowledge-landscape-renderer-benchmark-v1.0.0",
+  "measured_at": "2026-11-12T06:51:43Z",
+  "browser": "HeadlessChrome/146.0.0.0",
+  "trials": {
+    "cold": 20,
+    "warm": 20
+  },
+  "fixture": {
+    "nodes": 100,
+    "edges": 121,
+    "object_types": 9
+  },
+  "cold_layout_ms": {
+    "minimum": 29.1,
+    "median": 36.5,
+    "p95": 52.8,
+    "maximum": 72.5
+  },
+  "warm_rerender_ms": {
+    "minimum": 8.3,
+    "median": 11.45,
+    "p95": 20.0,
+    "maximum": 20.2
+  },
+  "keyboard_nodes": 100,
+  "deterministic_layout": true,
+  "mobile_viewport": {
+    "width": 390,
+    "document_scroll_width": 390,
+    "horizontal_overflow": false
+  },
+  "evidence_focus_verification": {
+    "surface": "explicitly-labelled-synthetic-demo",
+    "visible_nodes": 6,
+    "visible_edges": 5,
+    "unrelated_nodes_dimmed": 4,
+    "unrelated_edges_dimmed": 4,
+    "explicit_edge_labels": [
+      "derived_from"
+    ],
+    "fit_to_selection_scale": 1.55,
+    "keyboard_traversal": true
+  },
+  "interactions_verified": [
+    "category_filter",
+    "evidence_focus",
+    "fit_to_selection",
+    "relationship_list",
+    "zoom",
+    "arrow_key_traversal"
+  ]
+}

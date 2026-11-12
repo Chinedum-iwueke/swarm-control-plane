@@ -29,6 +29,7 @@ from app.schemas.graph import (
     CanonicalEdgeCreate,
     CognitiveToolRequest,
     ContextPackRequest,
+    GraphLandscapeRequest,
     GraphQueryRequest,
 )
 from app.services.evidence import EvidenceAccessContext, get_evidence_object
@@ -68,6 +69,19 @@ _TYPE_RULES: dict[str, set[tuple[str, str]]] = {
     "cites": {("claim", "scientific_object"), ("method", "scientific_object")},
 }
 _PROJECTION_BATCH_SIZE = 2_000
+_LANDSCAPE_SEMANTIC_TYPES = (
+    "claim",
+    "method",
+    "assumption",
+    "dataset",
+    "run",
+    "result",
+    "review",
+    "decision",
+    "belief",
+    "episode",
+)
+_LANDSCAPE_SEMANTIC_SHARE = 0.65
 
 
 def _stream_digest(
@@ -782,6 +796,380 @@ def graph_overview(
             "max_depth": 1,
         },
     }
+
+
+def graph_landscape(
+    db: Session,
+    request: GraphLandscapeRequest,
+    access: EvidenceAccessContext,
+) -> dict[str, Any]:
+    """Return a deterministic, representative view of the canonical corpus.
+
+    The landscape deliberately avoids treating paragraph-scale scientific objects as
+    the institutional overview. It gives typed scientific lifecycle records priority,
+    then uses the remaining budget for real source-to-edition provenance pairs.
+    """
+    state, stale = graph_projection_status(db)
+    if stale:
+        raise HTTPException(
+            status_code=409,
+            detail="Knowledge graph projection is stale and must be rebuilt.",
+        )
+    _validate_landscape_project(access, request.project)
+    node_facets = _landscape_node_facets(db, access, request.project)
+    edge_facets = _landscape_edge_facets(
+        db, access, request.as_of, project=request.project
+    )
+    available_types = {item["value"]: item["count"] for item in node_facets}
+    allowed_types = set(request.object_types) if request.object_types else None
+    semantic_types = [
+        item
+        for item in _LANDSCAPE_SEMANTIC_TYPES
+        if allowed_types is None or item in allowed_types
+    ]
+    semantic_budget = min(
+        request.max_nodes,
+        max(1, int(request.max_nodes * _LANDSCAPE_SEMANTIC_SHARE)),
+    )
+    semantic_slots = _allocate_landscape_type_slots(
+        {item: available_types.get(item, 0) for item in semantic_types},
+        semantic_budget,
+    )
+    semantic_nodes = _landscape_nodes_by_type(
+        db, access, request.project, semantic_slots
+    )
+    selected: dict[UUID, EvidenceGraphProjectionNode] = {
+        item.object_id: item for item in semantic_nodes
+    }
+    source_nodes: list[EvidenceGraphProjectionNode] = []
+    edition_nodes: list[EvidenceGraphProjectionNode] = []
+    other_nodes: list[EvidenceGraphProjectionNode] = []
+    source_types_allowed = allowed_types is None or bool(
+        {"source", "edition"} & allowed_types
+    )
+    if len(selected) < request.max_nodes and source_types_allowed:
+        source_nodes, edition_nodes = _landscape_source_edition_pairs(
+            db,
+            access,
+            request.project,
+            request.max_nodes - len(selected),
+            include_sources=allowed_types is None or "source" in allowed_types,
+            include_editions=allowed_types is None or "edition" in allowed_types,
+        )
+        for item in [*source_nodes, *edition_nodes]:
+            selected[item.object_id] = item
+    explicit_other_types = [
+        item
+        for item in request.object_types
+        if item not in _LANDSCAPE_SEMANTIC_TYPES and item not in {"source", "edition"}
+    ]
+    if len(selected) < request.max_nodes and explicit_other_types:
+        other_slots = _allocate_landscape_type_slots(
+            {item: available_types.get(item, 0) for item in explicit_other_types},
+            request.max_nodes - len(selected),
+        )
+        other_nodes = _landscape_nodes_by_type(
+            db, access, request.project, other_slots
+        )
+        for item in other_nodes:
+            selected[item.object_id] = item
+    nodes = list(selected.values())[: request.max_nodes]
+    selected_ids = {item.object_id for item in nodes}
+    edges = _landscape_edges(
+        db,
+        selected_ids,
+        access,
+        predicates=request.predicates,
+        as_of=request.as_of,
+        limit=request.max_edges + 1,
+    )
+    edge_truncated = len(edges) > request.max_edges
+    edges = edges[: request.max_edges]
+    filtered_node_total = sum(
+        count
+        for object_type, count in available_types.items()
+        if allowed_types is None or object_type in allowed_types
+    )
+    node_truncated = filtered_node_total > len(nodes)
+    reasons: list[str] = []
+    if node_truncated:
+        reasons.append("max_nodes")
+    if edge_truncated:
+        reasons.append("max_edges")
+    filters_applied = bool(
+        request.object_types or request.predicates or request.project or request.as_of
+    )
+    document = {
+        "schema_version": "knowledge-landscape-v1.0.0",
+        "projection_version": state.projection_version,
+        "corpus_digest": state.corpus_digest,
+        "project": request.project,
+        "object_types": request.object_types,
+        "predicates": request.predicates,
+        "as_of": request.as_of.isoformat() if request.as_of else None,
+        "node_ids": [str(item.object_id) for item in nodes],
+        "edge_digests": [item.record_digest for item in edges],
+        "selection_strategy": "representative-landscape-v1",
+    }
+    return {
+        "schema_version": "knowledge-landscape-v1.0.0",
+        "projection_version": state.projection_version,
+        "corpus_digest": state.corpus_digest,
+        "query_digest": digest_document(document),
+        "built_at": state.built_at,
+        "source_epoch": state.source_epoch,
+        "corpus_node_count": state.node_count,
+        "corpus_edge_count": state.edge_count,
+        "node_facets": node_facets,
+        "edge_facets": edge_facets,
+        "nodes": [_node_response(item) for item in nodes],
+        "edges": [_edge_response(item) for item in edges],
+        "selection": {
+            "strategy": "representative-landscape-v1",
+            "semantic_node_count": len(semantic_nodes),
+            "source_node_count": len(source_nodes),
+            "edition_node_count": len(edition_nodes),
+            "other_node_count": len(other_nodes),
+            "visible_node_limit": request.max_nodes,
+            "visible_edge_limit": request.max_edges,
+        },
+        "filters_applied": filters_applied,
+        "truncated": bool(reasons),
+        "truncation_reasons": reasons,
+    }
+
+
+def _allocate_landscape_type_slots(
+    counts: dict[str, int], budget: int
+) -> dict[str, int]:
+    """Round-robin type budgets prevent a populous type from hiding the rest."""
+    slots = {item: 0 for item, count in counts.items() if count > 0}
+    remaining = min(budget, sum(counts.values()))
+    while remaining:
+        progressed = False
+        for item, count in counts.items():
+            if item not in slots or slots[item] >= count:
+                continue
+            slots[item] += 1
+            remaining -= 1
+            progressed = True
+            if not remaining:
+                break
+        if not progressed:
+            break
+    return slots
+
+
+def _validate_landscape_project(
+    access: EvidenceAccessContext, project: str | None
+) -> None:
+    if project is not None and "*" not in access.projects and project not in access.projects:
+        raise HTTPException(status_code=403, detail="Graph project access denied.")
+
+
+def _landscape_access_classes(access: EvidenceAccessContext) -> list[str]:
+    return [
+        name
+        for name, level in _ACCESS_LEVEL.items()
+        if level <= _ACCESS_LEVEL[access.max_access_class]
+    ]
+
+
+def _landscape_node_scope(statement, access: EvidenceAccessContext, project: str | None):
+    if access.max_access_class != "protected":
+        statement = statement.where(
+            EvidenceGraphProjectionNode.access_class.in_(
+                _landscape_access_classes(access)
+            )
+        )
+    if "*" not in access.projects:
+        statement = statement.where(
+            EvidenceGraphProjectionNode.project.in_(access.projects)
+        )
+    if project is not None:
+        statement = statement.where(EvidenceGraphProjectionNode.project == project)
+    return statement
+
+
+def _landscape_node_facets(
+    db: Session, access: EvidenceAccessContext, project: str | None
+) -> list[dict[str, Any]]:
+    statement = select(
+        EvidenceGraphProjectionNode.object_type,
+        func.count(EvidenceGraphProjectionNode.object_id),
+    ).group_by(EvidenceGraphProjectionNode.object_type)
+    statement = _landscape_node_scope(statement, access, project)
+    return [
+        {"value": object_type, "count": count}
+        for object_type, count in db.execute(
+            statement.order_by(EvidenceGraphProjectionNode.object_type)
+        ).all()
+    ]
+
+
+def _landscape_edge_facets(
+    db: Session,
+    access: EvidenceAccessContext,
+    as_of: datetime | None,
+    project: str | None = None,
+) -> list[dict[str, Any]]:
+    statement = select(
+        EvidenceGraphProjectionEdge.predicate,
+        func.count(EvidenceGraphProjectionEdge.edge_id),
+    )
+    if access.max_access_class != "protected":
+        statement = statement.where(
+            EvidenceGraphProjectionEdge.access_class.in_(
+                _landscape_access_classes(access)
+            )
+        )
+    if "*" not in access.projects or project is not None:
+        authorized_nodes = select(EvidenceGraphProjectionNode.object_id)
+        authorized_nodes = _landscape_node_scope(authorized_nodes, access, project)
+        statement = statement.where(
+            EvidenceGraphProjectionEdge.subject_id.in_(authorized_nodes),
+            EvidenceGraphProjectionEdge.object_id.in_(authorized_nodes),
+            EvidenceGraphProjectionEdge.provenance_object_id.in_(authorized_nodes),
+        )
+    statement = (
+        statement
+        .group_by(EvidenceGraphProjectionEdge.predicate)
+        .order_by(EvidenceGraphProjectionEdge.predicate)
+    )
+    if as_of is not None:
+        point = as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=UTC)
+        statement = statement.where(
+            or_(
+                EvidenceGraphProjectionEdge.valid_from.is_(None),
+                EvidenceGraphProjectionEdge.valid_from <= point,
+            ),
+            or_(
+                EvidenceGraphProjectionEdge.valid_until.is_(None),
+                EvidenceGraphProjectionEdge.valid_until > point,
+            ),
+        )
+    return [
+        {"value": predicate, "count": count}
+        for predicate, count in db.execute(statement).all()
+    ]
+
+
+def _landscape_nodes_by_type(
+    db: Session,
+    access: EvidenceAccessContext,
+    project: str | None,
+    slots: dict[str, int],
+) -> list[EvidenceGraphProjectionNode]:
+    result: list[EvidenceGraphProjectionNode] = []
+    for object_type, limit in slots.items():
+        statement = select(EvidenceGraphProjectionNode).where(
+            EvidenceGraphProjectionNode.object_type == object_type
+        )
+        statement = _landscape_node_scope(statement, access, project)
+        statement = statement.order_by(
+            EvidenceGraphProjectionNode.label,
+            EvidenceGraphProjectionNode.object_id,
+        ).limit(limit)
+        result.extend(db.scalars(statement).all())
+    return result
+
+
+def _landscape_source_edition_pairs(
+    db: Session,
+    access: EvidenceAccessContext,
+    project: str | None,
+    budget: int,
+    *,
+    include_sources: bool,
+    include_editions: bool,
+) -> tuple[list[EvidenceGraphProjectionNode], list[EvidenceGraphProjectionNode]]:
+    if budget <= 0 or not (include_sources or include_editions):
+        return [], []
+    source_limit = (
+        budget
+        if not (include_sources and include_editions)
+        else max(1, (budget + 1) // 2)
+    )
+    statement = select(EvidenceGraphProjectionNode).where(
+        EvidenceGraphProjectionNode.object_type == "source"
+    )
+    statement = _landscape_node_scope(statement, access, project)
+    sources = list(
+        db.scalars(
+            statement.order_by(
+                EvidenceGraphProjectionNode.label,
+                EvidenceGraphProjectionNode.object_id,
+            ).limit(source_limit)
+        ).all()
+    )
+    if not include_editions or not sources:
+        return (sources[:budget] if include_sources else []), []
+    source_ids = {item.object_id for item in sources}
+    edges = list(
+        db.scalars(
+            select(EvidenceGraphProjectionEdge)
+            .where(
+                EvidenceGraphProjectionEdge.object_id.in_(source_ids),
+                EvidenceGraphProjectionEdge.predicate == "derived_from",
+                EvidenceGraphProjectionEdge.access_class.in_(
+                    _landscape_access_classes(access)
+                ),
+            )
+            .order_by(EvidenceGraphProjectionEdge.edge_id)
+        ).all()
+    )
+    edition_ids = {item.subject_id for item in edges}
+    editions = _authorized_node_subset(
+        db, edition_ids, access, project, object_types=["edition"]
+    )
+    edition_by_source: dict[UUID, EvidenceGraphProjectionNode] = {}
+    for edge in edges:
+        edition = editions.get(edge.subject_id)
+        if edition is not None and edge.object_id not in edition_by_source:
+            edition_by_source[edge.object_id] = edition
+    source_result: list[EvidenceGraphProjectionNode] = []
+    edition_result: list[EvidenceGraphProjectionNode] = []
+    for source in sources:
+        if include_sources and len(source_result) + len(edition_result) < budget:
+            source_result.append(source)
+        edition = edition_by_source.get(source.object_id)
+        if edition is not None and len(source_result) + len(edition_result) < budget:
+            edition_result.append(edition)
+    return source_result, edition_result
+
+
+def _landscape_edges(
+    db: Session,
+    node_ids: set[UUID],
+    access: EvidenceAccessContext,
+    *,
+    predicates: list[str],
+    as_of: datetime | None,
+    limit: int,
+) -> list[EvidenceGraphProjectionEdge]:
+    if not node_ids:
+        return []
+    statement = (
+        select(EvidenceGraphProjectionEdge)
+        .where(
+            EvidenceGraphProjectionEdge.subject_id.in_(node_ids),
+            EvidenceGraphProjectionEdge.object_id.in_(node_ids),
+            EvidenceGraphProjectionEdge.provenance_object_id.in_(node_ids),
+            EvidenceGraphProjectionEdge.access_class.in_(
+                _landscape_access_classes(access)
+            ),
+        )
+        .order_by(
+            EvidenceGraphProjectionEdge.predicate,
+            EvidenceGraphProjectionEdge.edge_id,
+        )
+        .limit(limit)
+    )
+    if predicates:
+        statement = statement.where(
+            EvidenceGraphProjectionEdge.predicate.in_(predicates)
+        )
+    return [item for item in db.scalars(statement).all() if _active(item, as_of)]
 
 
 def assemble_context_pack(

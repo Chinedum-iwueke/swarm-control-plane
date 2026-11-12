@@ -137,6 +137,51 @@ class GraphQueryResponse(StrictModel):
     truncation: GraphTruncation
 
 
+class GraphLandscapeRequest(StrictModel):
+    project: str | None = Field(
+        default=None, pattern=r"^[a-z][a-z0-9._-]{0,99}$"
+    )
+    object_types: list[str] = Field(default_factory=list, max_length=20)
+    predicates: list[EdgePredicate] = Field(default_factory=list, max_length=12)
+    as_of: datetime | None = None
+    max_nodes: int = Field(default=100, ge=10, le=100)
+    max_edges: int = Field(default=240, ge=1, le=240)
+
+
+class GraphLandscapeFacet(StrictModel):
+    value: str
+    count: int = Field(ge=0)
+
+
+class GraphLandscapeSelection(StrictModel):
+    strategy: Literal["representative-landscape-v1"]
+    semantic_node_count: int = Field(ge=0)
+    source_node_count: int = Field(ge=0)
+    edition_node_count: int = Field(ge=0)
+    other_node_count: int = Field(ge=0)
+    visible_node_limit: int = Field(ge=10, le=100)
+    visible_edge_limit: int = Field(ge=1, le=240)
+
+
+class GraphLandscapeResponse(StrictModel):
+    schema_version: Literal["knowledge-landscape-v1.0.0"]
+    projection_version: str
+    corpus_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    query_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    built_at: datetime
+    source_epoch: int = Field(ge=0)
+    corpus_node_count: int = Field(ge=0)
+    corpus_edge_count: int = Field(ge=0)
+    node_facets: list[GraphLandscapeFacet]
+    edge_facets: list[GraphLandscapeFacet]
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    selection: GraphLandscapeSelection
+    filters_applied: bool
+    truncated: bool
+    truncation_reasons: list[Literal["max_nodes", "max_edges"]]
+
+
 class ContextPackRequest(StrictModel):
     query: str = Field(min_length=2, max_length=1000)
     object_ids: list[UUID] = Field(min_length=1, max_length=50)

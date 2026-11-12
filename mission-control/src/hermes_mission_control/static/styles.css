@@ -1044,6 +1044,18 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .graph-scope-bar label { margin: 0; }
 .graph-scope-bar select { width: 100%; margin-top: 4px; }
 .graph-boundary { align-self: center; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.graph-landscape-summary { display: grid; grid-template-columns: repeat(3, minmax(120px, 170px)) minmax(280px, 1fr); gap: 0; margin: 4px 0 12px; border: 1px solid var(--line); background: var(--surface); }
+.graph-landscape-summary[hidden] { display: none; }
+.landscape-measure { display: grid; align-content: center; gap: 1px; min-height: 74px; padding: 10px 12px; border-right: 1px solid var(--line-soft); }
+.landscape-measure span, .landscape-measure small { color: var(--muted); font-size: 9px; }
+.landscape-measure strong { font-family: var(--serif); font-size: 20px; font-weight: 400; line-height: 1; }
+.landscape-facets { display: flex; align-content: center; align-items: center; gap: 5px; min-width: 0; padding: 9px 10px; overflow-x: auto; }
+.landscape-facet { display: grid; grid-template-columns: auto auto; align-items: center; gap: 7px; min-width: max-content; min-height: 38px; padding: 5px 8px; color: var(--muted); background: #faf9f6; border: 1px solid var(--line-soft); }
+.landscape-facet strong { color: var(--ink); font-family: var(--mono); font-size: 9px; font-weight: 500; }
+.landscape-facet.active { color: var(--surface); background: var(--ink); border-color: var(--ink); }
+.landscape-facet.active strong { color: var(--surface); }
+.landscape-facet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.landscape-disclosure { grid-column: 1 / -1; margin: 0; padding: 6px 10px; color: var(--muted); background: var(--canvas); border-top: 1px solid var(--line-soft); font-size: 9px; line-height: 1.45; }
 .graph-query-form { display: grid; grid-template-columns: 115px 95px minmax(150px, 1fr) minmax(140px, .8fr) auto; align-items: end; gap: 8px; margin-bottom: 10px; padding: 9px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
 .graph-query-form label { margin: 0; }
 .graph-query-form select { width: 100%; min-height: 34px; margin-top: 4px; }
@@ -1068,14 +1080,23 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .graph-link[role="button"] { cursor: pointer; outline: none; }
 .graph-link:focus-visible, .graph-link:hover { stroke: #111815; stroke-width: 3; stroke-opacity: .9; }
 .graph-link.path-focus { stroke: #d34f45; stroke-width: 3; stroke-opacity: 1; }
+.graph-link.evidence-focus { stroke-width: 2.4; stroke-opacity: .95; }
 .graph-link.predicate-supports { stroke: #17835f; stroke-width: 1.6; }
 .graph-link.predicate-contradicts { stroke: #c0443e; stroke-width: 1.7; stroke-dasharray: 5 3; }
 .graph-link.predicate-derived_from, .graph-link.predicate-cites { stroke: #3767c7; }
 #graph-arrow path { fill: #7e8c85; }
+.graph-edge-group, .graph-node-svg, .graph-relationship { transition: opacity 140ms ease; }
+.graph-edge-group.dimmed, .graph-node-svg.dimmed { opacity: .12; }
+.graph-edge-label { fill: #34433c; font-family: var(--mono); font-size: 8px; font-weight: 700; paint-order: stroke; pointer-events: none; stroke: #fbfaf8; stroke-width: 3px; text-anchor: middle; text-transform: uppercase; }
 .graph-node-svg { color: #52615a; cursor: pointer; outline: none; }
 .graph-node-svg circle, .graph-node-svg rect, .graph-node-svg path { fill: #d8e0dc; stroke: #62726a; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .graph-node-svg.type-claim rect { fill: #dce7ff; stroke: #3767c7; }
+.graph-node-svg.type-dataset rect { fill: #e8eff6; stroke: #235a97; }
 .graph-node-svg.type-result path { fill: #d7eee4; stroke: #17835f; }
+.graph-node-svg.type-decision path { fill: #f7e8eb; stroke: #b00020; }
+.graph-node-svg.type-edition circle { fill: #f8eedc; stroke: #805000; }
+.graph-node-svg.type-source circle { fill: #fff; stroke: #52615a; }
+.graph-node-svg.type-run circle, .graph-node-svg.type-episode circle { fill: #edf0ec; stroke: #52615a; }
 .graph-node-svg.type-belief circle { fill: #f7e7bd; stroke: #a26d0b; }
 .graph-node-svg.type-review circle, .graph-node-svg.type-decision circle { fill: #eadff6; stroke: #78529a; }
 .graph-node-svg:hover circle, .graph-node-svg:hover rect, .graph-node-svg:hover path { stroke-width: 2; }
@@ -1088,6 +1109,11 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .legend-shape.claim { background: #dce7ff; border-color: #3767c7; border-radius: 2px; }
 .legend-shape.result { background: #d7eee4; border-color: #17835f; transform: rotate(45deg); }
 .legend-shape.source { border-radius: 50%; }
+.legend-shape.dataset { background: #e8eff6; border-color: #235a97; border-radius: 2px; }
+.legend-shape.edition { background: #f8eedc; border-color: #805000; border-radius: 50%; }
+.legend-shape.review { background: #f1eaf7; border-color: #78529a; border-radius: 50%; }
+.legend-shape.decision { background: #f7e8eb; border-color: #b00020; transform: rotate(45deg); }
+.legend-shape.run, .legend-shape.episode { background: #edf0ec; border-color: #52615a; border-radius: 50%; }
 .legend-line { width: 18px; border-top: 2px solid #17835f; }
 .legend-line.contradicts { border-color: #c0443e; border-top-style: dashed; }
 .graph-selection { min-width: 0; padding: 14px; background: var(--surface); border-left: 1px solid var(--line); }
@@ -1102,6 +1128,7 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .graph-adjacency { max-height: 420px; overflow: auto; background: var(--surface); }
 .graph-relationship { display: grid; grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 48px; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); }
 .graph-relationship.path-focus { background: #fff3ef; box-shadow: inset 3px 0 #d34f45; }
+.graph-relationship.dimmed { opacity: .32; }
 .graph-relationship button { min-height: 34px; padding: 4px 6px; color: var(--ink); background: #f6f8f7; border: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
 .relationship-predicate { min-height: 34px; padding: 4px; color: var(--muted); background: transparent; border: 1px solid transparent; font-family: var(--mono); font-size: 9px; text-align: center; }
 .relationship-predicate:hover, .relationship-predicate:focus-visible { color: var(--ink); background: var(--surface); border-color: var(--line); }
@@ -1513,6 +1540,10 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
   .graph-scope-bar { grid-template-columns: 1fr; align-items: stretch; }
   .graph-scope-toggle { display: grid; grid-template-columns: 1fr 1fr; }
   .graph-query-form { grid-template-columns: 1fr 1fr; }
+  .graph-landscape-summary { grid-template-columns: repeat(3, 1fr); }
+  .landscape-facets { grid-column: 1 / -1; border-top: 1px solid var(--line-soft); }
+  .landscape-measure { min-height: 64px; padding: 8px; }
+  .landscape-measure strong { font-size: 17px; }
   .graph-query-form button { min-height: 44px; }
   .graph-path-form { grid-template-columns: 1fr; }
   .graph-path-form button { min-height: 44px; }
