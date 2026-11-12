@@ -154,7 +154,7 @@ class GraphLandscapeFacet(StrictModel):
 
 
 class GraphLandscapeSelection(StrictModel):
-    strategy: Literal["representative-landscape-v1"]
+    strategy: Literal["connected-semantic-landscape-v2"]
     semantic_node_count: int = Field(ge=0)
     source_node_count: int = Field(ge=0)
     edition_node_count: int = Field(ge=0)

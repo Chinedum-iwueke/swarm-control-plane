@@ -309,7 +309,7 @@ def test_landscape_response_discloses_selection_and_corpus_bounds() -> None:
             "nodes": [],
             "edges": [],
             "selection": {
-                "strategy": "representative-landscape-v1",
+                "strategy": "connected-semantic-landscape-v2",
                 "semantic_node_count": 0,
                 "source_node_count": 0,
                 "edition_node_count": 0,
