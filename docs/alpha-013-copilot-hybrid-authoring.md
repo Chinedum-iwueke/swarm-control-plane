@@ -2,7 +2,31 @@
 
 ## Decision
 
-Native strategy engineering uses GitHub Copilot CLI as the first author and Codex as
+As of 2026-11-12, Codex-only is the default. Copilot hybrid is opt-in and the
+in-house Ollama adapter remains experimental, not production-qualified. The
+historical synthetic rehearsals below do not establish production authoring reliability.
+
+The persistent author selector is
+`/etc/invariance-swarm/strategy-author-provider.env`, containing
+`SWARM_ENGINEERING_AUTHOR_PROVIDER=codex`, `copilot`, or `ollama`.
+Codex is always the independent reviewer; author and reviewer remain separate
+invocations. Selecting Codex does not weaken validation or permit self-approval.
+
+To qualify and activate another route, invoke the existing installer with the
+explicit provider, for example:
+
+```bash
+sudo env SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot bash worker/systemd/install-alpha-strategy-engineer.sh
+```
+
+Omit the variable (or set it to `codex`) for Codex-only. The installer rehearses
+the selected provider before persisting it. Codex-only installation does not
+require Copilot credentials or its binary. Future in-house providers must use a
+qualified adapter; the selector alone does not certify them. Provider changes
+should be made after draining active engineering work. Existing approvals,
+source pins, quota circuits and scientific gates remain unchanged.
+
+In the optional hybrid route, native strategy engineering uses GitHub Copilot CLI as the first author and Codex as
 the corrective and independent-review authority. Deterministic code owns feasibility,
 the immutable `StrategyIntent`, scaffolding, focused tests, the complete Bulletproof
 suite and BT-009 publication. The dormant CPU-local author is not selected.

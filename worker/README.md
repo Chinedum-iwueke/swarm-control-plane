@@ -107,7 +107,7 @@ exist as direct children of `SWARM_REPOSITORY_ROOT`.
 
 Engineering missions require the dedicated Codex review identity described in
 `docs/runbooks/m4-engineering-missions.md`. Native alpha strategy missions use
-GitHub Copilot CLI for the bounded first authoring pass, then deterministic focused
+Codex by default, with an opt-in GitHub Copilot CLI bounded first authoring pass, then deterministic focused
 tests and an independent read-only Codex review. Copilot may read, search and patch
 files in the disposable worktree, but it receives no shell, network or MCP
 tools. The worker rejects changes outside the immutable task contract. A Copilot

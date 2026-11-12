@@ -12,7 +12,8 @@ EnvironmentFile=/etc/invariance-swarm/alpha-strategy-engineer.env
 EnvironmentFile=/etc/invariance-swarm/codex-discovery-runtime.env
 Environment=SWARM_ENGINEERING_VIRTUALENV=/home/omenka/Projects/bulletproof_bt/.venv
 Environment=SWARM_ENGINEERING_TIMEOUT_SECONDS=7200
-Environment=SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot
+Environment=SWARM_ENGINEERING_AUTHOR_PROVIDER=codex
+EnvironmentFile=-/etc/invariance-swarm/strategy-author-provider.env
 Environment=SWARM_COPILOT_BINARY=/usr/local/bin/copilot
 Environment=SWARM_COPILOT_HOME=/var/lib/invariance-swarm/copilot-author-runtime
 Environment=SWARM_COPILOT_MODEL=auto

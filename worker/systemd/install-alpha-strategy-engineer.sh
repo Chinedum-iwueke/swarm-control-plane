@@ -7,6 +7,11 @@ test "$(id -u)" -eq 0 || {
 }
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+author_provider="${SWARM_ENGINEERING_AUTHOR_PROVIDER:-codex}"
+case "$author_provider" in
+  codex|copilot|ollama) ;;
+  *) echo "Author provider must be codex, copilot or ollama." >&2; exit 1 ;;
+esac
 environment=/etc/invariance-swarm/alpha-strategy-engineer.env
 replicas="${SWARM_ALPHA_STRATEGY_ENGINEER_REPLICAS:-5}"
 [[ "$replicas" =~ ^[1-5]$ ]] || {
@@ -29,6 +34,7 @@ test -s "$codex_credential_source" || {
   echo "Run: codex login --device-auth" >&2
   exit 1
 }
+if [[ "$author_provider" = copilot ]]; then
 test -x /usr/local/bin/copilot || {
   echo "GitHub Copilot CLI is required for strategy authoring." >&2
   echo "Install the pinned binary at /usr/local/bin/copilot." >&2
@@ -39,6 +45,7 @@ test "$copilot_version" = 1.0.105 || {
   echo "Require pinned GitHub Copilot CLI 1.0.105; found: ${copilot_version:-unknown}." >&2
   exit 1
 }
+fi
 
 # The CPU-local author remains packaged for later evaluation, but is deliberately
 # absent from the production authoring path until suitable inference compute exists.
@@ -85,6 +92,8 @@ install -o root -g root -m 0600 "$source_dir/codex-discovery-runtime.env" \
   /etc/invariance-swarm/codex-discovery-runtime.env
 
 copilot_runtime=/var/lib/invariance-swarm/copilot-author-runtime
+install -d -o omenka -g omenka -m 0700 "$copilot_runtime"
+if [[ "$author_provider" = copilot ]]; then
 copilot_credential_source=/home/omenka/.local/state/invariance-swarm/copilot-hybrid-runtime/config.json
 test ! -L "$copilot_runtime"
 install -d -o omenka -g omenka -m 0700 "$copilot_runtime"
@@ -98,6 +107,7 @@ install -o omenka -g omenka -m 0600 \
   "$copilot_credential_source" "$copilot_runtime/config.json"
 chown omenka:omenka "$copilot_runtime/config.json"
 chmod 0600 "$copilot_runtime/config.json"
+fi
 # Authentication is proven by the production-parity rehearsal below. If it fails
 # for authentication, use the device flow and rerun this idempotent installer:
 # sudo -u omenka env COPILOT_HOME="$copilot_runtime" \
@@ -136,7 +146,7 @@ systemd-run \
   --property=ReadWritePaths=/home/omenka/.local/state/invariance-swarm \
   --setenv=PYTHONDONTWRITEBYTECODE=1 \
   --setenv=NODE_OPTIONS=--jitless \
-  --setenv=SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot \
+  --setenv="SWARM_ENGINEERING_AUTHOR_PROVIDER=$author_provider" \
   --setenv=SWARM_COPILOT_BINARY=/usr/local/bin/copilot \
   --setenv=SWARM_COPILOT_HOME=/var/lib/invariance-swarm/copilot-author-runtime \
   --setenv=SWARM_COPILOT_MODEL=auto \
@@ -170,6 +180,9 @@ install -o root -g root -m 0644 \
 install -o root -g root -m 0644 \
   "$source_dir/invariance-swarm-alpha-strategy-engineer@.service" \
   /etc/systemd/system/
+printf 'SWARM_ENGINEERING_AUTHOR_PROVIDER=%s\n' "$author_provider" \
+  > /etc/invariance-swarm/strategy-author-provider.env
+chmod 0600 /etc/invariance-swarm/strategy-author-provider.env
 systemctl daemon-reload
 systemctl enable invariance-swarm-alpha-strategy-engineer.service
 systemctl restart invariance-swarm-alpha-strategy-engineer.service
