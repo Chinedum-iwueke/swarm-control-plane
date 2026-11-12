@@ -49,6 +49,25 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _candidate_universe(document: dict[str, Any]) -> list[str]:
+    data = document.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="Canonical research candidate data contract is missing.",
+        )
+    instruments = data.get("instruments")
+    if isinstance(instruments, list) and instruments:
+        return instruments
+    instrument = data.get("instrument")
+    if isinstance(instrument, str) and instrument:
+        return [instrument]
+    raise HTTPException(
+        status_code=422,
+        detail="Canonical research candidate universe is missing.",
+    )
+
+
 def _object(
     *,
     record: Any,
@@ -185,7 +204,7 @@ def publish_research_record(db: Session, record: Any) -> None:
             "mechanism": document["mechanism"],
             "rival_explanations": document["rival_explanations"],
             "falsification_criteria": document["falsification_criteria"],
-            "universe": document["data"]["instruments"],
+            "universe": _candidate_universe(document),
             "parameter_budget": document["parameter_budget"],
             "data_contract": document["data"],
             "representation_plan": document.get("representation_plan"),

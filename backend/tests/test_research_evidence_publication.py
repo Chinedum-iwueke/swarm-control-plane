@@ -126,3 +126,28 @@ def test_research_lifecycle_publishes_canonical_objects_and_typed_edges() -> Non
         "reviews", "decides_on",
     ]
     assert all(call.kwargs["commit"] is False for call in edges.call_args_list)
+
+
+def test_legacy_candidate_instrument_is_normalized_to_universe() -> None:
+    candidate = AlphaDiscoveryCandidate(
+        id=IDS[8], cycle_id=IDS[0], candidate_key="legacy-candidate",
+        question="Does lagged return predict forward return after costs?",
+        document={
+            "title": "Legacy candidate", "predictor": "lagged return",
+            "target": "forward return", "horizon": "one hour",
+            "causal_timing": "The predictor closes before the target interval begins.",
+            "null_hypothesis": "Conditional forward return is not positive after costs.",
+            "predicted_direction": "positive", "mechanism": "Slow information diffusion.",
+            "rival_explanations": ["regime imbalance"],
+            "falsification_criteria": ["non-positive out-of-sample effect"],
+            "data": {"venue": "bybit", "instrument": "BTCUSDT", "timeframe": "1m"},
+            "parameter_budget": {"maximum_variants": 8, "parameter_names": ["lookback"]},
+            "evidence_object_ids": [IDS[0]],
+        },
+        disposition="accepted", reason_codes=[], candidate_digest=DIGESTS[8], created_at=NOW,
+    )
+
+    with patch("app.services.research_evidence.register_evidence_object") as objects:
+        publish_research_record(MagicMock(), candidate)
+
+    assert objects.call_args.args[1].payload.universe == ["BTCUSDT"]
