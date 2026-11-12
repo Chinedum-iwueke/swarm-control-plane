@@ -15,6 +15,8 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
         'data-graph-extent="local"',
         'id="graph-scope"',
         'id="graph-object-type"',
+        'id="graph-project"',
+        'id="graph-as-of"',
         'id="graph-path-form"',
         'id="graph-path-source"',
         'id="graph-path-target"',
@@ -23,6 +25,8 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
         '<option value="edition">Edition</option>',
         '<option value="episode">Episode</option>',
         '<option value="run">Run</option>',
+        '<option value="hypothesis">Hypothesis</option>',
+        '<option value="research_candidate">Research candidate</option>',
     ):
         assert marker in html
 
@@ -35,7 +39,9 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
     assert "Projection time unavailable" in script
     assert 'request("/api/knowledge/graph/landscape"' in script
     assert "Representative sample, not corpus completeness" in script
-    assert "const anchors = new Map(types.map" in script
+    assert "window.InvarianceGraphLayout.layout" in script
+    assert 'request(`/api/knowledge/hybrid-search?' in script
+    assert 'request(`/api/knowledge/evidence/' in script
     assert 'role="group" aria-label="Filter landscape by evidence category"' in script
     assert 'data-graph-zoom="selection"' in script
     assert 'data-graph-focus="${escapeHtml(node.id)}"' in script
@@ -46,6 +52,11 @@ def test_graph_explorer_exposes_bounded_scope_path_and_accessible_edge_controls(
     assert ".graph-edge-group.dimmed, .graph-node-svg.dimmed" in styles
     assert ".graph-edge-label" in styles
     assert "prefers-reduced-motion: reduce" in styles
+    assert (STATIC_ROOT / "vendor" / "knowledge-layout.js").exists()
+
+    package = json.loads((PROJECT_ROOT / "package.json").read_text(encoding="utf-8"))
+    assert package["dependencies"]["d3-force"] == "3.0.1"
+    assert package["devDependencies"]["esbuild"] == "0.28.2"
 
 
 def test_renderer_benchmark_and_decision_are_reproducible_and_pinned() -> None:

@@ -72,6 +72,14 @@ visualization; the relationship list is the accessible source of truth. Selectin
 node can replay canonical evidence but cannot register edges, rebuild projections or
 change evidence lifecycle state.
 
+The global Landscape uses the pinned `d3-force@3.0.1` package through a checked-in,
+minified browser bundle. Layouts use a corpus-bound seed, category anchors, collision
+forces and local snapshot reuse; camera state is retained separately. Corpus search is
+served by canonical hybrid retrieval, while project, type, relationship and as-of
+filters remain typed control-plane queries. Rebuild the bundle after dependency or
+layout-source changes with `npm ci && npm run build:graph`, then run
+`npm run test:graph` to verify deterministic placement and collision bounds.
+
 The integrated Research Workspace groups these capabilities into three deep-linkable
 modes: **Ask**, **Explore**, and **Library**. A shared working-context strip retains at
 most eight selected canonical identities while the founder moves between modes. It is

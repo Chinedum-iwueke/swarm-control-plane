@@ -1056,7 +1056,7 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .landscape-facet.active strong { color: var(--surface); }
 .landscape-facet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .landscape-disclosure { grid-column: 1 / -1; margin: 0; padding: 6px 10px; color: var(--muted); background: var(--canvas); border-top: 1px solid var(--line-soft); font-size: 9px; line-height: 1.45; }
-.graph-query-form { display: grid; grid-template-columns: 115px 95px minmax(150px, 1fr) minmax(140px, .8fr) auto; align-items: end; gap: 8px; margin-bottom: 10px; padding: 9px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.graph-query-form { display: grid; grid-template-columns: minmax(130px,.8fr) minmax(165px,1fr) 105px 80px minmax(145px,1fr) minmax(130px,.8fr) auto; align-items: end; gap: 8px; margin-bottom: 10px; padding: 9px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
 .graph-query-form label { margin: 0; }
 .graph-query-form select { width: 100%; min-height: 34px; margin-top: 4px; }
 .graph-query-form button { min-height: 34px; }
@@ -1121,6 +1121,8 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .graph-selection .detail-grid { grid-template-columns: 65px minmax(0, 1fr); }
 .graph-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0; }
 .graph-selection-actions button { min-height: 36px; }
+.graph-selection-hydration { margin: 10px 0; padding: 10px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); font-size: 10px; line-height: 1.5; }
+.hydrated-record > p:not(.section-kicker) { margin: 5px 0 10px; color: var(--ink); }
 .selection-neighbors { display: grid; border-top: 1px solid var(--line-soft); }
 .selection-neighbors button { display: grid; gap: 2px; min-height: 44px; padding: 7px 0; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--line-soft); text-align: left; }
 .selection-neighbors button:hover { color: var(--blue); }

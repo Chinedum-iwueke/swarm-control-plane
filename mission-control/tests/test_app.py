@@ -320,6 +320,7 @@ class FakeControlPlane:
         }
 
     async def research_retrieval(self, payload) -> dict:
+        self.retrieval_payload = payload
         return {
             "corpus_digest": "a" * 64,
             "confidence": 0.0,
@@ -943,6 +944,34 @@ def test_knowledge_landscape_rejects_executable_or_unbounded_input(
             json={"max_nodes": 500, "command": "shell"},
         )
     assert response.status_code == 422
+
+
+def test_landscape_search_uses_canonical_hybrid_retrieval(
+    settings: MissionControlSettings,
+) -> None:
+    fake = FakeControlPlane()
+    with TestClient(create_app(settings, control_plane=fake)) as client:
+        response = client.get(
+            "/api/knowledge/hybrid-search",
+            params={"q": "funding momentum", "project": "systematic-research", "limit": 8},
+        )
+    assert response.status_code == 200
+    assert fake.retrieval_payload == {
+        "query": "funding momentum",
+        "project": "systematic-research",
+        "limit": 8,
+    }
+
+
+def test_landscape_inspector_hydrates_canonical_record_and_lineage(
+    settings: MissionControlSettings,
+) -> None:
+    object_id = "11111111-1111-4111-8111-111111111111"
+    with TestClient(create_app(settings, control_plane=FakeControlPlane())) as client:
+        response = client.get(f"/api/knowledge/evidence/{object_id}")
+    assert response.status_code == 200
+    assert response.json()["record"]["object_type"] == "source"
+    assert len(response.json()["lineage"]["descendants"]) == 1
 
 
 def test_graph_explorer_rejects_unbounded_or_executable_input(

@@ -32,7 +32,7 @@ def test_reconnect_deduplicates_and_scroll_requires_user_reveal() -> None:
 def test_static_asset_performance_budgets() -> None:
     # MCUX-022 owner: Mission Control. These caps prevent silent growth while the
     # current no-bundler deployment remains deliberately self-contained.
-    budgets = {"app.js": 340_000, "styles.css": 125_000, "index.html": 60_000}
+    budgets = {"app.js": 350_000, "styles.css": 125_000, "index.html": 62_000}
     for name, limit in budgets.items():
         assert (STATIC / name).stat().st_size <= limit, f"{name} exceeds {limit} bytes"
 

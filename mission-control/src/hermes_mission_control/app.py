@@ -903,6 +903,25 @@ def create_app(
             },
         }
 
+    @app.get("/api/knowledge/hybrid-search")
+    async def hybrid_knowledge_search(
+        q: Annotated[str, Query(min_length=2, max_length=500)],
+        project: Annotated[
+            Optional[str],  # noqa: UP045 - macOS Python 3.9
+            Query(pattern=r"^[a-z][a-z0-9._-]{0,99}$"),
+        ] = None,
+        limit: Annotated[int, Query(ge=1, le=20)] = 8,
+    ) -> dict:
+        return await client.research_retrieval(
+            {"query": q, "project": project, "limit": limit}
+        )
+
+    @app.get("/api/knowledge/evidence/{object_id}")
+    async def graph_evidence_detail(object_id: UUID) -> dict:
+        record = await client.research_evidence_object(str(object_id))
+        lineage = await client.research_evidence_lineage(str(object_id))
+        return {"record": record, "lineage": lineage}
+
     @app.post("/api/research/copilot/questions")
     async def ask_research_copilot(question: CopilotQuestion) -> dict:
         return await copilot.ask(question)

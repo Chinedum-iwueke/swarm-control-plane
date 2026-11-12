@@ -53,6 +53,9 @@ const state = {
   libraryDeepLinkOpened: false,
   graphLayoutSignature: null,
   graphLayout: new Map(),
+  graphSearchHits: [],
+  graphSearchTimer: null,
+  graphEvidenceCache: new Map(),
   graphDragging: false,
   overviewEventSource: null,
   overviewEventCursor: null,
@@ -129,7 +132,7 @@ document.querySelectorAll("[data-library-unit]").forEach((button) => {
   button.addEventListener("click", () => switchLibraryUnit(button.dataset.libraryUnit));
 });
 document.getElementById("refresh-graph").addEventListener("click", loadGraph);
-document.getElementById("graph-find").addEventListener("input", renderGraphFindResults);
+document.getElementById("graph-find").addEventListener("input", scheduleGraphSearch);
 document.getElementById("execution-environments").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-execution-environment]");
   if (!button) return;
@@ -196,10 +199,11 @@ document.querySelectorAll("[data-graph-extent]").forEach((button) => {
     else if (state.graphSelectedId) queryGraphRoot(state.graphSelectedId);
   });
 });
-["graph-direction", "graph-depth", "graph-predicate", "graph-object-type"].forEach((id) => {
+["graph-project", "graph-as-of", "graph-direction", "graph-depth", "graph-predicate", "graph-object-type"].forEach((id) => {
   document.getElementById(id).addEventListener("change", () => {
     saveGraphViewState();
-    if (id === "graph-object-type" && state.graphData) renderGraph(state.graphData);
+    if (state.graphExtent === "global" && state.graphScope === "canonical") loadGraph();
+    else if (id === "graph-object-type" && state.graphData) renderGraph(state.graphData);
   });
 });
 document.querySelectorAll("[data-research-mode]").forEach((button) => {
@@ -3542,7 +3546,7 @@ async function loadGraph() {
       ? await request("/api/knowledge/graph/landscape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ max_nodes: 100, max_edges: 240 }),
+        body: JSON.stringify(graphLandscapeFilters()),
       })
       : await request("/api/knowledge/graph?scope=private&limit=100");
     renderGraph(graph);
@@ -3947,6 +3951,22 @@ function renderGraph(graph) {
   populateGraphPathControls(nodes);
   renderGraphFindResults();
   saveGraphViewState();
+  hydrateGraphSelection(selected);
+}
+
+function graphLandscapeFilters() {
+  const project = document.getElementById("graph-project")?.value || null;
+  const objectType = document.getElementById("graph-object-type")?.value || null;
+  const predicate = document.getElementById("graph-predicate")?.value || null;
+  const asOfValue = document.getElementById("graph-as-of")?.value || null;
+  return {
+    project,
+    object_types: objectType ? [objectType] : [],
+    predicates: predicate && predicate !== "mentions" ? [predicate] : [],
+    as_of: asOfValue ? new Date(asOfValue).toISOString() : null,
+    max_nodes: 100,
+    max_edges: 240,
+  };
 }
 
 function graphTruncationLabel(graph) {
@@ -3982,7 +4002,7 @@ function renderGraphLandscapeSummary(graph, visibleNodes, visibleEdges) {
       document.getElementById("graph-object-type").value = button.dataset.landscapeType;
       state.graphObjectType = button.dataset.landscapeType;
       saveGraphViewState();
-      renderGraph(state.graphData);
+      loadGraph();
     });
   });
 }
@@ -3998,6 +4018,11 @@ function restoreGraphViewState() {
     state.graphPredicate = String(saved.predicate || "");
     state.graphObjectType = String(saved.objectType || "");
     state.graphSelectedId = saved.selectedId ? String(saved.selectedId) : null;
+    state.graphProject = String(saved.project || "");
+    state.graphAsOf = String(saved.asOf || "");
+    if (saved.transform && [saved.transform.scale, saved.transform.x, saved.transform.y].every(Number.isFinite)) {
+      state.graphTransform = saved.transform;
+    }
   } catch (_) {
     window.localStorage.removeItem("hermes.graph-view.v1");
   }
@@ -4012,7 +4037,10 @@ function saveGraphViewState() {
     depth: Number(document.getElementById("graph-depth")?.value || state.graphDepth || 2),
     predicate: document.getElementById("graph-predicate")?.value || "",
     objectType: document.getElementById("graph-object-type")?.value || "",
+    project: document.getElementById("graph-project")?.value || "",
+    asOf: document.getElementById("graph-as-of")?.value || "",
     selectedId: state.graphSelectedId,
+    transform: state.graphTransform,
   };
   window.localStorage.setItem("hermes.graph-view.v1", JSON.stringify(payload));
 }
@@ -4023,6 +4051,8 @@ function syncGraphControls() {
   if (state.graphDepth) document.getElementById("graph-depth").value = String(state.graphDepth);
   if (state.graphPredicate != null) document.getElementById("graph-predicate").value = state.graphPredicate;
   if (state.graphObjectType != null) document.getElementById("graph-object-type").value = state.graphObjectType;
+  if (state.graphProject != null) document.getElementById("graph-project").value = state.graphProject;
+  if (state.graphAsOf != null) document.getElementById("graph-as-of").value = state.graphAsOf;
   const mentions = document.querySelector('#graph-predicate option[value="mentions"]');
   mentions.disabled = state.graphScope !== "private";
   if (state.graphScope !== "private" && document.getElementById("graph-predicate").value === "mentions") document.getElementById("graph-predicate").value = "";
@@ -4136,69 +4166,10 @@ function openGraphEdgeInspector(edge, nodeMap) {
 
 function graphPositions(nodes, edges) {
   const ids = nodes.map((node) => String(node.id));
-  const signature = `${ids.join("|")}::${edges.map((edge) => `${edge.source}>${edge.target}`).join("|")}`;
+  const signature = `${state.graphData?.corpus_digest || "local"}::${ids.join("|")}::${edges.map((edge) => `${edge.source}>${edge.target}:${edge.predicate || edge.relation}`).join("|")}`;
   if (signature === state.graphLayoutSignature && state.graphLayout.size) return state.graphLayout;
-  const positions = new Map();
-  const center = { x: 450, y: 260 };
-  const nodeTypes = new Map(nodes.map((node) => [String(node.id), String(node.object_type || node.kind || "evidence")]));
-  const types = [...new Set(nodes.map((node) => String(node.object_type || node.kind || "evidence")))].sort();
-  const anchors = new Map(types.map((type, index) => {
-    const angle = types.length === 1 ? 0 : index / types.length * Math.PI * 2 - Math.PI / 2;
-    const radius = types.length === 1 ? 0 : Math.min(190, 82 + types.length * 12);
-    return [type, { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius * .68 }];
-  }));
-  const typeOffsets = new Map();
-  nodes.forEach((node) => {
-    const type = String(node.object_type || node.kind || "evidence");
-    const index = typeOffsets.get(type) || 0;
-    typeOffsets.set(type, index + 1);
-    const anchor = anchors.get(type);
-    const angle = index * 2.399963;
-    const radius = Math.min(74, 15 + Math.sqrt(index) * 18);
-    positions.set(String(node.id), { x: anchor.x + Math.cos(angle) * radius, y: anchor.y + Math.sin(angle) * radius * .72 });
-  });
-  const usableEdges = edges.filter((edge) => positions.has(String(edge.source)) && positions.has(String(edge.target)));
-  for (let iteration = 0; iteration < 24; iteration += 1) {
-    const forces = new Map(ids.map((id) => [id, { x: 0, y: 0 }]));
-    for (let left = 0; left < ids.length; left += 1) {
-      const a = positions.get(ids[left]);
-      for (let right = left + 1; right < ids.length; right += 1) {
-        const b = positions.get(ids[right]);
-        const dx = a.x - b.x;
-        const dy = a.y - b.y;
-        const distance2 = Math.max(dx * dx + dy * dy, 36);
-        const force = Math.min(2.6, 720 / distance2);
-        const fx = dx / Math.sqrt(distance2) * force;
-        const fy = dy / Math.sqrt(distance2) * force;
-        forces.get(ids[left]).x += fx;
-        forces.get(ids[left]).y += fy;
-        forces.get(ids[right]).x -= fx;
-        forces.get(ids[right]).y -= fy;
-      }
-    }
-    for (const edge of usableEdges) {
-      const source = positions.get(String(edge.source));
-      const target = positions.get(String(edge.target));
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const distance = Math.max(Math.hypot(dx, dy), 1);
-      const force = (distance - 105) * .006;
-      const fx = dx / distance * force;
-      const fy = dy / distance * force;
-      forces.get(String(edge.source)).x += fx;
-      forces.get(String(edge.source)).y += fy;
-      forces.get(String(edge.target)).x -= fx;
-      forces.get(String(edge.target)).y -= fy;
-    }
-    const cooling = 1 - iteration / 32;
-    for (const id of ids) {
-      const position = positions.get(id);
-      const force = forces.get(id);
-      const anchor = anchors.get(nodeTypes.get(id));
-      position.x = Math.max(28, Math.min(872, position.x + force.x * cooling + (anchor.x - position.x) * .012));
-      position.y = Math.max(28, Math.min(492, position.y + force.y * cooling + (anchor.y - position.y) * .012));
-    }
-  }
+  if (!window.InvarianceGraphLayout) throw new Error("Pinned graph layout runtime is unavailable.");
+  const positions = window.InvarianceGraphLayout.layout(nodes, edges, signature);
   state.graphLayoutSignature = signature;
   state.graphLayout = positions;
   return positions;
@@ -4209,7 +4180,7 @@ function graphNodeSvg(node, position, index, selected, inPath = false, focus = {
   const label = String(node.label || node.name || node.id);
   const shape = type === "claim" || type === "dataset" ? `<rect x="-8" y="-8" width="16" height="16" rx="2"></rect>` : type === "result" || type === "decision" ? `<path d="M 0 -10 L 10 0 L 0 10 L -10 0 Z"></path>` : `<circle r="8"></circle>`;
   const dimmed = focus.active && !focus.nodes.has(String(node.id));
-  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}">${shape}${(index < 14 || selected || inPath || (focus.active && !dimmed)) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
+  return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}"><title>${escapeHtml(label)} · ${escapeHtml(humanize(type))}</title>${shape}${(index < 14 || selected || inPath || (focus.active && !dimmed)) ? `<text x="12" y="4">${escapeHtml(truncate(label, 34))}</text>` : ""}</g>`;
 }
 
 function graphEdgeSvg(edge, positions, inPath = false, focus = { active: false, relations: new Set() }) {
@@ -4237,8 +4208,33 @@ function graphSelectionPanel(node, edges, nodeMap) {
     <p class="section-kicker">Selected evidence</p><h3>${escapeHtml(node.label || node.name)}</h3>
     <dl class="detail-grid"><dt>Record</dt><dd>${escapeHtml(recordClass)}</dd><dt>Type</dt><dd>${escapeHtml(node.object_type || node.kind)}</dd><dt>Project</dt><dd>${escapeHtml(node.project || "Local knowledge")}</dd><dt>Access</dt><dd>${statusBadge(state.demo ? "demo" : node.access_class || "private")}</dd><dt>Digest</dt><dd class="mono">${escapeHtml(shortHash(node.content_digest || "Unavailable"))}</dd><dt>Visible links</dt><dd>${related.length.toLocaleString()}</dd><dt>Evidence</dt><dd>${supporting} supporting / ${opposing} opposing</dd></dl>
     <div class="graph-selection-actions"><button class="secondary" type="button" data-graph-focus="${escapeHtml(node.id)}" aria-pressed="${String(String(state.graphFocusId) === String(node.id))}">${String(state.graphFocusId) === String(node.id) ? "Clear focus" : "Focus evidence"}</button><button class="secondary" type="button" data-graph-replay="${escapeHtml(node.id)}">Replay evidence</button><button class="text-button" type="button" data-graph-neighbors="${escapeHtml(node.id)}">Expand neighbors</button></div>
+    <div id="graph-selection-hydration" class="graph-selection-hydration"><span class="muted">Loading canonical record…</span></div>
     <div class="selection-neighbors">${related.slice(0, 6).map((edge) => { const other = nodeMap.get(String(edge.source) === String(node.id) ? String(edge.target) : String(edge.source)); return `<button type="button" data-graph-node="${escapeHtml(other.id)}"><span>${escapeHtml(humanize(edge.predicate || edge.relation))}</span>${escapeHtml(other.label || other.name)}</button>`; }).join("") || `<span class="muted">No visible neighbors.</span>`}</div>
   </aside>`;
+}
+
+async function hydrateGraphSelection(node) {
+  const target = document.getElementById("graph-selection-hydration");
+  if (!target || !node || state.demo || state.graphScope !== "canonical") {
+    if (target) target.innerHTML = "";
+    return;
+  }
+  const id = String(node.id);
+  try {
+    let detail = state.graphEvidenceCache.get(id);
+    if (!detail) {
+      detail = await request(`/api/knowledge/evidence/${encodeURIComponent(id)}`);
+      state.graphEvidenceCache.set(id, detail);
+    }
+    if (String(state.graphSelectedId) !== id || !document.getElementById("graph-selection-hydration")) return;
+    const payload = detail.record?.payload || {};
+    const ancestors = detail.lineage?.ancestors?.length || 0;
+    const descendants = detail.lineage?.descendants?.length || 0;
+    const summary = payload.research_question || payload.proposition || payload.name || payload.decision || payload.title || payload.summary;
+    target.innerHTML = `<div class="hydrated-record"><p class="section-kicker">Canonical record</p>${summary ? `<p>${escapeHtml(summary)}</p>` : ""}<dl class="detail-grid"><dt>Authority</dt><dd>${escapeHtml(detail.record?.authority_class || "Unavailable")}</dd><dt>Version</dt><dd>${escapeHtml(detail.record?.content_version || "Unavailable")}</dd><dt>Lineage</dt><dd>${ancestors} ancestors / ${descendants} descendants</dd><dt>Created</dt><dd>${escapeHtml(detail.record?.created_at ? relativeTime(detail.record.created_at) : "Unavailable")}</dd></dl></div>`;
+  } catch (error) {
+    if (String(state.graphSelectedId) === id) target.innerHTML = `<span class="muted">Canonical detail unavailable: ${escapeHtml(error.message)}</span>`;
+  }
 }
 
 function bindGraphInteractions(nodeMap) {
@@ -4332,6 +4328,7 @@ function bindGraphInteractions(nodeMap) {
       gesture.x = event.clientX;
       gesture.y = event.clientY;
       document.getElementById("graph-viewport").setAttribute("transform", `translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${state.graphTransform.scale})`);
+      saveGraphViewState();
     }
   });
   svg.addEventListener("pointerup", (event) => {
@@ -4354,6 +4351,7 @@ function bindGraphInteractions(nodeMap) {
     state.graphTransform.y = point.screenY - point.y * newScale;
     state.graphTransform.scale = newScale;
     document.getElementById("graph-viewport").setAttribute("transform", `translate(${state.graphTransform.x} ${state.graphTransform.y}) scale(${newScale})`);
+    saveGraphViewState();
   }, { passive: false });
 }
 
@@ -4361,6 +4359,7 @@ function fitGraphSelection() {
   const position = state.graphLayout.get(String(state.graphSelectedId));
   if (!position) return;
   state.graphTransform = { scale: 1.55, x: 450 - position.x * 1.55, y: 260 - position.y * 1.55 };
+  saveGraphViewState();
 }
 
 function updateGraphSvgPositions() {
@@ -4386,15 +4385,40 @@ function updateGraphSvgPositions() {
   });
 }
 
+function scheduleGraphSearch() {
+  window.clearTimeout(state.graphSearchTimer);
+  renderGraphFindResults();
+  const query = document.getElementById("graph-find").value.trim();
+  if (query.length < 2 || state.demo || state.graphScope !== "canonical") {
+    state.graphSearchHits = [];
+    return;
+  }
+  state.graphSearchTimer = window.setTimeout(async () => {
+    try {
+      const project = document.getElementById("graph-project")?.value || "";
+      const parameters = new URLSearchParams({ q: query, limit: "8" });
+      if (project) parameters.set("project", project);
+      const response = await request(`/api/knowledge/hybrid-search?${parameters}`);
+      if (document.getElementById("graph-find").value.trim() !== query) return;
+      state.graphSearchHits = response.hits || [];
+      renderGraphFindResults();
+    } catch (error) {
+      document.getElementById("graph-find-count").textContent = `Search unavailable: ${error.message}`;
+    }
+  }, 220);
+}
+
 function renderGraphFindResults() {
   const input = document.getElementById("graph-find");
   const results = document.getElementById("graph-find-results");
   if (!input || !results) return;
   const query = input.value.trim().toLowerCase();
   const nodes = state.graphData?.nodes || [];
-  const matches = query ? nodes.filter((node) => `${node.label || node.name || ""} ${node.object_type || node.kind || ""}`.toLowerCase().includes(query)).slice(0, 8) : [];
-  document.getElementById("graph-find-count").textContent = query ? `${matches.length} match${matches.length === 1 ? "" : "es"}` : "";
-  results.innerHTML = matches.map((node) => `<button class="graph-find-result" type="button" role="option" data-graph-find-id="${escapeHtml(node.id)}"><strong>${escapeHtml(node.label || node.name)}</strong><span>${escapeHtml(humanize(node.object_type || node.kind || "evidence"))}</span></button>`).join("");
+  const local = query ? nodes.filter((node) => `${node.label || node.name || ""} ${node.object_type || node.kind || ""}`.toLowerCase().includes(query)).slice(0, 8) : [];
+  const localIds = new Set(local.map((node) => String(node.id)));
+  const remote = query ? state.graphSearchHits.filter((hit) => !localIds.has(String(hit.object_id))).slice(0, Math.max(0, 8 - local.length)) : [];
+  document.getElementById("graph-find-count").textContent = query ? `${local.length + remote.length} match${local.length + remote.length === 1 ? "" : "es"} · visible + corpus` : "";
+  results.innerHTML = local.map((node) => `<button class="graph-find-result" type="button" role="option" data-graph-find-id="${escapeHtml(node.id)}"><strong>${escapeHtml(node.label || node.name)}</strong><span>${escapeHtml(humanize(node.object_type || node.kind || "evidence"))} · visible</span></button>`).join("") + remote.map((hit) => `<button class="graph-find-result" type="button" role="option" data-graph-search-id="${escapeHtml(hit.object_id)}"><strong>${escapeHtml(truncate(hit.text || hit.object_id, 72))}</strong><span>${escapeHtml(humanize(hit.scientific_type || "evidence"))} · corpus</span></button>`).join("");
   results.querySelectorAll("[data-graph-find-id]").forEach((button) => {
     button.onclick = () => {
       const node = nodes.find((item) => String(item.id) === String(button.dataset.graphFindId));
@@ -4404,6 +4428,9 @@ function renderGraphFindResults() {
       renderGraph(state.graphData);
       results.innerHTML = "";
     };
+  });
+  results.querySelectorAll("[data-graph-search-id]").forEach((button) => {
+    button.onclick = () => queryGraphRoot(button.dataset.graphSearchId);
   });
 }
 
