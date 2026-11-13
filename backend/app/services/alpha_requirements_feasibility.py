@@ -64,3 +64,36 @@ def verified_report(task, evidence, source_commit):
     if report.get("status") == "ready" and (report.get("reasons") or any(p.get("status") != "ready" for p in plans.values()) or history["minimum_prior_bars"] > history["declared_warmup_bars"]):
         raise ValueError("Native readiness contradicts retained plans")
     return report
+
+
+def reviewed_successor_inputs(report, evidence, mandate, source_commit):
+    """Return proposed inputs for review, never execution or an in-place rewrite."""
+    from app.services.alpha_coverage_successor import validate_native_proposal
+
+    proposal = report.get("coverage_successor_proposal")
+    if not isinstance(proposal, dict) or proposal.get("status") != "proposed":
+        return None
+    if (report["feature_history"]["minimum_prior_bars"] > report["feature_history"]["declared_warmup_bars"]
+            or not report["reasons"]
+            or any(reason not in {
+                "smoke:insufficient_contiguous_eligible_basket_history",
+                "scientific:insufficient_contiguous_eligible_basket_history",
+            } for reason in report["reasons"])):
+        raise ValueError("Only coverage failures can propose a pre-review successor")
+    validate_native_proposal(evidence, report["validation_plans"]["scientific"], source_commit, mandate, proposal)
+    parts = proposal["scientific_plan"]["partitions"]
+    successor = deepcopy(evidence)
+    successor["window"] = {"start": parts["feature_warmup"]["start"], "end": parts["target_tail"]["end"]}
+    successor["validation_requirements"]["coverage"] = proposal["planning_inputs"]["coverage"]
+    plans = report.get("successor_validation_plans") or {}
+    if set(plans) != {"smoke", "scientific"}:
+        raise ValueError("Successor requires both native validation plans")
+    for mode, plan in plans.items():
+        if (plan.get("status") != "ready" or plan.get("reasons") != []
+                or plan.get("mode") != mode or plan.get("source_commit") != source_commit
+                or plan.get("execution_authority") is not False
+                or plan.get("plan_digest") != digest({k: v for k, v in plan.items() if k != "plan_digest"})):
+            raise ValueError("Successor validation plan is not ready or digest-bound")
+    if plans["scientific"]["partitions"] != parts:
+        raise ValueError("Successor validation partitions differ from proposal")
+    return successor

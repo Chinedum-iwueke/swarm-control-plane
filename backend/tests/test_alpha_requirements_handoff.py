@@ -156,7 +156,7 @@ def test_campaign_commits_pending_publication_without_returning_failed_task(
 
 
 @pytest.mark.parametrize("verdict", [None, "reject", "approve"])
-@pytest.mark.parametrize("native_state", ["ready", "deferred", "queued", "failed"])
+@pytest.mark.parametrize("native_state", ["ready", "deferred", "queued", "failed", "successor"])
 def test_durable_publication_is_reused_and_only_verified_approval_releases(
     monkeypatch, verdict, native_state
 ):
@@ -204,9 +204,15 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
     from app.services import alpha_requirements_feasibility as feasibility
     monkeypatch.setattr(feasibility, "planning_task", lambda *args: SimpleNamespace(id="native-plan", status=native_state if native_state in {"queued", "failed"} else "succeeded"))
     monkeypatch.setattr(feasibility, "verified_report", lambda *args: {
-        "status": native_state, "report_digest": "d" * 64, "reasons": [],
+        "status": "deferred" if native_state == "successor" else native_state, "report_digest": "d" * 64, "reasons": [],
         "feature_history": {"minimum_prior_bars": 12}, "validation_plans": {},
+        "coverage_successor_proposal": {"successor_digest": "c" * 64},
     })
+    original_window = dict(evidence["window"])
+    successor_window = {"start": "2024-01-01T00:00:00Z", "end": "2025-01-01T00:00:00Z"}
+    monkeypatch.setattr(feasibility, "reviewed_successor_inputs", lambda report, inputs, *args: (
+        inputs | {"window": successor_window} if native_state == "successor" else None
+    ))
     create = MagicMock(return_value=route)
     monkeypatch.setattr(service, "create_route", create)
     monkeypatch.setattr(
@@ -227,7 +233,7 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
         ),
     )
     for _ in range(2):
-        if native_state != "ready":
+        if native_state not in {"ready", "successor"}:
             with pytest.raises(RequirementsPending):
                 ensure_reviewed_requirements(db, campaign, evidence)
             assert campaign.next_action == {
@@ -242,6 +248,11 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
             package = ensure_reviewed_requirements(db, campaign, evidence)
             assert package["review_receipt"]["route_id"] == str(route.id)
             assert package["scientific_certification"] is False
+            if native_state == "successor":
+                assert evidence["window"] == successor_window
+                assert package["coverage_successor_receipt"]["successor_digest"] == "c" * 64
+                # Each campaign reconciliation reconstructs the original evidence.
+                evidence["window"] = dict(original_window)
         else:
             with pytest.raises(RequirementsPending):
                 ensure_reviewed_requirements(db, campaign, evidence)
@@ -250,7 +261,8 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
                 if verdict
                 else "await_independent_scientific_requirements_review"
             )
-    if native_state == "ready":
+            assert evidence["window"] == original_window
+    if native_state in {"ready", "successor"}:
         create.assert_called_once()
         assert len(events) == 1
 

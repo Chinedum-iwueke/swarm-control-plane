@@ -7,6 +7,7 @@ import pytest
 
 from app.services import alpha_requirements_feasibility as service
 from app.services.graph import digest_document as digest
+import json
 
 
 def test_planning_is_content_addressed_bounded_and_preserves_parent(monkeypatch):
@@ -48,3 +49,59 @@ def test_report_binds_inputs_source_and_both_native_plans():
     report["report_digest"] = digest({k: v for k, v in report.items() if k != "report_digest"})
     with pytest.raises(ValueError, match="custody"):
         service.verified_report(task, evidence, "a" * 40)
+
+
+def successor_fixture():
+    from .test_alpha_coverage_successor import fixture
+    parent, mandate, proposal = fixture()
+    evidence = json.loads(parent.input_contract["evidence_context"])
+    parts = {"feature_warmup": {"start": "2024-06-01T00:00:00Z"}, "target_tail": {"end": "2025-07-01T00:00:00Z"}}
+    proposal["scientific_plan"]["partitions"] = parts
+    proposal["scientific_plan"]["plan_digest"] = digest({k: v for k, v in proposal["scientific_plan"].items() if k != "plan_digest"})
+    proposal["planning_inputs"]["coverage"] = [{"receipt": "exposure-filtered"}]
+    proposal["successor_digest"] = digest({k: v for k, v in proposal.items() if k != "successor_digest"})
+    plans = {}
+    for mode in ("smoke", "scientific"):
+        plan = {"status": "ready", "reasons": [], "source_commit": "a" * 40, "mode": mode, "execution_authority": False, "partitions": parts}
+        plans[mode] = plan | {"plan_digest": digest(plan)}
+    report = {"reasons": ["scientific:insufficient_contiguous_eligible_basket_history"],
+              "feature_history": {"minimum_prior_bars": 12, "declared_warmup_bars": 12},
+              "validation_plans": parent.result["summary"]["validation_plans"],
+              "coverage_successor_proposal": proposal, "successor_validation_plans": plans}
+    return report, evidence, mandate
+
+
+def test_successor_is_proposed_for_review_without_mutating_original():
+    report, evidence, mandate = successor_fixture()
+    before = deepcopy(evidence)
+    result = service.reviewed_successor_inputs(report, evidence, mandate, "a" * 40)
+    assert result["window"] != evidence["window"]
+    assert result["validation_requirements"]["requirements"] == evidence["validation_requirements"]["requirements"]
+    assert evidence == before
+
+
+@pytest.mark.parametrize("fault", ["warmup", "source", "requirements", "smoke", "partitions", "ledger", "mandate"])
+def test_successor_cannot_hide_invalid_requirements_or_stale_custody(fault):
+    report, evidence, mandate = successor_fixture()
+    proposal = report["coverage_successor_proposal"]
+    if fault == "warmup":
+        report["feature_history"]["minimum_prior_bars"] = 13
+    elif fault == "source":
+        proposal["planning_inputs"]["source_commit"] = "b" * 40
+    elif fault == "requirements":
+        proposal["planning_inputs"]["requirements"] = {}
+    elif fault == "smoke":
+        plan = report["successor_validation_plans"]["smoke"]
+        plan["status"] = "deferred"
+        plan["plan_digest"] = digest({k: v for k, v in plan.items() if k != "plan_digest"})
+    elif fault == "partitions":
+        plan = report["successor_validation_plans"]["scientific"]
+        plan["partitions"] = {}
+        plan["plan_digest"] = digest({k: v for k, v in plan.items() if k != "plan_digest"})
+    elif fault == "ledger":
+        evidence["coverage_successor_context"]["exposure_ledger"]["complete"] = False
+    else:
+        mandate.mandate_digest = "e" * 64
+    proposal["successor_digest"] = digest({k: v for k, v in proposal.items() if k != "successor_digest"})
+    with pytest.raises(ValueError):
+        service.reviewed_successor_inputs(report, evidence, mandate, "a" * 40)

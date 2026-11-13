@@ -30,11 +30,16 @@ from app.services.tasks import build_task, persist_new_task
 
 def validate_proposal(parent, mandate, proposal):
     evidence = json.loads(parent.input_contract["evidence_context"])
+    execution = parent.result or (parent.failure or {}).get("execution_evidence", {})
+    parent_plan = execution["summary"]["validation_plans"]["scientific"]
+    return validate_native_proposal(evidence, parent_plan, parent.input_contract["base_ref"], mandate, proposal)
+
+
+def validate_native_proposal(evidence, parent_plan, source_commit, mandate, proposal):
+    """Validate the same recovery contract before or after strategy engineering."""
     package = evidence["validation_requirements"]
     context = evidence["coverage_successor_context"]
     policy = mandate.specification["historical_window_policy"]["coverage_replanning"]
-    execution = parent.result or (parent.failure or {}).get("execution_evidence", {})
-    parent_plan = execution["summary"]["validation_plans"]["scientific"]
     if parent_plan["plan_digest"] != digest_document(
         {k: v for k, v in parent_plan.items() if k != "plan_digest"}
     ) or parent_plan.get("reasons") != [
@@ -73,7 +78,7 @@ def validate_proposal(parent, mandate, proposal):
         "requirements": package["requirements"],
         "dataset_bindings": evidence["dataset_bindings"],
         "instruments": evidence["discovery_candidate"]["data"]["instruments"],
-        "source_commit": parent.input_contract["base_ref"],
+        "source_commit": source_commit,
         "variants": evidence["discovery_candidate"]["parameter_budget"][
             "maximum_variants"
         ],

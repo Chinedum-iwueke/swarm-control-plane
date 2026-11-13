@@ -63,7 +63,11 @@ class AlphaStrategyReviewExecutor:
              "representation, DATA bindings, native source, and eligible clock. Predictor availability does not "
              "prove historical universe membership or event support: explicitly assess this limitation against "
              "the question and reject unsupported claims. Reject minima selected merely to fit the available "
-             "data or unstated scientific assumptions. Approval permits authoring only, not certification.\n"
+             "data or unstated scientific assumptions. When native feasibility includes a coverage successor, "
+             "review its proposed window and both successor validation plans, unchanged requirements, "
+             "historical envelope, exposure exclusions and immutable original plan together. An original "
+             "coverage deferral is not by itself a rejection of a valid successor. Approval permits "
+             "authoring only, not certification.\n"
              if contract.subject.get("review_scope") == "scientific_requirements" else "") +
             "Perform only the assigned independent strategy review. Do not modify files, "
             "run backtests, access networks, keys or trading systems, or issue authority. "

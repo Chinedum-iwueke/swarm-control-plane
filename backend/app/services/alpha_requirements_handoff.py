@@ -266,7 +266,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         defer("repair_coverage_exposure_history", str(exc))
     if context is not None:
         evidence["coverage_successor_context"] = context
-    from app.services.alpha_requirements_feasibility import planning_task, verified_report
+    from app.services.alpha_requirements_feasibility import planning_task, verified_report, reviewed_successor_inputs
 
     planning_evidence = {
         "discovery_candidate": candidate,
@@ -275,6 +275,8 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "window": evidence["window"],
         "validation_requirements": package,
     }
+    if context is not None:
+        planning_evidence["coverage_successor_context"] = context
     try:
         feasibility_task = planning_task(db, campaign, producer, planning_evidence)
         if feasibility_task.status in {"queued", "leased", "running"}:
@@ -287,12 +289,20 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         feasibility = verified_report(feasibility_task, planning_evidence, campaign.specification["bulletproof_source_commit"])
     except (KeyError, TypeError, ValueError) as exc:
         defer("repair_native_requirements_feasibility", str(exc))
-    if feasibility["status"] != "ready":
+    try:
+        successor = reviewed_successor_inputs(feasibility, planning_evidence, mandate, campaign.specification["bulletproof_source_commit"]) if feasibility["status"] != "ready" else None
+    except (KeyError, TypeError, ValueError) as exc:
+        defer("repair_native_requirements_feasibility", str(exc))
+    if feasibility["status"] != "ready" and successor is None:
         defer("resolve_native_requirements_feasibility", {
             "task_id": str(feasibility_task.id), "report_digest": feasibility["report_digest"],
             "reasons": feasibility["reasons"], "feature_history": feasibility["feature_history"],
             "validation_plans": feasibility["validation_plans"],
         })
+    review_window = evidence["window"]
+    if successor is not None:
+        package = successor["validation_requirements"]
+        review_window = successor["window"]
     package = package | {"native_feasibility_receipt": {
         "task_id": str(feasibility_task.id), "report_digest": feasibility["report_digest"],
         "feature_history": feasibility["feature_history"],
@@ -301,7 +311,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         key: value
         for key, value in evidence.items()
         if key not in {"dataset_binding", "instrument", "tier"}
-    } | {"validation_requirements": package}
+    } | {"validation_requirements": package, "window": review_window}
     if len(prospective) > 20:
         prospective.pop("maximum_variants", None)
     if len(prospective) > 20 or len(json.dumps(prospective, allow_nan=False)) > 46_000:
@@ -316,12 +326,13 @@ def ensure_reviewed_requirements(db, campaign, evidence):
             "predictor_coverage_evidence": batch["predictor_coverage_evidence"],
             "representation_plan": evidence["representation_plan"],
             "dataset_bindings": evidence["dataset_bindings"],
-            "window": evidence["window"],
+            "window": review_window,
+            "original_window": evidence["window"],
             "coverage_successor_context": context,
             "claim_boundary": "Predictor availability is not universe membership or observed event support.",
             "native_feasibility": feasibility,
             "feasibility_task_id": str(feasibility_task.id),
-            "history_interpretation": "Warm-up is prior completed research bars across the composed transformation graph. Reject contradictory prose; event minima are post-execution gates, not inferred observations. Scientific duration is a minimum, with explicit split gaps and target tails in the plan.",
+            "history_interpretation": "Warm-up is prior completed research bars across the composed transformation graph. Reject contradictory prose; event minima are post-execution gates, not inferred observations. Scientific duration is a minimum, with explicit split gaps and target tails in the plan. If a native coverage successor is present, review the changed window, unchanged scientific requirements, historical envelope and exposure exclusions together. The original plan remains deferred; only the successor plans may be ready.",
         },
     }
     if len(json.dumps(qualification).encode()) > 80_000:
@@ -388,6 +399,17 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         defer("await_independent_scientific_requirements_review", blocked=False)
     if any(review.verdict != "approve" for review in reviews):
         defer("scientific_requirements_rejected")
+    if successor is not None:
+        # Only the new engineering evidence changes, after both reviews. The
+        # original candidate, admission, task and publication remain immutable.
+        evidence["window"] = deepcopy(review_window)
+        evidence.pop("coverage_successor_context", None)
+        package = package | {"coverage_successor_receipt": {
+            "publication_digest": published.event_digest,
+            "route_id": str(route.id),
+            "successor_digest": feasibility["coverage_successor_proposal"]["successor_digest"],
+            "parent_task_id": str(feasibility_task.id),
+        }}
     return package | {
         "review_receipt": {
             "route_id": str(route.id),
