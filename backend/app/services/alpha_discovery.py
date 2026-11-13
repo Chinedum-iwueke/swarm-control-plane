@@ -1557,6 +1557,14 @@ def queue_founder_idea(
         "universe_slices": payload.universe_slices,
         "selection_timing": "frozen_before_outcome_evaluation",
     }
+    if payload.recovery_candidate_id is not None:
+        from app.services.alpha_candidate_recovery import recovery_scope
+        try:
+            constraints["retained_candidate_recovery"] = recovery_scope(
+                db, mandate, payload.recovery_candidate_id, payload.expected_recovery_candidate_digest
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
     idea_digest = digest_document(
         {
             "mandate_digest": mandate.mandate_digest,
@@ -1634,6 +1642,8 @@ def _new_cycle(
             "idea_digest": founder_idea.idea_digest,
             "constraints": founder_idea.constraints,
             "instruction": (
+                "This is explicit source recovery, not novel discovery. Preserve the supplied scientific_identity fields verbatim; do not paraphrase the question, predictor, target, horizon, null, direction, falsification criteria, features or data scope. Reassess representation and scientific requirements independently at the new source. Fresh admission and independent review remain mandatory."
+                if founder_idea.constraints.get("retained_candidate_recovery") else
                 "Challenge this idea first. Reject it if it is not predictive, causal-timing-safe, "
                 "novel, or testable with admitted data; otherwise formalize it as a candidate."
             ),
@@ -1917,6 +1927,16 @@ def _candidate_reasons(
         elif candidate.data.research_timeframe not in capability["signal_timeframes"]:
             reasons.append("reusable_hypothesis_timeframe_mismatch")
     normalized_prior = {" ".join(item.lower().split()) for item in prior_questions}
+    from app.services.alpha_candidate_recovery import matching_recovery, normalized
+    try:
+        recovery = matching_recovery(db, mandate, cycle, candidate)
+    except (KeyError, TypeError, ValueError) as exc:
+        reasons.append("retained_source_recovery_invalid")
+        recovery = None
+    if recovery is not None:
+        # Exempt only this exact, still-untested question. Other novelty checks
+        # and every representation, data, review and execution gate remain.
+        normalized_prior.discard(normalized(recovery["scientific_identity"]["question"]))
     if question in normalized_prior:
         reasons.append("duplicate_prior_question")
     if any(_question_similarity(question, item) >= 0.8 for item in normalized_prior):
@@ -2047,6 +2067,11 @@ def _apply_representation_plans(
 
 
 def _candidate_enters_novelty_memory(item: AlphaDiscoveryCandidate) -> bool:
+    # Duplicate-only rejections point back to an existing question. Treating
+    # every paraphrase as a fresh exclusion makes the exclusion radius grow.
+    if (item.disposition == "rejected" and item.reason_codes
+            and set(item.reason_codes) <= {"duplicate_prior_question", "semantic_duplicate_prior_question"}):
+        return False
     return not (
         item.disposition == "rejected"
         and "candidate_schema_invalid" in item.reason_codes
@@ -2175,6 +2200,9 @@ def _materialize_candidates(
                 # research clock is not. Do not skip its native coverage producer.
                 if not reasons:
                     reasons = ["data_admission_required"]
+            recovery = cycle.context.get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery")
+            if recovery is not None and "retained_source_recovery_invalid" not in reasons:
+                document["retained_candidate_recovery"] = deepcopy(recovery)
         except ValidationError as exc:
             candidate = None
             reasons = ["candidate_schema_invalid"]
