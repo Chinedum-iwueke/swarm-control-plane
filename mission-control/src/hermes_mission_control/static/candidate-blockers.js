@@ -13,6 +13,8 @@
       return;
     }
     loading = true;
+    el("items").setAttribute("aria-busy", "true");
+    el("count").textContent = signature ? "Updating · previous results" : "Loading";
     const current = revision;
     el("previous").disabled = el("next").disabled = true;
     const params = new URLSearchParams({category: el("category").value, query: el("query").value.trim(), offset});
@@ -52,6 +54,7 @@
       refreshed = Date.now();
     } finally {
       loading = false;
+      el("items").setAttribute("aria-busy", "false");
       if (pending) { pending = false; load(true); }
     }
   }
