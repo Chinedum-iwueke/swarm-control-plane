@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -853,6 +854,32 @@ async def test_strategy_feasibility_failure_prevents_codex_spend(
     assert [step.name for step in result["steps"]] == ["strategy-feasibility-scaffold"]
 
 
+@pytest.mark.parametrize("exit_code", [0, 2])
+def test_scaffold_rejection_retains_reason_even_with_empty_process_logs(tmp_path, exit_code):
+    artifacts = tmp_path / "artifacts"
+    logs = tmp_path / "logs"
+    scripts = tmp_path / "scripts"
+    for path in (artifacts, logs, scripts):
+        path.mkdir()
+    (scripts / "scaffold_alpha_strategy.py").touch()
+    (artifacts / "strategy-scaffold-manifest.json").write_text(
+        '{"success":false,"reason":"existing scaffold is not bound to intent"}'
+    )
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path, codex_model="test", timeout_seconds=60,
+        heartbeat_interval_seconds=1, effective_uid=lambda: 1000,
+    )
+    executor._git = SimpleNamespace(run=lambda *args, **kwargs: SimpleNamespace(
+        return_code=exit_code, stdout="", stderr=""
+    ))
+    result = executor._run_strategy_scaffold(contract(), SimpleNamespace(
+        repository=tmp_path, artifacts=artifacts, logs=logs
+    ))
+    assert result.success is False
+    assert result.return_code == 2
+    assert "not bound to intent" in (logs / result.stderr_log.split("/")[-1]).read_text()
+
+
 def test_strategy_scaffold_verifier_rejects_intent_mutation_and_placeholders(
     tmp_path: Path,
 ) -> None:
@@ -907,8 +934,12 @@ def test_strategy_scaffold_verifier_rejects_intent_mutation_and_placeholders(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["ollama", "copilot", "codex"])
+@pytest.mark.parametrize("placeholder", [False, True])
 async def test_failed_local_preflight_gets_scoped_correction_before_review(
     tmp_path: Path,
+    provider: str,
+    placeholder: bool,
 ) -> None:
     events: list[str] = []
     artifacts = tmp_path / "artifacts"
@@ -937,7 +968,9 @@ async def test_failed_local_preflight_gets_scoped_correction_before_review(
         timeout_seconds=3600,
         heartbeat_interval_seconds=1,
         validation_executor=Validator(),
-        author_provider="ollama",
+        author_provider=provider,
+        copilot_binary=tmp_path / "copilot",
+        copilot_home=tmp_path,
         local_author_url="http://127.0.0.1:11434",
         local_author_model="local-model",
         effective_uid=lambda: 1000,
@@ -958,6 +991,27 @@ async def test_failed_local_preflight_gets_scoped_correction_before_review(
     executor._review_approved = lambda _path: True
     executor._create_bundle = lambda *_args: successful_step("create-pr-bundle")
     executor._result = lambda *args, **_kwargs: args[4]
+    if provider != "ollama":
+        executor._requires_strategy_scaffold = lambda _contract: True
+        executor._run_strategy_scaffold = lambda *_args: successful_step("scaffold")
+        executor._strategy_scaffold_author_context = lambda _workspace: ""
+        executor._verify_strategy_scaffold = lambda _workspace: successful_step("contract")
+        if placeholder:
+            checks = iter([False, True])
+            (tmp_path / "strategy-scaffold-contract.stderr.log").write_text(
+                "unresolved authoring placeholder: strategy.py\n"
+            )
+            executor._verify_strategy_scaffold = lambda _workspace: successful_step(
+                "contract"
+            ).model_copy(update={"success": next(checks)})
+
+        async def focused(**kwargs):
+            corrected = "name" in kwargs
+            return successful_step("focused").model_copy(
+                update={"success": corrected, "return_code": 0 if corrected else 1}
+            )
+
+        executor._run_strategy_focused_tests = focused
     workflow = SimpleNamespace(
         task_type="engineering_mission",
         name="engineering-mission",
@@ -979,7 +1033,7 @@ async def test_failed_local_preflight_gets_scoped_correction_before_review(
         "independent-review",
         "validation",
     ]
-    assert [item.name for item in result] == [
+    assert [item.name for item in result if item.name not in {"scaffold", "contract", "focused"}] == [
         "coding-agent",
         "coding-correction",
         "independent-review",
@@ -1082,7 +1136,10 @@ def test_patch_includes_untracked_files_without_writing_git_objects(
     )
 
 
-def test_alpha_correction_inherits_matching_parent_patch(tmp_path: Path) -> None:
+@pytest.mark.parametrize("evidence_matches", [True, False])
+def test_alpha_correction_inherits_matching_parent_patch(
+    tmp_path: Path, evidence_matches: bool
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=source, check=True)
@@ -1186,11 +1243,24 @@ def test_alpha_correction_inherits_matching_parent_patch(tmp_path: Path) -> None
         effective_uid=lambda: 1000,
     )
 
-    inherited = executor._inherit_parent_patch(
-        task,
-        contract().model_copy(update={"milestone_id": "ALPHA-003"}),
-        workspace,
+    (parent_dir / "artifacts" / "strategy-engineering-evidence.json").write_text(
+        json.dumps({"intent": "current" if evidence_matches else "different"}),
+        encoding="utf-8",
     )
+    correction_contract = contract().model_copy(
+        update={
+            "milestone_id": "ALPHA-003",
+            "evidence_context": json.dumps({"intent": "current"}),
+        }
+    )
+    with patch.object(executor, "_requires_strategy_scaffold", return_value=True):
+        inherited = executor._inherit_parent_patch(task, correction_contract, workspace)
+
+    if not evidence_matches:
+        assert inherited is False
+        assert (repository / "docs" / "strategy.md").read_text() == "base\n"
+        assert not (current_dir / "inherited-parent-patch.json").exists()
+        return
 
     assert inherited is True
     assert (repository / "docs" / "strategy.md").read_text() == "inherited\n"
@@ -1269,6 +1339,16 @@ def test_review_prompt_respects_read_only_validator_boundary() -> None:
 
     assert "outer validator is the separate authority" in prompt
     assert "read-only review inability is not itself a product finding" in prompt
+
+
+def test_alpha_review_preserves_frozen_intent_but_requires_completion_evidence() -> None:
+    prompt = EngineeringMissionExecutor._review_prompt(
+        contract().model_copy(update={"milestone_id": "ALPHA-003"})
+    )
+    assert "not a mutable completion status" in prompt
+    assert "do not ask the author to change the intent digest" in prompt
+    assert "actually resolved from executable tests" in prompt
+    assert "coverage receipt alone is not scientific proof" in prompt
 
 
 def test_alpha_review_prompt_mirrors_downstream_scientific_gates() -> None:

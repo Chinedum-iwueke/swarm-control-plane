@@ -3,8 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.api.routes.task_runtime import defer_provider_capacity
+from app.api.routes.task_runtime import defer_provider_capacity, lease_task
 from app.schemas.provider_capacity import ProviderCapacityDeferral
+from app.schemas.task import TaskLeaseRequest
 from app.services.provider_capacity import claim_due_probes_or_block, report_probe
 
 
@@ -74,6 +75,40 @@ def test_due_probe_is_claimed_by_one_matching_agent() -> None:
     assert circuit.state == "half_open"
     assert circuit.probe_agent_id == agent.id
     assert circuit.probe_expires_at > datetime.now(UTC)
+
+
+def test_empty_task_queue_does_not_claim_due_provider_probe() -> None:
+    circuit = _circuit(next_probe_at=datetime.now(UTC) - timedelta(seconds=1))
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [circuit]
+    with (
+        patch("app.api.routes.task_runtime.matching_control_scopes", return_value=[]),
+        patch("app.api.routes.task_runtime.reap_expired_leases"),
+        patch(
+            "app.api.routes.task_runtime.lease_next_task",
+            return_value=(None, None, None, {}),
+        ),
+    ):
+        response = lease_task(TaskLeaseRequest(lease_seconds=300), _agent(), db)
+
+    assert response.task is None
+    assert response.provider_probes == []
+    assert circuit.state == "open"
+    assert circuit.probe_agent_id is None
+    db.add.assert_not_called()
+    db.commit.assert_called_once()
+
+
+def test_capacity_check_keeps_due_probe_available_until_task_selection() -> None:
+    circuit = _circuit(next_probe_at=datetime.now(UTC) - timedelta(seconds=1))
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [circuit]
+    agent = _agent()
+    assert claim_due_probes_or_block(db, agent, claim=False) == ([], [])
+    assert circuit.state == "open"
+    db.add.assert_not_called()
+    assert claim_due_probes_or_block(db, agent) == (["codex"], [])
+    assert circuit.state == "half_open"
 
 
 def test_healthy_probe_closes_circuit_and_supersedes_notification() -> None:

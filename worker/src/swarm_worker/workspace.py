@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
@@ -237,6 +238,7 @@ class WorkspaceManager:
         repository: str,
         base_ref: str,
         validation_only: bool = False,
+        execution_key: str | None = None,
     ) -> WorkspacePlan | TaskWorkspace:
         plan = self.validate_preparation(
             task_id=task_id,
@@ -245,6 +247,20 @@ class WorkspaceManager:
             repository=repository,
             base_ref=base_ref,
         )
+        if execution_key is not None:
+            # Capacity deferral refunds the logical attempt, not its execution history.
+            suffix = hashlib.sha256(execution_key.encode()).hexdigest()
+            directory = plan.attempt_directory.with_name(
+                f"{plan.attempt_directory.name}-execution-{suffix}"
+            )
+            plan = replace(
+                plan,
+                attempt_directory=directory,
+                workspace_repository=directory / "repository",
+                logs_directory=directory / "logs",
+                artifacts_directory=directory / "artifacts",
+                metadata_path=directory / "metadata.json",
+            )
         if validation_only:
             return plan
 

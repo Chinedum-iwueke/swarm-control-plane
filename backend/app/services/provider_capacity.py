@@ -21,7 +21,9 @@ def _matches(circuit: ProviderCapacityCircuit, agent: Agent) -> bool:
     return bool(required) and required.issubset(set(agent.capabilities or []))
 
 
-def claim_due_probes_or_block(db: Session, agent: Agent) -> tuple[list[str], list[str]]:
+def claim_due_probes_or_block(
+    db: Session, agent: Agent, *, claim: bool = True
+) -> tuple[list[str], list[str]]:
     now = datetime.now(UTC)
     circuits = list(
         db.scalars(
@@ -49,6 +51,9 @@ def claim_due_probes_or_block(db: Session, agent: Agent) -> tuple[list[str], lis
             )
     if blocked:
         return [], blocked
+
+    if not claim:
+        return [], []
 
     providers: list[str] = []
     for circuit in relevant:

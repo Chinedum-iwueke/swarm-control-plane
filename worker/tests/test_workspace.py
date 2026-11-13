@@ -97,6 +97,19 @@ def test_valid_worktree_creation_and_layout(
     assert metadata["base_ref"] == "main"
 
 
+def test_refunded_attempt_uses_new_lease_workspace_and_retains_logs(manager):
+    args = {"task_id": TASK_ID, "task_number": "capacity", "attempt_number": 1,
+            "repository": "project", "base_ref": "main"}
+    first = manager.prepare(**args, execution_key="first-lease")
+    (first.logs / "coding-agent.stdout.log").write_text("retained evidence")
+    same = manager.prepare(**args, execution_key="first-lease")
+    second = manager.prepare(**args, execution_key="second-lease")
+    assert same.repository == first.repository
+    assert second.repository != first.repository
+    assert not (second.logs / "coding-agent.stdout.log").exists()
+    assert (first.logs / "coding-agent.stdout.log").read_text() == "retained evidence"
+
+
 def test_primary_checkout_remains_unchanged(
     manager: WorkspaceManager,
     repository_root: Path,

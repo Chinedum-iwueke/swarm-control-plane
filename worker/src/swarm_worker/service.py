@@ -411,6 +411,7 @@ class WorkerService:
                     attempt_number=task.attempt_count,
                     repository=validated.contract.repository,
                     base_ref=validated.contract.base_ref,
+                    execution_key=lease_token,
                 )
                 if not isinstance(workspace, TaskWorkspace):
                     raise TypeError("Workspace manager returned an invalid result.")

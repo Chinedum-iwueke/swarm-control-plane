@@ -175,24 +175,33 @@ class EngineeringMissionExecutor:
             )
 
         steps.append(coder)
+        placeholders_pending = False
         if self._requires_strategy_scaffold(contract):
             scaffold_check = self._verify_strategy_scaffold(workspace)
             steps.append(scaffold_check)
             if not scaffold_check.success:
-                return self._result(
-                    task,
-                    workflow,
-                    workspace,
-                    started,
-                    steps,
-                    False,
-                    "strategy_scaffold_contract_violated",
-                    heartbeat_failures=heartbeat_failures,
+                diagnostics = (workspace.logs / "strategy-scaffold-contract.stderr.log").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                placeholders_pending = bool(diagnostics) and all(
+                    line.startswith("unresolved authoring placeholder:")
+                    for line in diagnostics
                 )
+                if not placeholders_pending:
+                    return self._result(
+                        task,
+                        workflow,
+                        workspace,
+                        started,
+                        steps,
+                        False,
+                        "strategy_scaffold_contract_violated",
+                        heartbeat_failures=heartbeat_failures,
+                    )
         changed = self._changed_paths(workspace)
         self._enforce_scope(contract, changed, workspace)
         focused_failed = False
-        if self._requires_strategy_scaffold(contract):
+        if self._requires_strategy_scaffold(contract) and not placeholders_pending:
             focused = await self._run_strategy_focused_tests(
                 workspace=workspace,
                 heartbeat=heartbeat,
@@ -202,22 +211,11 @@ class EngineeringMissionExecutor:
             steps.append(focused)
             if not focused.success:
                 focused_failed = True
-                if self._author_provider == "codex":
-                    return self._result(
-                        task,
-                        workflow,
-                        workspace,
-                        started,
-                        steps,
-                        False,
-                        "focused_strategy_tests_failed",
-                        heartbeat_failures=heartbeat_failures,
-                    )
-        needs_correction = focused_failed or (
+        needs_correction = placeholders_pending or focused_failed or (
             self._author_provider == "ollama"
             and not self._local_tests_passed(workspace)
         )
-        if self._author_provider in {"copilot", "ollama"} and needs_correction:
+        if self._author_provider in {"codex", "copilot", "ollama"} and needs_correction:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return self._result(
@@ -1061,6 +1059,16 @@ class EngineeringMissionExecutor:
                 check=False,
             )
             stderr = result.stderr
+        manifest_valid = False
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest_valid = manifest.get("success") is True
+            if not manifest_valid:
+                stderr += "\nScaffold rejected: " + str(
+                    manifest.get("reason", "missing success attestation")
+                )[:4000] + "\n"
+        except (OSError, ValueError, AttributeError):
+            stderr += "\nMissing or invalid scaffold manifest.\n"
         stdout_path.write_text(result.stdout if result else "", encoding="utf-8")
         stderr_path.write_text(stderr, encoding="utf-8")
         stdout_path.chmod(0o600)
@@ -1069,8 +1077,8 @@ class EngineeringMissionExecutor:
             manifest_path.chmod(0o600)
         return StepExecutionResult(
             name=name,
-            success=result is not None and result.return_code == 0,
-            return_code=result.return_code if result is not None else 2,
+            success=result is not None and result.return_code == 0 and manifest_valid,
+            return_code=(result.return_code or (0 if manifest_valid else 2)) if result else 2,
             started_at=started_at,
             ended_at=datetime.now(timezone.utc),
             duration_seconds=time.monotonic() - monotonic,
@@ -1173,9 +1181,16 @@ class EngineeringMissionExecutor:
             raise ExecutionPolicyError(
                 "Strategy scaffold must identify exactly one focused test module."
             )
+        from swarm_worker.executors.strategy_test_probe import RUNNER_PROBE_PROGRAM
+
+        harness_args = (
+            ["--require-terminal-harness"]
+            if (workspace.repository / "src/bt/validation/authoring_harness.py").is_file()
+            else []
+        )
         return await self._run_bounded_command(
             name=name,
-            args=["python", "-m", "pytest", "-q", tests[0]],
+            args=["python", "-c", RUNNER_PROBE_PROGRAM, tests[0], *harness_args],
             workspace=workspace,
             heartbeat=heartbeat,
             heartbeat_failures=heartbeat_failures,
@@ -1440,6 +1455,20 @@ class EngineeringMissionExecutor:
                     )
                 except (OSError, ValueError):
                     continue
+                if self._requires_strategy_scaffold(contract):
+                    # A matching Git base is insufficient: corrections may carry a
+                    # different scientific intent. Never transplant that old patch.
+                    try:
+                        retained = json.loads(
+                            (attempt_directory / "artifacts" /
+                             "strategy-engineering-evidence.json").read_text(
+                                 encoding="utf-8"
+                             )
+                        )
+                        if retained != json.loads(contract.evidence_context):
+                            continue
+                    except (OSError, ValueError, TypeError):
+                        continue
                 if (
                     metadata.task_id != parent_task_id
                     or metadata.repository != workspace.metadata.repository
@@ -1665,7 +1694,15 @@ class EngineeringMissionExecutor:
             "evaluator, governance review, or immutable evidence bindings. Synthetic "
             "fixtures must use a separate immutable test contract and identity, must not "
             "rewrite or reuse the frozen production registration, and must never masquerade "
-            "as its trusted dataset. Before stopping, "
+            "as its trusted dataset. If src/bt/validation/authoring_harness.py exists, "
+            "read docs/authoring_harness.md and use write_fixture_binding, run_native_case "
+            "for bounded smoke, and run_scientific_case for four full-length synthetic "
+            "terminal cases. Read the frozen validation_requirements and preflight plans; "
+            "feature warmup is not training and smoke does not certify scientific support. "
+            "The trusted outer test gate observes completed "
+            "harness calls: passing direct evaluator tests or only one runner case is "
+            "insufficient. Do not replace scientific functions or reduce constants to "
+            "manufacture a positive fixture. Before stopping, "
             "trace the exact predictor, target, direction and horizon through the card, "
             "YAML, native strategy and runner; prove that any materialized representation "
             "fields are consumed at causal decision timestamps; bind every admitted "
@@ -1909,8 +1946,9 @@ class EngineeringMissionExecutor:
     @staticmethod
     def _correction_prompt(contract: EngineeringMissionContract) -> str:
         return (
-            "Correct the bounded local author's existing uncommitted patch. Its focused "
-            "tests failed. Inspect the patch and test output, repair only approved "
+            "Correct the bounded author's existing uncommitted patch. Its focused "
+            "checks failed or unresolved placeholders remain. Inspect the patch and "
+            "logs/strategy-scaffold-contract.stderr.log and focused-test logs, repair only approved "
             "implementation paths, and run focused tests. Never edit read-only tests.\n"
             f"Objective: {contract.objective}\n"
             f"Writable paths: {json.dumps(contract.allowed_paths)}\n"
@@ -1939,7 +1977,14 @@ class EngineeringMissionExecutor:
             "and actual strategy consumption; exact catalog/manifest/producer/governance/"
             "partition and plan digests; a real execute_registered compiler/evaluator path; "
             "and production of every declared metric plus positive/test-open, negative, "
-            "invalid and failed terminal evidence. Repository tests need not contain or "
+            "invalid and failed terminal evidence. Preserve immutable scaffold intent: "
+            "its unresolved_authoring list records "
+            "the originally assigned implementation work, not a mutable completion "
+            "status. Do not reject solely because that frozen list remains present, "
+            "and do not ask the author to change the intent digest. Determine whether "
+            "each item is actually resolved from executable tests, implementation and "
+            "retained evidence; a coverage receipt alone is not scientific proof. "
+            "Repository tests need not contain or "
             "reproduce the production lake payload: an internally consistent portable "
             "fixture may prove the successful runner path, provided it uses a separate "
             "test contract, does not mutate or weaken the frozen production card/YAML, "
@@ -2067,6 +2112,9 @@ class EngineeringMissionExecutor:
                     "lease_lost",
                     "independent_review_rejected",
                     "provider_capacity",
+                    "strategy_feasibility_rejected",
+                    "strategy_scaffold_contract_violated",
+                    "focused_strategy_tests_failed_after_correction",
                 }
             ),
             summary=summary,

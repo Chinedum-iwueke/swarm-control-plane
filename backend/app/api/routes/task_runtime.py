@@ -192,7 +192,9 @@ def lease_task(
                 scope.reason or "Paused by operator." for scope in paused_scopes
             ],
         )
-    provider_probes, provider_blocks = claim_due_probes_or_block(db, agent)
+    # Hold circuit locks through selection, but do not consume a probe on an
+    # empty queue: workers only exercise providers when they receive a task.
+    provider_probes, provider_blocks = claim_due_probes_or_block(db, agent, claim=False)
     if provider_blocks:
         db.commit()
         return TaskLeaseResponse(
@@ -221,6 +223,15 @@ def lease_task(
             provider_probes=provider_probes,
         )
 
+    provider_probes, provider_blocks = claim_due_probes_or_block(db, agent)
+    if provider_blocks:
+        db.rollback()
+        return TaskLeaseResponse(
+            task=None,
+            lease_token=None,
+            paused=True,
+            pause_reasons=provider_blocks,
+        )
     db.commit()
     db.refresh(task)
 
