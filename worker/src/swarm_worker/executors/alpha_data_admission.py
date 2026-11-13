@@ -62,7 +62,7 @@ class AlphaDataAdmissionExecutor:
         assignment.chmod(0o600)
         command = (
             str(self._python),
-            str(workspace.repository / "scripts/build_alpha_data_admission_batch.py"),
+            str(workspace.repository / ("scripts/plan_alpha_requirements.py" if contract.feasibility_evidence is not None else "scripts/build_alpha_data_admission_batch.py")),
             "--assignment",
             str(assignment),
             "--output",
@@ -103,7 +103,7 @@ class AlphaDataAdmissionExecutor:
                 except TimeoutError:
                     await heartbeat(
                         {
-                            "phase": "selected_panel_content_admission",
+                            "phase": "native_requirements_feasibility" if contract.feasibility_evidence is not None else "selected_panel_content_admission",
                             "candidate_id": contract.candidate_id,
                             "asset_count": len(contract.assets),
                             "elapsed_seconds": round(time.monotonic() - started, 3),
@@ -113,7 +113,7 @@ class AlphaDataAdmissionExecutor:
         success = process.returncode == 0 and output.is_file()
         document = json.loads(output.read_text(encoding="utf-8")) if success else {}
         step = StepExecutionResult(
-            name="native-selected-panel-admission",
+            name="native-requirements-feasibility" if contract.feasibility_evidence is not None else "native-selected-panel-admission",
             success=success,
             return_code=process.returncode,
             started_at=started_at,
@@ -134,11 +134,11 @@ class AlphaDataAdmissionExecutor:
             total_duration_seconds=step.duration_seconds,
             steps=[step],
             success=success,
-            termination_reason=None if success else "alpha_data_admission_failed",
+            termination_reason=None if success else ("native_requirements_feasibility_failed" if contract.feasibility_evidence is not None else "alpha_data_admission_failed"),
             worker_version=__version__,
             artifacts=[output.relative_to(workspace.plan.attempt_directory).as_posix()]
             if output.is_file()
             else [],
-            retryable=not success,
-            summary={"alpha_data_admission": document} if success else {},
+            retryable=not success and contract.feasibility_evidence is None,
+            summary={"native_requirements_feasibility" if contract.feasibility_evidence is not None else "alpha_data_admission": document} if success else {},
         )

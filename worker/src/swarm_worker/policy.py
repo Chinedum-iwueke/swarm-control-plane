@@ -486,9 +486,15 @@ class AlphaDataAdmissionContract(BaseModel):
     authority: Literal["no_capital_data_admission"]
     representation_plan: dict | None = None
     coverage_window: dict[str, str] | None = None
+    feasibility_evidence: dict | None = None
 
     @model_validator(mode="after")
     def exact_source_and_unique_assets(self):
+        if self.feasibility_evidence is not None:
+            if len(json.dumps(self.feasibility_evidence, allow_nan=False)) > 64_000:
+                raise ValueError("native feasibility evidence exceeds bound")
+            if self.feasibility_evidence.get("representation_plan") != self.representation_plan:
+                raise ValueError("feasibility representation differs from admitted contract")
         if (self.representation_plan is None) != (self.coverage_window is None):
             raise ValueError("coverage requires both representation and approved window")
         if self.representation_plan is not None:

@@ -1062,6 +1062,7 @@ def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch
 
 
 @pytest.mark.parametrize("status,action,expected", [
+    ("needs_attention", "resolve_native_requirements_feasibility", True),
     ("needs_attention", "produce_admitted_predictor_coverage", True),
     ("running", "produce_admitted_predictor_coverage", False),
     ("running", "await_independent_requirements_review", False),

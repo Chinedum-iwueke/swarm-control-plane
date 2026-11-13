@@ -266,6 +266,37 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         defer("repair_coverage_exposure_history", str(exc))
     if context is not None:
         evidence["coverage_successor_context"] = context
+    from app.services.alpha_requirements_feasibility import planning_task, verified_report
+
+    planning_evidence = {
+        "discovery_candidate": candidate,
+        "representation_plan": evidence["representation_plan"],
+        "dataset_bindings": evidence["dataset_bindings"],
+        "window": evidence["window"],
+        "validation_requirements": package,
+    }
+    try:
+        feasibility_task = planning_task(db, campaign, producer, planning_evidence)
+        if feasibility_task.status in {"queued", "leased", "running"}:
+            defer("await_native_requirements_feasibility", blocked=False)
+        if feasibility_task.status != "succeeded":
+            defer("repair_native_requirements_feasibility", {"task_id": str(feasibility_task.id), "status": feasibility_task.status})
+        feasibility_identity = task_producer_identity(db, feasibility_task)
+        if feasibility_identity is None:
+            defer("restore_requirements_producer_identity")
+        feasibility = verified_report(feasibility_task, planning_evidence, campaign.specification["bulletproof_source_commit"])
+    except (KeyError, TypeError, ValueError) as exc:
+        defer("repair_native_requirements_feasibility", str(exc))
+    if feasibility["status"] != "ready":
+        defer("resolve_native_requirements_feasibility", {
+            "task_id": str(feasibility_task.id), "report_digest": feasibility["report_digest"],
+            "reasons": feasibility["reasons"], "feature_history": feasibility["feature_history"],
+            "validation_plans": feasibility["validation_plans"],
+        })
+    package = package | {"native_feasibility_receipt": {
+        "task_id": str(feasibility_task.id), "report_digest": feasibility["report_digest"],
+        "feature_history": feasibility["feature_history"],
+    }}
     prospective = {
         key: value
         for key, value in evidence.items()
@@ -288,6 +319,9 @@ def ensure_reviewed_requirements(db, campaign, evidence):
             "window": evidence["window"],
             "coverage_successor_context": context,
             "claim_boundary": "Predictor availability is not universe membership or observed event support.",
+            "native_feasibility": feasibility,
+            "feasibility_task_id": str(feasibility_task.id),
+            "history_interpretation": "Warm-up is prior completed research bars across the composed transformation graph. Reject contradictory prose; event minima are post-execution gates, not inferred observations. Scientific duration is a minimum, with explicit split gaps and target tails in the plan.",
         },
     }
     if len(json.dumps(qualification).encode()) > 80_000:
@@ -298,7 +332,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "source_commit": campaign.specification["bulletproof_source_commit"],
         "card_digest": digest(candidate),
         "artifact_bundle_digest": digest(qualification["artifact_bundle"]),
-        "producer_agent_ids": [str(identity["agent_id"])],
+        "producer_agent_ids": sorted({str(identity["agent_id"]), str(feasibility_identity["agent_id"])}),
         "producer_task_id": str(producer.id),
     }
     publications = db.scalars(

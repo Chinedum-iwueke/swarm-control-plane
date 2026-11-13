@@ -156,8 +156,9 @@ def test_campaign_commits_pending_publication_without_returning_failed_task(
 
 
 @pytest.mark.parametrize("verdict", [None, "reject", "approve"])
+@pytest.mark.parametrize("native_state", ["ready", "deferred", "queued", "failed"])
 def test_durable_publication_is_reused_and_only_verified_approval_releases(
-    monkeypatch, verdict
+    monkeypatch, verdict, native_state
 ):
     from app.services import alpha_campaign
     from app.services import alpha_requirements_handoff as service
@@ -200,6 +201,12 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
         "package_digest": "e" * 64,
     }
     monkeypatch.setattr(service, "task_producer_identity", lambda *args: identity)
+    from app.services import alpha_requirements_feasibility as feasibility
+    monkeypatch.setattr(feasibility, "planning_task", lambda *args: SimpleNamespace(id="native-plan", status=native_state if native_state in {"queued", "failed"} else "succeeded"))
+    monkeypatch.setattr(feasibility, "verified_report", lambda *args: {
+        "status": native_state, "report_digest": "d" * 64, "reasons": [],
+        "feature_history": {"minimum_prior_bars": 12}, "validation_plans": {},
+    })
     create = MagicMock(return_value=route)
     monkeypatch.setattr(service, "create_route", create)
     monkeypatch.setattr(
@@ -220,6 +227,17 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
         ),
     )
     for _ in range(2):
+        if native_state != "ready":
+            with pytest.raises(RequirementsPending):
+                ensure_reviewed_requirements(db, campaign, evidence)
+            assert campaign.next_action == {
+                "queued": "await_native_requirements_feasibility",
+                "failed": "repair_native_requirements_feasibility",
+                "deferred": "resolve_native_requirements_feasibility",
+            }[native_state]
+            create.assert_not_called()
+            assert not events
+            continue
         if verdict == "approve":
             package = ensure_reviewed_requirements(db, campaign, evidence)
             assert package["review_receipt"]["route_id"] == str(route.id)
@@ -232,8 +250,9 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
                 if verdict
                 else "await_independent_scientific_requirements_review"
             )
-    create.assert_called_once()
-    assert len(events) == 1
+    if native_state == "ready":
+        create.assert_called_once()
+        assert len(events) == 1
 
 
 def test_admission_reattestation_is_bounded_and_preserves_original(monkeypatch):
