@@ -139,3 +139,13 @@ this grants no execution authority. Drain pause prevents first-cycle creation an
 replenishment while existing results can reconcile. These safeguards close the
 approval-to-intake race without editing frozen cycles or restoring spent budgets.
 End-to-end scientific certification is still outstanding.
+
+During controlled deployment, the API committed discovery lease
+`b721758d-bc2e-458e-b9ac-4a115b11a065` but the response was lost before worker
+start acknowledgement. The worker returned to polling, leaving a 30-minute
+unstarted lease. Lease reaping now fences discovery-only leases after five minutes
+without a start or subsequent heartbeat. It preserves attempt limits, re-arms
+required approvals and invalidates the old lease token. Running work and other
+task types with potentially long workspace preparation retain normal expiry.
+Use drain pause around API recreation to prevent new lease acquisition during
+deployment. This transport recovery is not evidence of scientific completion.

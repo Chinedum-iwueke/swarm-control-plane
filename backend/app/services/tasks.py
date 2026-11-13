@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.security import (
@@ -499,7 +499,17 @@ def reap_expired_leases(
         .where(
             Task.status.in_(ACTIVE_LEASE_STATUSES),
             Task.lease_expires_at.is_not(None),
-            Task.lease_expires_at <= now,
+            or_(
+                Task.lease_expires_at <= now,
+                # Discovery has no repository preparation phase. A lease with
+                # no start or subsequent heartbeat can be safely fenced early.
+                and_(
+                    Task.task_type == "alpha_discovery",
+                    Task.status == "leased",
+                    Task.leased_at <= now - timedelta(minutes=5),
+                    Task.last_execution_heartbeat_at == Task.leased_at,
+                ),
+            ),
         )
         .order_by(Task.lease_expires_at.asc())
         .with_for_update(skip_locked=True)
@@ -512,15 +522,18 @@ def reap_expired_leases(
         previous_agent_id = task.assigned_agent_id
         previous_status = task.status
         expired_at = task.lease_expires_at
+        start_timeout = expired_at is not None and expired_at > now
+        failure_reason = "lease_start_timeout" if start_timeout else "lease_expired"
 
         append_task_event(
             db,
             task,
-            "lease_expired",
-            "Task lease expired.",
+            failure_reason,
+            "Discovery lease was not acknowledged within five minutes." if start_timeout else "Task lease expired.",
             agent_id=previous_agent_id,
             payload={
                 "previous_status": previous_status,
+                "execution_started": previous_status == "running",
                 "lease_expires_at": (
                     expired_at.isoformat() if expired_at is not None else None
                 ),
@@ -530,7 +543,7 @@ def reap_expired_leases(
         if task.attempt_count >= task.max_attempts:
             task.status = "failed"
             task.failure = {
-                "reason": "lease_expired",
+                "reason": failure_reason,
                 "message": ("Maximum attempts reached after lease expiry."),
             }
             task.completed_at = now
