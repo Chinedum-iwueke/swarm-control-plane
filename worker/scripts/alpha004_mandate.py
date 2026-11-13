@@ -70,20 +70,25 @@ def repository_head(repository: str) -> str:
 
 
 def eligible_catalog_instruments(catalog: dict, *, venues: set[str]) -> list[str]:
+    # Catalogue scope permits discovery, not execution. A gap outside the chosen
+    # interval must not hide a panel from subsequent content-bound admission.
+    records = catalog.get("availability")
+    if records is None:
+        records = catalog.get("one_year_coverage_candidates", [])
     instruments = {
-        str(item["instrument"]).upper()
-        for item in catalog.get("one_year_coverage_candidates", [])
-        if item.get("venue") in venues
-        and item.get("instrument")
+        str(item.get("symbol", item.get("instrument"))).upper()
+        for item in records
+        if item.get("exchange", item.get("venue")) in venues
+        and item.get("symbol", item.get("instrument"))
+        and item.get("dataset", "ohlcv") == "ohlcv"
         and item.get("timeframe") == "1m"
         and item.get("fetch_status") == "success"
-        and int(item.get("missing_rows") or 0) == 0
         and item.get("first_ts")
         and item.get("last_ts")
     }
     if not instruments:
         raise RuntimeError(
-            "The DATA-002 catalog has no gap-free one-year instruments for the "
+            "The DATA-002 catalog has no timestamped OHLCV instruments for the "
             "requested venues; no mandate was written."
         )
     return sorted(instruments)
@@ -172,6 +177,7 @@ def main() -> int:
     parser.add_argument("--producer-receipt-id", type=UUID)
     parser.add_argument("--window-start")
     parser.add_argument("--window-end")
+    parser.add_argument("--coverage-lookback-days", type=int, choices=range(365, 1096), default=1095)
     parser.add_argument(
         "--discovery-venues",
         nargs="+",
@@ -345,6 +351,13 @@ def main() -> int:
             "historical_window_policy": {
                 "primary_policy": "latest_complete_utc_year",
                 "primary_duration_days": 365,
+                "coverage_replanning": {
+                    "envelope_start": (window_end - timedelta(days=args.coverage_lookback_days)).isoformat(),
+                    "envelope_end": window_end.isoformat(),
+                    "maximum_successors": 2,
+                    "selection_policy": "latest_common_eligible_interval",
+                    "outcome_search_allowed": False,
+                },
                 "deep_validation_max_days": 1095,
                 "deep_validation_requires": [
                     "primary_window_survivor",

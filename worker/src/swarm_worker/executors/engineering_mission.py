@@ -2055,6 +2055,17 @@ class EngineeringMissionExecutor:
             if (workspace.plan.attempt_directory / relative).is_file()
         ]
         summary: dict[str, object] = {}
+        if reason == "strategy_feasibility_rejected":
+            manifest = workspace.artifacts / "strategy-scaffold-manifest.json"
+            if manifest.is_file() and not manifest.is_symlink() and manifest.stat().st_size <= 1_000_000:
+                try:
+                    document = json.loads(manifest.read_text(encoding="utf-8"))
+                    proposal = document.get("coverage_successor_proposal")
+                    if isinstance(proposal, dict):
+                        summary["coverage_successor_proposal"] = proposal
+                        summary["validation_plans"] = document.get("validation_plans", {})
+                except (OSError, ValueError, AttributeError):
+                    pass
         failed_steps = [step for step in steps if not step.success]
         if failed_steps and reason != "independent_review_rejected":
             failed = failed_steps[-1]

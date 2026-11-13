@@ -2360,7 +2360,7 @@ def test_manifest_visible_basket_waits_for_content_admission():
     mandate = SimpleNamespace(
         specification={
             "minimum_liquidity_usd": 0,
-            "discovery_catalog": {"maximum_assets_per_hypothesis": 8},
+            "discovery_catalog": {"maximum_assets_per_hypothesis": 8, "allowed_venues": ["bybit"]},
         }
     )
     reasons, binding_index = _candidate_reasons(value, cycle, mandate, [])

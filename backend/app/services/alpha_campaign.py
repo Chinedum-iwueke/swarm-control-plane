@@ -2185,6 +2185,13 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
                     "correction_stage": next_stage,
                 },
             )
+        from app.services.alpha_coverage_successor import reconcile_coverage_successor
+
+        coverage_task, coverage_handled = reconcile_coverage_successor(db, campaign, engineering)
+        if coverage_handled and coverage_task is None:
+            return engineering
+        if coverage_task is not None:
+            engineering = coverage_task
         _release_legacy_hypothesis_engineering_approval(db, engineering)
         campaign.phase = "strategy_engineering"
         if engineering.status == "pending_approval":

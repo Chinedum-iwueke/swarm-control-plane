@@ -59,6 +59,7 @@ from app.services.alpha_campaign import (
     validate_real_data_bindings,
 )
 from app.services.alpha_data_admission import register_selected_panel_receipt
+from app.services.alpha_coverage_policy import discovery_panels, coverage_window
 from app.services.authority import resolve_authority
 from app.services.discovery_portfolio import register_portfolio
 from app.services.evidence import ORCHESTRATOR_ACCESS
@@ -855,9 +856,8 @@ def _exploration_frontier(catalog: dict, memory: dict, *, ordinal: int) -> list[
     }
     eligible = [
         item
-        for item in catalog.get("one_year_coverage_candidates", [])
+        for item in discovery_panels(catalog)
         if item.get("fetch_status") == "success"
-        and int(item.get("missing_rows") or 0) == 0
         and item.get("timeframe") == "1m"
     ]
     underexplored = [item for item in eligible if item.get("instrument") not in recent]
@@ -1872,10 +1872,12 @@ def _candidate_reasons(
                 str(item.get("venue", "")).lower(),
                 str(item.get("instrument", "")).upper(),
             )
-            for item in catalog.get("one_year_coverage_candidates", [])
+            for item in discovery_panels(catalog)
             if item.get("fetch_status") == "success"
-            and int(item.get("missing_rows") or 0) == 0
             and item.get("timeframe") == candidate.data.timeframe
+            and item.get("venue") in catalog_policy.get(
+                "allowed_venues", mandate.specification.get("allowed_venues", [])
+            )
         }
         requested = {
             (candidate.data.venue, instrument)
@@ -2286,10 +2288,7 @@ def _ensure_data_admission_task(
                 "authority": "no_capital_data_admission",
                 **({
                     "representation_plan": candidate.document["representation_plan"],
-                    "coverage_window": {
-                        "start": mandate.specification["execution_window_start"],
-                        "end": mandate.specification["execution_window_end"],
-                    },
+                    "coverage_window": coverage_window(mandate.specification),
                 } if candidate.document.get("scientific_requirements") is not None else {}),
             },
             expected_outputs=[

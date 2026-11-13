@@ -66,6 +66,7 @@ def lake_inventory_summary(
                 "manifest_visible_unadmitted": result["availability_record_count"]
             },
             "assets": result["assets"],
+            **({"availability": result["availability"]} if "availability" in result else {}),
             "one_year_coverage_candidates": result[
                 "one_year_coverage_candidates"
             ],

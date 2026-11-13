@@ -31,9 +31,27 @@ class AlphaResearchBudget(StrictModel):
     maximum_parallel_campaigns: int = Field(default=3, ge=1, le=8)
 
 
+class AlphaCoverageReplanningPolicy(StrictModel):
+    envelope_start: datetime
+    envelope_end: datetime
+    maximum_successors: int = Field(default=2, ge=1, le=3, strict=True)
+    selection_policy: Literal["latest_common_eligible_interval"] = "latest_common_eligible_interval"
+    outcome_search_allowed: Literal[False] = False
+
+    @model_validator(mode="after")
+    def bounded_envelope(self):
+        if self.envelope_start.tzinfo is None or self.envelope_end.tzinfo is None:
+            raise ValueError("coverage envelope must be timezone aware")
+        duration = self.envelope_end - self.envelope_start
+        if not timedelta(days=365) <= duration <= timedelta(days=1095):
+            raise ValueError("coverage envelope must span 365 to 1095 days")
+        return self
+
+
 class AlphaHistoricalWindowPolicy(StrictModel):
     primary_policy: Literal["latest_complete_utc_year"] = "latest_complete_utc_year"
     primary_duration_days: Literal[365] = 365
+    coverage_replanning: AlphaCoverageReplanningPolicy | None = None
     deep_validation_max_days: int = Field(default=1095, ge=365, le=1095)
     deep_validation_requires: list[
         Literal[
@@ -171,6 +189,12 @@ class AlphaResearchMandateCreate(StrictModel):
                 raise ValueError(
                     "the primary execution window must be the exact latest complete year"
                 )
+            replanning = self.historical_window_policy.coverage_replanning
+            if replanning is not None and not (
+                replanning.envelope_start <= self.execution_window_start
+                < self.execution_window_end <= replanning.envelope_end
+            ):
+                raise ValueError("primary window must lie within the coverage envelope")
         if self.mandate_kind == "thematic" and self.parent_mandate_digest is None:
             raise ValueError("thematic mandates require a canonical parent digest")
         if (

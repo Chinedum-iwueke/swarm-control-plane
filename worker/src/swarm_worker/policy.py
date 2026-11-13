@@ -482,7 +482,7 @@ class AlphaDataAdmissionContract(BaseModel):
     backup_root: Literal[
         "/home/omenka/.local/share/invariance-swarm/alpha-data-backups"
     ]
-    assets: list[AlphaDataAdmissionAsset] = Field(min_length=1, max_length=20)
+    assets: list[AlphaDataAdmissionAsset] = Field(min_length=1, max_length=128)
     authority: Literal["no_capital_data_admission"]
     representation_plan: dict | None = None
     coverage_window: dict[str, str] | None = None

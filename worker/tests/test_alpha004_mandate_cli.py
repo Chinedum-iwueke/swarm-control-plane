@@ -8,6 +8,19 @@ import httpx
 import pytest
 
 
+def test_catalog_scope_includes_gapped_and_short_panels_for_admission():
+    script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
+    spec = importlib.util.spec_from_file_location("mandate_catalog_scope", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    panel = {"exchange": "bybit", "symbol": "TRBUSDT", "dataset": "ohlcv",
+             "timeframe": "1m", "fetch_status": "success", "missing_rows": 25,
+             "first_ts": "2025-01-01T00:00:00Z", "last_ts": "2025-02-01T00:00:00Z"}
+    catalog = {"availability": [panel, panel | {"symbol": "BTCUSDT"},
+                               panel | {"symbol": "OTHER", "exchange": "unapproved"}]}
+    assert module.eligible_catalog_instruments(catalog, venues={"bybit"}) == ["BTCUSDT", "TRBUSDT"]
+
+
 def test_compatible_campaign_bindings_unions_and_deduplicates_same_commit():
     script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
     spec = importlib.util.spec_from_file_location("mandate_binding_union", script)
@@ -253,6 +266,13 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         assert payload["historical_window_policy"] == {
             "primary_policy": "latest_complete_utc_year",
             "primary_duration_days": 365,
+            "coverage_replanning": {
+                "envelope_start": "2023-10-01T00:00:00+00:00",
+                "envelope_end": "2026-09-30T00:00:00+00:00",
+                "maximum_successors": 2,
+                "selection_policy": "latest_common_eligible_interval",
+                "outcome_search_allowed": False,
+            },
             "deep_validation_max_days": 1095,
             "deep_validation_requires": [
                 "primary_window_survivor",
