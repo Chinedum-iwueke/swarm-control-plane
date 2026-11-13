@@ -2559,7 +2559,8 @@ def test_selected_panel_correction_removes_legacy_binding_idempotently(
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
-def test_no_change_failure_without_admission_handoff_creates_successor(monkeypatch):
+@pytest.mark.parametrize("missing_requirements", [False, True])
+def test_no_change_failure_without_admission_handoff_creates_successor(monkeypatch, missing_requirements):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     rejected = SimpleNamespace(
@@ -2585,6 +2586,14 @@ def test_no_change_failure_without_admission_handoff_creates_successor(monkeypat
             }
         },
     )
+    if missing_requirements:
+        rejected.failure = {
+            "error_category": "strategy_feasibility_rejected",
+            "failed_step": "strategy-feasibility-scaffold",
+            "execution_evidence": {"summary": {"failure_diagnostic": {
+                "stderr_tail": "Scaffold rejected: data_requirements_missing: require reviewed requirements and eligible coverage"
+            }}},
+        }
     db = MagicMock()
     db.scalar.side_effect = [draft, rejected]
     successor = SimpleNamespace(
@@ -2599,6 +2608,19 @@ def test_no_change_failure_without_admission_handoff_creates_successor(monkeypat
     assert kwargs["stage"] == "G4"
     assert kwargs["parent_task_id"] == rejected.id
     assert "correction_feedback" not in kwargs
+
+
+def test_present_requirements_are_not_rewritten_by_handoff_recovery():
+    task = SimpleNamespace(status="failed", input_contract={"evidence_context": json.dumps({
+        "discovery_candidate": {}, "validation_requirements": {},
+    })}, failure={
+        "error_category": "strategy_feasibility_rejected",
+        "failed_step": "strategy-feasibility-scaffold",
+        "execution_evidence": {"summary": {"failure_diagnostic": {
+            "stderr_tail": "data_requirements_missing: invalid existing package",
+        }}},
+    })
+    assert not service._requires_admission_handoff_recovery(task)
 
 
 def test_ambiguous_cross_sectional_rank_is_a_typed_representation_failure():

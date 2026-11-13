@@ -19,6 +19,16 @@ questions but the discovery prompt treated them as novelty exclusions. Recovery
 must use explicit retained-candidate lineage, not disguise prior questions as
 novel or erase their exposure history. This remains an open commissioning gate.
 
+At 16:41:26 UTC the real research probe closed the Codex capacity circuit. Cycle 3
+produced SONIC liquidity/volatility and SSV/SPX/BTC residual-reversal proposals;
+both completed representation and selected-panel admission and entered campaign
+`beccfe95-b102-4727-8355-fe44d72771f6`. These are not terminal backtest receipts.
+The first engineering preflight then exposed stale director containers: replacing
+`swarm-api` alone had left the campaign/discovery processes on older images.
+Rollout verification must compare those long-running runtimes with the API image.
+Missing-requirements failures from such old tasks require a bounded successor
+through the current review gate, never mutation or blind retry of the old contract.
+
 Representation output now proposes typed scientific requirements separately from
 its transformation graph: research-bar clock, feature warmup, training,
 validation/test support, horizon/purge/embargo, scientific duration, bounded smoke

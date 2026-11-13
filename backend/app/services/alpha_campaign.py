@@ -1302,21 +1302,25 @@ def _selected_panel_admission_evidence(
 
 
 def _requires_admission_handoff_recovery(task: Task) -> bool:
-    if (
-        getattr(task, "status", None) != "failed"
-        or getattr(task, "failure", {}).get("error_category")
-        != "executor_ExecutionPolicyError"
-        or getattr(task, "failure", {}).get("detail")
-        != "Coding agent produced no changes."
-    ):
+    if getattr(task, "status", None) != "failed":
         return False
+    failure = getattr(task, "failure", {}) or {}
     try:
         evidence = json.loads(task.input_contract.get("evidence_context", "{}"))
     except (AttributeError, json.JSONDecodeError, TypeError):
         return False
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("discovery_candidate"), dict):
+        return False
+    if failure.get("error_category") == "strategy_feasibility_rejected":
+        diagnostic = failure.get("execution_evidence", {}).get("summary", {}).get("failure_diagnostic", {})
+        return (
+            failure.get("failed_step") == "strategy-feasibility-scaffold"
+            and "validation_requirements" not in evidence
+            and "data_requirements_missing:" in str(diagnostic.get("stderr_tail", ""))
+        )
     return (
-        isinstance(evidence, dict)
-        and isinstance(evidence.get("discovery_candidate"), dict)
+        failure.get("error_category") == "executor_ExecutionPolicyError"
+        and failure.get("detail") == "Coding agent produced no changes."
         and "selected_panel_admission" not in evidence
     )
 
