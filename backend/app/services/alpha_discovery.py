@@ -2031,6 +2031,8 @@ def _apply_representation_plans(
             "outcome_data_consulted": plan.outcome_data_consulted,
         }
         candidate["representation_plan"] = representation_plan
+        if plan.scientific_requirements is not None:
+            candidate["scientific_requirements"] = plan.scientific_requirements.model_dump(mode="json")
         bound.append(candidate)
         audit[key] = {
             "data": candidate["data"],
@@ -2101,6 +2103,7 @@ def _materialize_candidates(
                 _normalize_candidate_input(raw_candidate, cycle)
             )
             representation_plan = normalized_candidate.pop("representation_plan", None)
+            scientific_requirements = normalized_candidate.pop("scientific_requirements", None)
             candidate = AlphaPredictiveCandidate.model_validate(normalized_candidate)
             assured_equations = []
             for equation in candidate.equations:
@@ -2154,6 +2157,16 @@ def _materialize_candidates(
                     "content_admission_required_before_execution": True,
                 },
             }
+            if scientific_requirements is not None:
+                from app.schemas.alpha_discovery import AlphaScientificRequirements
+
+                proposal = AlphaScientificRequirements.model_validate(scientific_requirements).model_dump(mode="json")
+                document["scientific_requirements"] = proposal
+                document["scientific_requirements_basis_digest"] = digest_document({
+                    "candidate": candidate.model_dump(mode="json"),
+                    "representation_plan": representation_plan,
+                    "scientific_requirements": proposal,
+                })
         except ValidationError as exc:
             candidate = None
             reasons = ["candidate_schema_invalid"]
@@ -2271,6 +2284,13 @@ def _ensure_data_admission_task(
                 "backup_root": "/home/omenka/.local/share/invariance-swarm/alpha-data-backups",
                 "assets": assets,
                 "authority": "no_capital_data_admission",
+                **({
+                    "representation_plan": candidate.document["representation_plan"],
+                    "coverage_window": {
+                        "start": mandate.specification["execution_window_start"],
+                        "end": mandate.specification["execution_window_end"],
+                    },
+                } if candidate.document.get("scientific_requirements") is not None else {}),
             },
             expected_outputs=[
                 "content-bound ALPHA-001 receipts for each selected panel",

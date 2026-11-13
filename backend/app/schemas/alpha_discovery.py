@@ -388,6 +388,33 @@ class AlphaRepresentationTransformation(StrictModel):
         return self
 
 
+class AlphaScientificRequirements(StrictModel):
+    """Proposed support minima, not an observation or approval receipt."""
+
+    research_bar_minutes: int = Field(strict=True, ge=1)
+    feature_warmup_bars: int = Field(strict=True, ge=0)
+    minimum_training_bars: int = Field(strict=True, ge=1)
+    minimum_validation_bars: int = Field(strict=True, ge=1)
+    minimum_test_bars: int = Field(strict=True, ge=1)
+    target_horizon_bars: int = Field(strict=True, ge=1)
+    purge_bars: int = Field(strict=True, ge=0)
+    embargo_bars: int = Field(strict=True, ge=0)
+    minimum_scientific_window_days: int = Field(strict=True, ge=365, le=1095)
+    smoke_bars: int = Field(strict=True, ge=1)
+    minimum_event_support: dict[str, int]
+    rationale: str = Field(min_length=20, max_length=4000)
+
+    @field_validator("minimum_event_support", mode="before")
+    @classmethod
+    def positive_event_counts(cls, value):
+        if not isinstance(value, dict) or any(
+            not isinstance(key, str) or not key or type(count) is not int or count < 1
+            for key, count in value.items()
+        ):
+            raise ValueError("event support must contain named positive integer counts")
+        return value
+
+
 class AlphaRepresentationPlan(StrictModel):
     schema_version: Literal["adaptive-representation-plan-v1.0.0"]
     candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
@@ -412,6 +439,7 @@ class AlphaRepresentationPlan(StrictModel):
     rejected_alternatives: list[str] = Field(min_length=1, max_length=20)
     selection_data_boundary: Literal["metadata_predictors_only_no_targets"]
     outcome_data_consulted: Literal[False]
+    scientific_requirements: AlphaScientificRequirements | None = None
 
     @field_validator("resampling_policy", mode="before")
     @classmethod
@@ -420,6 +448,13 @@ class AlphaRepresentationPlan(StrictModel):
 
     @model_validator(mode="after")
     def normalized_basket(self):
+        if self.scientific_requirements is not None:
+            req = self.scientific_requirements
+            minutes = int(self.research_timeframe[:-1]) * {"m": 1, "h": 60, "d": 1440}[self.research_timeframe[-1]]
+            if req.research_bar_minutes != minutes:
+                raise ValueError("scientific requirements differ from representation timeframe")
+            if req.smoke_bars * minutes > 31 * 1440:
+                raise ValueError("smoke support exceeds the 31-day boundary")
         self.instruments = [item.upper() for item in self.instruments]
         if self.instrument not in self.instruments:
             raise ValueError("primary instrument must be included in the basket")

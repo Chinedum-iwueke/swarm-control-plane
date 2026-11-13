@@ -259,6 +259,16 @@ def _normalize_output(stage: str, output: dict) -> dict:
     if stage != "representation":
         return output
     for plan in output.get("representation_plans", []):
+        requirements = plan.get("scientific_requirements")
+        if isinstance(requirements, dict):
+            support = requirements.get("minimum_event_support")
+            if isinstance(support, list):
+                names = [item["name"] for item in support]
+                if len(names) != len(set(names)):
+                    raise ValueError("scientific event support names must be unique")
+                requirements["minimum_event_support"] = {
+                    item["name"]: item["minimum"] for item in support
+                }
         for transformation in plan.get("transformations", []):
             parameters = transformation.get("parameters", {})
             transformation["parameters"] = {
@@ -317,6 +327,25 @@ def _schema(stage: str) -> dict:
             },
         }
     if stage == "representation":
+        requirement_fields = {
+            key: {"type": "integer", "minimum": 0 if key in {
+                "feature_warmup_bars", "purge_bars", "embargo_bars"
+            } else 1}
+            for key in (
+                "research_bar_minutes", "feature_warmup_bars", "minimum_training_bars",
+                "minimum_validation_bars", "minimum_test_bars", "target_horizon_bars",
+                "purge_bars", "embargo_bars", "minimum_scientific_window_days", "smoke_bars",
+            )
+        }
+        requirement_fields["minimum_event_support"] = {
+            "type": "array", "items": {
+                "type": "object", "additionalProperties": False,
+                "required": ["name", "minimum"],
+                "properties": {"name": {"type": "string"}, "minimum": {"type": "integer", "minimum": 1}},
+            },
+        }
+        requirement_fields["minimum_scientific_window_days"].update(minimum=365, maximum=1095)
+        requirement_fields["rationale"] = {"type": "string", "minLength": 20, "maxLength": 4000}
         return {
             "type": "object",
             "additionalProperties": False,
@@ -345,8 +374,13 @@ def _schema(stage: str) -> dict:
                             "rejected_alternatives",
                             "selection_data_boundary",
                             "outcome_data_consulted",
+                            "scientific_requirements",
                         ],
                         "properties": {
+                            "scientific_requirements": {
+                                "type": "object", "additionalProperties": False,
+                                "required": list(requirement_fields), "properties": requirement_fields,
+                            },
                             "schema_version": {
                                 "type": "string",
                                 "enum": ["adaptive-representation-plan-v1.0.0"],
@@ -887,6 +921,14 @@ Rolling z-score and realized-volatility windows must contain between 2 and 10000
 one-observation rolling window is invalid and must be represented with another declared operation or retained for
 the governed evaluator when the native transformation language cannot express it without changing the hypothesis.
 Set selection_data_boundary to metadata_predictors_only_no_targets and outcome_data_consulted to false.
+Propose scientific_requirements separately from transformations: research_bar_minutes must match the timeframe;
+feature_warmup_bars never counts as training. Requirements count completed research bars; the existing
+minimum_history_observations is source-panel history, not automatically the number of training research bars.
+Declare independent validation/test minima, target_horizon_bars, purge and embargo bars, and at least 365 days
+for scientific evaluation. Keep smoke_bars within 31 days; smoke is runner commissioning, never scientific proof.
+List named minimum_event_support counts and explain the statistical rationale without claiming those events exist.
+These are proposed requirements for independent review, not coverage receipts, observed support, or permission
+to expand the mandate. Never invent receipt digests or weaken support to fit a short smoke run.
 Transformation output_field values must be lowercase snake_case identifiers. Raw transform inputs must be
 instrument-qualified canonical panel columns such as BTCUSDT__close or ETHUSDT__quote_volume; later transforms may
 reference an earlier snake_case output_field. The adaptive compiler materializes only open, high, low, close, volume,

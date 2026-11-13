@@ -484,9 +484,18 @@ class AlphaDataAdmissionContract(BaseModel):
     ]
     assets: list[AlphaDataAdmissionAsset] = Field(min_length=1, max_length=20)
     authority: Literal["no_capital_data_admission"]
+    representation_plan: dict | None = None
+    coverage_window: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def exact_source_and_unique_assets(self):
+        if (self.representation_plan is None) != (self.coverage_window is None):
+            raise ValueError("coverage requires both representation and approved window")
+        if self.representation_plan is not None:
+            if set(self.representation_plan.get("instruments", [])) != {item.instrument for item in self.assets}:
+                raise ValueError("coverage representation must match admitted basket")
+            if set(self.coverage_window) != {"start", "end"}:
+                raise ValueError("coverage window requires exact start and end")
         if self.base_ref != self.source_commit:
             raise ValueError(
                 "data admission source commit must equal the exact base ref"

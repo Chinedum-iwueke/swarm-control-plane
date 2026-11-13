@@ -18,6 +18,22 @@ from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
 
 
+def test_representation_proposes_requirements_without_receipt_authority():
+    plan = _schema("representation")["properties"]["representation_plans"]["items"]
+    assert "scientific_requirements" in plan["required"]
+    properties = plan["properties"]["scientific_requirements"]["properties"]
+    assert properties["minimum_scientific_window_days"]["minimum"] == 365
+    assert "coverage" not in properties and "basis_digest" not in properties
+    output = {"representation_plans": [{"scientific_requirements": {
+        "minimum_event_support": [{"name": "events", "minimum": 40}]
+    }}]}
+    assert _normalize_output("representation", output)["representation_plans"][0]["scientific_requirements"]["minimum_event_support"] == {"events": 40}
+    with pytest.raises(ValueError, match="unique"):
+        _normalize_output("representation", {"representation_plans": [{"scientific_requirements": {
+            "minimum_event_support": [{"name": "events", "minimum": 40}, {"name": "events", "minimum": 10}]
+        }}]})
+
+
 def test_discovery_domain_identifiers_match_canonical_intake():
     import re
 
