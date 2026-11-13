@@ -38,8 +38,14 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
     assert "FOR UPDATE SKIP LOCKED" in sql
     assert "tasks.task_type !=" in sql
     assert "tasks.input_contract ->>" in sql
+    assert "alpha_research_mandates.mandate_digest =" in sql
+    assert "alpha_research_mandates.status =" in sql
+    assert "alpha_research_mandates.valid_from <=" in sql
+    assert "alpha_research_mandates.valid_until >" in sql
     params = statement.compile(dialect=postgresql.dialect()).params
     assert "alpha_strategy_review" in params.values()
+    assert "alpha_discovery" in params.values()
+    assert "mandate_digest" in params.values()
     assert "evaluator_agent_id" in params.values()
 
 

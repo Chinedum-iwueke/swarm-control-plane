@@ -159,3 +159,6 @@ Cycle creation now defers before allocating a cycle or model task when grounding
 abstains or has no citations. Its blocker is deduplicated by evidence digest and
 the queued founder idea is preserved. Previously spent cycles remain historical;
 their frozen ungrounded contexts are not silently rewritten.
+Discovery leasing also requires the exact bound mandate to remain active and
+within its validity window; superseded queued discovery cannot consume more model
+calls. This check does not revoke already commissioned scientific campaign work.

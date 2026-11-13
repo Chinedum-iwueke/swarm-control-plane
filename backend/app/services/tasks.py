@@ -16,6 +16,7 @@ from app.core.security import (
 )
 from app.models import (
     Agent,
+    AlphaResearchMandate,
     EngineeringMission,
     Task,
     TaskApproval,
@@ -332,6 +333,15 @@ def lease_next_task(
             Task.required_capabilities.contained_by(agent.capabilities),
             valid_approval,
             graph_parallelism_available,
+            or_(
+                Task.task_type != "alpha_discovery",
+                exists(select(AlphaResearchMandate.id).where(
+                    AlphaResearchMandate.mandate_digest == Task.input_contract["mandate_digest"].astext,
+                    AlphaResearchMandate.status == "active",
+                    AlphaResearchMandate.valid_from <= now,
+                    AlphaResearchMandate.valid_until > now,
+                )),
+            ),
             or_(
                 Task.task_type != "alpha_strategy_review",
                 Task.input_contract["evaluator_agent_id"].astext == str(agent.id),
