@@ -1011,6 +1011,74 @@ def attempt(record, **updates):
     return AlphaCampaignAttemptCreate.model_validate(value)
 
 
+def deferred_attempt(record, **updates):
+    gates = {key: False for key in (
+        "truth_certified", "point_in_time_valid", "reproducible", "out_of_sample_evaluated",
+        "cost_stress_evaluated", "selection_bias_audited", "independent_review_complete",
+        "shadow_eligible", "qualification_authority", "required_trade_logging_complete",
+    )}
+    values = dict(outcome="deferred", trial_count=0, produced_by="control_plane",
+                  gate_report=gates | {"failed_gates": ["missing coverage; reviewed successor required"]})
+    return attempt(record, **(values | updates))
+
+
+@pytest.mark.parametrize("change", [
+    {"trial_count": 1}, {"produced_by": "bulletproof_bt"}, {"outcome": "negative"},
+])
+def test_deferral_cannot_claim_native_science(change):
+    with pytest.raises(ValidationError):
+        deferred_attempt(campaign(), **change)
+
+
+def test_deferral_cannot_claim_review_or_qualification():
+    valid = deferred_attempt(campaign()).model_dump()
+    for field in ("independent_review_complete", "truth_certified", "qualification_authority"):
+        changed = {**valid, "gate_report": {**valid["gate_report"], field: True}}
+        with pytest.raises(ValidationError):
+            AlphaCampaignAttemptCreate.model_validate(changed)
+
+
+def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch):
+    from copy import deepcopy
+
+    record = campaign()
+    record.status = "needs_attention"
+    record.next_action = "produce_admitted_predictor_coverage"
+    record.terminal_reason = {"detail": "missing representation-specific coverage"}
+    before = deepcopy(record.specification)
+    event = MagicMock(return_value=SimpleNamespace(event_digest="4" * 64))
+    retained = MagicMock()
+    monkeypatch.setattr(service, "_append_event", event)
+    monkeypatch.setattr(service, "record_attempt", retained)
+    service._retain_pre_authoring_deferral(MagicMock(), record)
+    payload = retained.call_args.args[2]
+    assert payload.outcome == "deferred" and payload.trial_count == 0
+    assert payload.produced_by == "control_plane"
+    assert payload.gate_report.independent_review_complete is False
+    assert record.specification == before
+    details = event.call_args.args[4]
+    assert details["retry_condition"]
+    assert details["automatic_unchanged_retry_allowed"] is False
+
+
+@pytest.mark.parametrize("status,action,expected", [
+    ("needs_attention", "produce_admitted_predictor_coverage", True),
+    ("running", "produce_admitted_predictor_coverage", False),
+    ("running", "await_independent_requirements_review", False),
+    ("needs_attention", "unknown_failure", False),
+])
+def test_only_known_blocked_requirements_defer(monkeypatch, status, action, expected):
+    from app.services.alpha_requirements_handoff import RequirementsPending
+
+    record = campaign(status=status, next_action=action)
+    monkeypatch.setattr(service, "_advance_governed_pipeline_ready",
+                        MagicMock(side_effect=RequirementsPending()))
+    retain = MagicMock()
+    monkeypatch.setattr(service, "_retain_pre_authoring_deferral", retain)
+    assert service._advance_governed_pipeline(MagicMock(), record) is None
+    assert retain.called is expected
+
+
 def test_contract_has_no_capital_or_order_authority():
     payload = request()
     assert payload.authority == "no_capital"
@@ -3434,9 +3502,10 @@ def test_completed_positive_publication_remains_non_shadow(monkeypatch):
     assert record.next_action == "compile_evidence_grounded_hypothesis"
 
 
-def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch):
+@pytest.mark.parametrize("factory", [attempt, deferred_attempt])
+def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch, factory):
     record = campaign(hypothesis_count=1, trial_count=4)
-    payload = attempt(record)
+    payload = factory(record)
     existing = SimpleNamespace(
         **payload.model_dump(exclude={"expected_campaign_digest"})
     )
@@ -3446,6 +3515,22 @@ def test_attempt_retry_is_idempotent_before_budget_checks(monkeypatch):
     assert service.record_attempt(db, record, payload) is existing
     assert record.hypothesis_count == 1
     assert record.trial_count == 4
+
+
+def test_deferred_attempt_advances_queue_without_scientific_trials(monkeypatch):
+    record = campaign()
+    db = MagicMock()
+    db.scalar.return_value = None
+    monkeypatch.setattr(service, "_append_event", MagicMock())
+    reconcile = MagicMock()
+    monkeypatch.setattr(service, "reconcile_campaign", reconcile)
+    result = service.record_attempt(db, record, deferred_attempt(record))
+    assert result.outcome == "deferred"
+    assert record.hypothesis_count == 1
+    assert record.trial_count == 0
+    assert record.status == "running"
+    assert record.candidate_attempt_id is None
+    reconcile.assert_called_once_with(db, record)
 
 
 def test_completed_execution_recovery_is_agent_bound_and_resumable(monkeypatch):

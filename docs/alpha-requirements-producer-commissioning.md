@@ -123,6 +123,21 @@ invented and no original task or dataset digest was rewritten.
 
 ## Remaining certification gates
 
+### Bounded queue progress under missing requirements
+
+Known pre-authoring coverage, custody and context-bound failures now retain a
+`candidate_deferred` event and a `control_plane`-produced `deferred` disposition.
+The immutable source question, reason and repair condition remain recorded. This
+advances the bounded queue cursor without recording a scientific trial, negative
+result, independent review or promotion eligibility. Repeated attempt publication
+is idempotent. It consumes one hypothesis disposition, not a backtest trial.
+
+In-flight requirements reviews are not skipped. Unknown failures remain blocked.
+The director re-enters the normal mandate checks before recovering older blocked
+campaigns. A repaired deferred question requires a reviewed successor; unchanged
+automatic retries are forbidden. This scheduling repair does not provide missing
+basis/open-interest coverage or certify the downstream execution path.
+
 1. Independently review the explicit requirements against the frozen estimand.
 2. Verify point-in-time membership and any non-OHLCV field availability.
 3. Distinguish source-clock coverage usable for warmup from finite-feature coverage

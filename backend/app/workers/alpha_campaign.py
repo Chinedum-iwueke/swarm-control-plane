@@ -11,7 +11,7 @@ from sqlalchemy import or_, select
 from app.db.session import SessionLocal
 from app.models.alpha_campaign import AlphaCampaign
 from app.models.alpha_discovery import AlphaDiscoveryCycle, AlphaResearchMandate
-from app.services.alpha_campaign import reconcile_campaign
+from app.services.alpha_campaign import PRE_AUTHORING_DEFERRALS, reconcile_campaign
 
 _AUTO_RECOVERABLE_ATTENTION_CATEGORIES = {
     "governed_pipeline_task_failed",
@@ -52,8 +52,12 @@ def run_once() -> dict:
                     (
                         (AlphaCampaign.status == "needs_attention")
                         & (
-                            AlphaCampaign.terminal_reason["category"].astext.in_(
-                                _AUTO_RECOVERABLE_ATTENTION_CATEGORIES
+                            or_(
+                                AlphaCampaign.terminal_reason["category"].astext.in_(
+                                    _AUTO_RECOVERABLE_ATTENTION_CATEGORIES
+                                ),
+                                (AlphaCampaign.phase == "scientific_requirements_review")
+                                & AlphaCampaign.next_action.in_(PRE_AUTHORING_DEFERRALS),
                             )
                         )
                         & active_mandate_campaign

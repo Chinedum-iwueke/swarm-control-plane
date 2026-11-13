@@ -2084,7 +2084,58 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
     except RequirementsPending:
         # Preserve the durable publication and review tasks in this transaction.
         # HTTP errors would roll them back and repeatedly rediscover the gate.
+        if getattr(campaign, "status", None) == "needs_attention" and campaign.next_action in PRE_AUTHORING_DEFERRALS:
+            _retain_pre_authoring_deferral(db, campaign)
         return None
+
+
+PRE_AUTHORING_DEFERRALS = {
+    "produce_admitted_predictor_coverage": "Obtain candidate-specific native predictor coverage and independent requirements review.",
+    "propose_scientific_requirements": "Produce explicit requirements in a reviewed immutable successor.",
+    "repair_scientific_requirements_evidence": "Repair producer custody or coverage in a reviewed immutable successor.",
+    "requirements_engineering_context_exceeds_bound": "Repair lossless context compaction before authoring.",
+    "requirements_review_context_exceeds_bound": "Repair bounded review context before requesting another review.",
+}
+
+
+def _retain_pre_authoring_deferral(db: Session, campaign: AlphaCampaign) -> None:
+    action = campaign.next_action
+    source = campaign.specification["research_queue"][campaign.hypothesis_count]
+    binding = _source_bindings(campaign, source)[0]
+    document = {
+        "source_candidate_id": source["source_candidate_id"],
+        "source_candidate_digest": source["source_candidate_digest"],
+        "reason": action, "detail": campaign.terminal_reason,
+        "retry_condition": PRE_AUTHORING_DEFERRALS[action],
+        "automatic_unchanged_retry_allowed": False,
+        "scientific_result": False, "trial_count": 0,
+    }
+    event = _append_event(db, campaign, "candidate_deferred", "alpha-campaign-director", document)
+    campaign.status = "running"
+    question = " ".join(source["question"].split())
+    record_attempt(db, campaign, AlphaCampaignAttemptCreate(
+        attempt_key=f"pre-authoring-deferred-{source['source_candidate_id']}",
+        expected_campaign_digest=campaign.campaign_digest,
+        question=question, question_digest=digest_document({"question": question}),
+        source_candidate_id=source["source_candidate_id"],
+        source_candidate_digest=source["source_candidate_digest"],
+        hypothesis_id=f"deferred-{source['source_candidate_id']}",
+        hypothesis_digest=digest_document(document),
+        dataset_build_id=binding["dataset_build_id"], dataset_digest=binding["dataset_digest"],
+        trial_count=0, outcome="deferred", produced_by="control_plane",
+        source_commit=campaign.specification["bulletproof_source_commit"],
+        evidence_digests=[event.event_digest],
+        gate_report={
+            **{key: False for key in (
+                "truth_certified", "point_in_time_valid", "reproducible",
+                "out_of_sample_evaluated", "cost_stress_evaluated", "selection_bias_audited",
+                "independent_review_complete", "required_trade_logging_complete",
+                "qualification_authority", "shadow_eligible",
+            )},
+            "execution_class": None,
+            "failed_gates": [action, PRE_AUTHORING_DEFERRALS[action]],
+        },
+    ))
 
 
 def _advance_governed_pipeline_ready(db: Session, campaign: AlphaCampaign) -> Task | None:
@@ -3233,7 +3284,7 @@ def record_attempt(
         db,
         campaign,
         "attempt_retained",
-        "alpha-research-runner",
+        "alpha-campaign-director" if payload.outcome == "deferred" else "alpha-research-runner",
         {
             "attempt_id": str(attempt.id),
             "attempt_digest": attempt.attempt_digest,
@@ -3246,6 +3297,19 @@ def record_attempt(
 
 
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
+    if (
+        campaign.status == "needs_attention"
+        and campaign.phase == "scientific_requirements_review"
+        and campaign.next_action in PRE_AUTHORING_DEFERRALS
+    ):
+        # Re-enter the normal mandate check and requirements gate. Do not
+        # manufacture an outcome directly from a stale operator-status label.
+        _append_event(db, campaign, "requirements_recovery_reconciled", "alpha-campaign-director", {
+            "prior_action": campaign.next_action,
+            "prior_reason": campaign.terminal_reason,
+        })
+        campaign.status = "running"
+        campaign.completed_at = None
     campaign.heartbeat_at = now()
     terminal = campaign.terminal_reason or {}
     execution = _current_execution_task(db, campaign)

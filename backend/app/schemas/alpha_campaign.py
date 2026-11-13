@@ -165,7 +165,7 @@ class AlphaCampaignAttemptCreate(StrictModel):
     dataset_digest: str = Field(pattern=_DIGEST)
     governed_bridge_id: uuid.UUID | None = None
     trial_count: int = Field(ge=0, le=10_000)
-    outcome: Literal["candidate", "positive", "negative", "invalid", "failed"]
+    outcome: Literal["candidate", "positive", "negative", "invalid", "failed", "deferred"]
     failure_stage: (
         Literal[
             "data_admission",
@@ -179,11 +179,28 @@ class AlphaCampaignAttemptCreate(StrictModel):
     ) = None
     gate_report: AlphaGateReport
     evidence_digests: list[str] = Field(min_length=1, max_length=100)
-    produced_by: Literal["bulletproof_bt"]
+    produced_by: Literal["bulletproof_bt", "control_plane"]
     source_commit: str = Field(pattern=_COMMIT)
 
     @model_validator(mode="after")
     def outcome_is_consistent(self):
+        if self.outcome == "deferred":
+            gates = self.gate_report
+            if (
+                self.produced_by != "control_plane" or self.trial_count != 0
+                or self.governed_bridge_id is not None or self.failure_stage is not None
+                or gates.execution_class is not None
+                or gates.qualification_authority is not False
+                or not gates.failed_gates
+                or any((gates.truth_certified, gates.point_in_time_valid,
+                        gates.reproducible, gates.out_of_sample_evaluated,
+                        gates.cost_stress_evaluated, gates.selection_bias_audited,
+                        gates.independent_review_complete, gates.shadow_eligible,
+                        gates.required_trade_logging_complete))
+            ):
+                raise ValueError("deferred work is a zero-trial control-plane disposition, not scientific evidence")
+        elif self.produced_by != "bulletproof_bt":
+            raise ValueError("only native Bulletproof may publish scientific outcomes")
         if self.outcome == "candidate":
             if self.governed_bridge_id is None or not self.gate_report.shadow_eligible:
                 raise ValueError(
