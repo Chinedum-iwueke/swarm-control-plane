@@ -3300,7 +3300,7 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     if (
         campaign.status == "needs_attention"
         and campaign.phase == "scientific_requirements_review"
-        and campaign.next_action in PRE_AUTHORING_DEFERRALS
+        and campaign.next_action in {*PRE_AUTHORING_DEFERRALS, "renew_weekly_research_mandate"}
     ):
         # Re-enter the normal mandate check and requirements gate. Do not
         # manufacture an outcome directly from a stale operator-status label.

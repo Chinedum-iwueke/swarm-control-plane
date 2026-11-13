@@ -57,7 +57,9 @@ def run_once() -> dict:
                                     _AUTO_RECOVERABLE_ATTENTION_CATEGORIES
                                 ),
                                 (AlphaCampaign.phase == "scientific_requirements_review")
-                                & AlphaCampaign.next_action.in_(PRE_AUTHORING_DEFERRALS),
+                                & AlphaCampaign.next_action.in_(
+                                    {*PRE_AUTHORING_DEFERRALS, "renew_weekly_research_mandate"}
+                                ),
                             )
                         )
                         & active_mandate_campaign

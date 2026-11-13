@@ -2861,6 +2861,50 @@ def _mandate_budget_exhausted(mandate: AlphaResearchMandate) -> bool:
     )
 
 
+def _unfinished_mandate_campaigns(db: Session, mandate: AlphaResearchMandate) -> list:
+    return list(db.scalars(
+        select(AlphaCampaign.id)
+        .join(AlphaDiscoveryCycle, AlphaDiscoveryCycle.campaign_id == AlphaCampaign.id)
+        .where(
+            AlphaDiscoveryCycle.mandate_id == mandate.id,
+            AlphaCampaign.status.in_({"running", "needs_attention"}),
+        )
+    ).all())
+
+
+def _recover_premature_cycle_completion(db, mandate, moment):
+    """Repair a scheduler projection, never renew or enlarge founder authority."""
+    if (
+        mandate.status != "completed" or not mandate.approved_at
+        or not mandate.valid_from <= moment < mandate.valid_until
+        or mandate.cycle_count < mandate.budget["maximum_cycles"]
+        or mandate.hypothesis_count >= mandate.budget["maximum_hypotheses"]
+        or mandate.trial_count >= mandate.budget["maximum_total_trials"]
+    ):
+        return
+    last = db.scalar(select(AlphaDiscoveryEvent).where(
+        AlphaDiscoveryEvent.mandate_id == mandate.id
+    ).order_by(AlphaDiscoveryEvent.sequence.desc()).limit(1))
+    if last is None or last.event_type != "mandate_budget_exhausted":
+        return
+    newer = db.scalars(select(AlphaResearchMandate).where(
+        AlphaResearchMandate.id != mandate.id,
+        AlphaResearchMandate.approved_at > mandate.approved_at,
+    )).all()
+    if _is_canonical_mandate(mandate) and any(_is_canonical_mandate(item) for item in newer):
+        return
+    unfinished = _unfinished_mandate_campaigns(db, mandate)
+    if not unfinished:
+        return
+    mandate.status = "active"
+    _event(db, mandate, "premature_cycle_completion_reconciled", {
+        "prior_event_digest": last.event_digest,
+        "campaign_ids": sorted(str(item) for item in unfinished),
+        "budget_changed": False, "approval_changed": False,
+        "new_discovery_cycles_allowed": False,
+    })
+
+
 def _reconcile_campaign_cycle(
     db: Session,
     mandate: AlphaResearchMandate,
@@ -2961,6 +3005,7 @@ def _reconcile_campaign_cycles(
 def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     moment = now()
     mandate.heartbeat_at = moment
+    _recover_premature_cycle_completion(db, mandate, moment)
     if mandate.status != "active":
         return
     if moment >= mandate.valid_until:
@@ -3022,6 +3067,10 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             )
         elapsed = (moment - (cycle.completed_at or cycle.created_at)).total_seconds()
         if _mandate_budget_exhausted(mandate):
+            # Discovery exhaustion does not revoke already commissioned work.
+            # Keep reconciling it, but do not create another discovery cycle.
+            if _unfinished_mandate_campaigns(db, mandate):
+                return
             mandate.status = "completed"
             _event(
                 db,

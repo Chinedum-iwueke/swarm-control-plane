@@ -138,6 +138,15 @@ campaigns. A repaired deferred question requires a reviewed successor; unchanged
 automatic retries are forbidden. This scheduling repair does not provide missing
 basis/open-interest coverage or certify the downstream execution path.
 
+Discovery cycle exhaustion must not complete a mandate while its commissioned
+campaigns remain running or need attention. Reconciliation now drains these
+campaigns without creating more discovery cycles. Explicit reconciliation can
+repair the old premature-completion projection only for an approved, unexpired
+mandate whose last event is budget exhaustion, with remaining hypothesis/trial
+budget and unfinished campaigns. A newer canonical approval prevents revival of
+an older canonical mandate. Recovery appends evidence; it changes neither the
+mandate digest nor its approval, budgets or expiry.
+
 1. Independently review the explicit requirements against the frozen estimand.
 2. Verify point-in-time membership and any non-OHLCV field availability.
 3. Distinguish source-clock coverage usable for warmup from finite-feature coverage

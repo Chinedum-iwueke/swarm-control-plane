@@ -1761,6 +1761,45 @@ def test_low_watermark_never_exceeds_approved_cycle_budget(monkeypatch):
     new_cycle.assert_not_called()
 
 
+@pytest.mark.parametrize("blocker", [None, "expired", "unapproved", "trials", "hypotheses", "different_event", "newer_mandate", "no_work"])
+def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, blocker):
+    from app.services import alpha_discovery as service
+
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(), status="completed", approved_at=moment - timedelta(hours=1),
+        valid_from=moment - timedelta(hours=1), valid_until=moment + timedelta(days=1),
+        cycle_count=3, hypothesis_count=0, trial_count=0,
+        budget={"maximum_cycles": 3, "maximum_hypotheses": 3, "maximum_total_trials": 24},
+    )
+    if blocker == "expired":
+        mandate.valid_until = moment
+    if blocker == "unapproved":
+        mandate.approved_at = None
+    if blocker == "trials":
+        mandate.trial_count = 24
+    if blocker == "hypotheses":
+        mandate.hypothesis_count = 3
+    db = MagicMock()
+    db.scalar.return_value = SimpleNamespace(
+        event_type="other" if blocker == "different_event" else "mandate_budget_exhausted",
+        event_digest="a" * 64,
+    )
+    db.scalars.return_value.all.return_value = [object()] if blocker == "newer_mandate" else []
+    monkeypatch.setattr(service, "_is_canonical_mandate", lambda _: True)
+    monkeypatch.setattr(service, "_unfinished_mandate_campaigns",
+                        lambda *_: [] if blocker == "no_work" else [uuid4()])
+    event = MagicMock()
+    monkeypatch.setattr(service, "_event", event)
+    budget = dict(mandate.budget)
+    service._recover_premature_cycle_completion(db, mandate, moment)
+    assert mandate.status == ("active" if blocker is None else "completed")
+    assert mandate.budget == budget
+    assert event.called is (blocker is None)
+    if blocker is None:
+        assert event.call_args.args[3]["new_discovery_cycles_allowed"] is False
+
+
 def test_needs_attention_campaigns_do_not_consume_parallel_slots(monkeypatch):
     from app.services.alpha_discovery import _question_pipeline_state
 
@@ -1779,6 +1818,35 @@ def test_needs_attention_campaigns_do_not_consume_parallel_slots(monkeypatch):
 
     assert pipeline_depth == 3
     assert active_campaigns == 1
+
+
+@pytest.mark.parametrize("unfinished", [True, False])
+def test_cycle_exhaustion_waits_for_commissioned_campaigns(monkeypatch, unfinished):
+    from app.services import alpha_discovery as service
+
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(
+        id=uuid4(), status="active", valid_until=moment + timedelta(days=1),
+        cycle_count=3, hypothesis_count=0, trial_count=0,
+        budget={"maximum_cycles": 3, "maximum_hypotheses": 3, "maximum_total_trials": 24},
+    )
+    cycle = SimpleNamespace(id=uuid4(), campaign_id=None, status="rejected",
+                            created_at=moment, completed_at=moment)
+    db = MagicMock()
+    db.scalar.side_effect = [cycle, None]
+    for name in ("_retire_superseded_discovery_stalls", "_recover_resumed_stage"):
+        monkeypatch.setattr(service, name, MagicMock())
+    monkeypatch.setattr(service, "_reconcile_campaign_cycles", lambda *_: set())
+    monkeypatch.setattr(service, "_question_pipeline_state", lambda *_: (0, 0))
+    monkeypatch.setattr(service, "_reconcile_data_admissions", lambda *_: False)
+    monkeypatch.setattr(service, "_unfinished_mandate_campaigns",
+                        lambda *_: [uuid4()] if unfinished else [])
+    new_cycle = MagicMock()
+    monkeypatch.setattr(service, "_new_cycle", new_cycle)
+    monkeypatch.setattr(service, "_event", MagicMock())
+    service.reconcile_mandate(db, mandate)
+    assert mandate.status == ("active" if unfinished else "completed")
+    new_cycle.assert_not_called()
 
 
 def test_duplicate_only_cycle_replenishes_without_waiting_for_cadence(monkeypatch):
