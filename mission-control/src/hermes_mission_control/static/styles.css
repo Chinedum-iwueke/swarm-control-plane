@@ -1108,7 +1108,11 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .graph-node-svg:hover circle, .graph-node-svg:hover rect, .graph-node-svg:hover path { stroke-width: 2; }
 .graph-node-svg:focus-visible circle, .graph-node-svg:focus-visible rect, .graph-node-svg:focus-visible path, .graph-node-svg.selected circle, .graph-node-svg.selected rect, .graph-node-svg.selected path { stroke: #111815; stroke-width: 3; }
 .graph-node-svg.path-focus circle, .graph-node-svg.path-focus rect, .graph-node-svg.path-focus path { stroke: #d34f45; stroke-width: 3; }
-.graph-node-svg text { fill: var(--ink); font-family: var(--sans); font-size: 11px; font-weight: 650; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.graph-node-svg text { fill: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 650; pointer-events: none; paint-order: stroke; stroke: #fbfaf8; stroke-width: 4px; stroke-linejoin: round; text-anchor: start; }
+.graph-node-caption { pointer-events: none; }
+.graph-caption-tether { stroke: #62726a; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.graph-node-caption.label-occluded { visibility: hidden; }
+.graph-node-svg:hover .graph-node-caption, .graph-node-svg:focus .graph-node-caption, .graph-node-svg.selected .graph-node-caption { visibility: visible; }
 .graph-legend { position: absolute; left: 10px; bottom: 9px; display: flex; flex-wrap: wrap; gap: 8px 12px; max-width: calc(100% - 20px); padding: 5px 7px; color: var(--muted); background: rgb(255 255 255 / 90%); border: 1px solid var(--line-soft); font-size: 9px; }
 .graph-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend-shape { width: 9px; height: 9px; background: #d8e0dc; border: 1px solid #62726a; }

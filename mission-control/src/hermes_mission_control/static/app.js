@@ -3957,6 +3957,7 @@ function renderGraph(graph) {
       ${graphSelectionPanel(selected, edges, nodeMap)}
     </div>`;
   bindGraphInteractions(nodeMap);
+  arrangeGraphLabels();
   populateGraphPathControls(nodes);
   renderGraphFindResults();
   saveGraphViewState();
@@ -4248,8 +4249,49 @@ function graphNodeSvg(node, position, index, selected, inPath = false, focus = {
   const dimmed = focus.active && !focus.nodes.has(String(node.id));
   const showLabel = GRAPH_LABELED_NODE_TYPES.has(type) || index < 10 || selected || inPath || (focus.active && !dimmed);
   const labelLines = graphNodeLabelLines(label);
-  const labelSvg = showLabel ? `<text class="graph-node-label" x="15" y="${labelLines.length > 1 ? -3 : 4}">${labelLines.map((line, lineIndex) => `<tspan x="15" dy="${lineIndex === 0 ? 0 : 13}">${escapeHtml(line)}</tspan>`).join("")}</text>` : "";
+  const labelSvg = `<g class="graph-node-caption" data-label-priority="${selected ? 3 : inPath ? 2 : showLabel ? 1 : 0}"><line class="graph-caption-tether" x1="11" y1="0" x2="17" y2="0"></line><text class="graph-node-label" text-anchor="start" x="20" y="${labelLines.length > 1 ? -3 : 4}">${labelLines.map((line, lineIndex) => `<tspan x="20" dy="${lineIndex === 0 ? 0 : 14}">${escapeHtml(line)}</tspan>`).join("")}</text></g>`;
   return `<g class="graph-node-svg type-${escapeHtml(type)}${selected ? " selected" : ""}${inPath ? " path-focus" : ""}${dimmed ? " dimmed" : ""}" transform="translate(${position.x} ${position.y})" data-graph-node="${escapeHtml(node.id)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${escapeHtml(label)}, ${escapeHtml(type)}${inPath ? ", on focused path" : ""}${dimmed ? ", outside evidence focus" : ""}"><title>${escapeHtml(label)} · ${escapeHtml(humanize(type))}</title>${shape}${labelSvg}</g>`;
+}
+
+function arrangeGraphLabels() {
+  const nodes = [...document.querySelectorAll(".graph-node-svg")];
+  if (!nodes.length) return;
+  const overlaps = (a, b) => a.left < b.right + 4 && a.right + 4 > b.left && a.top < b.bottom + 4 && a.bottom + 4 > b.top;
+  const shapes = nodes.map((node) => node.querySelector(":scope > circle, :scope > rect, :scope > path").getBoundingClientRect());
+  const labels = nodes.map((node, index) => {
+    if (!node.dataset.labelOrder) node.dataset.labelOrder = String(index + 1);
+    const caption = node.querySelector(".graph-node-caption");
+    caption.classList.remove("label-occluded");
+    return { node, caption, index, priority: Number(caption.dataset.labelPriority), bounds: caption.querySelector("text").getBoundingClientRect() };
+  }).sort((a, b) => b.priority - a.priority || a.index - b.index);
+  const occupied = [];
+  for (const label of labels) {
+    const collides = () => occupied.some((bounds) => overlaps(label.bounds, bounds)) || shapes.some((bounds, index) => index !== label.index && overlaps(label.bounds, bounds));
+    let collision = collides();
+    if (collision && label.priority !== 3) {
+      const text = label.caption.querySelector("text");
+      const left = text.getAttribute("x") !== "-20";
+      text.setAttribute("x", left ? "-20" : "20");
+      text.style.textAnchor = left ? "end" : "start";
+      text.querySelectorAll("tspan").forEach((span) => span.setAttribute("x", left ? "-20" : "20"));
+      label.caption.querySelector("line").setAttribute("x1", left ? "-11" : "11");
+      label.caption.querySelector("line").setAttribute("x2", left ? "-17" : "17");
+      label.bounds = text.getBoundingClientRect();
+      collision = collides();
+    }
+    const visible = label.priority === 3 || (label.priority > 0 && !label.node.classList.contains("dimmed") && !collision);
+    label.caption.classList.toggle("label-occluded", !visible);
+    if (visible) occupied.push(label.bounds);
+    // Keep the inspected title above neighboring nodes without changing layout.
+    const raise = () => {
+      const focused = document.activeElement === label.node;
+      if (label.node.parentNode.lastElementChild !== label.node) {
+        label.node.parentNode.appendChild(label.node);
+        if (focused) label.node.focus({ preventScroll: true });
+      }
+    };
+    label.node.onpointerenter = label.node.onfocus = raise;
+  }
 }
 
 function graphNodeLabelLines(label) {
@@ -4374,7 +4416,7 @@ function bindGraphInteractions(nodeMap) {
     if (!element) return;
     if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(event.key)) {
       event.preventDefault();
-      const nodes = [...root.querySelectorAll("[data-graph-node]")];
+      const nodes = [...root.querySelectorAll("[data-graph-node]")].sort((a, b) => Number(a.dataset.labelOrder || 0) - Number(b.dataset.labelOrder || 0));
       const index = nodes.indexOf(element);
       const step = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
       nodes[(index + step + nodes.length) % nodes.length]?.focus();
@@ -4505,6 +4547,7 @@ function updateGraphSvgPositions() {
     element.setAttribute("x", (source.x + target.x) / 2);
     element.setAttribute("y", (source.y + target.y) / 2 - 5);
   });
+  arrangeGraphLabels();
 }
 
 function scheduleGraphSearch() {
