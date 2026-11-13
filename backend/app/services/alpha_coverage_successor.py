@@ -5,9 +5,9 @@ The existing campaign event chain is the publication ledger; task numbers are
 unique, making repeated reconciliation and process restarts idempotent.
 """
 
+import json
 from copy import deepcopy
 from datetime import UTC, datetime
-import json
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -18,6 +18,7 @@ from app.models.evaluator_routing import EvaluationRoute
 from app.models.task import Task
 from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity
 from app.schemas.task import TaskCreate
+from app.services.alpha_coverage_exposure import successor_context
 from app.services.evaluator_routing import (
     create_route,
     task_producer_identity,
@@ -151,6 +152,19 @@ def reconcile_coverage_successor(db, campaign, parent):
         )
     try:
         evidence = validate_proposal(parent, mandate, proposal)
+        current_context = successor_context(
+            db,
+            evidence,
+            evidence["validation_requirements"],
+            mandate,
+            parent.input_contract["base_ref"],
+        )
+        if (
+            current_context is None
+            or current_context["exposure_ledger"]
+            != evidence["coverage_successor_context"]["exposure_ledger"]
+        ):
+            raise ValueError("coverage exposure history changed after frozen preflight")
     except (KeyError, TypeError, ValueError) as exc:
         campaign.status = "needs_attention"
         campaign.next_action = "repair_coverage_successor_evidence"

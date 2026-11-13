@@ -2028,6 +2028,29 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
             ProposalEngineeringMissionContract.model_validate(document)
 
 
+def test_pending_coverage_review_does_not_return_failed_parent_to_reconciler(monkeypatch):
+    record = campaign()
+    record.specification["execution_protocol"] = "alpha003-governed-v1"
+    parent = SimpleNamespace(
+        id=uuid4(), task_number="A3-fixture-G3", status="failed", result={},
+        input_contract={"evidence_context": "{}"}, failure={},
+    )
+    draft = SimpleNamespace(status="succeeded", result={"summary": {}})
+    db = MagicMock()
+    db.scalar.side_effect = [draft, parent]
+
+    def waiting(db, campaign, task):
+        assert task is parent
+        campaign.phase = "coverage_successor_review"
+        campaign.next_action = "await_independent_coverage_successor_review"
+        return None, True
+
+    monkeypatch.setattr("app.services.alpha_coverage_successor.reconcile_coverage_successor", waiting)
+    assert service._advance_governed_pipeline(db, record) is None
+    assert record.next_action == "await_independent_coverage_successor_review"
+    assert record.phase == "coverage_successor_review"
+
+
 def test_legacy_strategy_engineering_approval_is_narrowly_waived(monkeypatch):
     task = SimpleNamespace(
         id=uuid4(),

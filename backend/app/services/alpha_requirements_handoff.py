@@ -199,11 +199,27 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         )
     except (KeyError, TypeError, ValueError) as exc:
         defer("repair_scientific_requirements_evidence", str(exc))
+    from app.services.alpha_coverage_exposure import successor_context
+
+    try:
+        context = successor_context(
+            db,
+            evidence,
+            package,
+            mandate,
+            campaign.specification["bulletproof_source_commit"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        defer("repair_coverage_exposure_history", str(exc))
+    if context is not None:
+        evidence["coverage_successor_context"] = context
     prospective = {
         key: value
         for key, value in evidence.items()
         if key not in {"dataset_binding", "instrument", "tier"}
     } | {"validation_requirements": package}
+    if len(prospective) > 20:
+        prospective.pop("maximum_variants", None)
     if len(prospective) > 20 or len(json.dumps(prospective, allow_nan=False)) > 46_000:
         # Reserve room for the actual routed receipt within the worker's 48k cap.
         defer("requirements_engineering_context_exceeds_bound")
@@ -218,6 +234,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
             "representation_plan": evidence["representation_plan"],
             "dataset_bindings": evidence["dataset_bindings"],
             "window": evidence["window"],
+            "coverage_successor_context": context,
             "claim_boundary": "Predictor availability is not universe membership or observed event support.",
         },
     }

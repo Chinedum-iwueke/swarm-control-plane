@@ -34,7 +34,8 @@ Legacy candidates missing scientific requirements stop at
 `alpha004_mandate.py --commissioning` proposes three cycles, three hypotheses,
 24 trials, at most two candidates per cycle and two concurrent campaigns. It
 does not approve the mandate. Catalogue authority supports up to 4096 instruments
-without changing the 128-asset representation/execution basket limit.
+without changing the 128-asset representation basket limit. The execution-worker
+contract still caps baskets at 20; larger-basket execution remains unqualified.
 
 ## Read-only genuine candidate probes
 
@@ -75,10 +76,22 @@ The founder task delegation was verified at this checkpoint, expiring at
 2026-11-13 18:37:52 UTC. It does not grant weekly-mandate approval.
 
 The new handoff has offline custody, mutation, rejection, pending-review,
-approval and repeated-reconciliation tests. Real routed review receipts and the
-complete authenticated exposure-ledger producer remain commissioning work;
-neither is inferred from passing unit tests. The previous canonical mandate is
+approval and repeated-reconciliation tests. The exposure producer now snapshots
+bounded same-question/source-candidate governed task history, conservatively
+excludes attempted execution windows, and rejects in-flight work, unknown windows
+or scientific attempts lacking retained contracts. It retains prior published
+successor lineage and rechecks exposure before successor publication/materialization.
+This scope is not a claim about research performed outside the governed system.
+
+Real routed review receipts and the full native execution path remain
+commissioning work; neither is inferred from passing unit tests. The previous canonical mandate is
 completed at 42 cycles. No old engineering task was restarted by this repair.
+
+Further static tracing found two downstream boundaries to validate before claiming
+completion: execution assignments must retain native smoke/scientific plans, and
+successful engineering currently advertises
+`founder_merge_strategy_and_rebind_source_commit`. Neither a running service nor
+an authoring success proves those subsequent transitions have occurred.
 
 ## Mission Control deployment
 

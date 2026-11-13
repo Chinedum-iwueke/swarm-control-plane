@@ -145,14 +145,23 @@ def test_repeated_reconciliation_returns_existing_child_without_new_work():
 
 
 @pytest.mark.parametrize("verdict", [None, "reject", "approve"])
+@pytest.mark.parametrize("stale_exposure", [False, True])
 def test_publication_review_and_materialization_are_separate_gates(
-    monkeypatch, verdict
+    monkeypatch, verdict, stale_exposure
 ):
     import app.services.alpha_coverage_successor as service
     import app.services.alpha_campaign as campaigns
 
     parent, mandate, proposal = fixture()
     parent.id = uuid4()
+    monkeypatch.setattr(
+        service,
+        "successor_context",
+        lambda db, evidence, *args: (
+            {"exposure_ledger": {"changed": True}}
+            if stale_exposure else evidence["coverage_successor_context"]
+        ),
+    )
     parent.task_number = "A3-fixture-G3"
     parent.status = "failed"
     parent.plan_digest = "f" * 64
@@ -231,6 +240,12 @@ def test_publication_review_and_materialization_are_separate_gates(
     monkeypatch.setattr(service, "persist_new_task", lambda *a: None)
     successor, handled = reconcile_coverage_successor(db, campaign, parent)
     assert handled is True
+    if stale_exposure:
+        assert successor is None
+        assert campaign.next_action == "repair_coverage_successor_evidence"
+        assert not events and not built
+        review_tasks.assert_not_called()
+        return
     review_tasks.assert_called_once()
     assert events[0] == "coverage_successor_published"
     if verdict != "approve":

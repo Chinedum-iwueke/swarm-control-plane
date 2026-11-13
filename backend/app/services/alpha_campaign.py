@@ -1002,6 +1002,9 @@ def _create_strategy_engineering_task(
     # The task contract already declares Tier2B; reserve bounded evidence keys
     # for the reviewed requirements rather than a redundant display label.
     evidence.pop("tier", None)
+    if len(evidence) > 20:
+        # The frozen candidate parameter budget is authoritative.
+        evidence.pop("maximum_variants", None)
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
     contract = {
@@ -2210,7 +2213,9 @@ def _advance_governed_pipeline_ready(db: Session, campaign: AlphaCampaign) -> Ta
 
         coverage_task, coverage_handled = reconcile_coverage_successor(db, campaign, engineering)
         if coverage_handled and coverage_task is None:
-            return engineering
+            # Returning the failed parent would make reconcile_campaign overwrite
+            # the durable review/pending state with a generic terminal failure.
+            return None
         if coverage_task is not None:
             engineering = coverage_task
         _release_legacy_hypothesis_engineering_approval(db, engineering)

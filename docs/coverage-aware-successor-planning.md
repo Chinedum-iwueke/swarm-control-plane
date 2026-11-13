@@ -66,13 +66,17 @@ the retained research-row budget is insufficient.
 
 ## Production qualification boundary
 
-- The campaign service must supply authenticated, independently reviewed
-  `validation_requirements`, `coverage_successor_context`, and the complete durable
-  exposure/lineage ledger. A caller-provided digest is not proof of authenticity.
+- The campaign service now publishes `validation_requirements` for independent
+  review and derives `coverage_successor_context` from bounded governed task and
+  attempt history. Source records, exclusions and prior successor proposals are
+  retained. Changed exposure invalidates frozen recovery; a caller-provided
+  digest is not proof of authenticity.
 - Existing tasks without that reviewed package are not silently grandfathered or
-  mutated. The production publisher for those upstream inputs remains a separate
-  outstanding commissioning dependency; this recovery deployment does not invent
-  their missing receipts or approve a wider mandate.
+  mutated. Real independently approved upstream packages remain an outstanding
+  commissioning dependency; deployment does not invent missing receipts or
+  approve a wider mandate. Pending coverage review returns no execution task to
+  the outer reconciler, preventing the failed parent from overwriting the waiting
+  state with a generic terminal failure.
 - Predictor coverage still needs point-in-time membership verification and an
   explicit distinction between source warmup and finite-feature eligibility.
 - Demonstrate the TRB and basket successors using real receipts, then run smoke
