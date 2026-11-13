@@ -548,6 +548,7 @@ function navigate(view, { resetScroll = true } = {}) {
     else renderAutonomy();
   }
   if (view === "execution" && !state.venueEvents) loadVenueEvents();
+  if (view === "research") window.loadCandidateBlockers?.();
 }
 
 async function openInvestorWalkthrough() {
@@ -2689,6 +2690,7 @@ function renderProposalMandatePanel(preferredMandateId = null) {
 function renderResearch() {
   renderBacktests();
   if (!state.demo) loadBacktests();
+  window.loadCandidateBlockers?.();
   if (!state.dashboard) return;
   const tasks = (state.dashboard.tasks || []).filter((task) => task.task_type === "research_experiment");
   const cycles = state.dashboard.research_cycles || [];
@@ -5140,6 +5142,7 @@ window.setInterval(() => {
 }, 10000);
 window.setInterval(() => {
   if (!state.demo && state.activeView === "research") loadBacktests();
+  if (!state.demo && state.activeView === "research") window.loadCandidateBlockers?.();
 }, 15000);
 document.addEventListener("visibilitychange", () => {
   if (state.demo) return;

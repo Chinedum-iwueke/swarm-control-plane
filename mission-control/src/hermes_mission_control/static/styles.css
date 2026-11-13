@@ -1759,3 +1759,14 @@ label input, label select, label textarea { margin-top: 5px; color: var(--ink); 
   .walkthrough-progress span { transition: none; }
   .conversation-new-events, .conversation-progress-item { scroll-behavior: auto; transition: none; }
 }
+.candidate-blocker { border-bottom: 1px solid var(--border, #ddd); padding: 14px 0; min-width: 0; }
+.candidate-blocker summary { display: flex; align-items: flex-start; gap: 16px; cursor: pointer; min-height: 44px; }
+.candidate-blocker summary:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+.candidate-blocker summary .entity-primary { flex: 1; min-width: 0; }
+.candidate-blocker strong, .candidate-blocker dd { overflow-wrap: anywhere; }
+.candidate-blocker .entity-primary strong { white-space: normal; overflow: visible; text-overflow: clip; }
+.candidate-blocker .detail-grid { margin-top: 18px; }
+.candidate-blocker pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+#candidate-blockers-filter { flex-wrap: wrap; }
+#candidate-blockers-filter input { max-width: 100%; }
+@media (max-width: 640px) { .candidate-blocker .detail-grid { grid-template-columns: 1fr; } .candidate-blocker dd { margin: 0 0 12px; } }

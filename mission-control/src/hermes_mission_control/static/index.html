@@ -392,6 +392,18 @@
           <div><p class="eyebrow">Hypotheses to governed findings</p><h1>Research</h1><p class="heading-context">Reproducible evidence with explicit promotion gates</p></div>
         </div>
         <div id="research-gate" class="research-gate"></div>
+        <section class="operational-band" aria-labelledby="candidate-blockers-heading">
+          <div class="band-heading"><div><p class="section-kicker">Candidate dispositions</p><h2 id="candidate-blockers-heading">Deferred &amp; Blocked</h2></div><span id="candidate-blockers-count" class="count" role="status">Not loaded</span></div>
+          <form id="candidate-blockers-filter" class="filter-row">
+            <label>State<select id="candidate-blockers-category"><option value="all">All</option><option value="deferred">Deferred</option><option value="blocked">Blocked</option></select></label>
+            <label>Question<input id="candidate-blockers-query" type="search" maxlength="200" placeholder="Search questions"></label>
+            <button type="submit" class="secondary">Search</button>
+            <button type="button" id="candidate-blockers-refresh" class="secondary" aria-label="Refresh deferred and blocked candidates">↻</button>
+          </form>
+          <p id="candidate-blockers-error" role="alert" class="operation-error" hidden></p>
+          <div id="candidate-blockers-items" class="entity-list"></div>
+          <div class="filter-row"><button id="candidate-blockers-previous" class="secondary" aria-label="Previous candidate page">Previous</button><button id="candidate-blockers-next" class="secondary" aria-label="Next candidate page">Next</button></div>
+        </section>
         <section class="operational-band">
           <div class="band-heading"><div><p class="section-kicker">Orthogonal authority</p><h2>Research, evidence, operations and capital</h2></div><span id="lifecycle-count" class="count">No subjects</span></div>
           <div id="institutional-lifecycles" class="entity-list"></div>
@@ -734,6 +746,6 @@
   </aside>
 
   <div id="toast" role="status" aria-live="polite"></div>
-  <script src="/static/vendor/knowledge-layout.js" defer></script><script src="/static/app.js" defer></script>
+  <script src="/static/vendor/knowledge-layout.js" defer></script><script src="/static/app.js" defer></script><script src="/static/candidate-blockers.js" defer></script>
 </body>
 </html>

@@ -396,6 +396,21 @@ async def test_backtest_queue_filter_pagination_and_authentication(settings):
 
 
 @pytest.mark.asyncio
+async def test_candidate_blockers_authenticated_bounded_query(settings):
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/research/alpha-campaigns/candidates/blockers"
+        assert dict(request.url.params) == {"category": "deferred", "query": "SONIC", "offset": "25", "limit": "25"}
+        assert request.headers["Authorization"].startswith("Bearer ")
+        return httpx.Response(200, json={"items": [], "total": 25})
+    client = ControlPlaneClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        assert (await client.candidate_blockers(category="deferred", query="SONIC", offset=25))["total"] == 25
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_surveillance_replay_uses_authenticated_read_only_route(
     settings: MissionControlSettings,
 ) -> None:

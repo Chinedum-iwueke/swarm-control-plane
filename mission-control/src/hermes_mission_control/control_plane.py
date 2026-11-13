@@ -65,6 +65,10 @@ class ControlPlaneClient:
             params={"category": category, "tier": tier, "offset": offset, "limit": 50},
         )
 
+    async def candidate_blockers(self, *, category="all", query="", offset=0) -> dict:
+        return await self._request("GET", "/v1/research/alpha-campaigns/candidates/blockers",
+                                   params={"category": category, "query": query, "offset": offset, "limit": 25})
+
     async def venue_event_history(
         self,
         *,

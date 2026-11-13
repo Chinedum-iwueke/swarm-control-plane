@@ -432,6 +432,14 @@ def create_app(
             category=category, tier=tier, offset=offset
         )
 
+    @app.get("/api/research/candidate-blockers")
+    async def candidate_blockers(
+        category: Annotated[str, Query(pattern="^(all|deferred|blocked)$")] = "all",
+        query: Annotated[str, Query(max_length=200)] = "",
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        return await client.candidate_blockers(category=category, query=query, offset=offset)
+
     @app.get("/api/execution/events")
     async def venue_event_history(
         environment: Annotated[

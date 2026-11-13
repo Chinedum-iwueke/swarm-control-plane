@@ -79,6 +79,18 @@ def backtest_activity(
     return overview(db, limit, offset, category, tier)
 
 
+@router.get("/candidates/blockers")
+def candidate_blockers(
+    db: Annotated[Session, Depends(get_db)],
+    category: Literal["all", "deferred", "blocked"] = "all",
+    query: Annotated[str, Query(max_length=200)] = "",
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+):
+    from app.services.alpha_candidate_blockers import overview
+    return overview(db, category=category, query=query, offset=offset, limit=limit)
+
+
 @router.get("/{campaign_id}", response_model=AlphaCampaignResponse)
 def get(campaign_id: UUID, db: Annotated[Session, Depends(get_db)]):
     campaign = db.get(AlphaCampaign, campaign_id)
