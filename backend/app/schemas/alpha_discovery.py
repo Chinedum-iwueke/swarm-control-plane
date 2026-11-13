@@ -147,7 +147,8 @@ class AlphaResearchMandateCreate(StrictModel):
     allowed_venues: list[Literal["bybit", "binance"]] = Field(
         min_length=1, max_length=2
     )
-    allowed_instruments: list[str] = Field(min_length=1, max_length=256)
+    # Discovery authority covers the registered catalogue, not one execution basket.
+    allowed_instruments: list[str] = Field(min_length=1, max_length=4096)
     minimum_liquidity_usd: float = Field(ge=0, le=10_000_000_000)
     historical_window_policy: AlphaHistoricalWindowPolicy | None = None
     mandate_kind: Literal["canonical_weekly", "canonical_monthly", "thematic"] = (

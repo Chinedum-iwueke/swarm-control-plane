@@ -56,3 +56,22 @@ def test_registered_panels_are_visible_despite_short_history_and_gaps():
     }
     assert [x["instrument"] for x in discovery_panels(catalog)] == ["TRBUSDT"]
     assert discovery_panels({"one_year_coverage_candidates": [panel]}) == [panel]
+
+
+def test_catalogue_scope_accepts_686_assets_without_expanding_execution_baskets():
+    from typing import Annotated
+    from pydantic import TypeAdapter
+    from app.schemas.alpha_discovery import AlphaResearchMandateCreate, AlphaRepresentationPlan
+    from app.schemas.alpha_campaign import AlphaCampaignCreate
+
+    for model in (AlphaResearchMandateCreate, AlphaCampaignCreate):
+        field = model.model_fields["allowed_instruments"]
+        adapter = TypeAdapter(Annotated[field.annotation, *field.metadata])
+        assert len(adapter.validate_python([f"ASSET{i}USDT" for i in range(686)])) == 686
+        with pytest.raises(ValidationError):
+            adapter.validate_python([f"ASSET{i}USDT" for i in range(4097)])
+    field = AlphaRepresentationPlan.model_fields["instruments"]
+    with pytest.raises(ValidationError):
+        TypeAdapter(Annotated[field.annotation, *field.metadata]).validate_python(
+            [f"ASSET{i}USDT" for i in range(129)]
+        )

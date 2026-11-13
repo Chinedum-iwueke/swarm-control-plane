@@ -992,6 +992,16 @@ def _create_strategy_engineering_task(
                 correction_feedback.get("review_summary", "")
             )[:1000]
             evidence["independent_review_correction"] = compact_feedback
+    from app.services.alpha_requirements_handoff import ensure_reviewed_requirements
+
+    evidence["validation_requirements"] = ensure_reviewed_requirements(
+        db, campaign, evidence
+    )
+    evidence.pop("dataset_binding", None)
+    evidence.pop("instrument", None)
+    # The task contract already declares Tier2B; reserve bounded evidence keys
+    # for the reviewed requirements rather than a redundant display label.
+    evidence.pop("tier", None)
     from app.schemas.proposal import ProposalEngineeringMissionContract
 
     contract = {
@@ -2060,6 +2070,17 @@ def _retain_strategy_review_rejection(
 
 
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
+    from app.services.alpha_requirements_handoff import RequirementsPending
+
+    try:
+        return _advance_governed_pipeline_ready(db, campaign)
+    except RequirementsPending:
+        # Preserve the durable publication and review tasks in this transaction.
+        # HTTP errors would roll them back and repeatedly rediscover the gate.
+        return None
+
+
+def _advance_governed_pipeline_ready(db: Session, campaign: AlphaCampaign) -> Task | None:
     delegated = (
         campaign.specification.get("execution_protocol") == "alpha004-delegated-v1"
     )

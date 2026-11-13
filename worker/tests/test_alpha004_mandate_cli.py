@@ -148,7 +148,8 @@ def test_mandate_override_validation_precedes_network_or_credentials(
 
 
 @pytest.mark.parametrize("fresh_receipt", [False, True])
-def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_receipt):
+@pytest.mark.parametrize("commissioning", [False, True])
+def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_receipt, commissioning):
     script = Path(__file__).parents[1] / "scripts/alpha004_mandate.py"
     spec = importlib.util.spec_from_file_location("mandate_cli", script)
     module = importlib.util.module_from_spec(spec)
@@ -284,8 +285,8 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         end = module.datetime.fromisoformat(payload["execution_window_end"])
         assert end - start == module.timedelta(days=365)
         assert end.isoformat() == "2026-09-30T00:00:00+00:00"
-        assert payload["budget"]["question_queue_low_watermark"] == 12
-        assert payload["budget"]["maximum_parallel_campaigns"] == 3
+        assert payload["budget"]["question_queue_low_watermark"] == (2 if commissioning else 12)
+        assert payload["budget"]["maximum_parallel_campaigns"] == (2 if commissioning else 3)
         assert payload["allowed_venues"] == ["binance", "bybit"]
         assert payload["allowed_instruments"] == ["BTCUSDT", "ETHUSDT"]
         posted.append(payload)
@@ -336,6 +337,8 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
 
     monkeypatch.setattr(module.subprocess, "run", run)
     arguments = [str(script), "--bulletproof-source-commit", "b" * 40]
+    if commissioning:
+        arguments.append("--commissioning")
     if fresh_receipt:
         arguments.extend(["--producer-receipt-id", fresh])
     monkeypatch.setattr(sys, "argv", arguments)
@@ -343,6 +346,12 @@ def test_engine_override_requires_matching_native_admission(monkeypatch, fresh_r
         assert module.main() == 0
         assert len(posted) == 1
         assert posted[0]["strategy_catalog"] == strategy_catalog
+        budget = posted[0]["budget"]
+        assert budget["maximum_cycles"] == (3 if commissioning else 42)
+        assert budget["maximum_hypotheses"] == (3 if commissioning else 100)
+        assert budget["maximum_total_trials"] == (24 if commissioning else 500)
+        assert budget["maximum_candidates_per_cycle"] == (2 if commissioning else 5)
+        assert budget["maximum_parallel_campaigns"] == (2 if commissioning else 3)
     else:
         with pytest.raises(RuntimeError, match="no mandate was written"):
             module.main()

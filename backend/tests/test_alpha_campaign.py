@@ -29,6 +29,16 @@ DIGEST = "a" * 64
 COMMIT = "b" * 40
 
 
+@pytest.fixture
+def reviewed_requirements(monkeypatch):
+    # These unit tests isolate task construction after the new review gate.
+    # Gate custody, rejection, and pending behavior have their own tests.
+    monkeypatch.setattr(
+        "app.services.alpha_requirements_handoff.ensure_reviewed_requirements",
+        lambda *_: {"review_receipt": {"subject_digest": "f" * 64}},
+    )
+
+
 def request(**updates):
     value = {
         "campaign_key": "ALPHA001-BYBIT-BTC",
@@ -1911,6 +1921,7 @@ def test_rejected_strategy_requires_hypothesis_bound_to_approved_card():
 
 def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineering(
     monkeypatch,
+    reviewed_requirements,
 ):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
@@ -1989,7 +2000,9 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
 
     evidence = json.loads(task.input_contract["evidence_context"])
     assert evidence["question"] == source["question"]
-    assert evidence["dataset_binding"] == record.specification["dataset_bindings"][0]
+    assert (
+        evidence["dataset_bindings"][0] == record.specification["dataset_bindings"][0]
+    )
     assert evidence["maximum_variants"] == 8
     assert evidence["research_context"]["corpus_digest"] == "9" * 64
     assert evidence["discovery_candidate"] == source_document
@@ -2157,7 +2170,9 @@ def test_independent_review_failure_materializes_new_correction_task(monkeypatch
     assert kwargs["correction_feedback"]["cumulative_findings"][0]["severity"] == "high"
 
 
-def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
+def test_strategy_correction_evidence_stays_within_typed_contract(
+    monkeypatch, reviewed_requirements
+):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     record.specification.update(
@@ -2238,7 +2253,9 @@ def test_strategy_correction_evidence_stays_within_typed_contract(monkeypatch):
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
-def test_strategy_correction_compacts_unbounded_review_history(monkeypatch):
+def test_strategy_correction_compacts_unbounded_review_history(
+    monkeypatch, reviewed_requirements
+):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     record.specification.update(
@@ -2290,6 +2307,7 @@ def test_strategy_correction_compacts_unbounded_review_history(monkeypatch):
 
 def test_initial_multi_asset_engineering_compacts_catalog_column_inventory(
     monkeypatch,
+    reviewed_requirements,
 ):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
@@ -2348,7 +2366,9 @@ def test_initial_multi_asset_engineering_compacts_catalog_column_inventory(
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
-def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch):
+def test_selected_panel_admission_is_bound_into_engineering_evidence(
+    monkeypatch, reviewed_requirements
+):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     record.specification.update(
@@ -2423,7 +2443,9 @@ def test_selected_panel_admission_is_bound_into_engineering_evidence(monkeypatch
     ProposalEngineeringMissionContract.model_validate(task.input_contract)
 
 
-def test_selected_panel_correction_removes_legacy_binding_idempotently(monkeypatch):
+def test_selected_panel_correction_removes_legacy_binding_idempotently(
+    monkeypatch, reviewed_requirements
+):
     record = campaign()
     record.specification["execution_protocol"] = "alpha003-governed-v1"
     record.specification.update(
@@ -2578,9 +2600,9 @@ def test_ambiguous_cross_sectional_rank_is_a_typed_representation_failure():
     finding = service._invalid_representation_contract(record, task)
 
     assert "mechanically constant" in finding
-    record.specification["research_queue"][0]["representation_plan"][
-        "transformations"
-    ][0]["parameters"] = {"target_index": 1}
+    record.specification["research_queue"][0]["representation_plan"]["transformations"][
+        0
+    ]["parameters"] = {"target_index": 1}
     assert service._invalid_representation_contract(record, task) is None
 
 

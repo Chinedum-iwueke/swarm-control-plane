@@ -12,14 +12,29 @@ candidates without requirements retain their historical document shape.
 New selected-panel admission tasks can carry the frozen representation and the
 mandate's exact window. Bulletproof produces `predictor_coverage_evidence` from
 verified recovery-copy bytes, finite required OHLCV values, complete source bars,
-basket alignment and finite representation outputs. The probe has a conservative
-two-million source-row read budget checked before file reads. It neither scans
+basket alignment and finite representation outputs. The initial probe used a
+two-million source-row read budget. Admission now uses bounded 100,000-source-row
+chunks and an independent retained-research-row limit. It neither scans
 the full lake nor starts model inference. Non-OHLCV fields fail closed pending
 field-specific availability verification.
 
-This is NOT yet a `validation_requirements` engineering handoff. In particular,
-predictor coverage explicitly does not certify point-in-time membership. A model
-cannot promote the coverage report into membership, scientific review or authority.
+The requirements handoff now validates the native admission task's retained
+coverage result against the candidate, representation, final compact DATA
+bindings, source commit, interval count and approved historical envelope. It
+publishes a hash-linked campaign event and routes independent spec and causality
+reviews before creating an engineering task. Pending or rejected review cannot
+release paid authoring. Reconciliation reuses the publication and route.
+
+Predictor coverage explicitly does not certify point-in-time membership. The
+review scope is fixed-basket predictor availability; reviewers must reject
+unsupported universe or event-support claims. Publication is not certification.
+Legacy candidates missing scientific requirements stop at
+`propose_scientific_requirements`, without guessing support from source-row counts.
+
+`alpha004_mandate.py --commissioning` proposes three cycles, three hypotheses,
+24 trials, at most two candidates per cycle and two concurrent campaigns. It
+does not approve the mandate. Catalogue authority supports up to 4096 instruments
+without changing the 128-asset representation/execution basket limit.
 
 ## Read-only genuine candidate probes
 
@@ -58,6 +73,12 @@ invented and no original task or dataset digest was rewritten.
 
 The founder task delegation was verified at this checkpoint, expiring at
 2026-11-13 18:37:52 UTC. It does not grant weekly-mandate approval.
+
+The new handoff has offline custody, mutation, rejection, pending-review,
+approval and repeated-reconciliation tests. Real routed review receipts and the
+complete authenticated exposure-ledger producer remain commissioning work;
+neither is inferred from passing unit tests. The previous canonical mandate is
+completed at 42 cycles. No old engineering task was restarted by this repair.
 
 ## Mission Control deployment
 

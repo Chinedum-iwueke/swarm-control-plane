@@ -157,6 +157,10 @@ def main() -> int:
     parser.add_argument("--question-queue-low-watermark", type=int, default=12)
     parser.add_argument("--maximum-parallel-campaigns", type=int, default=3)
     parser.add_argument(
+        "--commissioning", action="store_true",
+        help="Propose only three cycles/hypotheses, 24 trials, two candidates per cycle and two concurrent campaigns.",
+    )
+    parser.add_argument(
         "--mandate-kind",
         choices=("canonical_weekly", "canonical_monthly", "thematic"),
         default="canonical_weekly",
@@ -385,15 +389,15 @@ def main() -> int:
             "allowed_instruments": allowed_instruments,
             "minimum_liquidity_usd": args.minimum_liquidity_usd,
             "budget": {
-                "maximum_cycles": 42,
-                "maximum_hypotheses": 100,
-                "maximum_total_trials": 500,
+                "maximum_cycles": 3 if args.commissioning else 42,
+                "maximum_hypotheses": 3 if args.commissioning else 100,
+                "maximum_total_trials": 24 if args.commissioning else 500,
                 "maximum_variants_per_hypothesis": 8,
-                "maximum_candidates_per_cycle": 5,
+                "maximum_candidates_per_cycle": 2 if args.commissioning else 5,
                 "cadence_seconds": 3600,
                 "maximum_consecutive_failures": 5,
-                "question_queue_low_watermark": args.question_queue_low_watermark,
-                "maximum_parallel_campaigns": args.maximum_parallel_campaigns,
+                "question_queue_low_watermark": 2 if args.commissioning else args.question_queue_low_watermark,
+                "maximum_parallel_campaigns": 2 if args.commissioning else args.maximum_parallel_campaigns,
             },
             "created_by": "founder-operator",
         }

@@ -54,7 +54,7 @@ class AlphaCampaignCreate(StrictModel):
     allowed_venues: list[Literal["bybit", "binance"]] = Field(
         min_length=1, max_length=2
     )
-    allowed_instruments: list[str] = Field(min_length=1, max_length=256)
+    allowed_instruments: list[str] = Field(min_length=1, max_length=4096)
     budget: AlphaCampaignBudget
     created_by: str = Field(pattern=_KEY, max_length=150)
     authority: Literal["no_capital"] = "no_capital"
