@@ -123,6 +123,36 @@ invented and no original task or dataset digest was rewritten.
 
 ## Remaining certification gates
 
+### Production checkpoint, November 13 at 17:44 UTC
+
+Shared queue, mandate-drain and admission-provenance fixes are deployed through
+`6c1031c`. API and both directors have matching images. The focused combined
+regression suite passes 271 tests. This is infrastructure evidence, not scientific
+certification.
+
+Campaign `cb1830ee-f7bc-479f-9832-93067e7c0bc6` retained SONIC as a zero-trial
+deferred source and advanced SPX/BTC. Its draft
+`81cdfb93-4a16-414f-8b8c-5b2edc37e845` and immutable-input admission re-attestation
+`c7f0b28f-767a-41a5-8497-416d5b1af88a` succeeded. The latter has a real lease-time
+producer identity; the original admission lease remains unchanged.
+
+Both independently routed requirements reviews completed with rejection:
+`a7371308-f9d3-4cca-81e4-7255d5a2ee8b` and
+`bc34a9e2-b9ef-4bff-9d0c-7f365c8810bd`. Findings include proposed-window versus
+available-clock mismatch, split/minimum-window arithmetic, composed feature
+lookback ambiguity, support rationale and fixed-basket eligibility limitations.
+Reviewers also flagged differently scoped proposal/coverage basis digests. These
+are retained review findings, not a claim that all reviewer interpretations are
+correct; the two hashes intentionally cover different documents.
+
+The missing pre-review boundary is a native, pinned feasibility-planning receipt
+that distinguishes the preferred window from an authorized coverage successor,
+minimum duration from exact partitions, and proposed event minima from observed
+support. It must be supplied before another paid requirements review. Do not
+rewrite rejected contracts or repeatedly resubmit unchanged evidence. There is
+still no new native terminal BT-009, scientific result or promotion from this
+commissioning campaign.
+
 ### Bounded queue progress under missing requirements
 
 Known pre-authoring coverage, custody and context-bound failures now retain a
