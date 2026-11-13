@@ -1761,6 +1761,31 @@ def test_low_watermark_never_exceeds_approved_cycle_budget(monkeypatch):
     new_cycle.assert_not_called()
 
 
+@pytest.mark.parametrize("has_idea", [False, True])
+def test_running_campaign_replenishment_consumes_queued_founder_idea(monkeypatch, has_idea):
+    from app.services import alpha_discovery as service
+
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), status="active", valid_until=moment + timedelta(days=1),
+        cycle_count=1, hypothesis_count=0, trial_count=0,
+        budget={"maximum_cycles":3,"maximum_hypotheses":3,"maximum_total_trials":24,
+                "question_queue_low_watermark":2,"maximum_parallel_campaigns":2})
+    cycle = SimpleNamespace(id=uuid4(),campaign_id=uuid4(),status="running")
+    db=MagicMock()
+    db.scalar.return_value=cycle
+    idea=SimpleNamespace(id=uuid4()) if has_idea else None
+    monkeypatch.setattr(service,"_recover_premature_cycle_completion",lambda *_:None)
+    monkeypatch.setattr(service,"_reconcile_campaign_cycles",lambda *_:{cycle.id})
+    monkeypatch.setattr(service,"_retire_superseded_discovery_stalls",lambda *_:None)
+    monkeypatch.setattr(service,"_question_pipeline_state",lambda *_:(1,1))
+    monkeypatch.setattr(service,"_next_founder_idea",lambda *_:idea)
+    monkeypatch.setattr(service,"_event",MagicMock())
+    create=MagicMock()
+    monkeypatch.setattr(service,"_new_cycle",create)
+    service.reconcile_mandate(db,mandate)
+    create.assert_called_once_with(db,mandate,idea)
+
+
 @pytest.mark.parametrize("blocker", [None, "expired", "unapproved", "trials", "hypotheses", "different_event", "newer_mandate", "no_work"])
 def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, blocker):
     from app.services import alpha_discovery as service

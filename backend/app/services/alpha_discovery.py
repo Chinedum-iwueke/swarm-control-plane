@@ -3050,7 +3050,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                 },
                 cycle,
             )
-            _new_cycle(db, mandate)
+            _new_cycle(db, mandate, _next_founder_idea(db, mandate))
         return
     if _reconcile_data_admissions(db, mandate, cycle):
         return

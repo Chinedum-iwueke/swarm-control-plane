@@ -93,3 +93,23 @@ and scientific plans were ready and the control-plane validator accepted their
 bindings. This is an offline contract check, not a new production receipt or a
 scientific result. Production review, engineering and BT-009 remain to be proved.
 The broader general recovery loop remains deferred in Notes and the Bible backlog.
+
+### Successor commissioning and controlled resumption
+
+Bulletproof `b52de18286821f27613b1489686810f1507edc57` and control-plane
+`6f6120d` were pushed to main and deployed. Admission successor
+`f4ff6971-7729-4b0d-9435-68dfa7ee212a` re-attested the retained SPX/BTC bytes.
+Real worker planning task `b2812f1d-1396-43c3-b74e-ff72f7ecfa16` completed in one
+attempt with receipt
+`f4d9cfb61a0c20283afa61b56428445d29471957edf7897103faedb1ac5b40b3`.
+Its original plan stays deferred; its coverage successor is proposed and both
+successor validation modes are ready. Control-plane receipt validation and
+lease-time producer identity passed against the live record. No model was used
+for this planning, and no strategy was executed by it.
+
+The founder approved R3 commissioning mandate
+`98734b52619795f4e3d40a47cc64a8b2e01512480f0faefd0626285f0b54bb96`.
+Explicit retained-candidate recovery intake `4fc5be25-4b93-4a08-a048-4012bb141c89`
+preserves the old candidate/rejection lineage, rather than labeling it novel.
+This mandate permits three cycles/hypotheses and 24 trials, not an unrestricted
+restart. Independent review, authoring and real BT-009 results remain outstanding.
