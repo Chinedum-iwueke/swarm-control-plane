@@ -37,6 +37,22 @@ def test_explicit_untested_source_recovery_preserves_identity():
     assert matching_recovery(db,mandate,SimpleNamespace(context={}),candidate) is None
 
 
+@pytest.mark.parametrize("fault", [None, "missing", "extra", "foreign"])
+def test_native_qualified_columns_preserve_exact_per_asset_requirements(fault):
+    db, mandate, parent, candidate = fixture()
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest)
+    candidate.data.required_fields = [f"{asset}__{field}" for asset in candidate.data.instruments
+                                      for field in ["close", "quote_volume"]]
+    if fault == "missing": candidate.data.required_fields.pop()
+    if fault == "extra": candidate.data.required_fields.append("BTCUSDT__funding_rate")
+    if fault == "foreign": candidate.data.required_fields.append("ETHUSDT__close")
+    cycle = SimpleNamespace(context={"founder_research_idea":{"constraints":{"retained_candidate_recovery":scope}}})
+    if fault:
+        with pytest.raises(ValueError): matching_recovery(db, mandate, cycle, candidate)
+    else:
+        assert matching_recovery(db, mandate, cycle, candidate) == scope
+
+
 @pytest.mark.parametrize("fault",["digest","same_source","rejected","observed","inflight","question","target","criteria","basket","clock"])
 def test_recovery_cannot_relabel_scientific_work_or_change_question(fault):
     db, mandate, parent, candidate = fixture()

@@ -162,3 +162,13 @@ their frozen ungrounded contexts are not silently rewritten.
 Discovery leasing also requires the exact bound mandate to remain active and
 within its validity window; superseded queued discovery cannot consume more model
 calls. This check does not revoke already commissioned scientific campaign work.
+
+R5 digest `b6dbef2591a3b00275daab3ed05eccb78d9ad7a78757ed7ffa722c95c6645aca`
+was founder-approved after both typed recoveries were staged. Its first cycle
+`59d15357-b5a7-40c3-b615-4f4e0aba845a` completed intelligence, hypothesis and
+representation on their first attempts. The hypothesis preserved the retained
+question, but the recovery gate incorrectly compared raw required fields against
+the representation's instrument-qualified columns. `panel_fields` now compares
+the exact per-asset input sets, accounting for the native timestamp index; missing
+fields, additional inputs and foreign assets still fail. The rejected handoff is
+retained, and a bounded explicit retry is queued within R5, not a counter reset.

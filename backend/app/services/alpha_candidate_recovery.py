@@ -15,6 +15,24 @@ def normalized(value):
     return " ".join(str(value).lower().split())
 
 
+def panel_fields(fields, instruments):
+    """Compare raw requirements with their native per-panel qualified form."""
+    result = set()
+    for field in fields:
+        if "__" in field:
+            instrument, name = field.split("__", 1)
+            if instrument not in instruments:
+                raise ValueError("retained recovery introduced a foreign panel")
+            selected = [instrument]
+        else:
+            selected, name = instruments, field
+        # The native panel clock is an index, not a model feature column.
+        if name in {"ts", "timestamp"}:
+            continue
+        result.update((instrument, name) for instrument in selected)
+    return result
+
+
 def recovery_scope(db, mandate, candidate_id, expected_digest):
     candidate = db.get(AlphaDiscoveryCandidate, UUID(str(candidate_id)))
     if candidate is None or candidate.candidate_digest != expected_digest:
@@ -62,6 +80,9 @@ def matching_recovery(db, mandate, cycle, candidate):
     identity = scope["scientific_identity"]
     if any(normalized(getattr(candidate, key)) != normalized(identity[key]) for key in SCIENTIFIC_FIELDS):
         raise ValueError("retained recovery changed the scientific question")
-    if any(getattr(candidate.data, key) != value for key, value in identity["data"].items()):
+    data = identity["data"]
+    if any(getattr(candidate.data, key) != value for key, value in data.items() if key != "required_fields"):
         raise ValueError("retained recovery changed the research basket or clock")
+    if panel_fields(candidate.data.required_fields, data["instruments"]) != panel_fields(data["required_fields"], data["instruments"]):
+        raise ValueError("retained recovery changed the required panel inputs")
     return scope
