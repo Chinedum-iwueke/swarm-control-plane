@@ -2171,6 +2171,10 @@ def _materialize_candidates(
                     "representation_plan": representation_plan,
                     "scientific_requirements": proposal,
                 })
+                # Byte admission is reusable; a new representation's eligible
+                # research clock is not. Do not skip its native coverage producer.
+                if not reasons:
+                    reasons = ["data_admission_required"]
         except ValidationError as exc:
             candidate = None
             reasons = ["candidate_schema_invalid"]

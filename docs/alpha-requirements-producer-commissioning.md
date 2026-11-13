@@ -29,6 +29,41 @@ Rollout verification must compare those long-running runtimes with the API image
 Missing-requirements failures from such old tasks require a bounded successor
 through the current review gate, never mutation or blind retry of the old contract.
 
+After building and restarting the API and both director services on VM2, run:
+
+```bash
+sudo python3 /srv/invariance/swarm/repositories/swarm-control-plane/worker/scripts/verify_alpha_runtime_images.py
+```
+
+The read-only check compares all three running containers with the built image
+ID and fails on missing, restarting or stopped runtimes and unhealthy API status.
+Directors inherit the API HTTP probe despite not serving HTTP; this is reported
+as a warning, not used as director readiness. Check recent reconciliation logs
+and durable cycle progression separately. The check does not dump container
+environments. It does not establish VM1 worker freshness: restart
+idle discovery, representation and admission workers after their code changes,
+and verify their start times separately. Do not interrupt in-flight inference or
+admission just to satisfy an image check.
+
+Replacement mandate `ALPHA004-CERTIFICATION-20261113-R2`, digest
+`7b6b6776da91c73859b1eabf37997f662d07759b3ea440f5b87ef8cf52a705d4`,
+was directly approved by the founder. Its first cycle is
+`bcb42aae-8b55-4638-b72c-fd248d4a5865`. It retains the same bounded no-capital
+commissioning budget and historical envelope; previous candidates and failures
+are retained, not overwritten or falsely labelled novel.
+
+R2 cycle 1 produced explicit scientific requirements in representation task
+`98fba040-1180-4b00-9fe2-6e4f292d4f7c`. SPX/BTC admission retained a four-hour
+predictor clock with 3,004 eligible decisions and evidence digest
+`dc8a4efaf8d15c9e821cdcb8149bc16da869a94472b305a8ca00d69502ae1b46`.
+Campaign `cb1830ee-f7bc-479f-9832-93067e7c0bc6` then exposed a separate reuse
+gap: the first-ranked SONIC basis/open-interest question reused admitted bytes
+without a candidate-specific coverage producer. Intake now requires that producer
+for every new requirements-aware candidate, even when its bytes are admitted.
+This does not retroactively rewrite the existing candidate or certify non-OHLCV
+availability. Its current missing-producer gate still needs explicit recovery;
+the second queued question has not yet received independent requirements review.
+
 Representation output now proposes typed scientific requirements separately from
 its transformation graph: research-bar clock, feature warmup, training,
 validation/test support, horizon/purge/embargo, scientific duration, bounded smoke

@@ -35,6 +35,7 @@ from app.services.alpha_discovery import (
     _focus_founder_context,
     _mechanism_primitive_catalog,
     _missing_admission_fields,
+    _materialize_candidates,
     _new_signal_candidate,
     _normalize_candidate_input,
     _recent_external_surveillance,
@@ -2164,6 +2165,44 @@ def candidate(**changes):
     }
     value.update(changes)
     return AlphaPredictiveCandidate.model_validate(value), object_id
+
+
+@pytest.mark.parametrize("existing_reasons", [[], ["duplicate_question"]])
+def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatch, existing_reasons):
+    parsed, object_id = candidate()
+    raw = parsed.model_dump(mode="json")
+    requirements = {
+        "research_bar_minutes": 20, "feature_warmup_bars": 144,
+        "minimum_training_bars": 5000, "minimum_validation_bars": 1000,
+        "minimum_test_bars": 1000, "target_horizon_bars": 4,
+        "purge_bars": 4, "embargo_bars": 2,
+        "minimum_scientific_window_days": 365, "smoke_bars": 288,
+        "minimum_event_support": {"signal_events": 40},
+        "rationale": "Keep scientific support independent of the short runner smoke test.",
+    }
+    raw["scientific_requirements"] = requirements
+    cycle = SimpleNamespace(id=uuid4(), cycle_digest=DIGEST, context={
+        "research_intelligence": {"citations": [{"object_id": str(object_id), "content_digest": DIGEST}]}
+    })
+    mandate = SimpleNamespace(budget={"maximum_candidates_per_cycle": 2}, specification={
+        "strategy_catalog": {"capabilities": []}, "discovery_catalog": {},
+    })
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr("app.services.alpha_discovery._candidate_reasons", lambda *args: (existing_reasons, 0))
+    admission = MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._ensure_data_admission_task", admission)
+    result = _materialize_candidates(db, mandate, cycle, [raw])[0]
+    if existing_reasons:
+        assert result.disposition == "rejected"
+        assert result.reason_codes == existing_reasons
+        admission.assert_not_called()
+    else:
+        assert result.disposition == "awaiting_data_admission"
+        assert result.reason_codes == ["data_admission_required"]
+        admission.assert_called_once_with(db, mandate, result)
+        assert result.document["dataset_binding_index"] == 0
+        assert result.document["scientific_requirements"] == requirements
 
 
 def test_weekly_mandate_cannot_exceed_seven_days():
