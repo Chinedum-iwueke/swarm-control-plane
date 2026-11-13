@@ -56,21 +56,30 @@ class OverviewEventBroker:
         self.queue_capacity = queue_capacity
         self._events: deque[OverviewEvent] = deque(maxlen=replay_capacity)
         self._subscribers: set[asyncio.Queue[OverviewEvent | object]] = set()
-        self._lock = asyncio.Lock()
+        self.__lock: asyncio.Lock | None = None
         self._next_event_id = 1
         self._last_fingerprint: str | None = None
         self._task: asyncio.Task[None] | None = None
-        self._stopped = asyncio.Event()
+        self._stopped: asyncio.Event | None = None
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        # Python 3.9 binds primitives at construction, before ASGI may start.
+        if self.__lock is None:
+            self.__lock = asyncio.Lock()
+        return self.__lock
 
     async def start(self) -> None:
         if self._task is None:
-            self._stopped.clear()
+            self.__lock = asyncio.Lock()
+            self._stopped = asyncio.Event()
             self._task = asyncio.create_task(
                 self._run(), name="mission-control-overview-events"
             )
 
     async def stop(self) -> None:
-        self._stopped.set()
+        if self._stopped is not None:
+            self._stopped.set()
         if self._task is not None:
             self._task.cancel()
             try:
@@ -119,6 +128,7 @@ class OverviewEventBroker:
         )
 
     async def _run(self) -> None:
+        assert self._stopped is not None
         while not self._stopped.is_set():
             async with self._lock:
                 has_subscribers = bool(self._subscribers)

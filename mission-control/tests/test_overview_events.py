@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import asyncio
 
 from hermes_mission_control.overview_events import (
     OverviewEventBroker,
@@ -17,6 +18,27 @@ def snapshot(*, active: int = 1, freshness: str = "current") -> dict:
         "operation_summary": {"active_total": active},
         "approval_center": {"counts": {"actionable": 2}},
     }
+
+
+def test_broker_constructed_before_runtime_loop_can_poll_and_restart():
+    async def loader():
+        return snapshot()
+
+    broker = OverviewEventBroker(loader, poll_seconds=0.01)
+    assert broker._stopped is None
+    assert broker._OverviewEventBroker__lock is None
+
+    async def exercise():
+        await broker.start()
+        subscription = await broker.subscribe(None)
+        await asyncio.sleep(0.04)
+        assert broker._task is not None and not broker._task.done()
+        assert subscription.replay or not subscription.queue.empty()
+        await broker.stop()
+        assert broker._task is None
+
+    asyncio.run(exercise())
+    asyncio.run(exercise())
 
 
 @pytest.mark.asyncio
