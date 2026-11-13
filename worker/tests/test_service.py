@@ -612,7 +612,11 @@ async def test_provider_capacity_defers_without_failing_task(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_successful_half_open_probe_closes_circuit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("step_name", [
+    "independent-review", "independent-strategy-review", "alpha-intelligence",
+    "alpha-hypothesis", "alpha-representation",
+])
+async def test_successful_half_open_probe_closes_circuit(tmp_path: Path, step_name: str) -> None:
     events: list[str] = []
     api = FakeAPI(
         events,
@@ -624,7 +628,7 @@ async def test_successful_half_open_probe_closes_circuit(tmp_path: Path) -> None
     )
 
     result = make_execution_result()
-    result.steps[0] = result.steps[0].model_copy(update={"name": "independent-review"})
+    result.steps[0] = result.steps[0].model_copy(update={"name": step_name})
     outcome = await make_service(
         tmp_path, api, events, execution_result=result
     ).run_once()
@@ -652,6 +656,15 @@ async def test_unexercised_half_open_probe_is_not_closed(tmp_path: Path) -> None
 
     assert isinstance(outcome, SucceededOutcome)
     assert not api.requests["provider_probe"]
+
+
+@pytest.mark.parametrize("return_code,timed_out", [(1, False), (None, False), (0, True)])
+def test_unsuccessful_provider_process_does_not_prove_capacity(return_code, timed_out):
+    result = make_execution_result()
+    result.steps[0] = result.steps[0].model_copy(update={
+        "name": "alpha-hypothesis", "return_code": return_code, "timed_out": timed_out,
+    })
+    assert WorkerService._exercised_providers(result) == set()
 
 
 @pytest.mark.asyncio

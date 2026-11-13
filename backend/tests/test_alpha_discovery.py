@@ -877,6 +877,20 @@ def test_invalid_representation_is_automatically_corrected_with_bounded_feedback
     assert event.call_args.args[2] == "invalid_representation_automatically_superseded"
 
 
+def test_non_retryable_discovery_failure_does_not_clone_unchanged_work():
+    db = MagicMock()
+    previous = SimpleNamespace(failure={
+        "retryable": False,
+        "error_category": "executor_AlphaDiscoveryError",
+        "detail": "Compacted discovery prompt exceeds the bounded inference envelope.",
+    })
+    assert not _automatically_retry_failed_discovery_stage(
+        db, SimpleNamespace(), SimpleNamespace(), previous, "intelligence"
+    )
+    db.scalar.assert_not_called()
+    db.add.assert_not_called()
+
+
 def test_failed_representation_stage_gets_bounded_automatic_successor(monkeypatch):
     moment = datetime.now(UTC)
     mandate = SimpleNamespace(id=uuid4(), budget={"maximum_candidates_per_cycle": 5})

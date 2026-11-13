@@ -750,6 +750,19 @@ def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
     lake = context.get("lake_catalog")
     if isinstance(lake, dict):
         compact_lake = dict(lake)
+        availability = compact_lake.get("availability")
+        if (
+            isinstance(availability, list)
+            and availability
+            and all(isinstance(record, dict) for record in availability)
+            and all(record.keys() == availability[0].keys() for record in availability)
+        ):
+            columns = sorted(availability[0])
+            compact_lake["availability"] = {
+                "encoding": "column-labelled-rows-v1",
+                "columns": columns,
+                "rows": [[record[key] for key in columns] for record in availability],
+            }
         records = compact_lake.pop("membership_records", None)
         if isinstance(records, list):
             counts = Counter(
@@ -889,6 +902,8 @@ The mandate may permit up to 100 assets. Do not default to a small basket merely
 use a 30-100 asset basket when cross-sectional breadth, diversification, common-factor estimation or portfolio-level
 conditioning is causally material. Large baskets must still have point-in-time membership, common-window coverage,
 liquidity, selected-panel admission and compute admission before execution; never choose their membership by outcome.
+When availability uses column-labelled-rows-v1, each row contains values in the exact columns order;
+all records and quality fields are retained. Null is not evidence of availability.
 The lake_catalog describes physical inventory, not execution permission or continuous coverage. Historical
 stable/volatile labels are optional hints: reason about hypothesis-specific cross-group baskets rather than
 restricting proposals to those labels or BTC. Do not invent missing catalog assets. When discovery_authority is

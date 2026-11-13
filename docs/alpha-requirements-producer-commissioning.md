@@ -2,6 +2,23 @@
 
 ## 2026-11-13 checkpoint: not certified
 
+The founder approved commissioning mandate
+`8dcbee7c9b977b6ce8afa9a0efcd51b708fd844cbfc75dc2c7013a5930006e73`
+directly; task delegation was not used as mandate authority. Initial discovery
+exposed two operational defects: 3,441 availability records exceeded the prompt
+envelope through repeated field names, and successful discovery inference did
+not close a half-open provider circuit because only engineering step names were
+recognized. Lossless column-labelled availability rows preserve the catalogue
+without increasing the envelope. Successful discovery/review process steps now
+count as provider probes; failed, timed-out and deterministic-only steps do not.
+Explicitly non-retryable discovery failures no longer spawn unchanged automatic
+successors. The real failed prompt shrank from 1,470,995 to 824,521 characters.
+
+Cycle 2 returned no hypotheses: the commissioning objective retained existing
+questions but the discovery prompt treated them as novelty exclusions. Recovery
+must use explicit retained-candidate lineage, not disguise prior questions as
+novel or erase their exposure history. This remains an open commissioning gate.
+
 Representation output now proposes typed scientific requirements separately from
 its transformation graph: research-bar clock, feature warmup, training,
 validation/test support, horizon/purge/embargo, scientific duration, bounded smoke

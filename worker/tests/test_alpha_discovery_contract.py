@@ -288,6 +288,39 @@ def test_discovery_prompt_separates_catalog_visibility_from_execution_scope():
     assert "right-closed, left-labeled" not in prompt
 
 
+@pytest.mark.parametrize("stage", ["intelligence", "hypothesis", "representation"])
+def test_availability_table_preserves_full_catalogue(stage):
+    import copy
+    import json
+
+    document = alpha_discovery_contract()
+    document["stage"] = stage
+    records = [{
+        "market": "perp", "symbol": f"ASSET{i}USDT", "dataset": "funding",
+        "last_ts": "2026-05-11T08:00:00Z", "exchange": "binance",
+        "first_ts": "2021-01-01T00:00:00Z", "timeframe": "1m",
+        "actual_rows": 5870, "fetch_status": "success", "missing_rows": 0,
+        "expected_rows": 5870, "execution_eligible": False,
+        "largest_gap_minutes": None if i % 2 else 480.0,
+    } for i in range(3441)]
+    document["context"]["lake_catalog"] = {"availability": records}
+    contract = AlphaDiscoveryContract.model_validate(document)
+    original = copy.deepcopy(contract.context)
+    table = _prompt_context(contract)["lake_catalog"]["availability"]
+    assert [dict(zip(table["columns"], row)) for row in table["rows"]] == records
+    assert contract.context == original
+    assert len(json.dumps(table)) < len(json.dumps(records)) * 0.6
+    assert len(_prompt(contract)) < 900_000
+
+
+def test_heterogeneous_availability_is_not_lossily_compacted():
+    document = alpha_discovery_contract()
+    records = [{"symbol": "BTCUSDT"}, {"symbol": "ETHUSDT", "missing_rows": None}]
+    document["context"]["lake_catalog"] = {"availability": records}
+    contract = AlphaDiscoveryContract.model_validate(document)
+    assert _prompt_context(contract)["lake_catalog"]["availability"] == records
+
+
 def test_representation_prompt_compacts_duplicate_catalog_bodies():
     document = alpha_discovery_contract()
     document["stage"] = "representation"

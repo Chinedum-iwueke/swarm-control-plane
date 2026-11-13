@@ -1331,6 +1331,9 @@ def _automatically_retry_failed_discovery_stage(
     stage: str,
 ) -> bool:
     """Retry a terminal discovery-worker failure without expanding authority."""
+    failure = previous.failure if isinstance(previous.failure, dict) else {}
+    if failure.get("retryable") is False:
+        return False
     retry_count = int(
         db.scalar(
             select(func.count(AlphaDiscoveryEvent.id)).where(
@@ -1345,7 +1348,6 @@ def _automatically_retry_failed_discovery_stage(
         return False
     contract = previous.input_contract or {}
     recovery_context = deepcopy(contract.get("context", {}))
-    failure = previous.failure if isinstance(previous.failure, dict) else {}
     recovery_context["recovery_feedback"] = {
         "previous_task_id": str(previous.id),
         "failure_category": failure.get("error_category", "unknown"),

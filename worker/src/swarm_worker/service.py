@@ -768,11 +768,16 @@ class WorkerService:
             "coding-agent": "codex",
             "coding-correction": "codex",
             "independent-review": "codex",
+            "independent-strategy-review": "codex",
+            "alpha-intelligence": "codex",
+            "alpha-hypothesis": "codex",
+            "alpha-representation": "codex",
             "copilot-author": "copilot",
         }
         return {
             provider
             for step in execution.steps
+            if step.return_code == 0 and not step.timed_out
             if (provider := step_providers.get(step.name)) is not None
         }
 
