@@ -6,6 +6,7 @@ support, or scientific qualification. The campaign lock owns publication.
 
 import json
 import re
+from copy import deepcopy
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
@@ -15,6 +16,7 @@ from app.models.alpha_campaign import AlphaCampaignEvent
 from app.models.evaluator_routing import EvaluationRoute
 from app.models.task import Task
 from app.schemas.alpha_discovery import AlphaScientificRequirements
+from app.schemas.task import TaskCreate
 from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity
 from app.services.evaluator_routing import (
     create_route,
@@ -22,10 +24,43 @@ from app.services.evaluator_routing import (
     validated_alpha_strategy_reviews,
 )
 from app.services.graph import digest_document as digest
+from app.services.tasks import build_task, persist_new_task
 
 
 class RequirementsPending(Exception):
     """A durable gate was updated; commit it without creating engineering work."""
+
+
+def _admission_reattestation(db, campaign, producer):
+    """Replay immutable admission inputs once; never edit historical lease evidence."""
+    if producer.task_type != "alpha_data_admission" or producer.risk_level != 0:
+        raise ValueError("Only no-capital native admission can be re-attested")
+    number = f"AP-{producer.id}"
+    replay = db.scalar(select(Task).where(Task.task_number == number))
+    if replay is not None:
+        if replay.parent_task_id != producer.id or replay.input_contract != producer.input_contract:
+            raise ValueError("Admission re-attestation scope changed")
+        return replay
+    replay = build_task(TaskCreate(
+        task_number=number, project=producer.project, task_type=producer.task_type,
+        title="Re-attest native admission provenance",
+        objective="Replay the exact admitted scope with lease-time producer identity; preserve prior evidence.",
+        parent_task_id=producer.id, created_by="alpha-requirements-director",
+        risk_level=0, max_attempts=1,
+        input_contract=deepcopy(producer.input_contract),
+        required_capabilities=list(producer.required_capabilities),
+        allowed_machines=list(producer.allowed_machines),
+        expected_outputs=["native admission and predictor coverage with producer custody"],
+        acceptance_criteria=["Original immutable inputs", "Same admitted bytes and coverage", "Lease-time identity"],
+    ))
+    persist_new_task(db, replay)
+    from app.services.alpha_campaign import _append_event
+    _append_event(db, campaign, "admission_reattestation_requested", "alpha-requirements-director", {
+        "original_task_id": str(producer.id), "original_plan_digest": producer.plan_digest,
+        "original_result_digest": digest(producer.result), "replay_task_id": str(replay.id),
+        "scientific_result": False, "trial_count": 0,
+    })
+    return replay
 
 
 def _instant(value):
@@ -189,6 +224,24 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "research_mandate_digest"
     ):
         defer("restore_requirements_mandate_binding")
+    identity = task_producer_identity(db, producer)
+    if identity is None:
+        original = producer
+        try:
+            producer = _admission_reattestation(db, campaign, original)
+        except ValueError as exc:
+            defer("admission_provenance_reattestation_failed", str(exc))
+        if producer.status in {"queued", "leased", "running"}:
+            defer("await_admission_provenance_reattestation", blocked=False)
+        if producer.status != "succeeded":
+            defer("admission_provenance_reattestation_failed", {"replay_task_id": str(producer.id), "status": producer.status})
+        identity = task_producer_identity(db, producer)
+        old_batch = (original.result or {}).get("summary", {}).get("alpha_data_admission", {})
+        new_batch = (producer.result or {}).get("summary", {}).get("alpha_data_admission", {})
+        if identity is None:
+            defer("admission_provenance_reattestation_failed", "Replay lacks lease-time identity")
+        if old_batch.get("predictor_coverage_evidence") != new_batch.get("predictor_coverage_evidence"):
+            defer("repair_scientific_requirements_evidence", "Re-attested coverage differs from retained coverage")
     batch = (producer.result or {}).get("summary", {}).get("alpha_data_admission", {})
     try:
         package = build_package(
@@ -223,7 +276,6 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     if len(prospective) > 20 or len(json.dumps(prospective, allow_nan=False)) > 46_000:
         # Reserve room for the actual routed receipt within the worker's 48k cap.
         defer("requirements_engineering_context_exceeds_bound")
-    identity = task_producer_identity(db, producer)
     if identity is None:
         defer("restore_requirements_producer_identity")
     qualification = {
@@ -247,6 +299,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "card_digest": digest(candidate),
         "artifact_bundle_digest": digest(qualification["artifact_bundle"]),
         "producer_agent_ids": [str(identity["agent_id"])],
+        "producer_task_id": str(producer.id),
     }
     publications = db.scalars(
         select(AlphaCampaignEvent).where(

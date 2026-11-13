@@ -601,3 +601,18 @@ def test_incomplete_route_blocks_promotion_assertion() -> None:
     db.scalar.return_value = None
     with pytest.raises(HTTPException, match="promotion must remain blocked"):
         require_independence(db, SimpleNamespace(id=uuid.uuid4(), status="assigned"))
+
+
+def test_native_admission_snapshot_requires_unambiguous_attested_runtime():
+    from app.services.evaluator_routing import native_admission_identity_for_lease
+
+    agent = SimpleNamespace(id=ONE, machine="vm1", runtime="hermes", runtime_version="1")
+    identity = native_admission_identity_for_lease(agent, [DIGEST, DIGEST])
+    assert identity["agent_id"] == str(ONE)
+    assert identity["runtime"] == "hermes/1"
+    assert identity["provider"] == "native-bulletproof"
+    assert identity["model_family"] == "deterministic"
+    assert native_admission_identity_for_lease(agent, []) is None
+    assert native_admission_identity_for_lease(agent, ["a" * 64, "b" * 64]) is None
+    agent.runtime = agent.runtime_version = None
+    assert native_admission_identity_for_lease(agent, [DIGEST]) is None

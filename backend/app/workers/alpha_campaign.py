@@ -58,7 +58,7 @@ def run_once() -> dict:
                                 ),
                                 (AlphaCampaign.phase == "scientific_requirements_review")
                                 & AlphaCampaign.next_action.in_(
-                                    {*PRE_AUTHORING_DEFERRALS, "renew_weekly_research_mandate"}
+                                    {*PRE_AUTHORING_DEFERRALS, "renew_weekly_research_mandate", "restore_requirements_producer_identity"}
                                 ),
                             )
                         )

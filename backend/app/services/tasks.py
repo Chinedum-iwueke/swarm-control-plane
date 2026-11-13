@@ -30,6 +30,7 @@ from app.services.agent_governance import resolve as resolve_agent_authority
 from app.services.controls import paused_workflow_scopes, task_matches_control_scope
 from app.services.evaluator_routing import digest as evaluator_digest
 from app.services.evaluator_routing import producer_identity_for_lease
+from app.services.evaluator_routing import native_admission_identity_for_lease
 from app.services.governance import (
     consume_task_approval,
     create_approval,
@@ -360,6 +361,7 @@ def lease_next_task(
     ).all()
 
     task = None
+    admission_identity = None
     for candidate in candidates:
         blocking_workflow = next(
             (
@@ -373,6 +375,12 @@ def lease_next_task(
             continue
         authority_snapshots = resolve_task_authority(db, candidate, agent, now)
         if authority_snapshots and all(item["allowed"] for item in authority_snapshots):
+            if candidate.task_type == "alpha_data_admission":
+                admission_identity = native_admission_identity_for_lease(
+                    agent, [item["package_digest"] for item in authority_snapshots]
+                )
+                if admission_identity is None:
+                    continue
             task = candidate
             break
         reasons = sorted(
@@ -419,7 +427,7 @@ def lease_next_task(
     task.last_execution_heartbeat_at = now
     task.failure = {}
 
-    producer_identity = None
+    producer_identity = admission_identity if task.task_type == "alpha_data_admission" else None
     if task.task_type == "alpha_strategy_review" or (
         task.task_type == "alpha_research_execution"
         and task.input_contract.get("stage") in {"draft", "qualify"}

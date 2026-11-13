@@ -204,6 +204,21 @@ def task_producer_identity(db: Session, task: Task) -> dict | None:
     return identity
 
 
+def native_admission_identity_for_lease(agent: Agent, package_digests: list[str]) -> dict | None:
+    """Snapshot a deterministic producer, not an operator-declared LLM evaluator."""
+    packages = set(package_digests)
+    runtime = "/".join(filter(None, [agent.runtime, agent.runtime_version]))
+    if len(packages) != 1 or not runtime or not agent.machine:
+        return None
+    identity = {
+        "agent_id": str(agent.id), "machine": agent.machine,
+        "runtime": runtime, "package_digest": next(iter(packages)),
+        "provider": "native-bulletproof", "model_family": "deterministic",
+        "context_group": f"{agent.id}-native-data-admission",
+    }
+    return identity | {"profile_digest": digest(identity)}
+
+
 def _hard_conflicts(first: dict, second: dict) -> list[str]:
     conflicts = []
     for field in ("agent_id", "package_digest", "context_group"):

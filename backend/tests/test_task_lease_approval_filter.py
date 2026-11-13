@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+import pytest
 
 from app.api.routes.task_runtime import lease_task
 from app.models import Agent
@@ -42,7 +43,8 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
     assert "evaluator_agent_id" in params.values()
 
 
-def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
+@pytest.mark.parametrize("task_type", ["founder_intake_plan", "alpha_data_admission"])
+def test_authority_denied_task_does_not_starve_later_authorized_work(task_type) -> None:
     db = MagicMock()
     agent = Agent(
         id="11111111-1111-4111-8111-111111111111",
@@ -53,11 +55,13 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
         hermes_profile="test",
         capabilities=["founder-intake"],
         risk_ceiling=1,
+        runtime="hermes",
+        runtime_version="1",
     )
     denied = SimpleNamespace(id="denied", required_capabilities=["founder-intake"])
     allowed = SimpleNamespace(
         id="allowed",
-        task_type="founder_intake_plan",
+        task_type=task_type,
         input_contract={},
         required_capabilities=["founder-intake"],
         approval_required=False,
@@ -119,6 +123,13 @@ def test_authority_denied_task_does_not_starve_later_authorized_work() -> None:
     assert allowed.failure == {}
     assert append_event.call_args_list[0].args[1] is denied
     assert append_event.call_args_list[0].args[2] == "task_authority_denied"
+    payload = append_event.call_args.kwargs["payload"]
+    if task_type == "alpha_data_admission":
+        assert payload["producer_identity"]["agent_id"] == str(agent.id)
+        assert payload["producer_identity"]["model_family"] == "deterministic"
+        assert payload["producer_identity_digest"]
+    else:
+        assert "producer_identity" not in payload
 
 
 def test_research_drain_skips_alpha_work_but_leases_founder_intake() -> None:

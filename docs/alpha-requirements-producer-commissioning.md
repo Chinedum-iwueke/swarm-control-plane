@@ -147,6 +147,15 @@ budget and unfinished campaigns. A newer canonical approval prevents revival of
 an older canonical mandate. Recovery appends evidence; it changes neither the
 mandate digest nor its approval, budgets or expiry.
 
+Native data-admission leases now snapshot the authorized agent, machine, runtime
+and unique signed package as deterministic producer identity. Missing or ambiguous
+identity blocks leasing before an attempt is consumed. Historical admissions are
+not retroactively assigned a current identity: requirements reconciliation creates
+one parent-linked, one-attempt re-attestation task with identical input scope.
+The old result stays immutable. A successful replay must preserve the coverage
+evidence and match the registered bytes before independent review can proceed;
+failure remains blocked without an unbounded replay loop.
+
 1. Independently review the explicit requirements against the frozen estimand.
 2. Verify point-in-time membership and any non-OHLCV field availability.
 3. Distinguish source-clock coverage usable for warmup from finite-feature coverage

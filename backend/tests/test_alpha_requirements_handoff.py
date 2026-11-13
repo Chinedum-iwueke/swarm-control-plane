@@ -166,7 +166,7 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
     evidence["window"] = kwargs["allowed_window"]
     evidence["selected_panel_admission"]["admission_task_id"] = "admission-task"
     producer = SimpleNamespace(
-        status="succeeded", result={"summary": {"alpha_data_admission": batch}}
+        id=uuid4(), status="succeeded", result={"summary": {"alpha_data_admission": batch}}
     )
     mandate = SimpleNamespace(
         mandate_digest="f" * 64,
@@ -234,3 +234,34 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
             )
     create.assert_called_once()
     assert len(events) == 1
+
+
+def test_admission_reattestation_is_bounded_and_preserves_original(monkeypatch):
+    from copy import deepcopy
+    from app.services import alpha_campaign
+    from app.services import alpha_requirements_handoff as service
+
+    producer = SimpleNamespace(
+        id=uuid4(), task_type="alpha_data_admission", risk_level=0, project="bulletproof-bt",
+        input_contract={"candidate_id": str(uuid4()), "source_commit": "a" * 40},
+        required_capabilities=["alpha-data-admission"], allowed_machines=["vm1-developer"],
+        plan_digest="b" * 64, result={"retained": True}, status="succeeded",
+    )
+    before = deepcopy(vars(producer))
+    db = MagicMock()
+    db.scalar.return_value = None
+    persist = MagicMock()
+    monkeypatch.setattr(service, "persist_new_task", persist)
+    monkeypatch.setattr(alpha_campaign, "_append_event", MagicMock())
+    replay = service._admission_reattestation(db, SimpleNamespace(id=uuid4()), producer)
+    assert replay.max_attempts == 1 and replay.risk_level == 0
+    assert replay.input_contract == producer.input_contract
+    assert replay.input_contract is not producer.input_contract
+    assert replay.parent_task_id == producer.id
+    assert vars(producer) == before
+    db.scalar.return_value = replay
+    assert service._admission_reattestation(db, SimpleNamespace(), producer) is replay
+    persist.assert_called_once()
+    replay.input_contract = {"changed": True}
+    with pytest.raises(ValueError, match="scope changed"):
+        service._admission_reattestation(db, SimpleNamespace(), producer)
