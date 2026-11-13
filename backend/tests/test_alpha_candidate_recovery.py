@@ -2,6 +2,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -76,3 +77,61 @@ def test_duplicate_only_records_do_not_expand_the_novelty_exclusion_radius():
     assert _candidate_enters_novelty_memory(duplicate) is False
     duplicate.reason_codes.append("scientific_requirement_invalid")
     assert _candidate_enters_novelty_memory(duplicate) is True
+
+
+@pytest.mark.parametrize("stage", ["initial", "campaign", "terminal"])
+def test_drain_pause_preserves_cycles_without_replenishing(monkeypatch, stage):
+    from app.services import alpha_discovery as service
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), status="active", valid_until=moment + timedelta(days=1),
+        cycle_count=1, hypothesis_count=0, trial_count=0,
+        budget={"maximum_cycles":3,"maximum_hypotheses":3,"maximum_total_trials":24})
+    cycle = None if stage == "initial" else SimpleNamespace(id=uuid4(),
+        campaign_id=uuid4() if stage == "campaign" else None,
+        status="running" if stage == "campaign" else "rejected",
+        created_at=moment, completed_at=moment)
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    for name in ["_recover_premature_cycle_completion", "_retire_superseded_discovery_stalls", "_recover_resumed_stage"]:
+        monkeypatch.setattr(service, name, lambda *_: None)
+    monkeypatch.setattr(service, "_reconcile_campaign_cycles", lambda *_: {cycle.id} if cycle else set())
+    monkeypatch.setattr(service, "_question_pipeline_state", lambda *_: (0, 0))
+    monkeypatch.setattr(service, "_reconcile_data_admissions", lambda *_: False)
+    monkeypatch.setattr(service, "_discovery_creation_paused", lambda *_: True)
+    create = MagicMock()
+    monkeypatch.setattr(service, "_new_cycle", create)
+    service.reconcile_mandate(db, mandate)
+    create.assert_not_called()
+    assert mandate.cycle_count == 1
+
+
+@pytest.mark.parametrize("scope_type,scope_key,expected", [
+    ("global", "all", True), ("workflow", "autonomous-research", True),
+    ("workflow", "unrelated", False), ("agent", "researcher", False),
+])
+def test_discovery_pause_scope_is_explicit(scope_type, scope_key, expected):
+    from app.services.alpha_discovery import _discovery_creation_paused
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [SimpleNamespace(
+        is_paused=True, scope_type=scope_type, scope_key=scope_key)]
+    assert _discovery_creation_paused(db) is expected
+
+
+def test_intake_can_be_staged_before_approval_without_executing(monkeypatch):
+    from app.services import alpha_discovery as service
+    from app.schemas.alpha_discovery import AlphaFounderResearchIdeaCreate
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), mandate_digest="a"*64, status="awaiting_approval",
+        valid_from=moment-timedelta(hours=1),valid_until=moment+timedelta(days=1))
+    db = MagicMock()
+    existing = SimpleNamespace(status="queued")
+    db.scalar.return_value = existing
+    payload = AlphaFounderResearchIdeaCreate(mandate_id=mandate.id,
+        expected_mandate_digest=mandate.mandate_digest, submitted_by="founder-operator",
+        idea="Stage an unchanged research idea before mandate approval.")
+    assert service.queue_founder_idea(db, mandate, payload) is existing
+    monkeypatch.setattr(service, "_recover_premature_cycle_completion", lambda *_:None)
+    create = MagicMock()
+    monkeypatch.setattr(service, "_new_cycle", create)
+    service.reconcile_mandate(db, mandate)
+    create.assert_not_called()

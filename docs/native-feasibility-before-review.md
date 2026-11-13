@@ -109,7 +109,33 @@ for this planning, and no strategy was executed by it.
 
 The founder approved R3 commissioning mandate
 `98734b52619795f4e3d40a47cc64a8b2e01512480f0faefd0626285f0b54bb96`.
-Explicit retained-candidate recovery intake `4fc5be25-4b93-4a08-a048-4012bb141c89`
-preserves the old candidate/rejection lineage, rather than labeling it novel.
+The initial free-text recovery intake `4fc5be25-4b93-4a08-a048-4012bb141c89`
+was rejected by novelty protection: prose was not a typed recovery authorization.
 This mandate permits three cycles/hypotheses and 24 trials, not an unrestricted
 restart. Independent review, authoring and real BT-009 results remain outstanding.
+
+### Typed source recovery
+
+R3 allocated all three discovery cycles. Its counters and evidence were not reset.
+The founder approved replacement R4 digest
+`ad7acbbfdd9b3a2afbb6f3d5a89d5620e45e891b8313cdcca758f41e4542e877`,
+with the same source, coverage envelope and budgets. Typed intake
+`56a44816-8143-4f95-9658-c3b8232f93d0` binds parent candidate
+`993d8236-148f-423b-871f-1a2ef30dc7cb` and its immutable digest. Live read-only
+admission preflight returned only `data_admission_required`, not a novelty rejection.
+Cycle `f6e9556e-4ab9-4ba5-9225-93fe6d3d1f01` consumed that intake.
+
+`alpha_candidate_recovery.recovery_scope` permits only a previously admissible,
+untested question at a distinct native source. Observed or in-flight scientific
+work is excluded. `matching_recovery` rechecks those conditions and freezes the
+question, predictor, target, horizon, null, direction, falsification criteria,
+features, basket and research clock. Only that exact parent question is exempt
+from novelty checks; fresh admission and independent review still apply.
+Duplicate-only rejections remain retained but do not recursively widen the
+novelty exclusion radius. Scientific rejections remain novelty evidence.
+
+Founder intake can be staged against a current proposed mandate before approval;
+this grants no execution authority. Drain pause prevents first-cycle creation and
+replenishment while existing results can reconcile. These safeguards close the
+approval-to-intake race without editing frozen cycles or restoring spent budgets.
+End-to-end scientific certification is still outstanding.

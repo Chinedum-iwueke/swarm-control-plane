@@ -23,6 +23,7 @@ from app.models.alpha_discovery import (
     AlphaResearchMandate,
 )
 from app.models.authority import AuthorityDelegation
+from app.models.control import ControlScope
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
@@ -1540,11 +1541,11 @@ def recover_data_admission(
 def queue_founder_idea(
     db: Session, mandate: AlphaResearchMandate, payload: AlphaFounderResearchIdeaCreate
 ) -> AlphaFounderResearchIdea:
-    if mandate.status != "active" or not (
+    if mandate.status not in {"active", "awaiting_approval"} or not (
         mandate.valid_from <= now() < mandate.valid_until
     ):
         raise HTTPException(
-            409, "Founder research ideas require an active research mandate."
+            409, "Founder research ideas require a current active or proposed mandate."
         )
     if mandate.mandate_digest != payload.expected_mandate_digest:
         raise HTTPException(409, "Mandate digest changed before the idea was queued.")
@@ -3030,6 +3031,16 @@ def _reconcile_campaign_cycles(
     return reconciled
 
 
+def _discovery_creation_paused(db: Session) -> bool:
+    scopes = db.scalars(select(ControlScope).where(ControlScope.is_paused.is_(True))).all()
+    return any(
+        scope.is_paused is True and (scope.scope_type, scope.scope_key) in {
+            ("global", "all"), ("workflow", "autonomous-research")
+        }
+        for scope in scopes
+    )
+
+
 def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     moment = now()
     mandate.heartbeat_at = moment
@@ -3050,7 +3061,8 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         .limit(1)
     )
     if cycle is None:
-        _new_cycle(db, mandate, _next_founder_idea(db, mandate))
+        if not _discovery_creation_paused(db):
+            _new_cycle(db, mandate, _next_founder_idea(db, mandate))
         return
     _retire_superseded_discovery_stalls(db, mandate, cycle, moment)
     if cycle.campaign_id is not None and cycle.id not in reconciled_cycles:
@@ -3060,7 +3072,7 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     cycle.heartbeat_at = moment
     pipeline_depth, active_campaigns = _question_pipeline_state(db, mandate)
     if cycle.campaign_id and cycle.status not in _TERMINAL_CYCLE:
-        if _mandate_budget_exhausted(mandate):
+        if _mandate_budget_exhausted(mandate) or _discovery_creation_paused(db):
             return
         low_watermark = mandate.budget.get("question_queue_low_watermark", 2)
         maximum_parallel = mandate.budget.get("maximum_parallel_campaigns", 1)
@@ -3110,6 +3122,8 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
                     "trials": mandate.trial_count,
                 },
             )
+        elif _discovery_creation_paused(db):
+            return
         elif (queued := _next_founder_idea(db, mandate)) is not None:
             _new_cycle(db, mandate, queued)
         elif _duplicate_only_cycle(cycle):
