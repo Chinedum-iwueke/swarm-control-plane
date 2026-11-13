@@ -135,3 +135,30 @@ def test_intake_can_be_staged_before_approval_without_executing(monkeypatch):
     monkeypatch.setattr(service, "_new_cycle", create)
     service.reconcile_mandate(db, mandate)
     create.assert_not_called()
+
+
+@pytest.mark.parametrize("grounding", [
+    {}, {"citations": [], "abstained": True, "error": "Projection stale"},
+    {"citations": [{"object_id": "retained"}], "abstained": True},
+])
+def test_missing_grounding_consumes_no_cycle_or_model_task(monkeypatch, grounding):
+    from app.services import alpha_discovery as service
+    mandate = SimpleNamespace(id=uuid4(), cycle_count=1)
+    idea = SimpleNamespace(status="queued", cycle_id=None)
+    db = MagicMock()
+    db.scalar.return_value = None
+    event, task = MagicMock(), MagicMock()
+    monkeypatch.setattr(service, "_event", event)
+    monkeypatch.setattr(service, "_task", task)
+    assert service._new_cycle(db, mandate, idea,
+        prepared_context={"research_intelligence":grounding}) is None
+    assert mandate.cycle_count == 1
+    assert idea.status == "queued" and idea.cycle_id is None
+    db.add.assert_not_called()
+    task.assert_not_called()
+    assert event.call_args.args[2] == "discovery_grounding_deferred"
+    assert event.call_args.args[3]["cycle_budget_consumed"] is False
+    db.scalar.return_value = uuid4()
+    event.reset_mock()
+    service._new_cycle(db, mandate, idea,prepared_context={"research_intelligence":grounding})
+    event.assert_not_called()

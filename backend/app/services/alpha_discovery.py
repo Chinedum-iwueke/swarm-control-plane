@@ -1628,13 +1628,30 @@ def _new_cycle(
     founder_idea: AlphaFounderResearchIdea | None = None,
     *,
     prepared_context: dict | None = None,
-) -> AlphaDiscoveryCycle:
+) -> AlphaDiscoveryCycle | None:
     ordinal = mandate.cycle_count + 1
     context = (
         prepared_context
         if prepared_context is not None
         else _bounded_context(db, mandate)
     )
+    grounding = context.get("research_intelligence", {})
+    if grounding.get("abstained") or not grounding.get("citations"):
+        grounding_digest = digest_document(grounding)
+        existing = db.scalar(select(AlphaDiscoveryEvent.id).where(
+            AlphaDiscoveryEvent.mandate_id == mandate.id,
+            AlphaDiscoveryEvent.event_type == "discovery_grounding_deferred",
+            AlphaDiscoveryEvent.payload["grounding_digest"].astext == grounding_digest,
+        ).limit(1))
+        if existing is None:
+            _event(db, mandate, "discovery_grounding_deferred", {
+                "grounding_digest": grounding_digest,
+                "reason": grounding.get("error") or "No current admissible citations.",
+                "retry_condition": "Current retrieval projection and admissible citations are available.",
+                "cycle_budget_consumed": False,
+                "model_task_created": False,
+            })
+        return None
     if founder_idea:
         context = _focus_founder_context(context, founder_idea.idea)
         context["founder_research_idea"] = {

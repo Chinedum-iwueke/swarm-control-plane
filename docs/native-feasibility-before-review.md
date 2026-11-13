@@ -149,3 +149,13 @@ required approvals and invalidates the old lease token. Running work and other
 task types with potentially long workspace preparation retain normal expiry.
 Use drain pause around API recreation to prevent new lease acquisition during
 deployment. This transport recovery is not evidence of scientific completion.
+
+The recovered hypothesis task completed with an empty candidate set because its
+frozen intelligence context had no citations and reported stale retrieval.
+The derived-state service restored retrieval at epoch 637328 after a roughly
+27-minute rebuild; graph reconciliation continued separately. Discovery must
+wait for admissible grounding rather than ask models to invent evidence.
+Cycle creation now defers before allocating a cycle or model task when grounding
+abstains or has no citations. Its blocker is deduplicated by evidence digest and
+the queued founder idea is preserved. Previously spent cycles remain historical;
+their frozen ungrounded contexts are not silently rewritten.
