@@ -2734,7 +2734,7 @@ def test_schema_invalid_candidate_does_not_enter_novelty_memory():
         disposition="rejected", reason_codes=["candidate_schema_invalid"]
     )
     scientific_rejection = SimpleNamespace(
-        disposition="rejected", reason_codes=["semantic_duplicate_prior_question"]
+        disposition="rejected", reason_codes=["scientific_requirement_invalid"]
     )
     accepted = SimpleNamespace(disposition="accepted", reason_codes=[])
 

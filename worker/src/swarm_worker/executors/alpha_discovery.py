@@ -875,7 +875,13 @@ research_intelligence.citations. Founder-idea IDs, task IDs, dataset receipts, s
 in the context are constraints or provenance, not candidate evidence citations; never include them in those arrays.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
 Read recent_research_memory before proposing anything. Its recent candidate questions are novelty exclusions even
-when they never reached a backtest; do not paraphrase them. Its coverage counts reveal overused instruments,
+when they never reached a backtest; do not paraphrase them. The sole scoped exception is an explicit
+founder_research_idea.constraints.retained_candidate_recovery: preserve its scientific_identity fields verbatim,
+including the question, predictor, target, horizon, null, direction, falsification criteria, features and data scope.
+Treat this as reassessment of an untested retained question at a new native source, never as novel discovery.
+Do not extend that exception to any other prior question. Fresh data admission and independent review remain
+mandatory; this context grants no execution authority. Report infeasibility rather than changing the frozen identity.
+Its coverage counts reveal overused instruments,
 timeframes, basket sizes and transformations. In an autonomous cycle without a founder_research_idea, produce two
 to {contract.maximum_candidates} semantically distinct candidates when the supplied evidence supports them. Give
 scientifically defensible underexplored instruments, cross-asset mechanisms and non-dominant timeframes genuine

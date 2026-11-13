@@ -420,6 +420,9 @@ def test_hypothesis_prompt_receives_novelty_memory_and_bounded_diversity_directi
 
     assert "recent candidate questions are novelty exclusions" in prompt
     assert "do not paraphrase them" in prompt
+    assert "retained_candidate_recovery" in prompt
+    assert "preserve its scientific_identity fields verbatim" in prompt
+    assert "Do not extend that exception to any other prior question" in prompt
     assert "underexplored instruments" in prompt
     assert "not a forced universe" in prompt
     assert "never add an asset merely for diversity" in prompt
