@@ -141,6 +141,27 @@ def test_cross_sectional_rank_binds_one_asset_specific_output():
         )
 
 
+@pytest.mark.parametrize("operation", ["rolling_zscore", "realized_volatility"])
+@pytest.mark.parametrize("lag", [0, 1, 72, 100000])
+def test_rolling_lag_matches_native_contract(operation, lag):
+    value = AlphaRepresentationTransformation(
+        output_field="prior_feature", operation=operation, input_fields=["log_return"],
+        parameters={"window": 72, "lag": lag}, fit_policy="stateless",
+        rationale="Explicit completed-bar history and governed lag for causal research.",
+    )
+    assert value.parameters["lag"] == lag
+
+
+@pytest.mark.parametrize("lag", [-1, 100001, 1.5, True, "1"])
+def test_rolling_lag_cannot_be_negative_fractional_or_coerced(lag):
+    with pytest.raises(ValidationError, match="rolling lag"):
+        AlphaRepresentationTransformation(
+            output_field="prior_feature", operation="rolling_zscore", input_fields=["volume"],
+            parameters={"window": 72, "lag": lag}, fit_policy="stateless",
+            rationale="Reject unsafe or ambiguous shift parameters before materialization.",
+        )
+
+
 def mandate_for_approval():
     moment = datetime.now(UTC)
     return SimpleNamespace(

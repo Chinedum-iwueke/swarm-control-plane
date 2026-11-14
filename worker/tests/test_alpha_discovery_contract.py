@@ -34,6 +34,18 @@ def test_representation_proposes_requirements_without_receipt_authority():
         }}]})
 
 
+def test_representation_schema_encodes_and_preserves_rolling_lag():
+    plan = _schema("representation")["properties"]["representation_plans"]["items"]
+    params = plan["properties"]["transformations"]["items"]["properties"]["parameters"]
+    assert "lag" in params["required"]
+    assert params["properties"]["lag"] == {"type": ["integer", "null"], "minimum": 0, "maximum": 100_000}
+    output = {"representation_plans": [{"transformations": [
+        {"parameters": {"window": 72, "lag": 1, "periods": None}}
+    ]}]}
+    normalized = _normalize_output("representation", output)
+    assert normalized["representation_plans"][0]["transformations"][0]["parameters"] == {"window": 72, "lag": 1}
+
+
 def test_discovery_domain_identifiers_match_canonical_intake():
     import re
 
@@ -474,6 +486,7 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
     ]
     assert parameters["additionalProperties"] is False
     assert set(parameters["required"]) == {
+        "lag",
         "periods",
         "window",
         "d",

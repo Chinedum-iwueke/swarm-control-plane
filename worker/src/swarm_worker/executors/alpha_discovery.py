@@ -497,8 +497,14 @@ def _schema(stage: str) -> dict:
                                                 "d",
                                                 "weight_threshold",
                                                 "target_index",
+                                                "lag",
                                             ],
                                             "properties": {
+                                                "lag": {
+                                                    "type": ["integer", "null"],
+                                                    "minimum": 0,
+                                                    "maximum": 100_000,
+                                                },
                                                 "periods": {
                                                     "type": ["number", "null"],
                                                     "minimum": 1,
@@ -939,6 +945,11 @@ to that input's zero-based position in input_fields and emit a separate ordered 
 used downstream. Never average all ranks in a complete cross-section: that value is mechanically constant and loses
 asset identity.
 Rolling z-score and realized-volatility windows must contain between 2 and 100000 completed research bars; a
+prior-only rolling feature must encode parameters.lag=1 (or its explicitly required positive research-bar lag).
+Both rolling operations support integer lag from 0 to 100000 applied after the rolling calculation. Include the
+lag in composed warmup requirements; a rolling return-volatility feature also needs the return's input history.
+Use lag=0 only when the completed decision bar is intentionally included; null omits lag and retains that default.
+Do not describe an unshifted rolling feature as prior-only. A
 one-observation rolling window is invalid and must be represented with another declared operation or retained for
 the governed evaluator when the native transformation language cannot express it without changing the hypothesis.
 Set selection_data_boundary to metadata_predictors_only_no_targets and outcome_data_consulted to false.

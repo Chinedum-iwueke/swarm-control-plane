@@ -354,6 +354,17 @@ class AlphaRepresentationBasketMember(StrictModel):
 
 
 class AlphaRepresentationTransformation(StrictModel):
+    @model_validator(mode="before")
+    @classmethod
+    def strict_lag(cls, value):
+        if isinstance(value, dict):
+            parameters = value.get("parameters", {})
+            if isinstance(parameters, dict) and "lag" in parameters:
+                lag = parameters["lag"]
+                if type(lag) is not int or not 0 <= lag <= 100_000:
+                    raise ValueError("rolling lag must be an integer between 0 and 100000")
+        return value
+
     output_field: str = Field(pattern=r"^[a-z][a-z0-9_]{0,99}$")
     operation: Literal[
         "identity",
@@ -397,7 +408,7 @@ class AlphaRepresentationTransformation(StrictModel):
             if self.fit_policy != "train_only":
                 raise ValueError("fractional difference selection must be train-only")
         elif self.operation in {"rolling_zscore", "realized_volatility"}:
-            if len(self.input_fields) != 1 or set(self.parameters) != {"window"}:
+            if len(self.input_fields) != 1 or set(self.parameters) not in ({"window"}, {"window", "lag"}):
                 raise ValueError(f"{self.operation} parameters are invalid")
             if not 2 <= int(self.parameters["window"]) <= 100_000:
                 raise ValueError("rolling window is outside the bounded range")
