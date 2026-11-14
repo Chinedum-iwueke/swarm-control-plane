@@ -3298,6 +3298,9 @@ def record_attempt(
 
 
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
+    if campaign.status == "needs_attention" and campaign.next_action == "scientific_requirements_rejected":
+        from app.services.alpha_requirements_handoff import hydrate_retained_rejection
+        hydrate_retained_rejection(db, campaign)
     if (
         campaign.status == "needs_attention"
         and campaign.phase == "scientific_requirements_review"

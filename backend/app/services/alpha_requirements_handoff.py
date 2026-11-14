@@ -31,6 +31,59 @@ class RequirementsPending(Exception):
     """A durable gate was updated; commit it without creating engineering work."""
 
 
+def rejection_detail(route, subject_digest, reviews):
+    return {
+        "route_id": str(route.id), "subject_digest": subject_digest,
+        "responsible_component": "scientific_requirements_producer",
+        "reconsideration_condition": "Publish an explicit successor specification resolving the recorded blockers, then obtain fresh independent review; do not rewrite rejected evidence.",
+        "reviews": [review.model_dump(mode="json") for review in reviews],
+        "blockers": sorted({blocker for review in reviews for blocker in review.blockers}),
+    }
+
+
+def bound_review_card(candidate, bindings):
+    """Resolve post-admission indexes in a derived view, retaining source identity."""
+    symbols = candidate["data"]["instruments"]
+    resolved = []
+    for symbol in symbols:
+        matches = [(index, binding) for index, binding in enumerate(bindings)
+            if binding.get("instruments", [binding.get("instrument")]) == [symbol]]
+        if len(matches) != 1:
+            raise ValueError("Review card requires one exact admitted binding per instrument")
+        index, binding = matches[0]
+        resolved.append({"instrument": symbol, "binding_index": index, "binding_digest": digest(binding)})
+    if len(bindings) != len(symbols) or len(set(symbols)) != len(symbols):
+        raise ValueError("Review card admitted basket differs from candidate")
+    card = deepcopy(candidate)
+    card["source_candidate_document_digest"] = digest(candidate)
+    card["source_dataset_binding_index"] = candidate.get("dataset_binding_index")
+    card["dataset_binding_scope"] = "review_artifact_bundle.dataset_bindings"
+    card["dataset_binding_index"] = resolved[0]["binding_index"] if len(resolved) == 1 else None
+    card["admitted_dataset_bindings"] = resolved
+    return card
+
+
+def hydrate_retained_rejection(db, campaign):
+    """Restore display details from verified receipts, without reopening work."""
+    if campaign.next_action != "scientific_requirements_rejected" or campaign.terminal_reason:
+        return
+    publication = db.scalar(select(AlphaCampaignEvent).where(
+        AlphaCampaignEvent.campaign_id == campaign.id,
+        AlphaCampaignEvent.event_type == "scientific_requirements_published",
+    ).order_by(AlphaCampaignEvent.created_at.desc(), AlphaCampaignEvent.id.desc()))
+    if publication is None:
+        return
+    route = db.get(EvaluationRoute, publication.payload["route_id"])
+    if route is None:
+        return
+    subject_digest = digest(publication.payload["subject"])
+    reviews = validated_alpha_strategy_reviews(db, route, subject_digest=subject_digest,
+        producer_agent_id=route.producer.get("agent_id"))
+    if reviews and any(review.verdict == "reject" for review in reviews):
+        campaign.terminal_reason = {"category": "scientific_requirements_rejected",
+            "detail": rejection_detail(route, subject_digest, reviews)}
+
+
 def _admission_reattestation(db, campaign, producer):
     """Replay immutable admission inputs once; never edit historical lease evidence."""
     if producer.task_type != "alpha_data_admission" or producer.risk_level != 0:
@@ -320,7 +373,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     if identity is None:
         defer("restore_requirements_producer_identity")
     qualification = {
-        "card": candidate,
+        "card": bound_review_card(candidate, evidence["dataset_bindings"]),
         "artifact_bundle": {
             "validation_requirements": package,
             "predictor_coverage_evidence": batch["predictor_coverage_evidence"],
@@ -398,14 +451,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     if reviews is None:
         defer("await_independent_scientific_requirements_review", blocked=False)
     if any(review.verdict != "approve" for review in reviews):
-        defer("scientific_requirements_rejected", {
-            "route_id": str(route.id),
-            "subject_digest": digest(subject),
-            "responsible_component": "scientific_requirements_producer",
-            "reconsideration_condition": "Publish an explicit successor specification resolving the recorded blockers, then obtain fresh independent review; do not rewrite rejected evidence.",
-            "reviews": [review.model_dump(mode="json") for review in reviews],
-            "blockers": sorted({blocker for review in reviews for blocker in review.blockers}),
-        })
+        defer("scientific_requirements_rejected", rejection_detail(route, digest(subject), reviews))
     if successor is not None:
         # Only the new engineering evidence changes, after both reviews. The
         # original candidate, admission, task and publication remain immutable.

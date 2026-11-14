@@ -76,6 +76,32 @@ def inputs():
     return evidence, batch, {"source_commit": "a" * 40, "allowed_window": window}
 
 
+@pytest.mark.parametrize("verdict", [None, "approve", "reject"])
+def test_old_rejection_details_require_verified_receipts_and_never_resume(monkeypatch, verdict):
+    from app.services import alpha_requirements_handoff as service
+    from app.schemas.evaluator_routing import AlphaStrategyReview
+    campaign = SimpleNamespace(id=uuid4(), status="needs_attention", next_action="scientific_requirements_rejected", terminal_reason={})
+    db = MagicMock()
+    subject = {"immutable": True}
+    db.scalar.return_value = SimpleNamespace(payload={"route_id": str(uuid4()), "subject": subject})
+    db.get.return_value = SimpleNamespace(id=uuid4(), producer={"agent_id": str(uuid4())})
+    reviews = None if verdict is None else [AlphaStrategyReview(
+        subject_digest=digest(subject), verdict=verdict, rationale="Independent scientific requirements review.",
+        checks=["Frozen inputs checked"], blockers=["Missing target equation"] if verdict == "reject" else [],
+    )]
+    verify = MagicMock(return_value=reviews)
+    monkeypatch.setattr(service, "validated_alpha_strategy_reviews", verify)
+    service.hydrate_retained_rejection(db, campaign)
+    assert campaign.status == "needs_attention"
+    assert campaign.next_action == "scientific_requirements_rejected"
+    if verdict == "reject":
+        assert campaign.terminal_reason["detail"]["blockers"] == ["Missing target equation"]
+        service.hydrate_retained_rejection(db, campaign)
+        verify.assert_called_once()
+    else:
+        assert campaign.terminal_reason == {}
+
+
 def test_package_binds_final_data_clock_without_issuing_approval():
     evidence, batch, kwargs = inputs()
     before = deepcopy((evidence, batch))
@@ -88,6 +114,23 @@ def test_package_binds_final_data_clock_without_issuing_approval():
     assert result["point_in_time_membership_verified"] is False
     assert "review_receipt" not in result
     assert (evidence, batch) == before
+
+
+def test_review_card_resolves_admitted_binding_without_rewriting_candidate():
+    from app.services.alpha_requirements_handoff import bound_review_card
+    candidate = {"data": {"instruments": ["TRBUSDT"]}, "dataset_binding_index": None}
+    before = deepcopy(candidate)
+    binding = {"instruments": ["TRBUSDT"], "dataset_digest": "b" * 64}
+    card = bound_review_card(candidate, [binding])
+    assert candidate == before
+    assert card["dataset_binding_index"] == 0
+    assert card["source_dataset_binding_index"] is None
+    assert card["source_candidate_document_digest"] == digest(candidate)
+    assert card["admitted_dataset_bindings"] == [{"instrument": "TRBUSDT", "binding_index": 0, "binding_digest": digest(binding)}]
+    with pytest.raises(ValueError):
+        bound_review_card(candidate, [binding, binding])
+    with pytest.raises(ValueError):
+        bound_review_card(candidate, [{"instruments": ["BTCUSDT"]}])
 
 
 @pytest.mark.parametrize(
