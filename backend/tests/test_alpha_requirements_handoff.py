@@ -229,7 +229,10 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
         service,
         "validated_alpha_strategy_reviews",
         lambda *args, **kwargs: (
-            None if verdict is None else [SimpleNamespace(verdict=verdict)] * 2
+            None if verdict is None else [SimpleNamespace(
+                verdict=verdict, blockers=["Target equation missing"] if verdict == "reject" else [],
+                model_dump=lambda **kwargs: {"verdict": verdict, "blockers": ["Target equation missing"] if verdict == "reject" else []},
+            )] * 2
         ),
     )
     for _ in range(2):
@@ -262,6 +265,9 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
                 else "await_independent_scientific_requirements_review"
             )
             assert evidence["window"] == original_window
+            if verdict == "reject":
+                assert campaign.terminal_reason["detail"]["blockers"] == ["Target equation missing"]
+                assert campaign.terminal_reason["detail"]["route_id"] == str(route.id)
     if native_state in {"ready", "successor"}:
         create.assert_called_once()
         assert len(events) == 1

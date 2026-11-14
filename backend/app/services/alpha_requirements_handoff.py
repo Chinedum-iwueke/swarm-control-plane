@@ -398,7 +398,14 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     if reviews is None:
         defer("await_independent_scientific_requirements_review", blocked=False)
     if any(review.verdict != "approve" for review in reviews):
-        defer("scientific_requirements_rejected")
+        defer("scientific_requirements_rejected", {
+            "route_id": str(route.id),
+            "subject_digest": digest(subject),
+            "responsible_component": "scientific_requirements_producer",
+            "reconsideration_condition": "Publish an explicit successor specification resolving the recorded blockers, then obtain fresh independent review; do not rewrite rejected evidence.",
+            "reviews": [review.model_dump(mode="json") for review in reviews],
+            "blockers": sorted({blocker for review in reviews for blocker in review.blockers}),
+        })
     if successor is not None:
         # Only the new engineering evidence changes, after both reviews. The
         # original candidate, admission, task and publication remain immutable.
