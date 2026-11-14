@@ -455,6 +455,27 @@ class AlphaScientificRequirements(StrictModel):
         return value
 
 
+class AlphaScientificSpecification(StrictModel):
+    """Preregistered method definitions; completeness is not scientific approval."""
+
+    target_equation: str = Field(min_length=20, max_length=4000)
+    estimator: str = Field(min_length=20, max_length=4000)
+    threshold_rule: str = Field(min_length=20, max_length=4000)
+    control_rule: str = Field(min_length=20, max_length=4000)
+    uncertainty_procedure: str = Field(min_length=20, max_length=4000)
+    split_and_update_policy: str = Field(min_length=20, max_length=4000)
+    missing_data_policy: str = Field(min_length=20, max_length=4000)
+    event_support_rationale: str = Field(min_length=20, max_length=4000)
+    falsification_rule: str = Field(min_length=20, max_length=4000)
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def no_placeholder(cls, value):
+        if value.strip().lower() in {"tbd", "todo", "to be determined", "to be determined later", "not yet specified", "not applicable"}:
+            raise ValueError("scientific method must be specified, not deferred")
+        return value
+
+
 class AlphaRepresentationPlan(StrictModel):
     schema_version: Literal["adaptive-representation-plan-v1.0.0"]
     candidate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
@@ -480,6 +501,7 @@ class AlphaRepresentationPlan(StrictModel):
     selection_data_boundary: Literal["metadata_predictors_only_no_targets"]
     outcome_data_consulted: Literal[False]
     scientific_requirements: AlphaScientificRequirements | None = None
+    scientific_specification: AlphaScientificSpecification | None = None
 
     @field_validator("resampling_policy", mode="before")
     @classmethod

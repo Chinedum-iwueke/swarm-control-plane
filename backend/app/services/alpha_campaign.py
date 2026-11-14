@@ -2090,6 +2090,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
 
 
 PRE_AUTHORING_DEFERRALS = {
+    "propose_scientific_specification": "Produce a complete immutable statistical method successor, then obtain independent review; do not retry unchanged inputs.",
     "resolve_native_requirements_feasibility": "Publish a bounded requirements or coverage successor with feasible native smoke/scientific plans, then obtain independent review; do not retry unchanged inputs.",
     "produce_admitted_predictor_coverage": "Obtain candidate-specific native predictor coverage and independent requirements review.",
     "propose_scientific_requirements": "Produce explicit requirements in a reviewed immutable successor.",

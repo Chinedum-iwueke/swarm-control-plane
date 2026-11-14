@@ -2295,6 +2295,10 @@ def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatc
         "rationale": "Keep scientific support independent of the short runner smoke test.",
     }
     raw["scientific_requirements"] = requirements
+    from app.schemas.alpha_discovery import AlphaScientificSpecification
+    method = {name: "Explicit fixture definition, not a scientific verification claim."
+              for name in AlphaScientificSpecification.model_fields}
+    raw["scientific_specification"] = method
     cycle = SimpleNamespace(id=uuid4(), cycle_digest=DIGEST, context={
         "research_intelligence": {"citations": [{"object_id": str(object_id), "content_digest": DIGEST}]}
     })
@@ -2317,6 +2321,7 @@ def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatc
         admission.assert_called_once_with(db, mandate, result)
         assert result.document["dataset_binding_index"] == 0
         assert result.document["scientific_requirements"] == requirements
+        assert result.document["scientific_specification"] == method
 
 
 def test_weekly_mandate_cannot_exceed_seven_days():

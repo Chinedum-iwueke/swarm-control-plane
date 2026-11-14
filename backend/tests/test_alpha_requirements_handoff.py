@@ -39,6 +39,7 @@ def inputs():
     }
     evidence = {
         "discovery_candidate": {
+            "scientific_specification": specification(),
             "scientific_requirements": requirements,
             "data": {"research_timeframe": "20m", "instruments": ["TRBUSDT"]},
         },
@@ -172,6 +173,24 @@ def test_rehashed_invalid_input_cannot_be_published(change):
     )
     with pytest.raises(ValueError):
         build_package(evidence, batch, **kwargs)
+
+
+def specification():
+    from app.schemas.alpha_discovery import AlphaScientificSpecification
+    return {name: "Explicit fixture method for schema completeness testing only."
+            for name in AlphaScientificSpecification.model_fields}
+
+
+@pytest.mark.parametrize("missing", list(specification()))
+def test_incomplete_method_defers_before_any_task_or_paid_review(missing):
+    db, campaign = MagicMock(), SimpleNamespace()
+    evidence, *_ = inputs()
+    evidence["discovery_candidate"]["scientific_specification"].pop(missing)
+    with pytest.raises(RequirementsPending):
+        ensure_reviewed_requirements(db, campaign, evidence)
+    assert campaign.next_action == "propose_scientific_specification"
+    db.get.assert_not_called()
+    db.add.assert_not_called()
 
 
 def test_missing_proposal_defers_without_paid_review_or_authoring():

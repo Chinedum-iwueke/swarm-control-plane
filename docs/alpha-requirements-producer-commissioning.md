@@ -227,3 +227,23 @@ adds a construct-before-loop/restart regression. The focused broker suite passes
 The wider Mission Control suite has one pre-existing static asset budget failure:
 `app.js` is 352574 bytes against its 350000-byte cap; 189 tests pass. The cap was
 not raised to hide the failure.
+
+## Scientific method completeness, 2026-11-14
+
+The representation producer now proposes a typed `scientific_specification`:
+target equation, estimator, threshold rule, controls, uncertainty procedure,
+split/update policy, missing-data policy, event-support rationale and
+falsification rule. This definition is retained in the candidate document and
+requirements basis digest, and included in the immutable review card.
+
+Before admission re-attestation or paid requirements review, missing definitions
+produce `propose_scientific_specification`. The candidate can be deferred without
+holding its sibling, with a visible owner and successor condition. This is a
+completeness check, not a mathematical or scientific verification receipt. Both
+independent reviewers remain mandatory. Historical rejected records are not
+rewritten or silently approved by the new schema.
+
+Targeted verification: 258 backend tests and 26 worker tests pass. Real successor
+publication, review acceptance, native smoke decision-tail enforcement and
+one-year terminal receipts remain outstanding. The exhausted R5 mandate is not
+renewed by this change.

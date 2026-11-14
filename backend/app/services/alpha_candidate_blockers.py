@@ -6,6 +6,10 @@ from app.models.alpha_campaign import AlphaCampaign, AlphaCampaignAttempt, Alpha
 
 
 BLOCKERS = {
+    "propose_scientific_specification": (
+        "Representation producer", "Complete target, estimator, thresholds, uncertainty and falsification specification",
+        "Publish a complete immutable method successor; independent scientific review remains required.",
+    ),
     "resolve_native_requirements_feasibility": (
         "Native requirements planner", "Feasible smoke/scientific windows and sufficient composed feature history",
         "Publish a bounded, reviewed requirements or coverage successor; unchanged inputs reuse the retained result.",

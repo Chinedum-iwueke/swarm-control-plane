@@ -2075,6 +2075,8 @@ def _apply_representation_plans(
         candidate["representation_plan"] = representation_plan
         if plan.scientific_requirements is not None:
             candidate["scientific_requirements"] = plan.scientific_requirements.model_dump(mode="json")
+        if plan.scientific_specification is not None:
+            candidate["scientific_specification"] = plan.scientific_specification.model_dump(mode="json")
         bound.append(candidate)
         audit[key] = {
             "data": candidate["data"],
@@ -2151,6 +2153,7 @@ def _materialize_candidates(
             )
             representation_plan = normalized_candidate.pop("representation_plan", None)
             scientific_requirements = normalized_candidate.pop("scientific_requirements", None)
+            scientific_specification = normalized_candidate.pop("scientific_specification", None)
             candidate = AlphaPredictiveCandidate.model_validate(normalized_candidate)
             assured_equations = []
             for equation in candidate.equations:
@@ -2204,6 +2207,12 @@ def _materialize_candidates(
                     "content_admission_required_before_execution": True,
                 },
             }
+            if scientific_specification is not None:
+                from app.schemas.alpha_discovery import AlphaScientificSpecification
+
+                document["scientific_specification"] = AlphaScientificSpecification.model_validate(
+                    scientific_specification
+                ).model_dump(mode="json")
             if scientific_requirements is not None:
                 from app.schemas.alpha_discovery import AlphaScientificRequirements
 
@@ -2213,6 +2222,7 @@ def _materialize_candidates(
                     "candidate": candidate.model_dump(mode="json"),
                     "representation_plan": representation_plan,
                     "scientific_requirements": proposal,
+                    "scientific_specification": document.get("scientific_specification"),
                 })
                 # Byte admission is reusable; a new representation's eligible
                 # research clock is not. Do not skip its native coverage producer.

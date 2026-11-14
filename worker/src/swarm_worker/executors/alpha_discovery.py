@@ -327,6 +327,10 @@ def _schema(stage: str) -> dict:
             },
         }
     if stage == "representation":
+        specification_fields = {name: {"type": "string", "minLength": 20, "maxLength": 4000}
+            for name in ("target_equation", "estimator", "threshold_rule", "control_rule",
+                         "uncertainty_procedure", "split_and_update_policy", "missing_data_policy",
+                         "event_support_rationale", "falsification_rule")}
         requirement_fields = {
             key: {"type": "integer", "minimum": 0 if key in {
                 "feature_warmup_bars", "purge_bars", "embargo_bars"
@@ -375,8 +379,13 @@ def _schema(stage: str) -> dict:
                             "selection_data_boundary",
                             "outcome_data_consulted",
                             "scientific_requirements",
+                            "scientific_specification",
                         ],
                         "properties": {
+                            "scientific_specification": {
+                                "type": "object", "additionalProperties": False,
+                                "required": list(specification_fields), "properties": specification_fields,
+                            },
                             "scientific_requirements": {
                                 "type": "object", "additionalProperties": False,
                                 "required": list(requirement_fields), "properties": requirement_fields,
@@ -961,6 +970,14 @@ for scientific evaluation. Keep smoke_bars within 31 days; smoke is runner commi
 List named minimum_event_support counts and explain the statistical rationale without claiming those events exist.
 These are proposed requirements for independent review, not coverage receipts, observed support, or permission
 to expand the mandate. Never invent receipt digests or weaken support to fit a short smoke run.
+Also supply scientific_specification before review or coding. Define the exact target equation, return convention,
+units, horizon and timestamp alignment; estimator/model and fitted parameters; threshold values (at most eight
+variants), reference history, interpolation and tie rules; controls, matching distance/calipers and reuse rules;
+dependence-aware uncertainty method, inference unit, block/bandwidth settings, confidence level and multiplicity;
+train-only fitting, frozen or causal OOS updates, purge/embargo and UTC buckets; missing-data behavior; rationale
+for event minima; and the explicit falsification rule. If a method does not require controls, explain why rather
+than writing N/A. Do not leave implementation choices to the engineer. These are proposed preregistered methods,
+not verified equations or evidence of predictive value. Never consult target outcomes to choose them.
 Transformation output_field values must be lowercase snake_case identifiers. Raw transform inputs must be
 instrument-qualified canonical panel columns such as BTCUSDT__close or ETHUSDT__quote_volume; later transforms may
 reference an earlier snake_case output_field. The adaptive compiler materializes only open, high, low, close, volume,

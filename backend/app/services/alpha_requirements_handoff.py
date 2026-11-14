@@ -259,10 +259,18 @@ def ensure_reviewed_requirements(db, campaign, evidence):
 
     candidate = evidence.get("discovery_candidate") or {}
     if not candidate.get("scientific_requirements"):
-        defer(
-            "propose_scientific_requirements",
-            "No source-bar count is substituted for scientific support minima.",
-        )
+        defer("propose_scientific_requirements",
+              "No source-bar count is substituted for scientific support minima.")
+    from app.schemas.alpha_discovery import AlphaScientificSpecification
+
+    try:
+        AlphaScientificSpecification.model_validate(candidate.get("scientific_specification"))
+    except ValueError as exc:
+        defer("propose_scientific_specification", {
+            "responsible_component": "representation_producer",
+            "reason": str(exc),
+            "reconsideration_condition": "Publish a complete immutable scientific specification successor before paid review.",
+        })
     handoff = evidence.get("selected_panel_admission") or {}
     producer = db.get(Task, handoff.get("admission_task_id")) if handoff else None
     if producer is None or producer.status != "succeeded":
