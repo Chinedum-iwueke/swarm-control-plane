@@ -563,6 +563,18 @@ def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
     return inventory
 
 
+def _navigation_excerpt(text: str) -> bool:
+    """Conservative discovery-only filter; never deletes canonical source evidence."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 6:
+        return False
+    index_lines = sum(bool(re.search(r",\s*\d+(?:[\s,\d\u2013\u2014-]*)$", line)) for line in lines)
+    if index_lines >= 6 and index_lines / len(lines) >= 0.5:
+        return True
+    return (sum(line.lower() == "further reading" for line in lines) >= 2
+            and sum(len(line) < 90 for line in lines) / len(lines) >= 0.9)
+
+
 def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
     columns = {
         column
@@ -597,8 +609,7 @@ def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
         facets.insert(0, min(rotated, key=lambda query: usage[query]))
     methods = []
     if any(term in mandate.objective.lower() for term in ("precision", "scientific support", "feasibility", "requirements")):
-        methods = ["minimum detectable effect statistical power sample size serial dependence",
-                   "time series predictive regression uncertainty autocorrelation effective sample size"]
+        methods = ["statistical power sample size", "Newey West standard errors"]
     return list(dict.fromkeys([mandate.objective[:1000], *methods, *facets]))
 
 
@@ -635,7 +646,11 @@ def _discovery_corpus(db, mandate) -> dict:
                     "corpus_digest": current_digest,
                 }
             )
-            for hit in retrieval["hits"][:3]:
+            navigation = [hit for hit in retrieval["hits"] if _navigation_excerpt(hit["text"])]
+            receipts[-1]["navigation_only_object_ids"] = [str(hit["object_id"]) for hit in navigation]
+            receipts[-1]["passage_selection_policy"] = "discovery-navigation-filter-v1"
+            support = [hit for hit in retrieval["hits"] if not _navigation_excerpt(hit["text"])]
+            for hit in support[:3]:
                 key = str(hit["object_id"])
                 if key in citations:
                     citations[key]["retrieved_for"].append(query)

@@ -1,6 +1,7 @@
 # Discovery abstention repair
 
-Status: implemented locally and offline-tested; not deployed or real-model certified.
+Status: abstention/context repair deployed at `fa1adda`; real-model certification
+remains outstanding. The subsequent retrieval refinement is covered below.
 
 ## Retained failure
 
@@ -51,7 +52,21 @@ Context is still large. Surveillance histories, mechanism inventories and strate
 catalogues require further measured stage-specific selection. No hard truncation
 of citations, review blockers or frozen contracts was introduced.
 
-Remaining validation: deploy compatible worker/backend changes, inspect actual
-method-retrieval hits, then run an authorized real-model comparison. The completed
+## Retrieval refinement
+
+Read-only production hybrid-search probes found that the original long method
+queries ranked book indexes highly. Shorter queries, `statistical power sample size`
+and `Newey West standard errors`, returned substantive passages on power and
+serial-correlation-adjusted uncertainty. This is a qualitative retrieval check,
+not scientific qualification or a general retrieval benchmark.
+
+Discovery now excludes obvious multi-line indexes and repeated contents headings
+from its bounded passage selection. Query receipts retain excluded object IDs and
+the selection-policy version; canonical sources are untouched. Navigation-only
+results leave grounding abstained. The heuristic is intentionally conservative;
+remaining passages still require relevance assessment and mathematical assurance.
+
+Remaining validation: deploy the retrieval refinement, then run an authorized
+real-model comparison. The completed
 one-cycle mandate is not reopened. These tests do not certify a viable hypothesis,
 engineering episode, backtest or autonomous recovery.

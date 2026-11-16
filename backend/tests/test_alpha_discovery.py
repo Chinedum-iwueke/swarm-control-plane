@@ -1134,10 +1134,18 @@ def test_requirements_commissioning_retrieves_statistical_method_evidence():
     mandate = SimpleNamespace(objective="Resolve scientific support and feasibility before engineering.",
         cycle_count=0, specification={"dataset_bindings": [{"output_columns": ["close", "volume"]}]})
     queries = _discovery_queries(mandate)
-    assert "minimum detectable effect statistical power sample size serial dependence" in queries
-    assert "time series predictive regression uncertainty autocorrelation effective sample size" in queries
+    assert "statistical power sample size" in queries
+    assert "Newey West standard errors" in queries
     assert len(queries) <= 6
     assert queries[0] == mandate.objective
+
+
+def test_navigation_excerpts_are_not_method_support():
+    from app.services.alpha_discovery import _navigation_excerpt
+    assert _navigation_excerpt("\n".join(f"Index entry {n}, 123, 145" for n in range(10)))
+    assert _navigation_excerpt("Power\nFurther Reading\nSample Size\nSummary\nRegression\nFurther Reading")
+    assert not _navigation_excerpt("Power depends on sample size, effect size and variation. " * 10)
+    assert not _navigation_excerpt("\n".join(f"The experiment has {n} observations." for n in range(10)))
 
 
 def test_replacement_mandate_does_not_reset_evidence_facets():
@@ -1626,6 +1634,27 @@ def test_discovery_grounding_keeps_provenance_and_deduplicates(monkeypatch):
     assert len(corpus["citations"][0]["retrieved_for"]) == 2
     assert len(corpus["query_receipts"]) == 3
     assert all(request.limit == 6 for request in calls)
+
+
+@pytest.mark.parametrize("include_support", [False, True])
+def test_discovery_navigation_filter_retains_audit_receipts(monkeypatch, include_support):
+    mandate = SimpleNamespace(objective="Discover mechanisms.", cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close"]}]})
+    navigation_id, support_id = uuid4(), uuid4()
+    hits = [{"object_id": navigation_id,
+             "text": "\n".join(f"Index entry {n}, 123, 145" for n in range(10)),
+             "confidence": 0.9, "citation": {"content_digest": DIGEST, "coordinates": {}}}]
+    if include_support:
+        hits.append({"object_id": support_id, "text": "Power depends on sample size and effect size.",
+                     "confidence": 0.7, "citation": {"content_digest": DIGEST, "coordinates": {}}})
+    monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", MagicMock(return_value={
+        "corpus_digest": DIGEST, "abstained": False, "hits": hits, "confidence": 0.9}))
+    corpus = _discovery_corpus(MagicMock(), mandate)
+    assert corpus["abstained"] is (not include_support)
+    assert [hit["object_id"] for hit in corpus["citations"]] == ([str(support_id)] if include_support else [])
+    assert all(receipt["navigation_only_object_ids"] == [str(navigation_id)]
+               and receipt["passage_selection_policy"] == "discovery-navigation-filter-v1"
+               for receipt in corpus["query_receipts"])
 
 
 def test_discovery_grounding_rejects_mixed_corpus_epochs(monkeypatch):
