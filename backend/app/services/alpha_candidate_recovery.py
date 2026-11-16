@@ -1,6 +1,7 @@
 """Explicit source recovery is not novelty or permission to repeat observed trials."""
 from uuid import UUID
 from copy import deepcopy
+import json
 
 from sqlalchemy import or_, select
 
@@ -139,9 +140,14 @@ def validate_method_revision(candidate, scope):
                 "minimum_test_bars", "purge_bars", "embargo_bars", "minimum_scientific_window_days"):
         if getattr(requirements, key) < getattr(previous, key):
             raise ValueError("method correction cannot reduce scientific support: " + key)
-    if any(requirements.minimum_event_support.get(key, 0) < count
-           for key, count in previous.minimum_event_support.items()):
-        raise ValueError("method correction cannot remove or reduce event support")
+    unsupported = {
+        key: {"required_minimum": count, "proposed_minimum": requirements.minimum_event_support.get(key)}
+        for key, count in previous.minimum_event_support.items()
+        if requirements.minimum_event_support.get(key, 0) < count
+    }
+    if unsupported:
+        raise ValueError("method correction cannot remove or reduce event support; preserve the exact "
+                         "registered names and minima: " + json.dumps(unsupported, sort_keys=True))
     if candidate["parameter_budget"]["maximum_variants"] > old["parameter_budget"]["maximum_variants"]:
         raise ValueError("method correction cannot expand the variant budget")
     methods = {key: deepcopy(candidate.get(key)) for key in METHOD_FIELDS}
