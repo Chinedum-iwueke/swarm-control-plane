@@ -209,6 +209,36 @@ def test_separate_stages_enforce_runtime_boundaries(tmp_path, phase, wrong_phase
         assert "wrong validation phase" in result.stdout
 
 
+def test_native_observer_skips_unrelated_frames_and_c_call_profiling(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run_alpha_research_assignment.py").write_text(
+        "import sys\n"
+        "def ordinary_work():\n"
+        "    assert sys._getframe().f_trace is None\n"
+        "    assert sys.getprofile() is None\n"
+        "    return sum(len(str(i)) for i in range(100))\n"
+        "def execute_registered():\n"
+        "    assert sys._getframe().f_trace is not None\n"
+        "    assert not sys._getframe().f_trace_lines\n"
+        "    assert not sys._getframe().f_trace_opcodes\n"
+        "    return {'work': ordinary_work()}\n"
+    )
+    (tmp_path / "test_native.py").write_text(
+        "import importlib.util\n"
+        "spec = importlib.util.spec_from_file_location('runner', 'scripts/run_alpha_research_assignment.py')\n"
+        "runner = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(runner)\n"
+        "def test_native():\n    assert runner.execute_registered()['work'] > 0\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", RUNNER_PROBE_PROGRAM, "test_native.py"],
+        cwd=tmp_path, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '"completed_runner_results": 1' in result.stdout
+
+
 def test_progress_heartbeat_survives_pytest_capture_without_async_stack_walk(tmp_path):
     assert "dump_traceback_later" not in RUNNER_PROBE_PROGRAM
     (tmp_path / "test_wait.py").write_text(

@@ -127,7 +127,25 @@ def observe(frame, event, value):
         completed += 1
         coverage()
 
-sys.setprofile(observe)
+def observe_return(frame, event, value):
+    if event == "return":
+        observe(frame, event, value)
+    return observe_return
+
+def enter_native(frame, event, value):
+    if event != "call" or frame.f_code.co_name not in {
+            "execute_registered", "run_native_case", "run_scientific_case"}:
+        return None
+    if Path(frame.f_code.co_filename).resolve() not in {runner, harness}:
+        return None
+    observe(frame, event, value)
+    frame.f_trace_lines = False
+    frame.f_trace_opcodes = False
+    return observe_return
+
+# Only retain return tracing for native entry points. A global profiler also
+# receives every C-call/return in pandas and the engine, distorting test budgets.
+sys.settrace(enter_native)
 # Avoid asynchronous interpreter-frame traversal: the deployed Python 3.11
 # runtime crashed inside _Py_DumpTracebackThreads during profiled pandas work.
 progress_thread = threading.Thread(target=progress_heartbeat, daemon=True)
@@ -135,7 +153,7 @@ progress_thread.start()
 try:
     status = int(pytest.main(["-v", "--durations=10", sys.argv[1]], plugins=[Progress()]))
 finally:
-    sys.setprofile(None)
+    sys.settrace(None)
     progress_stop.set()
     progress_thread.join(timeout=1)
 print("NATIVE_RUNNER_COVERAGE=" + json.dumps({

@@ -53,6 +53,20 @@ emits elapsed-time/stage/test-ID heartbeats without traversing interpreter frame
 It writes through a preserved stdout descriptor so pytest capture cannot hide it.
 The outer subprocess deadline and native coverage gates remain enforced.
 
+A subsequent profiled smoke parity run reached its 900-second deadline without
+an assertion failure or the earlier crash. Runtime instrumentation now retains
+return tracing only for the three named native entry points, with line/opcode
+events disabled. It no longer globally profiles every C-call/return inside the
+engine and pandas. Regression tests verify unrelated frames remain untraced,
+native completion is still observed, and wrong-stage calls remain rejected.
+The repaired offline SPX/BTC fixture then passed the exact worker smoke protocol
+in 816.75 seconds within the unchanged 900-second deadline. Runtime evidence
+recorded one real runner call, one completed runner result, one smoke case and
+zero phase violations. All four synthetic variants retained their artifacts.
+This is offline integration evidence, not independent candidate approval,
+scientific certification or a genuine-data backtest. A timeout never authorizes
+a paid strategy rewrite.
+
 ## Staged Validation Repair
 
 Worker validation now separates unmarked unit tests (300 seconds), tests marked
