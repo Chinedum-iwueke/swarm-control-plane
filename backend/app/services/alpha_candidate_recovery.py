@@ -1,5 +1,6 @@
 """Explicit source recovery is not novelty or permission to repeat observed trials."""
 from uuid import UUID
+from copy import deepcopy
 
 from sqlalchemy import or_, select
 
@@ -9,6 +10,7 @@ from app.models.task import Task
 from app.services.graph import digest_document
 
 SCIENTIFIC_FIELDS = ("question", "predictor", "target", "horizon", "null_hypothesis", "predicted_direction", "falsification_criteria", "features")
+METHOD_FIELDS = ("representation_plan", "scientific_requirements", "scientific_specification", "parameter_budget")
 
 
 def normalized(value):
@@ -33,7 +35,9 @@ def panel_fields(fields, instruments):
     return result
 
 
-def recovery_scope(db, mandate, candidate_id, expected_digest):
+def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version=2):
+    if schema_version not in {1, 2}:
+        raise ValueError("unsupported retained recovery scope version")
     candidate = db.get(AlphaDiscoveryCandidate, UUID(str(candidate_id)))
     if candidate is None or candidate.candidate_digest != expected_digest:
         raise ValueError("retained recovery candidate changed or is missing")
@@ -60,13 +64,40 @@ def recovery_scope(db, mandate, candidate_id, expected_digest):
     document = candidate.document
     scientific_identity = {key: document[key] for key in SCIENTIFIC_FIELDS}
     scientific_identity["data"] = {key: document["data"][key] for key in ("venue", "instruments", "research_timeframe", "liquidity_floor_usd", "required_fields")}
-    return {
+    scope = {
         "candidate_id": str(candidate.id), "candidate_digest": candidate.candidate_digest,
         "parent_source_commit": original.specification["bulletproof_source_commit"],
         "source_commit": source, "scientific_identity": scientific_identity,
         "novel_discovery": False, "execution_authority": False,
         "requires_fresh_admission_and_independent_review": True,
     }
+    if schema_version == 2:
+        scope["schema_version"] = 2
+        scope["method_identity"] = {key: deepcopy(document[key]) for key in METHOD_FIELDS
+                                    if document.get(key) is not None}
+    return scope
+
+
+def apply_recovered_methods(candidate, scope):
+    """A source migration reuses methods; it is not a scientific redesign."""
+    if not scope or scope.get("schema_version", 1) == 1:
+        return {}
+    if scope.get("schema_version") != 2:
+        raise ValueError("unsupported retained recovery scope version")
+    methods = scope.get("method_identity", {})
+    if not isinstance(methods, dict) or set(methods) - set(METHOD_FIELDS):
+        raise ValueError("invalid retained method identity")
+    if normalized(candidate.get("question")) != normalized(scope["scientific_identity"]["question"]):
+        raise ValueError("retained methods cannot be applied to another question")
+    for key, value in methods.items():
+        candidate[key] = deepcopy(value)
+        if key == "representation_plan":
+            candidate[key]["candidate_key"] = candidate["candidate_key"]
+    return {"mode": "source_recovery_method_reuse", "fields": sorted(methods),
+            "parent_candidate_id": scope["candidate_id"],
+            "parent_candidate_digest": scope["candidate_digest"],
+            "method_identity_digest": digest_document(methods),
+            "requires_fresh_independent_review": True, "execution_authority": False}
 
 
 def matching_recovery(db, mandate, cycle, candidate):
@@ -74,7 +105,8 @@ def matching_recovery(db, mandate, cycle, candidate):
     scope = context.get("constraints", {}).get("retained_candidate_recovery")
     if not scope:
         return None
-    current = recovery_scope(db, mandate, scope["candidate_id"], scope["candidate_digest"])
+    current = recovery_scope(db, mandate, scope["candidate_id"], scope["candidate_digest"],
+                             schema_version=scope.get("schema_version", 1))
     if current != scope:
         raise ValueError("retained recovery scope changed")
     identity = scope["scientific_identity"]

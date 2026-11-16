@@ -84,6 +84,20 @@ Bulletproof's compiler. This diagnosis is not a scientific negative result.
 
 ## Architectural priorities
 
+### Source-only recovery must not redesign science
+
+R8's source recovery preserved the question but re-proposed different minimum
+partition lengths and event counts. Independent reviewers rejected the resulting
+split/specification contradiction before authoring. New version-2 recovery scopes
+therefore bind any existing representation, scientific requirements, scientific
+specification and parameter budget from the parent candidate. Representation
+materialization reuses those methods deterministically, records their digest and
+parent provenance, and changes only the representation's candidate ownership key.
+Fresh admission, feasibility and independent review remain mandatory. A bad parent
+method is not made valid by reuse; scientific redesign needs its own explicit
+successor, not an incidental source migration. Version-1 historical scopes remain
+byte-compatible and are not rewritten.
+
 1. **Platform-owned test protocol.** Move fixture binding, review-packet assembly,
    terminal assertions and runner orchestration out of authored test boilerplate.
    Authors supply typed scenario factories and expected outcomes, while immutable

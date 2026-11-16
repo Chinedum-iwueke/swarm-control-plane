@@ -925,6 +925,11 @@ when they never reached a backtest; do not paraphrase them. The sole scoped exce
 founder_research_idea.constraints.retained_candidate_recovery: preserve its scientific_identity fields verbatim,
 including the question, predictor, target, horizon, null, direction, falsification criteria, features and data scope.
 Treat this as reassessment of an untested retained question at a new native source, never as novel discovery.
+When retained_candidate_recovery supplies method_identity, reuse those representation, scientific requirements,
+scientific specification and parameter-budget documents verbatim. Source migration is not permission to redesign
+splits, thresholds, support minima or estimators. The controller binds the retained methods with explicit provenance;
+fresh admission, feasibility and independent review still apply. Report an infeasible frozen design rather than
+silently reducing requirements or introducing a new scientific method during source recovery.
 Do not extend that exception to any other prior question. Fresh data admission and independent review remain
 mandatory; this context grants no execution authority. Report infeasibility rather than changing the frozen identity.
 Its coverage counts reveal overused instruments,

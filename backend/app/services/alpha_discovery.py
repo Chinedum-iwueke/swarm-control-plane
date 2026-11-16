@@ -2077,11 +2077,16 @@ def _apply_representation_plans(
             candidate["scientific_requirements"] = plan.scientific_requirements.model_dump(mode="json")
         if plan.scientific_specification is not None:
             candidate["scientific_specification"] = plan.scientific_specification.model_dump(mode="json")
+        from app.services.alpha_candidate_recovery import apply_recovered_methods
+
+        recovery = (context or {}).get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery")
+        method_reuse = apply_recovered_methods(candidate, recovery)
         bound.append(candidate)
         audit[key] = {
             "data": candidate["data"],
-            "representation_plan": representation_plan,
+            "representation_plan": candidate["representation_plan"],
             "outcome_data_consulted": False,
+            **({"method_reuse": method_reuse} if method_reuse else {}),
         }
     return bound, audit
 

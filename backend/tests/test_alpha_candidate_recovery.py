@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services.alpha_candidate_recovery import recovery_scope, matching_recovery, SCIENTIFIC_FIELDS
+from app.services.alpha_candidate_recovery import recovery_scope, matching_recovery, SCIENTIFIC_FIELDS, apply_recovered_methods
 
 
 def fixture():
@@ -35,6 +35,49 @@ def test_explicit_untested_source_recovery_preserves_identity():
     assert scope["execution_authority"] is scope["novel_discovery"] is False
     assert parent.document==before
     assert matching_recovery(db,mandate,SimpleNamespace(context={}),candidate) is None
+
+
+def test_source_recovery_reuses_methods_without_rewriting_parent_or_claiming_review():
+    db, mandate, parent, proposed = fixture()
+    parent.document.update({
+        "scientific_requirements": {"minimum_test_bars": 548},
+        "scientific_specification": {"split_and_update_policy": "frozen 60/20/20"},
+        "representation_plan": {"candidate_key": "parent", "transformations": [{"operation": "log_return"}]},
+        "parameter_budget": {"maximum_variants": 4},
+    })
+    before = deepcopy(parent.document)
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest)
+    raw = {"question": parent.question, "candidate_key": "successor",
+           "scientific_requirements": {"minimum_test_bars": 365},
+           "scientific_specification": {"split_and_update_policy": "changed"}}
+    audit = apply_recovered_methods(raw, scope)
+    assert raw["scientific_requirements"] == before["scientific_requirements"]
+    assert raw["scientific_specification"] == before["scientific_specification"]
+    assert raw["representation_plan"]["candidate_key"] == "successor"
+    assert audit["requires_fresh_independent_review"] is True
+    assert audit["execution_authority"] is False
+    assert parent.document == before
+    raw["scientific_requirements"]["minimum_test_bars"] = 1
+    assert scope["method_identity"]["scientific_requirements"]["minimum_test_bars"] == 548
+
+
+def test_legacy_recovery_scope_remains_immutable():
+    db, mandate, parent, candidate = fixture()
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=1)
+    assert "schema_version" not in scope and "method_identity" not in scope
+    cycle = SimpleNamespace(context={"founder_research_idea": {"constraints": {"retained_candidate_recovery": scope}}})
+    assert matching_recovery(db, mandate, cycle, candidate) == scope
+    raw = {"question": parent.question, "scientific_requirements": {"minimum_test_bars": 365}}
+    before = deepcopy(raw)
+    assert apply_recovered_methods(raw, scope) == {}
+    assert raw == before
+
+
+def test_recovered_methods_cannot_be_attached_to_an_unrelated_question():
+    db, mandate, parent, candidate = fixture()
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest)
+    with pytest.raises(ValueError, match="another question"):
+        apply_recovered_methods({"question": "different scientific question"}, scope)
 
 
 @pytest.mark.parametrize("fault", [None, "missing", "extra", "foreign"])

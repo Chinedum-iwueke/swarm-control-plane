@@ -1286,10 +1286,16 @@ def test_exploration_frontier_prefers_instruments_absent_from_recent_memory():
     assert [item["instrument"] for item in frontier] == ["ETHUSDT", "SOLUSDT"]
 
 
-def test_representation_plan_changes_only_data_shape_and_retains_audit():
+@pytest.mark.parametrize("recover", [False, True])
+def test_representation_plan_changes_only_data_shape_and_retains_audit(recover):
     value, _ = candidate()
     raw = value.model_dump(mode="json")
     original_question = raw["question"]
+    context = {"founder_research_idea": {"constraints": {"retained_candidate_recovery": {
+        "schema_version": 2, "candidate_id": "parent", "candidate_digest": "a" * 64,
+        "scientific_identity": {"question": original_question},
+        "method_identity": {"scientific_requirements": {"minimum_test_bars": 548}},
+    }}}} if recover else None
     represented, audit = _apply_representation_plans(
         [raw],
         [
@@ -1346,7 +1352,7 @@ def test_representation_plan_changes_only_data_shape_and_retains_audit():
                 "selection_data_boundary": "metadata_predictors_only_no_targets",
                 "outcome_data_consulted": False,
             }
-        ],
+        ], context,
     )
     assert represented[0]["question"] == original_question
     assert represented[0]["data"]["research_timeframe"] == "7m"
@@ -1355,6 +1361,9 @@ def test_representation_plan_changes_only_data_shape_and_retains_audit():
         "control"
     )
     assert audit[raw["candidate_key"]]["outcome_data_consulted"] is False
+    if recover:
+        assert represented[0]["scientific_requirements"] == {"minimum_test_bars": 548}
+        assert audit[raw["candidate_key"]]["method_reuse"]["execution_authority"] is False
 
 
 def test_representation_plan_requires_exact_candidate_coverage():
