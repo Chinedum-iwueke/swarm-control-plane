@@ -4,6 +4,8 @@
 # Passing still requires independent review and full Bulletproof validation.
 RUNNER_PROBE_PROGRAM = r"""
 import json
+import ast
+import faulthandler
 from pathlib import Path
 import sys
 import pytest
@@ -15,6 +17,43 @@ calls = 0
 completed = 0
 terminal_outcomes = set()
 smoke_cases = 0
+
+# This cheap check is only a prerequisite. Runtime observation below remains the
+# authority: a dead call or a mocked function cannot satisfy coverage.
+if require_harness:
+    tree = ast.parse(Path(sys.argv[1]).read_text())
+    aliases = {item.asname or item.name: item.name
+               for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+               and node.module == "bt.validation.authoring_harness" for item in node.names}
+    invoked = {aliases.get(node.func.id, node.func.id) if isinstance(node.func, ast.Name)
+               else node.func.attr if isinstance(node.func, ast.Attribute) else ""
+               for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    missing = sorted({"run_native_case", "run_scientific_case"} - invoked)
+    if missing:
+        print("NATIVE_RUNNER_COVERAGE=" + json.dumps({
+            "phase": "contract_preflight", "missing_harness_calls": missing,
+            "completed_runner_results": 0, "scientific_certification": False,
+        }), flush=True)
+        print("Native terminal harness must retain positive, negative, invalid and failed "
+              "scientific evaluator cases plus a real runner smoke case. Missing explicit calls: "
+              + ", ".join(missing), file=sys.stderr, flush=True)
+        raise SystemExit(1)
+
+class Progress:
+    def pytest_runtest_logstart(self, nodeid, location):
+        print("TEST_PROGRESS=" + json.dumps({"event": "started", "nodeid": nodeid}), flush=True)
+
+    def pytest_runtest_logreport(self, report):
+        if report.when == "call" or report.failed:
+            print("TEST_PROGRESS=" + json.dumps({"event": "finished", "nodeid": report.nodeid,
+                  "phase": report.when, "outcome": report.outcome, "duration_seconds": report.duration}), flush=True)
+
+def coverage():
+    print("NATIVE_RUNNER_COVERAGE=" + json.dumps({
+        "execute_registered_calls": calls, "completed_runner_results": completed,
+        "terminal_outcomes": sorted(str(item) for item in terminal_outcomes),
+        "smoke_cases": smoke_cases, "scientific_certification": False,
+    }, sort_keys=True), flush=True)
 
 def observe(frame, event, value):
     global calls, completed, smoke_cases
@@ -40,12 +79,15 @@ def observe(frame, event, value):
         calls += 1
     elif event == "return" and isinstance(value, dict):
         completed += 1
+        coverage()
 
 sys.setprofile(observe)
+faulthandler.dump_traceback_later(60, repeat=True)
 try:
-    status = int(pytest.main(["-q", sys.argv[1]]))
+    status = int(pytest.main(["-v", "--durations=10", sys.argv[1]], plugins=[Progress()]))
 finally:
     sys.setprofile(None)
+    faulthandler.cancel_dump_traceback_later()
 print("NATIVE_RUNNER_COVERAGE=" + json.dumps({
     "execute_registered_calls": calls,
     "completed_runner_results": completed,

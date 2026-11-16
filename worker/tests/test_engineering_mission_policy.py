@@ -27,6 +27,41 @@ from swarm_worker.workspace import (
 )
 
 
+@pytest.mark.asyncio
+async def test_focused_timeout_does_not_spend_paid_correction(tmp_path):
+    from unittest.mock import AsyncMock, Mock
+
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    workspace = SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=tmp_path)
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path, codex_model="test", timeout_seconds=3600,
+        heartbeat_interval_seconds=1,
+        effective_uid=lambda: 1000,
+    )
+    executor._requires_strategy_scaffold = lambda _: True
+    executor._run_strategy_scaffold = lambda *_: successful_step("scaffold")
+    executor._strategy_scaffold_author_context = lambda _: ""
+    executor._verify_strategy_scaffold = lambda _: successful_step("contract")
+    executor._run_author = AsyncMock(return_value=successful_step("coding-agent"))
+    executor._run_codex = AsyncMock()
+    executor._changed_paths = lambda _: ["docs/change.md"]
+    executor._enforce_scope = lambda *_: None
+    executor._write_patch = Mock()
+    executor._run_strategy_focused_tests = AsyncMock(return_value=successful_step("focused").model_copy(
+        update={"success": False, "timed_out": True, "return_code": -15}
+    ))
+    executor._result = lambda *args, **kwargs: args[6]
+    result = await executor.execute(
+        task=SimpleNamespace(input_contract=contract().model_dump(), prior_failure=None),
+        workflow=SimpleNamespace(task_type="engineering_mission", name="engineering-mission", timeout_seconds=3600),
+        workspace=workspace, heartbeat=AsyncMock(),
+    )
+    assert result == "focused_strategy_tests_timeout"
+    executor._run_codex.assert_not_awaited()
+    executor._write_patch.assert_called_once_with(["docs/change.md"], workspace)
+
+
 def contract() -> EngineeringMissionContract:
     return EngineeringMissionContract(
         repository="swarm-control-plane",

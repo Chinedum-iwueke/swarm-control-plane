@@ -209,6 +209,13 @@ class EngineeringMissionExecutor:
                 timeout_seconds=min(300.0, max(1.0, deadline - time.monotonic())),
             )
             steps.append(focused)
+            if focused.timed_out:
+                self._write_patch(changed, workspace)
+                return self._result(
+                    task, workflow, workspace, started, steps, False,
+                    "focused_strategy_tests_timeout",
+                    heartbeat_failures=heartbeat_failures,
+                )
             if not focused.success:
                 focused_failed = True
         needs_correction = placeholders_pending or focused_failed or (
@@ -287,6 +294,7 @@ class EngineeringMissionExecutor:
                 )
                 steps.append(corrected_focused)
                 if not corrected_focused.success:
+                    self._write_patch(changed, workspace)
                     return self._result(
                         task,
                         workflow,
@@ -294,7 +302,8 @@ class EngineeringMissionExecutor:
                         started,
                         steps,
                         False,
-                        "focused_strategy_tests_failed_after_correction",
+                        "focused_strategy_tests_timeout" if corrected_focused.timed_out
+                        else "focused_strategy_tests_failed_after_correction",
                         heartbeat_failures=heartbeat_failures,
                     )
         remaining = deadline - time.monotonic()
@@ -1954,6 +1963,12 @@ class EngineeringMissionExecutor:
             f"Writable paths: {json.dumps(contract.allowed_paths)}\n"
             f"Read-only context: {json.dumps(contract.context_paths)}\n"
             f"Acceptance: {json.dumps(contract.acceptance_criteria)}\n"
+            "If the native authoring harness exists, focused tests must explicitly call "
+            "run_native_case for smoke and run_scientific_case for each positive, "
+            "negative, invalid and failed case. Reuse its fixture/provenance helpers; "
+            "a hand-built execute_registered test alone is not sufficient. Check these "
+            "prerequisites before spending time running the suite. A timeout is not "
+            "permission to weaken support thresholds or shrink scientific windows.\n"
             "Do not push, merge, deploy, access credentials, widen scope or weaken a "
             "scientific gate. Stop if the contract cannot be satisfied exactly."
         )
@@ -2085,6 +2100,8 @@ class EngineeringMissionExecutor:
             if diagnostics:
                 summary["failure_diagnostic"] = {
                     "step": failed.name,
+                    "timed_out": failed.timed_out,
+                    "duration_seconds": failed.duration_seconds,
                     **diagnostics,
                 }
         review_path = workspace.artifacts / "review.json"
@@ -2126,6 +2143,7 @@ class EngineeringMissionExecutor:
                     "strategy_feasibility_rejected",
                     "strategy_scaffold_contract_violated",
                     "focused_strategy_tests_failed_after_correction",
+                    "focused_strategy_tests_timeout",
                 }
             ),
             summary=summary,

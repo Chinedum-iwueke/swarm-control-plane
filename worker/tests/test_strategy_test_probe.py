@@ -83,7 +83,8 @@ def test_strict_harness_rejects_runner_only_completion(tmp_path: Path) -> None:
         timeout=30,
     )
     assert result.returncode == 1
-    assert '"completed_runner_results": 1' in result.stdout
+    assert '"completed_runner_results": 0' in result.stdout
+    assert '"phase": "contract_preflight"' in result.stdout
     assert "must retain positive, negative, invalid and failed" in result.stderr
 
 
@@ -141,3 +142,18 @@ def test_strict_harness_requires_all_successful_case_returns(
     assert result.returncode == (0 if omit is None else 1), (
         result.stdout + result.stderr
     )
+    assert "TEST_PROGRESS=" in result.stdout
+
+
+def test_missing_harness_fails_before_importing_expensive_tests(tmp_path):
+    (tmp_path / "expensive.py").write_text(
+        "from pathlib import Path\nPath('should-not-exist').write_text('imported')\n"
+        "def test_incomplete():\n    assert True\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", RUNNER_PROBE_PROGRAM, "expensive.py", "--require-terminal-harness"],
+        cwd=tmp_path, capture_output=True, text=True, timeout=10, check=False,
+    )
+    assert result.returncode == 1
+    assert not (tmp_path / "should-not-exist").exists()
+    assert "missing_harness_calls" in result.stdout
