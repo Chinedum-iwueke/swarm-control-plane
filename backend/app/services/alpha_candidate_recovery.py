@@ -9,6 +9,7 @@ from app.models.alpha_campaign import AlphaCampaignAttempt
 from app.models.alpha_discovery import AlphaDiscoveryCandidate, AlphaDiscoveryCycle, AlphaResearchMandate
 from app.models.task import Task
 from app.services.graph import digest_document
+from app.services.alpha_disposition import RequirementsConstraintError
 
 SCIENTIFIC_FIELDS = ("question", "predictor", "target", "horizon", "null_hypothesis", "predicted_direction", "falsification_criteria", "features")
 METHOD_FIELDS = ("representation_plan", "scientific_requirements", "scientific_specification", "parameter_budget")
@@ -135,18 +136,18 @@ def validate_method_revision(candidate, scope):
     AlphaScientificSpecification.model_validate(candidate.get("scientific_specification"))
     for key in ("research_bar_minutes", "target_horizon_bars"):
         if getattr(requirements, key) != getattr(previous, key):
-            raise ValueError("method correction cannot change the research clock or target horizon")
+            raise RequirementsConstraintError("scientific_identity_change", "method correction cannot change the research clock or target horizon")
     for key in ("feature_warmup_bars", "minimum_training_bars", "minimum_validation_bars",
                 "minimum_test_bars", "purge_bars", "embargo_bars", "minimum_scientific_window_days"):
         if getattr(requirements, key) < getattr(previous, key):
-            raise ValueError("method correction cannot reduce scientific support: " + key)
+            raise RequirementsConstraintError("immutable_requirements_conflict", "method correction cannot reduce scientific support: " + key)
     unsupported = {
         key: {"required_minimum": count, "proposed_minimum": requirements.minimum_event_support.get(key)}
         for key, count in previous.minimum_event_support.items()
         if requirements.minimum_event_support.get(key, 0) < count
     }
     if unsupported:
-        raise ValueError("method correction cannot remove or reduce event support; preserve the exact "
+        raise RequirementsConstraintError("immutable_requirements_conflict", "method correction cannot remove or reduce event support; preserve the exact "
                          "registered names and minima: " + json.dumps(unsupported, sort_keys=True))
     if candidate["parameter_budget"]["maximum_variants"] > old["parameter_budget"]["maximum_variants"]:
         raise ValueError("method correction cannot expand the variant budget")
@@ -206,7 +207,7 @@ def matching_recovery(db, mandate, cycle, candidate):
         raise ValueError("retained recovery scope changed")
     identity = scope["scientific_identity"]
     if any(normalized(getattr(candidate, key)) != normalized(identity[key]) for key in SCIENTIFIC_FIELDS):
-        raise ValueError("retained recovery changed the scientific question")
+        raise RequirementsConstraintError("scientific_identity_change", "retained recovery changed the scientific question")
     data = identity["data"]
     if any(getattr(candidate.data, key) != value for key, value in data.items() if key != "required_fields"):
         raise ValueError("retained recovery changed the research basket or clock")

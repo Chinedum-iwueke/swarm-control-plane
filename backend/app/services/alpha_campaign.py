@@ -2111,6 +2111,7 @@ PRE_AUTHORING_PLATFORM_BLOCKERS = {
 
 
 def _retain_pre_authoring_deferral(db: Session, campaign: AlphaCampaign) -> None:
+    from app.services.alpha_disposition import disposition_for
     action = campaign.next_action
     source = campaign.specification["research_queue"][campaign.hypothesis_count]
     binding = _source_bindings(campaign, source)[0]
@@ -2118,6 +2119,7 @@ def _retain_pre_authoring_deferral(db: Session, campaign: AlphaCampaign) -> None
         "source_candidate_id": source["source_candidate_id"],
         "source_candidate_digest": source["source_candidate_digest"],
         "reason": action, "detail": campaign.terminal_reason,
+        "disposition": disposition_for(action, (campaign.terminal_reason or {}).get("detail")),
         "retry_condition": PRE_AUTHORING_DEFERRALS[action],
         "automatic_unchanged_retry_allowed": False,
         "scientific_result": False, "trial_count": 0,

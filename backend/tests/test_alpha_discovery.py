@@ -1979,7 +1979,7 @@ def test_cycle_exhaustion_waits_for_commissioned_campaigns(monkeypatch, unfinish
     cycle = SimpleNamespace(id=uuid4(), campaign_id=None, status="rejected",
                             created_at=moment, completed_at=moment)
     db = MagicMock()
-    db.scalar.side_effect = [cycle, None]
+    db.scalar.side_effect = [cycle, None, None]
     for name in ("_retire_superseded_discovery_stalls", "_recover_resumed_stage"):
         monkeypatch.setattr(service, name, MagicMock())
     monkeypatch.setattr(service, "_reconcile_campaign_cycles", lambda *_: set())

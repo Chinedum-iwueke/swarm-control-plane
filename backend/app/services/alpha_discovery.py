@@ -1628,7 +1628,7 @@ def queue_founder_idea(
 def _next_founder_idea(
     db: Session, mandate: AlphaResearchMandate
 ) -> AlphaFounderResearchIdea | None:
-    return db.scalar(
+    queued = db.scalar(
         select(AlphaFounderResearchIdea)
         .where(
             AlphaFounderResearchIdea.mandate_id == mandate.id,
@@ -1638,6 +1638,10 @@ def _next_founder_idea(
         .with_for_update(skip_locked=True)
         .limit(1)
     )
+    if queued is not None:
+        return queued
+    from app.services.alpha_requirements_correction import queue_requirements_correction
+    return queue_requirements_correction(db, mandate)
 
 
 def _new_cycle(
@@ -1968,6 +1972,10 @@ def _candidate_reasons(
         recovery = matching_recovery(db, mandate, cycle, candidate)
     except (KeyError, TypeError, ValueError) as exc:
         reasons.append("retained_source_recovery_invalid")
+        if hasattr(exc, "reason_code"):
+            from app.services.alpha_disposition import retain_disposition
+            retain_disposition(db, mandate, exc.reason_code,
+                {"cycle_id": str(cycle.id), "detail": str(exc)})
         recovery = None
     if recovery is not None:
         # Exempt only this exact, still-untested question. Other novelty checks
@@ -3168,6 +3176,10 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             )
         elapsed = (moment - (cycle.completed_at or cycle.created_at)).total_seconds()
         if _mandate_budget_exhausted(mandate):
+            from app.services.alpha_disposition import retain_disposition
+            retain_disposition(db, mandate, "mandate_budget_exhausted", {
+                "mandate_id": str(mandate.id), "cycles": mandate.cycle_count,
+                "hypotheses": mandate.hypothesis_count, "trials": mandate.trial_count})
             # Discovery exhaustion does not revoke already commissioned work.
             # Keep reconciling it, but do not create another discovery cycle.
             if _unfinished_mandate_campaigns(db, mandate):
@@ -3380,6 +3392,10 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         )
     except (ValidationError, ValueError) as exc:
         detail = str(exc)[:2000]
+        if hasattr(exc, "reason_code"):
+            from app.services.alpha_disposition import retain_disposition
+            retain_disposition(db, mandate, exc.reason_code,
+                {"cycle_id": str(cycle.id), "task_id": str(representation.id), "detail": detail})
         _event(
             db,
             mandate,

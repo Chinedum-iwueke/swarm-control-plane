@@ -307,12 +307,12 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     )
 
     def defer(action, detail=None, *, blocked=True):
+        from app.services.alpha_disposition import disposition_for
         campaign.status = "needs_attention" if blocked else "running"
         campaign.phase = "scientific_requirements_review"
         campaign.next_action = action
-        campaign.terminal_reason = (
-            {"category": action, "detail": detail} if detail else {}
-        )
+        campaign.terminal_reason = {"category": action, "detail": detail,
+            "disposition": disposition_for(action, detail)}
         raise RequirementsPending()
 
     candidate = evidence.get("discovery_candidate") or {}

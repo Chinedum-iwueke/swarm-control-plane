@@ -134,3 +134,40 @@ Expired or changed mandates fail closed. Campaign failures feed subsequent cycle
 context and novelty scoring. Rollback disables the four ALPHA-004 services and
 stops creating new work; immutable mandates, candidates, campaigns, attempts and
 event chains remain evidence.
+# Bounded Requirements Correction
+
+The discovery replenisher can now select verified independent requirements rejections
+from the current mandate as correction seeds, after any queued founder ideas. The
+`requirements-correction-controller` is a deterministic scheduler, not an additional
+LLM and not a founder impersonation. It reuses the existing version-3 method-correction
+contract and the ordinary discovery, admission, native feasibility and independent
+review stages. Those stages, not this scheduler, author and judge the successor.
+
+Each seed binds the rejected subject and candidate digests. Existing seeds, including
+failed or completed seeds, are not reissued for unchanged evidence. Parent lineage is
+followed through persisted cycle contexts, with at most two correction successors.
+Missing parents, cycles, invalid review custody, observed/in-flight scientific work,
+and exhausted lineage fail closed. Original records and review decisions remain intact.
+
+Corrections consume ordinary approved discovery budgets. Pause, mandate validity and
+budget checks still apply; this controller does not renew mandates, reset counters,
+expand data access, approve engineering, or authorize execution. Exhausted R14 cannot
+restart through this mechanism. Historical rejected candidates from earlier mandates
+still require explicit recovery selection; the controller does not sweep them into a
+new mandate. Persistent deferrals retain their recorded reconsideration conditions.
+
+Recovery decisions use `requirements-disposition-v1`: `repair`, `await_data`,
+`scientifically_infeasible`, `requirements_conflict`, `requires_new_question`, or
+`await_authority_or_capacity`. Each contains an evidence digest, owner, reason code,
+recovery condition and explicit absence of execution authority. Campaign terminal
+reasons and retained deferrals include these decisions; scheduler and identity
+constraint decisions are retained as deduplicated `requirements_disposition_recorded`
+mandate events. Reviewer prose never establishes infeasibility: native event-support
+codes and coverage codes provide that distinction. Unclassified specification issues
+default to repair. The correction cap means diagnostic escalation is needed, not that
+the hypothesis was scientifically falsified. Existing provider circuits still enforce
+quota waits; this change does not replace those circuits or add a new UI panel.
+
+Local regression tests cover authority gates, duplicate suppression, lineage bounds,
+typed dispositions and rejected-evidence validation. Live autonomous correction
+through a fresh review and Bulletproof execution is not yet certified.
