@@ -529,9 +529,10 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
         "minimum": 2,
         "maximum": 100_000,
     }
-    for operation in ("identity", "natural_log", "spread", "ratio"):
+    for operation in ("identity", "natural_log", "log1p", "spread", "ratio"):
         assert branches[operation]["parameters"]["properties"] == {}
     assert branches["natural_log"]["fit_policy"]["enum"] == ["stateless"]
+    assert branches["log1p"]["fit_policy"]["enum"] == ["stateless"]
     transformation = branches["log_return"]
     assert transformation["output_field"]["pattern"] == "^[a-z][a-z0-9_]{0,99}$"
     input_pattern = transformation["input_fields"]["items"]["pattern"]

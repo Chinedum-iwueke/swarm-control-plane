@@ -520,6 +520,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                                                 "simple_return",
                                                 "log_return",
                                                 "natural_log",
+                                                "log1p",
                                                 "fractional_difference",
                                                 "rolling_zscore",
                                                 "realized_volatility",
@@ -612,7 +613,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
         branches = []
         # Encode native operation signatures at generation, not only after a paid call.
         for operation, names in {
-            "identity": (), "natural_log": (), "simple_return": ("periods",), "log_return": ("periods",),
+            "identity": (), "natural_log": (), "log1p": (), "simple_return": ("periods",), "log_return": ("periods",),
             "fractional_difference": ("d", "weight_threshold"),
             "rolling_zscore": ("window", "lag"), "realized_volatility": ("window", "lag"),
             "spread": (), "ratio": (), "cross_sectional_rank": ("target_index",),
@@ -622,7 +623,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
             properties["operation"]["enum"] = [operation]
             if operation == "fractional_difference":
                 properties["fit_policy"]["enum"] = ["train_only"]
-            elif operation == "natural_log":
+            elif operation in {"natural_log", "log1p"}:
                 properties["fit_policy"]["enum"] = ["stateless"]
             params = properties["parameters"]
             params["required"] = list(names)
@@ -1043,6 +1044,8 @@ Rolling z-score and realized-volatility windows must contain between 2 and 10000
 simple_return or log_return accepts only parameters.periods (an integer from 1 to 10000), never lag.
 natural_log accepts one input and no parameters: it computes ln(x) at the same completed bar,
 with nonpositive/nonfinite inputs invalid. It is stateless and adds no history requirement.
+log1p accepts one input and no parameters: ln(1+x), finite x > -1 only,
+stateless and no additional history. Use it explicitly when volume controls require log1p.
 For log(high/low), compose ratio(high, low) then natural_log; log_return of that ratio
 instead computes a temporal change and is NOT equivalent. Likewise simple_return is
 relative change, not an arithmetic spread. Do not substitute operators to fit the schema.

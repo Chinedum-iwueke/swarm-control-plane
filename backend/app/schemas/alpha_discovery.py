@@ -377,6 +377,7 @@ class AlphaRepresentationTransformation(StrictModel):
         "simple_return",
         "log_return",
         "natural_log",
+        "log1p",
         "fractional_difference",
         "rolling_zscore",
         "realized_volatility",
@@ -391,10 +392,10 @@ class AlphaRepresentationTransformation(StrictModel):
 
     @model_validator(mode="after")
     def operation_contract(self):
-        if self.operation in {"identity", "natural_log", "simple_return", "log_return"}:
+        if self.operation in {"identity", "natural_log", "log1p", "simple_return", "log_return"}:
             if len(self.input_fields) != 1:
                 raise ValueError(f"{self.operation} requires one input")
-            expected = set() if self.operation in {"identity", "natural_log"} else {"periods"}
+            expected = set() if self.operation in {"identity", "natural_log", "log1p"} else {"periods"}
             if set(self.parameters) != expected:
                 raise ValueError(f"{self.operation} parameters are invalid")
             if (
@@ -402,8 +403,8 @@ class AlphaRepresentationTransformation(StrictModel):
                 and not 1 <= int(self.parameters["periods"]) <= 10_000
             ):
                 raise ValueError("return periods are outside the bounded range")
-            if self.operation == "natural_log" and self.fit_policy != "stateless":
-                raise ValueError("natural_log is stateless")
+            if self.operation in {"natural_log", "log1p"} and self.fit_policy != "stateless":
+                raise ValueError(f"{self.operation} is stateless")
         elif self.operation == "fractional_difference":
             if len(self.input_fields) != 1 or set(self.parameters) != {
                 "d",

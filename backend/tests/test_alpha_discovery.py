@@ -153,14 +153,15 @@ def test_rolling_lag_matches_native_contract(operation, lag):
 
 
 @pytest.mark.parametrize("change", [{}, {"parameters": {"periods": 1}}, {"input_fields": ["ratio", "close"]}, {"fit_policy": "train_only"}])
-def test_natural_log_has_an_explicit_stateless_level_contract(change):
-    payload = dict(output_field="log_range", operation="natural_log", input_fields=["ratio"], parameters={}, fit_policy="stateless", rationale="Natural logarithm of the completed same-bar range ratio.")
+@pytest.mark.parametrize("operation", ["natural_log", "log1p"])
+def test_natural_log_has_an_explicit_stateless_level_contract(change, operation):
+    payload = dict(output_field="log_range", operation=operation, input_fields=["ratio"], parameters={}, fit_policy="stateless", rationale="Natural logarithm of the completed same-bar range ratio.")
     payload.update(change)
     if change:
         with pytest.raises(ValidationError):
             AlphaRepresentationTransformation(**payload)
     else:
-        assert AlphaRepresentationTransformation(**payload).operation == "natural_log"
+        assert AlphaRepresentationTransformation(**payload).operation == operation
 
 
 @pytest.mark.parametrize("lag", [-1, 100001, 1.5, True, "1"])

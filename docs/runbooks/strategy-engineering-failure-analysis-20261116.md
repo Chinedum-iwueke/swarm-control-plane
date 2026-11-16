@@ -10,6 +10,7 @@ real-data backtest followed. These verdicts remain authoritative and immutable.
 
 Pending coordinated release, producer and backend contracts now support the
 native `natural_log` level operation, separate from temporal `log_return`.
+They also support explicit stateless `log1p` for one-plus volume controls.
 The optional typed `quantile_support_plan` expresses fixed training-fitted linear
 quantile/strict upper-tail designs for native support-capacity checks before paid
 review. Held-out nominal shortfalls remain warnings, not impossibility claims.
