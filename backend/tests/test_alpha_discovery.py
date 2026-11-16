@@ -1191,7 +1191,7 @@ def test_recovery_requires_changed_evidence_before_paid_discovery(monkeypatch, f
     old_id, new_id = str(uuid4()), str(uuid4())
     monkeypatch.setattr("app.services.alpha_discovery._discovery_retrieval_recovery", lambda db, m: {
         "reason_code": "duplicate_only", "prior_evidence": [{"object_id": old_id, "content_digest": DIGEST}]})
-    hit = {"object_id": new_id if fresh else old_id, "text": "Mechanism passage.", "confidence": 0.8,
+    hit = {"object_id": new_id if fresh else old_id, "text": "Intraday seasonality autocorrelation asymmetry trend persistence " + "A substantive mechanism passage with causal timing and uncertainty. " * 8, "confidence": 0.8,
            "citation": {"content_digest": DIGEST, "coordinates": {}}}
     search = MagicMock(return_value={"corpus_digest": DIGEST, "abstained": False, "hits": [hit], "confidence": 0.8})
     monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", search)
@@ -1202,6 +1202,14 @@ def test_recovery_requires_changed_evidence_before_paid_discovery(monkeypatch, f
     assert result["citations"]  # Preserve old evidence even when it cannot reopen paid work.
     if not fresh:
         assert "defer paid discovery" in result["error"]
+
+
+def test_recovery_passage_preflight_rejects_labels_and_unrelated_text():
+    from app.services.alpha_discovery import _recovery_passage_matches, _passage_fingerprint, _navigation_excerpt
+    assert not _recovery_passage_matches("Table: intraday seasonality", "intraday seasonality")
+    assert not _recovery_passage_matches("unrelated material " * 50, "intraday seasonality")
+    assert _passage_fingerprint("A passage\nwith spaces") == _passage_fingerprint("a passage with   spaces")
+    assert _navigation_excerpt("Bibliography 665\nReferences to forecasting")
 
 
 def test_unchanged_recovery_grounding_does_not_allocate_cycle_or_model_task(monkeypatch):

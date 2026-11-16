@@ -566,6 +566,8 @@ def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
 def _navigation_excerpt(text: str) -> bool:
     """Conservative discovery-only filter; never deletes canonical source evidence."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines and re.match(r"^(bibliography|index|table of contents)(?:\s+\d+)?$", lines[0], re.I):
+        return True
     if len(lines) < 6:
         return False
     index_lines = sum(bool(re.search(r",\s*\d+(?:[\s,\d\u2013\u2014-]*)$", line)) for line in lines)
@@ -573,6 +575,15 @@ def _navigation_excerpt(text: str) -> bool:
         return True
     return (sum(line.lower() == "further reading" for line in lines) >= 2
             and sum(len(line) < 90 for line in lines) / len(lines) >= 0.9)
+
+
+def _passage_fingerprint(text: str) -> str:
+    return digest_document(" ".join(text[:1600].casefold().split()))
+
+
+def _recovery_passage_matches(text: str, query: str) -> bool:
+    words = re.findall(r"[a-z]+", text[:1600].casefold())
+    return len(words) >= 40 and set(query.casefold().split()).issubset(words)
 
 
 def _discovery_retrieval_recovery(db, mandate) -> dict:
@@ -607,6 +618,7 @@ def _discovery_retrieval_recovery(db, mandate) -> dict:
             "event_digest": event.event_digest, "reason_code": reason,
             "reason_verified": False,
             "prior_evidence": [{"object_id": oid, "content_digest": digest} for oid, digest in pairs],
+            "prior_passage_fingerprints": sorted({_passage_fingerprint(c["text"]) for c in passages if c.get("text")}),
             "execution_authority": False}
 
 
@@ -638,14 +650,13 @@ def _discovery_queries(mandate, *, previous_queries=(), recovery=False) -> list[
         # Search seeds, not claims of predictability or permission to use new fields.
         alternatives = []
         if "close" in columns:
-            alternatives.extend(["intraday return seasonality", "return autocorrelation asymmetry",
-                                 "time series trend persistence"])
+            alternatives.extend(["intraday seasonality", "autocorrelation asymmetry", "trend persistence"])
         if {"high", "low", "close"}.issubset(columns):
-            alternatives.extend(["range based volatility forecasting", "price range expansion predictability"])
+            alternatives.extend(["range volatility", "range expansion"])
         if "volume" in columns:
-            alternatives.extend(["trading volume seasonality", "volume volatility asymmetry"])
+            alternatives.extend(["volume seasonality", "volume asymmetry"])
         if "funding_rate" in columns:
-            alternatives.append("funding rate persistence")
+            alternatives.append("funding persistence")
         return sorted(alternatives, key=lambda query: usage[query])[:4]
     if facets:
         offset = mandate.cycle_count % len(facets)
@@ -676,6 +687,8 @@ def _discovery_corpus(db, mandate) -> dict:
     recovery = _discovery_retrieval_recovery(db, mandate)
     queries = _discovery_queries(mandate, previous_queries=previous_queries, recovery=bool(recovery))
     prior_evidence = {(c["object_id"], c["content_digest"]) for c in recovery.get("prior_evidence", [])}
+    prior_text = set(recovery.get("prior_passage_fingerprints", []))
+    selected_text = set()
     citations = {}
     receipts = []
     corpus_digest = None
@@ -701,8 +714,16 @@ def _discovery_corpus(db, mandate) -> dict:
             receipts[-1]["passage_selection_policy"] = "discovery-navigation-filter-v1"
             support = [hit for hit in retrieval["hits"] if not _navigation_excerpt(hit["text"])]
             if recovery:
+                excluded = [hit for hit in support if not _recovery_passage_matches(hit["text"], query)
+                            or _passage_fingerprint(hit["text"]) in prior_text | selected_text]
+                receipts[-1]["recovery_excluded_object_ids"] = [str(hit["object_id"]) for hit in excluded]
+                support = [hit for hit in support if hit not in excluded]
                 support.sort(key=lambda hit: (str(hit["object_id"]), hit["citation"]["content_digest"]) in prior_evidence)
             for hit in support[:3]:
+                fingerprint = _passage_fingerprint(hit["text"])
+                if recovery and fingerprint in selected_text:
+                    continue
+                selected_text.add(fingerprint)
                 key = str(hit["object_id"])
                 if key in citations:
                     citations[key]["retrieved_for"].append(query)

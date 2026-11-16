@@ -96,7 +96,7 @@ remove novelty checks, weaken old requirements or claim an unchanged question is
 new. Another identical narrow request is not an engineering-episode test.
 Completed mandates and historical records remain immutable.
 
-## Abstention-aware retrieval repair (not yet deployed)
+## Abstention-aware retrieval repair
 
 The next implementation reads the latest cycle and its recorded abstention under
 identical dataset bindings and discovery-catalog authority. Only `duplicate_only`
@@ -120,5 +120,15 @@ feasibility, mathematical assurance and independent review gates remain required
 
 This is bounded deterministic evidence exploration, not a general reasoning
 controller or end-to-end certification. It does not renew mandates, change data
-authority or restart historical tasks. Live recovery remains to be demonstrated
+authority or restart historical tasks. Live model recovery remains to be demonstrated
 under a separately approved mandate; the previous exhausted mandate stays closed.
+
+The production read-only probe of `c9c26f6` correctly selected the latest
+`duplicate_only` abstention and compared against 33 prior citations. It returned
+12 new IDs, but inspection found duplicated text, bibliography entries and weak
+query matches. Therefore new IDs alone were not accepted as commissioning proof.
+The follow-up preflight uses shorter mechanism queries, explicit navigation-header
+exclusion, normalized passage fingerprints across retained history, and minimum
+passage length plus literal query-term coverage. These checks are conservative
+retrieval heuristics, not scientific relevance judgments. They retain exclusion
+IDs in query receipts and do not qualify reconstructed equations.
