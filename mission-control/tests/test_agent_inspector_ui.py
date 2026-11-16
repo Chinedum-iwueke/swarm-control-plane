@@ -32,3 +32,15 @@ def test_agent_inspector_has_focus_loading_and_mobile_layout_rules():
     assert ".agent-inspector-tabs button:focus-visible" in styles
     assert ".agent-detail-loading" in styles
     assert ".source-evidence" in styles
+
+
+def test_catalogue_separates_retired_records_and_uses_expandable_history():
+    source = APP_JS.read_text(encoding="utf-8")
+    html = (APP_JS.parent / "index.html").read_text()
+    assert 'id="retired-agent-matrix"' in html
+    assert 'id="active-agent-count"' in html
+    assert "agents.filter(agentIsRetired)" in source
+    assert 'agent.is_enabled === false' in source
+    assert "agentDisplayName(agent)" in source
+    assert '<details class="agent-history-entry">' in source
+    assert "Authorization is not evidence of execution." in source

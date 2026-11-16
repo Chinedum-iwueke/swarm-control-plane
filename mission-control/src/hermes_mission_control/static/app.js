@@ -2121,6 +2121,17 @@ function openDecision(id, action) {
   document.getElementById("decision-dialog").showModal();
 }
 
+function agentDisplayName(agent) {
+  let name = agent.display_name || agent.slug || "Agent";
+  const prefix = /^["']?(?:(?:vm|vps|exec|mac)\s*\d+|(?:m|alpha|ri|disc|ops|risk|shadow)\s*-?\d+)\b["']?[\s·:–—-]*/i;
+  while (prefix.test(name)) name = name.replace(prefix, "");
+  return name.trim() || agent.display_name || agent.slug;
+}
+
+function agentIsRetired(agent) {
+  return agent.is_enabled === false || ["revoked", "retired", "disabled"].includes(agent.status);
+}
+
 function renderAgents() {
   if (!state.dashboard) return;
   const filter = document.getElementById("agent-filter").value.trim().toLowerCase();
@@ -2132,25 +2143,31 @@ function renderAgents() {
     return !filter || haystack.includes(filter);
   });
   document.getElementById("agent-count").textContent = `${agents.length} of ${allAgents.length} agents`;
-  document.getElementById("agent-matrix").innerHTML = agents.length ? agents.map((agent) => {
+  const renderCard = (agent) => {
     const deployment = activeDeployment(agent.id);
     const charter = (state.dashboard.agent_charters || []).find((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const grants = (state.dashboard.agent_capability_grants || []).filter((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const workloadIdentity = (state.dashboard.workload_identities?.identities || []).find((item) => String(item.agent_id) === String(agent.id) && item.status === "active");
     const manifest = deployment?.package?.manifest;
     const assigned = (state.dashboard.tasks || []).filter((task) => String(task.assigned_agent_id || "") === String(agent.id)).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-    const currentTask = assigned.find((task) => activeStatuses.has(task.status));
+    const currentTask = assigned.find((task) => ["leased", "running"].includes(task.status));
     const latestTask = currentTask || assigned[0];
     return `
     <button class="agent-card" type="button" data-agent-id="${agent.id}">
-      <span class="agent-card-top">${agentBot(agent, "large")}<span class="agent-presence">${statusBadge(agentStatus(agent))}</span></span>
-      <span class="agent-name">${escapeHtml(agent.display_name || agent.slug)}</span>
+      <span class="agent-card-top">${agentBot(agent, "large")}<span class="agent-presence">${statusBadge(agentIsRetired(agent) ? "retired" : agentStatus(agent))}</span></span>
+      <span class="agent-name">${escapeHtml(agentDisplayName(agent))}</span>
       <span class="agent-machine">${escapeHtml(agent.machine)} · heartbeat ${relativeTime(agent.last_heartbeat_at)}</span>
       <span class="agent-role">${escapeHtml(manifest?.role || agent.role || agent.hermes_profile || "Worker")}</span>
-      <span class="agent-assignment"><span>${currentTask ? "Working now" : latestTask ? "Most recent task" : "No task assigned"}</span><strong>${escapeHtml(latestTask?.title || "Available for governed work")}</strong></span>
+      <span class="agent-assignment"><span>${currentTask ? "Assigned now" : latestTask ? "Most recent task" : "No current assignment"}</span><strong>${escapeHtml(latestTask?.title || (agentIsRetired(agent) ? "Retained audit record" : "View profile for task history"))}</strong></span>
       <span class="agent-card-footer"><span>${(agent.capabilities || []).length} capabilities</span><span>Risk ceiling ${manifest?.risk_ceiling ?? agent.risk_ceiling ?? "–"}</span><span>${grants.length} active grants · ${workloadIdentity ? `${workloadIdentity.scopes.length} scopes` : "no workload identity"}</span><span>${deployment ? `Package ${escapeHtml(deployment.package.version)}` : "No active package"} · ${charter ? `Charter ${escapeHtml(charter.version)}` : "No active charter"}</span></span>
     </button>`;
-  }).join("") : empty("No agents registered.");
+  };
+  const active = agents.filter((agent) => !agentIsRetired(agent));
+  const retired = agents.filter(agentIsRetired);
+  document.getElementById("active-agent-count").textContent = active.length;
+  document.getElementById("retired-agent-count").textContent = retired.length;
+  document.getElementById("agent-matrix").innerHTML = active.map(renderCard).join("") || empty("No active agents match.");
+  document.getElementById("retired-agent-matrix").innerHTML = retired.map(renderCard).join("") || empty("No retired agents match.");
   bindEntityButtons();
 }
 
@@ -3077,7 +3094,7 @@ async function openAgent(id) {
   state.agentDetail = null;
   state.agentDetailTab = "overview";
   state.agentDetailLoading = true;
-  openInspector("Agent", agent.display_name || agent.slug, agentInspectorLoading());
+  openInspector("Agent", agentDisplayName(agent), agentInspectorLoading());
   try {
     state.agentDetail = await request(`/api/agents/${encodeURIComponent(id)}/detail?offset=0&limit=25`);
     renderAgentInspector();
@@ -3112,7 +3129,7 @@ function renderAgentInspector({ focusTab = false } = {}) {
   const body = document.getElementById("inspector-body");
   body.innerHTML = `
     <div class="agent-inspector-summary">
-      <div class="agent-inspector-identity">${agentBot(detail.agent, "large")}<div><strong>${escapeHtml(detail.agent.display_name || detail.agent.slug)}</strong><span>${escapeHtml(detail.agent.machine || "Machine unreported")}</span></div></div>
+      <div class="agent-inspector-identity">${agentBot(detail.agent, "large")}<div><strong>${escapeHtml(agentDisplayName(detail.agent))}</strong><span>${escapeHtml(detail.agent.machine || "Machine unreported")}</span></div></div>
       ${statusBadge(detail.agent.presence || detail.agent.status || "unknown")}
     </div>
     <div class="agent-inspector-tabs" role="tablist" aria-label="Agent evidence">
@@ -3128,7 +3145,7 @@ function agentInspectorPanel(detail, tab) {
   if (tab === "now") {
     const lease = detail.current_lease;
     const leaseTaskId = canonicalLeaseTaskId(lease, detail.task_history.items);
-    return `<section class="detail-section"><h3>Current assignment</h3>${lease ? `<button class="entity-row" type="button" ${leaseTaskId ? `data-task-id="${escapeHtml(leaseTaskId)}"` : "disabled"}><span class="entity-primary"><strong>${escapeHtml(lease.title || lease.operation_key || "Governed work")}</strong><span class="entity-meta"><span>${escapeHtml(humanize(lease.phase || lease.status || "running"))}</span><span>${escapeHtml(lease.machine || agent.machine || "Machine unreported")}</span></span></span><span class="entity-side">${statusBadge(lease.status || "running")}</span></button>` : '<p class="muted">No current lease or active assigned task is recorded.</p>'}</section>
+    return `<section class="detail-section agent-current-work"><h3>Current assignment</h3>${lease ? `<button class="entity-row" type="button" ${leaseTaskId ? `data-task-id="${escapeHtml(leaseTaskId)}"` : "disabled"}><span class="entity-primary"><strong>${escapeHtml(lease.title || lease.operation_key || "Governed work")}</strong><span class="entity-meta"><span>${escapeHtml(humanize(lease.phase || lease.status || "running"))}</span><span>${escapeHtml(lease.machine || agent.machine || "Machine unreported")}</span></span></span><span class="entity-side">${statusBadge(lease.status || "running")}</span></button><dl class="detail-grid"><dt>Role</dt><dd>${escapeHtml(detail.charter?.role || agent.role || "Not recorded")}</dd><dt>Goal</dt><dd>${escapeHtml(lease.objective || "Open task for recorded goal")}</dd></dl>` : '<p class="muted">No current assignment. Historical work is available in History.</p>'}</section>
       <section class="detail-section"><h3>Task status evidence</h3>${sourceEvidence(detail.provenance?.task_status)}</section>
       <section class="detail-section"><h3>Latest heartbeat</h3><dl class="detail-grid"><dt>Observed</dt><dd>${formatDate(agent.last_heartbeat_at)}</dd><dt>History</dt><dd>${escapeHtml(humanize(detail.heartbeat_history.availability))}</dd></dl><p class="evidence-boundary">${escapeHtml(detail.heartbeat_history.claim_boundary)}</p></section>
       ${referenceSection(detail.references)}`;
@@ -3139,7 +3156,7 @@ function agentInspectorPanel(detail, tab) {
   }
   if (tab === "workflows") {
     const memberships = detail.workflow_memberships || [];
-    return `<section class="detail-section"><h3>Workflow membership</h3>${memberships.length ? memberships.map((item) => `<button class="entity-row" type="button" data-workflow-id="${escapeHtml(item.instance_id)}"><span class="entity-primary"><strong>${escapeHtml(item.title)}</strong><span class="entity-meta"><span>${escapeHtml(item.machine || "Machine unreported")}</span><span>${escapeHtml(item.current_leaf?.phase || "No current leaf")}</span></span></span><span class="entity-side">${statusBadge(item.state)}</span></button>`).join("") : '<p class="muted">No workflow ownership is recorded in the current projection.</p>'}</section>`;
+    return `<section class="detail-section"><h3>Workflow participation</h3>${memberships.length ? memberships.map((item) => item.instance_id ? `<button class="entity-row" type="button" data-workflow-id="${escapeHtml(item.instance_id)}"><span class="entity-primary"><strong>${escapeHtml(item.title)}</strong><span class="entity-meta">Recorded owner · ${escapeHtml(item.current_leaf?.phase || "No current stage")}</span></span>${statusBadge(item.state)}</button>` : `<details class="agent-history-entry"><summary><span><strong>${escapeHtml(humanize(item.title))}</strong><small>${escapeHtml(item.basis)} · ${item.task_ids.length} tasks in this history page</small></span></summary><div class="agent-history-content">${item.task_ids.map((id) => `<button class="secondary" type="button" data-task-id="${escapeHtml(id)}">${escapeHtml(detail.task_history.items.find((task) => task.id === id)?.task_number || id)}</button>`).join("")}</div></details>`).join("") : '<p class="muted">No workflow participation found in this history page.</p>'}</section><section class="detail-section"><h3>Authorized task types</h3>${listOrNone(detail.allowed_task_types)}<p class="evidence-boundary">Authorization is not evidence of execution.</p></section>`;
   }
   if (tab === "governance") {
     const charter = detail.charter;
@@ -3168,7 +3185,7 @@ function referenceSection(references) {
 }
 
 function agentHistoryRow(item) {
-  return `<button class="entity-row" type="button" data-task-id="${escapeHtml(item.id)}"><span class="entity-primary"><strong>${escapeHtml(item.title)}</strong><span class="entity-meta"><span class="mono">${escapeHtml(item.task_number)}</span><span>${item.attempt_count ?? 0}/${item.max_attempts ?? 0} attempts</span><span>${formatDate(item.updated_at)}</span></span></span><span class="entity-side">${statusBadge(item.status)}</span></button>`;
+  return `<details class="agent-history-entry"><summary><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.task_number)} · ${formatDate(item.updated_at)}</small></span>${statusBadge(item.status)}</summary><div class="agent-history-content"><p>${escapeHtml(item.objective || "No goal recorded.")}</p><dl class="detail-grid"><dt>Workflow</dt><dd>${escapeHtml(item.input_contract?.workflow || item.result?.workflow || "Not recorded")}</dd><dt>Attempts</dt><dd>${item.attempt_count ?? 0} of ${item.max_attempts ?? 0}</dd><dt>Completed</dt><dd>${formatDate(item.completed_at)}</dd></dl>${item.failure?.message ? `<p class="evidence-boundary">${escapeHtml(item.failure.message)}</p>` : ""}<button class="secondary" type="button" data-task-id="${escapeHtml(item.id)}">Open task evidence</button></div></details>`;
 }
 
 function agentInitials(agent) {
@@ -3221,6 +3238,11 @@ async function loadMoreAgentHistory() {
     const next = await request(`/api/agents/${encodeURIComponent(detail.agent.id)}/detail?offset=${history.offset + history.items.length}&limit=${history.limit}`);
     detail.task_history.items.push(...next.task_history.items);
     detail.task_history.has_more = next.task_history.has_more;
+    for (const membership of next.workflow_memberships || []) {
+      const existing = detail.workflow_memberships.find((item) => item.title === membership.title && item.instance_id === membership.instance_id);
+      if (existing && membership.task_ids) existing.task_ids = [...new Set([...(existing.task_ids || []), ...membership.task_ids])];
+      else if (!existing) detail.workflow_memberships.push(membership);
+    }
     renderAgentInspector();
   } catch (error) {
     button.disabled = false;

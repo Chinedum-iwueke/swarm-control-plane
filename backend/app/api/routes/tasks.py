@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -107,11 +107,15 @@ def list_tasks(
     task_status: Annotated[str | None, Query(alias="status")] = None,
     project: str | None = None,
     assigned_agent_id: uuid.UUID | None = None,
+    participating_agent_id: uuid.UUID | None = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     compact: bool = False,
+    active_only: bool = False,
 ) -> list[TaskResponse]:
     statement = select(Task)
+    if active_only:
+        statement = statement.where(Task.status.in_(["leased", "running"]))
 
     if task_status is not None:
         statement = statement.where(Task.status == task_status)
@@ -120,15 +124,39 @@ def list_tasks(
         statement = statement.where(Task.project == project)
     if assigned_agent_id is not None:
         statement = statement.where(Task.assigned_agent_id == assigned_agent_id)
+    if participating_agent_id is not None:
+        # A completed/released lease clears assigned_agent_id. Lease events
+        # preserve participation without attributing another worker's retry.
+        participated = select(TaskEvent.id).where(
+            TaskEvent.task_id == Task.id,
+            TaskEvent.agent_id == participating_agent_id,
+            TaskEvent.event_type == "task_leased",
+        ).exists()
+        statement = statement.where(or_(Task.assigned_agent_id == participating_agent_id, participated))
 
     tasks = db.scalars(
-        statement.order_by(Task.created_at.desc()).offset(offset).limit(limit)
+        statement.order_by(Task.created_at.desc(), Task.id.desc()).offset(offset).limit(limit)
     ).all()
 
     serialized = [serialize_task(task) for task in tasks]
     if compact:
         serialized = [_compact_task_payload(item) for item in serialized]
     return [TaskResponse.model_validate(item) for item in serialized]
+
+
+@router.get("/agent-history/{agent_id}", response_model=list[TaskResponse])
+def agent_task_history(
+    agent_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    current_only: bool = False,
+) -> list[TaskResponse]:
+    return list_tasks(
+        db, assigned_agent_id=agent_id if current_only else None,
+        participating_agent_id=None if current_only else agent_id,
+        active_only=current_only, offset=offset, limit=limit, compact=True,
+    )
 
 
 @router.post(

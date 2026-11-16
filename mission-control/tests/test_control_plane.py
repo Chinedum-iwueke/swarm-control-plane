@@ -20,6 +20,26 @@ from hermes_mission_control.models import (
 
 
 @pytest.mark.asyncio
+async def test_agent_history_and_current_queries_use_distinct_authoritative_filters(settings):
+    client = ControlPlaneClient(settings)
+    calls = []
+    async def request(method, path, **kwargs):
+        calls.append((path, kwargs["params"]))
+        return []
+    client._request = request
+    try:
+        await client.agent_tasks("agent-1", offset=25, limit=25)
+        await client.agent_current_tasks("agent-1")
+    finally:
+        await client.close()
+    assert calls[0][0] == "/v1/tasks/agent-history/agent-1"
+    assert "assigned_agent_id" not in calls[0][1]
+    assert calls[0][1]["offset"] == 25
+    assert calls[1][0] == calls[0][0]
+    assert calls[1][1]["current_only"] is True
+
+
+@pytest.mark.asyncio
 async def test_conversation_work_event_cursor_is_forwarded_without_mutation(
     settings: MissionControlSettings,
 ) -> None:

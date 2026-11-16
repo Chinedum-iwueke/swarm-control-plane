@@ -304,9 +304,11 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=100)] = 25,
     ) -> dict:
-        snapshot, history = await asyncio.gather(
-            client.dashboard(), client.agent_tasks(agent_id, offset=offset, limit=limit)
+        snapshot, history, current = await asyncio.gather(
+            client.dashboard(), client.agent_tasks(agent_id, offset=offset, limit=limit),
+            client.agent_current_tasks(agent_id),
         )
+        snapshot = {**snapshot, "tasks": current}
         result = project_agent_detail(
             snapshot, agent_id, history, offset=offset, limit=limit
         )

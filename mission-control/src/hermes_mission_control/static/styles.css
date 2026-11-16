@@ -685,6 +685,22 @@ td .mono { display: block; margin-top: 2px; color: var(--muted); }
 .policy-row span:nth-child(2) { color: var(--muted); font-size: 10px; }
 
 .agent-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 10px; }
+.agent-section-title { display: flex; align-items: center; gap: 12px; margin: 20px 0 14px; font-size: 18px; }
+.retired-agents { margin-top: 32px; border-top: 1px solid var(--line, #d8dce1); padding-top: 18px; }
+.retired-agents > summary { cursor: pointer; padding: 12px 0; font-weight: 600; min-height: 44px; }
+.retired-agents .agent-matrix { margin-top: 14px; }
+.retired-agents .agent-card { background: var(--surface, #fff); border-style: dashed; }
+.agent-history-entry { border-bottom: 1px solid var(--line, #d8dce1); }
+.agent-history-entry > summary { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 16px 0; min-height: 44px; }
+.agent-history-entry > summary::before { content: '+'; flex: 0 0 16px; }
+.agent-history-entry[open] > summary::before { content: '-'; }
+.agent-history-entry > summary > span:first-of-type { flex: 1; min-width: 0; }
+.agent-history-entry strong, .agent-history-entry small { display: block; overflow-wrap: anywhere; }
+.agent-history-entry small { margin-top: 6px; color: var(--muted, #626973); font-size: 12px; }
+.agent-history-content { padding: 0 0 18px 28px; overflow-wrap: anywhere; }
+.agent-history-content .secondary { margin: 4px 8px 4px 0; }
+.agent-history-entry summary:focus-visible, .retired-agents summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.agent-current-work { border-left: 3px solid var(--accent, #315e56); padding-left: 16px; }
 .agent-card { width: 100%; min-width: 0; min-height: 208px; display: flex; flex-direction: column; gap: 9px; padding: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; text-align: left; transition: border-color 120ms, background 120ms, transform 120ms; }
 .agent-card:hover { border-color: #b00020; background: #fffdfc; transform: translateY(-1px); }
 .agent-card:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }

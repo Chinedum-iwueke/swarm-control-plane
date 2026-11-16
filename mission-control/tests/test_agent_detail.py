@@ -223,3 +223,23 @@ def test_agent_detail_returns_none_for_an_unknown_agent():
         project_agent_detail(snapshot(), "not-agent", [], offset=0, limit=25, now=NOW)
         is None
     )
+
+
+def test_past_participant_does_not_own_another_agents_retry():
+    value = snapshot()
+    value["operations"] = []
+    history = [{**tasks()[0], "assigned_agent_id": "another-agent",
+                "input_contract": {"workflow": "engineering-mission"}}]
+    detail = project_agent_detail(value, AGENT_ID, history, offset=0, limit=25, now=NOW)
+    assert detail["current_lease"] is None
+    assert detail["workflow_memberships"][0]["title"] == "engineering-mission"
+    assert detail["workflow_memberships"][0]["basis"] == "Recorded task participation"
+    assert detail["allowed_task_types"] == ["research_experiment"]
+
+
+def test_current_assignment_is_independent_of_history_page():
+    value = snapshot()
+    value["operations"] = []
+    value["tasks"] = [{**tasks()[0], "assigned_agent_id": AGENT_ID, "objective": "Validate causal timing"}]
+    detail = project_agent_detail(value, AGENT_ID, [], offset=50, limit=25, now=NOW)
+    assert detail["current_lease"]["objective"] == "Validate causal timing"

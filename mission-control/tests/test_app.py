@@ -51,6 +51,9 @@ class FakeControlPlane:
     ) -> list[dict]:
         return []
 
+    async def agent_current_tasks(self, agent_id: str) -> list[dict]:
+        return []
+
     async def venue_event_history(
         self, *, environment=None, venue=None, replay_id=None
     ) -> dict:
@@ -1312,6 +1315,6 @@ def test_agent_detail_endpoint_returns_a_safe_paginated_projection(settings):
         "offset": 3,
         "limit": 1,
         "has_more": False,
-        "source": "canonical_task_assignment",
+        "source": "canonical_task_assignment_and_lease_events",
     }
     assert "credential" not in payload["agent"]

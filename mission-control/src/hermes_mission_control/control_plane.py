@@ -92,14 +92,17 @@ class ControlPlaneClient:
     ) -> list[dict[str, Any]]:
         return await self._request(
             "GET",
-            "/v1/tasks",
+            f"/v1/tasks/agent-history/{agent_id}",
             params={
-                "assigned_agent_id": agent_id,
                 "offset": offset,
                 "limit": limit,
-                "compact": True,
             },
         )
+
+    async def agent_current_tasks(self, agent_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/v1/tasks/agent-history/{agent_id}", params={
+            "current_only": True, "limit": 100,
+        })
 
     async def dashboard(self, *, refresh: bool = False) -> dict[str, Any]:
         if refresh:

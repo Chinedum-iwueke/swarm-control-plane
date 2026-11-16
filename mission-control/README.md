@@ -4,6 +4,23 @@ Hermes Mission Control is the Mac-local founder surface for the swarm. It
 combines control-plane status, structured request intake, approval decisions,
 artifact visibility, and a private cited-search pilot.
 
+## Agent catalogue evidence
+
+Active registrations and retired/disabled registrations occupy separate catalogue
+sections. Display names omit leading machine and milestone identifiers; canonical
+slugs, IDs and audit records remain unchanged. Online presence is separate from
+registration status and task execution.
+
+Agent history uses `/v1/tasks/agent-history/{agent_id}` and durable `task_leased`
+events, because releasing a lease clears the task's current assignee. Current
+assignments are queried independently of history pagination. Recorded workflow
+participation is separate from workflow ownership and charter-authorized task
+types; participation shown is bounded to the loaded history pages.
+
+Deploy the backend route before the Mission Control client. An older backend
+returns a visible error rather than an unfiltered, misleading task list. No
+historical assignment or reporting hierarchy is inferred from an agent's name.
+
 ## Security boundary
 
 - The server binds only to `127.0.0.1` by default.

@@ -8,7 +8,7 @@ from typing import Any
 from .freshness import build_snapshot_provenance
 from .workflow_projection import project_workflows
 
-_ACTIVE = frozenset({"queued", "leased", "running", "pending_approval"})
+_ACTIVE = frozenset({"leased", "running"})
 
 
 def project_agent_detail(
@@ -38,16 +38,25 @@ def project_agent_detail(
         (snapshot.get("workload_identities") or {}).get("identities", []), agent_id
     )
     operations = _owned_operations(snapshot.get("operations", []), agent_id)
-    current_lease = next(
-        (item for item in operations if item.get("state") in _ACTIVE),
-        None,
-    ) or next((item for item in task_history if item.get("status") in _ACTIVE), None)
+    current_lease = next((item for item in snapshot.get("tasks", []) + task_history
+               if item.get("status") in _ACTIVE
+               and str(item.get("assigned_agent_id")) == str(agent_id)), None) or next(
+        (item for item in operations if item.get("state") in _ACTIVE), None,
+    )
     workflow_items = project_workflows(snapshot, now=observed_at).get("items", [])
     memberships = [
         _workflow_membership(item)
         for item in workflow_items
         if str((item.get("owner") or {}).get("id")) == str(agent_id)
     ]
+    observed = {}
+    for task in task_history:
+        workflow = (task.get("input_contract") or {}).get("workflow") or (task.get("result") or {}).get("workflow")
+        if workflow:
+            observed.setdefault(workflow, []).append(str(task["id"]))
+    for workflow, ids in observed.items():
+        memberships.append({"title": workflow, "state": "observed", "basis": "Recorded task participation",
+                            "task_ids": ids, "instance_id": None})
     task_ids = {str(item.get("id")) for item in task_history}
     artifacts = [
         _artifact_reference(item)
@@ -77,7 +86,7 @@ def project_agent_detail(
             "offset": offset,
             "limit": limit,
             "has_more": len(task_history) == limit,
-            "source": "canonical_task_assignment",
+            "source": "canonical_task_assignment_and_lease_events",
         },
         "heartbeat_history": {
             "items": _heartbeat_observations(agent),
@@ -85,6 +94,7 @@ def project_agent_detail(
             "claim_boundary": "The canonical agent projection currently exposes the latest heartbeat, not a retained heartbeat series.",
         },
         "workflow_memberships": memberships,
+        "allowed_task_types": (charter or {}).get("manifest", {}).get("allowed_task_types", []),
         "reporting_relationship": _reporting_relationship(agent),
         "references": {"artifacts": artifacts, "logs": _log_references(operations)},
         "provenance": {
@@ -243,6 +253,8 @@ def _lease_summary(item: dict[str, Any] | None) -> dict[str, Any] | None:
             "id",
             "task_number",
             "title",
+            "objective",
+            "task_type",
             "status",
             "phase",
             "machine",
@@ -254,7 +266,7 @@ def _lease_summary(item: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _task_summary(item: dict[str, Any]) -> dict[str, Any]:
-    return {
+    summary = {
         key: item.get(key)
         for key in (
             "id",
@@ -268,8 +280,16 @@ def _task_summary(item: dict[str, Any]) -> dict[str, Any]:
             "max_attempts",
             "updated_at",
             "completed_at",
+            "objective",
         )
     }
+    for field, keys in {
+        "input_contract": ("workflow", "milestone_id"),
+        "result": ("workflow", "success", "base_commit"),
+        "failure": ("category", "error_category", "message"),
+    }.items():
+        summary[field] = {key: item[field][key] for key in keys if key in (item.get(field) or {})}
+    return summary
 
 
 def _heartbeat_observations(agent: dict[str, Any]) -> list[dict[str, Any]]:
