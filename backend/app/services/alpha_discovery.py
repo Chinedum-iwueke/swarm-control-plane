@@ -563,7 +563,7 @@ def _dataset_inventory(mandate: AlphaResearchMandate) -> list[dict]:
     return inventory
 
 
-def _discovery_queries(mandate) -> list[str]:
+def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
     columns = {
         column
         for binding in mandate.specification["dataset_bindings"]
@@ -586,16 +586,31 @@ def _discovery_queries(mandate) -> list[str]:
             "common factor residual relative value",
             "funding open interest cross asset spillover",
         ]
+    usage = Counter(previous_queries)
     if facets:
         offset = mandate.cycle_count % len(facets)
-        facets = (facets[offset:] + facets[:offset])[: 2 if broad_facets else 3]
+        rotated = facets[offset:] + facets[:offset]
+        facets = sorted(rotated, key=lambda query: usage[query])[: 2 if broad_facets else 3]
     if broad_facets:
-        facets.insert(0, broad_facets[mandate.cycle_count % len(broad_facets)])
+        offset = mandate.cycle_count % len(broad_facets)
+        rotated = broad_facets[offset:] + broad_facets[:offset]
+        facets.insert(0, min(rotated, key=lambda query: usage[query]))
     return list(dict.fromkeys([mandate.objective[:1000], *facets]))
 
 
 def _discovery_corpus(db, mandate) -> dict:
-    queries = _discovery_queries(mandate)
+    # Renewing a one-cycle mandate must not reset evidence exploration to the
+    # same facets. Read only retained query receipts, never target outcomes.
+    history = db.execute(
+        select(AlphaDiscoveryCycle.context["research_intelligence"]["query_receipts"])
+        .order_by(AlphaDiscoveryCycle.created_at.desc(), AlphaDiscoveryCycle.id.desc())
+        .limit(32)
+    ).scalars().all()
+    previous_queries = [
+        item["query"] for receipt in history if isinstance(receipt, list)
+        for item in receipt if isinstance(item, dict) and isinstance(item.get("query"), str)
+    ]
+    queries = _discovery_queries(mandate, previous_queries=previous_queries)
     citations = {}
     receipts = []
     corpus_digest = None
@@ -3296,6 +3311,15 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
     if not isinstance(raw, list):
         cycle.status = "needs_attention"
         cycle.next_action = "review_invalid_hypothesis_output"
+        return
+    if not raw and cycle.representation_task_id is None:
+        cycle.metrics = {"generated": 0, "accepted": 0, "awaiting_data_admission": 0,
+                         "rejected": 0, "duplicated": 0}
+        _event(db, mandate, "hypothesis_generation_abstained", {
+            "task_id": str(hypothesis.id), "candidate_count": 0,
+            "representation_skipped": True, "execution_authority": False,
+        }, cycle)
+        _portfolio_and_campaign(db, mandate, cycle, [])
         return
     if cycle.representation_task_id is None:
         task = _task(

@@ -75,6 +75,16 @@ invented, weaker or source-mismatched receipts are rejected from the campaign.
 
 ## Production sequence
 
+Discovery grounding ranks its existing data-aware query facets using receipts
+from the latest 32 cycles across mandates. A replacement one-cycle mandate no
+longer resets exploration to the same facets. This remains bounded hybrid
+retrieval, not outcome-based selection or a guarantee of novel citations.
+The objective query, corpus epoch checks and citation provenance remain intact.
+An empty senior-research candidate list is retained as an abstention and closes
+the cycle without spending a representation-model call. It neither resets the
+cycle budget nor manufactures a hypothesis; new cycles still require capacity
+under an approved mandate.
+
 1. Deploy through migration `a0d6e8f92b51` and rebuild the VM2 API. Assert both
    `/v1/research/alpha-discovery/mandates` and
    `/v1/research/scientific-fidelity/assurance/overview` exist in OpenAPI first.

@@ -1130,6 +1130,58 @@ def test_broad_discovery_query_plan_always_contains_cross_asset_grounding():
     assert any("cross asset" in item or "cross sectional" in item for item in queries)
 
 
+def test_replacement_mandate_does_not_reset_evidence_facets():
+    mandate = SimpleNamespace(
+        objective="Discover mechanisms.", cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close", "high", "low", "volume"]}],
+                       "discovery_catalog": {"receipt_digest": DIGEST}},
+    )
+    first = _discovery_queries(mandate)
+    replacement = _discovery_queries(mandate, previous_queries=first)
+    assert replacement != first
+    assert len(replacement) == len(first) == 4
+    assert replacement[0] == first[0] == mandate.objective
+    assert not set(replacement[1:]) & set(first[1:])
+    assert _discovery_queries(mandate, previous_queries=first) == replacement
+
+
+def test_empty_hypothesis_skips_paid_representation_and_retains_abstention(monkeypatch):
+    import app.services.alpha_discovery as service
+
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), status="active", valid_until=moment + timedelta(days=1))
+    cycle = SimpleNamespace(id=uuid4(), status="running", campaign_id=None,
+                            intelligence_task_id=uuid4(), hypothesis_task_id=uuid4(),
+                            representation_task_id=None)
+    intelligence = SimpleNamespace(status="succeeded", result={"summary": {
+        "alpha_discovery_output": {"research_brief": {"prior_failures": ["No supported new question."]}}}})
+    hypothesis = SimpleNamespace(id=cycle.hypothesis_task_id, status="succeeded", result={
+        "summary": {"alpha_discovery_output": {"candidates": []}}})
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    db.get.side_effect = [intelligence, hypothesis]
+    for name in ("_recover_premature_cycle_completion", "_retire_superseded_discovery_stalls", "_recover_resumed_stage"):
+        monkeypatch.setattr(service, name, lambda *args: None)
+    monkeypatch.setattr(service, "_reconcile_campaign_cycles", lambda *args: set())
+    monkeypatch.setattr(service, "_question_pipeline_state", lambda *args: (0, 0))
+    monkeypatch.setattr(service, "_reconcile_data_admissions", lambda *args: False)
+    create = MagicMock()
+    events = MagicMock()
+    monkeypatch.setattr(service, "_task", create)
+    monkeypatch.setattr(service, "_event", events)
+
+    reconcile_mandate(db, mandate)
+
+    create.assert_not_called()
+    assert cycle.status == "rejected" and cycle.phase == "complete"
+    assert cycle.next_action == "schedule_next_discovery_cycle"
+    assert cycle.metrics["generated"] == 0
+    assert cycle.representation_task_id is None
+    assert events.call_args_list[0].args[2] == "hypothesis_generation_abstained"
+    assert events.call_args_list[0].args[3]["representation_skipped"] is True
+    assert events.call_args_list[1].args[2] == "cycle_insufficient_candidates"
+
+
 def test_recent_research_memory_exposes_duplicate_and_coverage_context():
     item = SimpleNamespace(
         question="Does ETH lead SOL over the next 30m?",
@@ -1572,6 +1624,25 @@ def test_discovery_grounding_rejects_mixed_corpus_epochs(monkeypatch):
     assert corpus["abstained"]
     assert corpus["citations"] == []
     assert "Corpus changed" in corpus["error"]
+
+
+def test_discovery_grounding_uses_bounded_cross_mandate_query_history(monkeypatch):
+    mandate = SimpleNamespace(objective="Discover mechanisms.", cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close", "high", "low", "volume"]}]})
+    prior = _discovery_queries(mandate)
+    db = MagicMock()
+    db.execute.return_value.scalars.return_value.all.return_value = [
+        [{"query": query} for query in prior], None, [{"bad": "record"}],
+    ]
+    search = MagicMock(return_value={"corpus_digest": DIGEST, "abstained": True,
+                                   "hits": [], "confidence": 0})
+    monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", search)
+    result = _discovery_corpus(db, mandate)
+    queries = [call.args[1].query for call in search.call_args_list]
+    assert queries == _discovery_queries(mandate, previous_queries=prior)
+    assert queries != prior and len(queries) <= 4
+    assert result["abstained"] and not result["citations"]
+    assert db.execute.call_args.args[0]._limit_clause.value == 32
 
 
 @pytest.mark.parametrize("condition", ["valid", "missing", "stale", "wrong_digest"])
