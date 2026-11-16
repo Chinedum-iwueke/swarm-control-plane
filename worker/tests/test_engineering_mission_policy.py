@@ -63,14 +63,14 @@ async def test_focused_timeout_does_not_spend_paid_correction(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failed_stage", [None, "unit", "smoke", "scientific"])
+@pytest.mark.parametrize("failed_stage", [None, "contract", "unit", "smoke", "scientific"])
 async def test_native_validation_has_separate_bounded_stages(tmp_path, failed_stage):
     from unittest.mock import AsyncMock
 
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()
     (artifacts / "strategy-scaffold-manifest.json").write_text(json.dumps({
-        "paths": {"tests/test_strategy.py": "fixture"}
+        "paths": {"tests/test_strategy.py": "fixture", "research/hypotheses/fixture.yaml": "fixture"}
     }))
     harness = tmp_path / "src/bt/validation/authoring_harness.py"
     harness.parent.mkdir(parents=True)
@@ -91,11 +91,12 @@ async def test_native_validation_has_separate_bounded_stages(tmp_path, failed_st
         workspace=SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=tmp_path),
         heartbeat=AsyncMock(), heartbeat_failures=[], timeout_seconds=7200,
     )
-    stages = ["unit", "smoke", "scientific"]
-    length = 3 if failed_stage is None else stages.index(failed_stage) + 1
+    stages = ["contract", "unit", "smoke", "scientific"]
+    length = 4 if failed_stage is None else stages.index(failed_stage) + 1
     assert len(calls) == length
-    assert [c["timeout_seconds"] for c in calls] == [300, 900, 1800][:length]
-    assert [c["args"][-1] for c in calls] == [f"--phase={x}" for x in stages[:length]]
+    assert [c["timeout_seconds"] for c in calls] == [60, 300, 900, 1800][:length]
+    assert calls[0]["args"][-1] == "research/hypotheses/fixture.yaml"
+    assert [c["args"][-1] for c in calls[1:]] == [f"--phase={x}" for x in stages[1:length]]
     report = json.loads((artifacts / "focused-strategy-tests-stages.json").read_text())
     assert report["complete"] is (failed_stage is None)
     assert report["scientific_certification"] is False

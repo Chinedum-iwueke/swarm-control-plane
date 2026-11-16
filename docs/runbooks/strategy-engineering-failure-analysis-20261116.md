@@ -54,6 +54,14 @@ remaining immutable mission deadline; an exhausted deadline starts no process.
 These are separate subprocess stages in one mission, not independently scheduled
 or resumable jobs. Completed stage results are retained in an artifact JSON.
 
+A platform-owned contract stage now precedes those tests (60 seconds, still
+capped by the mission deadline). It invokes the actual registered evaluator on
+empty data, validates the canonical variant envelope and requires retained
+invalid-input evidence without selection or held-out evaluation. Observation-only
+contracts must retain explicit terminal evidence rather than invented trades.
+This catches envelope/order/invalid-logging defects before costly native smoke;
+it does not prove scientific correctness or replace independent review.
+
 The trusted runtime probe rejects native calls in the wrong stage. Smoke must
 complete both the real runner and smoke harness; the scientific stage must retain
 all four scientific outcomes. Empty stages fail. No gate is replaced by a pytest

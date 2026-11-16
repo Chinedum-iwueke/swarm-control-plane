@@ -1191,6 +1191,7 @@ class EngineeringMissionExecutor:
                 "Strategy scaffold must identify exactly one focused test module."
             )
         from swarm_worker.executors.strategy_test_probe import RUNNER_PROBE_PROGRAM
+        from swarm_worker.executors.strategy_contract_probe import CONTRACT_PROBE_PROGRAM
 
         harness_args = (
             ["--require-terminal-harness"]
@@ -1198,9 +1199,13 @@ class EngineeringMissionExecutor:
             else []
         )
         phases = (
-            [("unit", 300.0), ("smoke", 900.0), ("scientific", 1800.0)]
+            [("contract", 60.0), ("unit", 300.0), ("smoke", 900.0), ("scientific", 1800.0)]
             if harness_args else [("all", 300.0)]
         )
+        contracts = [path for path in manifest.get("paths", {})
+                     if path.startswith("research/hypotheses/") and path.endswith(".yaml")]
+        if harness_args and len(contracts) != 1:
+            raise ExecutionPolicyError("Strategy scaffold must identify one native contract.")
         deadline = time.monotonic() + timeout_seconds
         stage_results = []
         for phase, cap in phases:
@@ -1221,8 +1226,10 @@ class EngineeringMissionExecutor:
             else:
                 result = await self._run_bounded_command(
                     name=stage_name,
-                    args=["python", "-c", RUNNER_PROBE_PROGRAM, tests[0],
-                          *harness_args, f"--phase={phase}"],
+                    args=(["python", "-c", CONTRACT_PROBE_PROGRAM, contracts[0]]
+                          if phase == "contract" else
+                          ["python", "-c", RUNNER_PROBE_PROGRAM, tests[0],
+                           *harness_args, f"--phase={phase}"]),
                     workspace=workspace,
                     heartbeat=heartbeat,
                     heartbeat_failures=heartbeat_failures,
