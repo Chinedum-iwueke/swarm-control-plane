@@ -5,7 +5,9 @@
 RUNNER_PROBE_PROGRAM = r"""
 import json
 import ast
-import faulthandler
+import os
+import threading
+import time
 from pathlib import Path
 import sys
 import pytest
@@ -22,6 +24,16 @@ completed = 0
 terminal_outcomes = set()
 smoke_cases = 0
 phase_violations = 0
+current_test = None
+progress_stop = threading.Event()
+progress_stream = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1)
+
+def progress_heartbeat():
+    started = time.monotonic()
+    while not progress_stop.wait(60):
+        print("TEST_PROGRESS=" + json.dumps({"event": "heartbeat", "phase": phase,
+              "nodeid": current_test, "elapsed_seconds": time.monotonic() - started}),
+              file=progress_stream, flush=True)
 
 # This cheap check is only a prerequisite. Runtime observation below remains the
 # authority: a dead call or a mocked function cannot satisfy coverage.
@@ -64,6 +76,8 @@ class Progress:
         config.hook.pytest_deselected(items=deselected)
 
     def pytest_runtest_logstart(self, nodeid, location):
+        global current_test
+        current_test = nodeid
         print("TEST_PROGRESS=" + json.dumps({"event": "started", "nodeid": nodeid}), flush=True)
 
     def pytest_runtest_logreport(self, report):
@@ -114,12 +128,16 @@ def observe(frame, event, value):
         coverage()
 
 sys.setprofile(observe)
-faulthandler.dump_traceback_later(60, repeat=True)
+# Avoid asynchronous interpreter-frame traversal: the deployed Python 3.11
+# runtime crashed inside _Py_DumpTracebackThreads during profiled pandas work.
+progress_thread = threading.Thread(target=progress_heartbeat, daemon=True)
+progress_thread.start()
 try:
     status = int(pytest.main(["-v", "--durations=10", sys.argv[1]], plugins=[Progress()]))
 finally:
     sys.setprofile(None)
-    faulthandler.cancel_dump_traceback_later()
+    progress_stop.set()
+    progress_thread.join(timeout=1)
 print("NATIVE_RUNNER_COVERAGE=" + json.dumps({
     "phase": phase,
     "phase_violations": phase_violations,

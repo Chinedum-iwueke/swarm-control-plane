@@ -34,7 +34,7 @@ mandate counters and candidate contracts remain unchanged.
   Direct imports, aliased imports and attribute calls are recognized. This is not
   proof of coverage: runtime observation still rejects dead/mocked calls and
   requires all four retained outcomes plus a genuine runner smoke result.
-- Per-test start/completion, durations and periodic traceback diagnostics make
+- Per-test start/completion, durations and periodic progress heartbeats make
   resource failures observable instead of leaving only pytest dots.
 - `engineering_mission.py`: timeout receives its own failure category and does
   not automatically invoke paid code correction or another full authoring retry.
@@ -44,6 +44,14 @@ mandate counters and candidate contracts remain unchanged.
 
 These changes reduce wasted retries; they do not complete the candidate's tests,
 approve its code, or certify its scientific execution.
+
+Production-parity validation reproduced SIGSEGV in the deployed Python 3.11
+runtime's background `_Py_DumpTracebackThreads` call. The crash dump identified
+the diagnostic thread; direct scientific fixture execution passed. Periodic
+`faulthandler.dump_traceback_later` is therefore removed. A stoppable daemon
+emits elapsed-time/stage/test-ID heartbeats without traversing interpreter frames.
+It writes through a preserved stdout descriptor so pytest capture cannot hide it.
+The outer subprocess deadline and native coverage gates remain enforced.
 
 ## Staged Validation Repair
 

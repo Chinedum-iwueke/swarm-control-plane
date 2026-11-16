@@ -207,3 +207,18 @@ def test_separate_stages_enforce_runtime_boundaries(tmp_path, phase, wrong_phase
     assert result.returncode == (1 if wrong_phase else 0), result.stdout + result.stderr
     if wrong_phase:
         assert "wrong validation phase" in result.stdout
+
+
+def test_progress_heartbeat_survives_pytest_capture_without_async_stack_walk(tmp_path):
+    assert "dump_traceback_later" not in RUNNER_PROBE_PROGRAM
+    (tmp_path / "test_wait.py").write_text(
+        "import time\ndef test_wait():\n    time.sleep(0.15)\n"
+    )
+    program = RUNNER_PROBE_PROGRAM.replace("progress_stop.wait(60)", "progress_stop.wait(0.01)")
+    result = subprocess.run(
+        [sys.executable, "-c", program, "test_wait.py", "--phase=unit"],
+        cwd=tmp_path, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '"event": "heartbeat"' in result.stdout
+    assert '"nodeid": "test_wait.py::test_wait"' in result.stdout
