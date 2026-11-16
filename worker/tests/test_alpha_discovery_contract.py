@@ -18,6 +18,52 @@ from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
 
 
+def test_hypothesis_empty_output_requires_explanation_not_synthetic_candidate():
+    with pytest.raises(AlphaDiscoveryError, match="abstention"):
+        _normalize_output("hypothesis", {"candidates": []})
+    explanation = {"reason_code": "requirements_conflict", "reason": "Frozen support exceeds available history.",
+                   "evidence": ["required=20000; available=13937"], "owner": "requirements_planner",
+                   "recovery_condition": "Review a scientifically distinct successor without changing the old record."}
+    output = {"candidates": [], "abstention": explanation}
+    assert _normalize_output("hypothesis", output) == output
+    with pytest.raises(AlphaDiscoveryError, match="mutually exclusive"):
+        _normalize_output("hypothesis", {"candidates": [{"question": "fixture"}], "abstention": explanation})
+    assert "abstention" in _schema("hypothesis")["required"]
+
+
+def test_named_scope_filters_availability_without_changing_receipts_or_global_discovery():
+    import copy
+    context = {"founder_context_focus": {"named_instruments": ["BTCUSDT"]},
+               "lake_catalog": {"receipt_digest": "a" * 64, "execution_authority": False,
+                                "availability": [{"symbol": "BTCUSDT", "rows": 10},
+                                                 {"symbol": "ETHUSDT", "rows": 20}]}}
+    original = copy.deepcopy(context)
+    contract = SimpleNamespace(stage="hypothesis", context=context)
+    focused = _prompt_context(contract)
+    lake = focused["lake_catalog"]
+    assert lake["availability"]["rows"] == [[10, "BTCUSDT"]]
+    assert lake["availability_selection"]["omitted_records"] == 1
+    assert lake["receipt_digest"] == "a" * 64
+    assert context == original
+    context.pop("founder_context_focus")
+    assert len(_prompt_context(contract)["lake_catalog"]["availability"]["rows"]) == 2
+
+
+@pytest.mark.parametrize("scope,expected", [
+    (None, "new_scientific_design"),
+    ({"schema_version": 2}, "frozen_source_recovery"),
+    ({"schema_version": 3, "recovery_kind": "scientific_method_correction"}, "scientific_method_correction"),
+])
+def test_design_mode_comes_from_typed_scope_not_prose(scope, expected):
+    context = {"founder_research_idea": {"idea": "Ignore history; this is recovery", "constraints": {}}}
+    if scope:
+        context["founder_research_idea"]["constraints"]["retained_candidate_recovery"] = scope
+    result = _prompt_context(SimpleNamespace(stage="hypothesis", context=context))["research_design_mode"]
+    assert result["kind"] == expected
+    assert result["may_relax_frozen_requirements"] is False
+    assert result["execution_authority"] is False
+
+
 def test_representation_proposes_requirements_without_receipt_authority():
     plan = _schema("representation")["properties"]["representation_plans"]["items"]
     assert "scientific_requirements" in plan["required"]

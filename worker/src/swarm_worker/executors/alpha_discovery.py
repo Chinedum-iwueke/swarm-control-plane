@@ -263,6 +263,20 @@ class AlphaDiscoveryExecutor:
 
 
 def _normalize_output(stage: str, output: dict) -> dict:
+    if stage == "hypothesis":
+        candidates = output.get("candidates")
+        abstention = output.get("abstention")
+        if not isinstance(candidates, list):
+            raise AlphaDiscoveryError("Hypothesis candidates must be a list.")
+        if candidates:
+            if abstention is not None:
+                raise AlphaDiscoveryError("Candidates and abstention are mutually exclusive.")
+        elif not isinstance(abstention, dict) or any(
+            not isinstance(abstention.get(key), str) or not abstention[key].strip()
+            for key in ("reason_code", "reason", "owner", "recovery_condition")
+        ) or not isinstance(abstention.get("evidence"), list) or not abstention["evidence"]:
+            raise AlphaDiscoveryError("Empty hypotheses require an evidence-backed abstention.")
+        return output
     if stage != "representation":
         return output
     for plan in output.get("representation_plans", []):
@@ -813,8 +827,20 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
     return {
         "type": "object",
         "additionalProperties": False,
-        "required": ["candidates"],
+        "required": ["candidates", "abstention"],
         "properties": {
+            "abstention": {"anyOf": [
+                {"type": "null"},
+                {"type": "object", "additionalProperties": False,
+                 "required": ["reason_code", "reason", "evidence", "owner", "recovery_condition"],
+                 "properties": {
+                     "reason_code": {"type": "string", "enum": ["insufficient_evidence", "scientifically_infeasible", "requirements_conflict", "requires_new_question", "duplicate_only", "await_data", "await_authority_or_capacity"]},
+                     "reason": {"type": "string", "minLength": 10, "maxLength": 2000},
+                     "evidence": {"type": "array", "minItems": 1, "maxItems": 10,
+                                  "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
+                     "owner": {"type": "string", "minLength": 1, "maxLength": 150},
+                     "recovery_condition": {"type": "string", "minLength": 10, "maxLength": 2000},
+                 }}]},
             "candidates": {
                 "type": "array",
                 "items": {
@@ -832,10 +858,30 @@ def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
     """Remove duplicated catalog bodies without changing scientific inputs."""
 
     context = dict(contract.context)
+    recovery = context.get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery")
+    context["research_design_mode"] = {
+        "kind": ("scientific_method_correction" if recovery and recovery.get("recovery_kind") == "scientific_method_correction"
+                 else "frozen_source_recovery" if recovery else "new_scientific_design"),
+        "typed_recovery_present": bool(recovery),
+        "may_relax_frozen_requirements": False,
+        "independent_review_required": True,
+        "execution_authority": False,
+    }
     lake = context.get("lake_catalog")
     if isinstance(lake, dict):
         compact_lake = dict(lake)
         availability = compact_lake.get("availability")
+        named = set(context.get("founder_context_focus", {}).get("named_instruments", []))
+        if named and isinstance(availability, list) and all(isinstance(row, dict) for row in availability):
+            selected = [row for row in availability if row.get("symbol", row.get("instrument")) in named]
+            compact_lake["availability_selection"] = {
+                "basis": "explicit_founder_instruments", "instruments": sorted(named),
+                "total_records": len(availability), "selected_records": len(selected),
+                "omitted_records": len(availability) - len(selected),
+                "execution_authority": False,
+            }
+            availability = selected
+            compact_lake["availability"] = availability
         if (
             isinstance(availability, list)
             and availability
@@ -906,6 +952,7 @@ def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
             "prior_attempts",
             "raw_candidates",
             "research_constraints",
+            "research_design_mode",
             "schema_version",
             "strategy_catalog",
         }
@@ -959,6 +1006,16 @@ Candidate evidence_object_ids and evidence_digests may contain only exact pairs 
 research_intelligence.citations. Founder-idea IDs, task IDs, dataset receipts, strategy contracts, and other UUIDs
 in the context are constraints or provenance, not candidate evidence citations; never include them in those arrays.
 Keep the response concise and produce at most {contract.maximum_candidates} candidates.
+For hypothesis output, use abstention=null when candidates are present. When no candidate is defensible,
+return candidates=[] and a structured abstention: reason_code, reason, evidence, owner and recovery_condition.
+Evidence must identify supplied facts or exact supplied references; never invent receipts. These are reported
+reasons, not verified adjudication or permission to retry. An empty list without a reason is invalid.
+Distinguish source-supported claims from proposed preregistered design assumptions. A new design may state
+explicit effect-size/precision and dependence assumptions with rationale and sensitivity analysis for independent
+review; do not claim they were observed or verified. Lack of a published numerical effect size alone does not
+prove that no research question can be proposed. Never change frozen recovery minima under this permission.
+Without typed retained_candidate_recovery, this is discovery of a genuinely distinct design, not authorization
+to amend an old candidate. Identify the substantive scientific difference; paraphrasing is still duplication.
 Read recent_research_memory before proposing anything. Its recent candidate questions are novelty exclusions even
 when they never reached a backtest; do not paraphrase them. The sole scoped exception is an explicit
 founder_research_idea.constraints.retained_candidate_recovery: preserve its scientific_identity fields verbatim,

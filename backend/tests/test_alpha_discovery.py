@@ -1130,6 +1130,16 @@ def test_broad_discovery_query_plan_always_contains_cross_asset_grounding():
     assert any("cross asset" in item or "cross sectional" in item for item in queries)
 
 
+def test_requirements_commissioning_retrieves_statistical_method_evidence():
+    mandate = SimpleNamespace(objective="Resolve scientific support and feasibility before engineering.",
+        cycle_count=0, specification={"dataset_bindings": [{"output_columns": ["close", "volume"]}]})
+    queries = _discovery_queries(mandate)
+    assert "minimum detectable effect statistical power sample size serial dependence" in queries
+    assert "time series predictive regression uncertainty autocorrelation effective sample size" in queries
+    assert len(queries) <= 6
+    assert queries[0] == mandate.objective
+
+
 def test_replacement_mandate_does_not_reset_evidence_facets():
     mandate = SimpleNamespace(
         objective="Discover mechanisms.", cycle_count=0,
@@ -1145,7 +1155,12 @@ def test_replacement_mandate_does_not_reset_evidence_facets():
     assert _discovery_queries(mandate, previous_queries=first) == replacement
 
 
-def test_empty_hypothesis_skips_paid_representation_and_retains_abstention(monkeypatch):
+@pytest.mark.parametrize("explanation", [None, {
+    "reason_code": "insufficient_evidence", "reason": "No method-specific evidence supplied.",
+    "evidence": ["query-receipt"], "owner": "research_intelligence",
+    "recovery_condition": "Retrieve method evidence before reconsideration.",
+}])
+def test_empty_hypothesis_skips_paid_representation_and_retains_abstention(monkeypatch, explanation):
     import app.services.alpha_discovery as service
 
     moment = datetime.now(UTC)
@@ -1156,7 +1171,7 @@ def test_empty_hypothesis_skips_paid_representation_and_retains_abstention(monke
     intelligence = SimpleNamespace(status="succeeded", result={"summary": {
         "alpha_discovery_output": {"research_brief": {"prior_failures": ["No supported new question."]}}}})
     hypothesis = SimpleNamespace(id=cycle.hypothesis_task_id, status="succeeded", result={
-        "summary": {"alpha_discovery_output": {"candidates": []}}})
+        "summary": {"alpha_discovery_output": {"candidates": [], "abstention": explanation}}})
     db = MagicMock()
     db.scalar.return_value = cycle
     db.get.side_effect = [intelligence, hypothesis]
@@ -1179,6 +1194,12 @@ def test_empty_hypothesis_skips_paid_representation_and_retains_abstention(monke
     assert cycle.representation_task_id is None
     assert events.call_args_list[0].args[2] == "hypothesis_generation_abstained"
     assert events.call_args_list[0].args[3]["representation_skipped"] is True
+    recorded = events.call_args_list[0].args[3]
+    assert recorded["abstention_verified"] is False
+    if explanation:
+        assert recorded["abstention"] == explanation
+    else:
+        assert recorded["abstention"]["reason_code"] == "legacy_reason_not_recorded"
     assert events.call_args_list[1].args[2] == "cycle_insufficient_candidates"
 
 

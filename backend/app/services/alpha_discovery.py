@@ -595,7 +595,11 @@ def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
         offset = mandate.cycle_count % len(broad_facets)
         rotated = broad_facets[offset:] + broad_facets[:offset]
         facets.insert(0, min(rotated, key=lambda query: usage[query]))
-    return list(dict.fromkeys([mandate.objective[:1000], *facets]))
+    methods = []
+    if any(term in mandate.objective.lower() for term in ("precision", "scientific support", "feasibility", "requirements")):
+        methods = ["minimum detectable effect statistical power sample size serial dependence",
+                   "time series predictive regression uncertainty autocorrelation effective sample size"]
+    return list(dict.fromkeys([mandate.objective[:1000], *methods, *facets]))
 
 
 def _discovery_corpus(db, mandate) -> dict:
@@ -3325,11 +3329,22 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         cycle.next_action = "review_invalid_hypothesis_output"
         return
     if not raw and cycle.representation_task_id is None:
+        output = hypothesis.result.get("summary", {}).get("alpha_discovery_output", {})
+        abstention = output.get("abstention")
+        if not isinstance(abstention, dict):
+            abstention = {
+                "reason_code": "legacy_reason_not_recorded",
+                "reason": "Historical empty output did not record an abstention explanation.",
+                "evidence": [str(hypothesis.id)],
+                "owner": "senior_researcher",
+                "recovery_condition": "Inspect retained inputs and output; do not infer a scientific reason or retry unchanged evidence.",
+            }
         cycle.metrics = {"generated": 0, "accepted": 0, "awaiting_data_admission": 0,
                          "rejected": 0, "duplicated": 0}
         _event(db, mandate, "hypothesis_generation_abstained", {
             "task_id": str(hypothesis.id), "candidate_count": 0,
             "representation_skipped": True, "execution_authority": False,
+            "abstention": abstention, "abstention_verified": False,
         }, cycle)
         _portfolio_and_campaign(db, mandate, cycle, [])
         return
