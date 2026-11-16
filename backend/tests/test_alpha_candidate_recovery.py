@@ -164,6 +164,16 @@ def test_event_support_feedback_names_exact_missing_contract_keys(monkeypatch):
     assert '"heldout_events": {"proposed_minimum": null, "required_minimum": 40}' in str(error.value)
 
 
+def test_empty_support_default_is_not_a_scientific_correction(monkeypatch):
+    db, mandate, parent, proposed, event, route, digest, verifier = method_fixture(monkeypatch)
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=3,
+                           rejection_event_id=event.id, expected_rejection_digest=digest)
+    revised = deepcopy(parent.document)
+    revised["scientific_specification"]["quantile_support_plan"] = []
+    with pytest.raises(ValueError, match="must change rejected methods"):
+        apply_recovered_methods(revised, scope)
+
+
 def test_source_recovery_reuses_methods_without_rewriting_parent_or_claiming_review():
     db, mandate, parent, proposed = fixture()
     parent.document.update({

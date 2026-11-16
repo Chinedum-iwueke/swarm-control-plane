@@ -1,5 +1,23 @@
 # Strategy engineering: retained SPX/BTC failure
 
+## R10 Scientific Review And Local Repairs
+
+R10 reached both independent requirements reviewers after successful native
+feasibility planning. Both rejected the method: relative versus arithmetic
+volatility change, log-return versus log-level range controls, and rare-event
+support assumptions inconsistent with split sizes. No strategy authoring or
+real-data backtest followed. These verdicts remain authoritative and immutable.
+
+Pending coordinated release, producer and backend contracts now support the
+native `natural_log` level operation, separate from temporal `log_return`.
+The optional typed `quantile_support_plan` expresses fixed training-fitted linear
+quantile/strict upper-tail designs for native support-capacity checks before paid
+review. Held-out nominal shortfalls remain warnings, not impossibility claims.
+Empty plans do not establish feasibility and cannot count as a scientific method
+correction by themselves. Native coverage successors cannot bypass a reported
+support-capacity rejection. Existing mandates/tasks remain on their pinned source;
+these local changes do not constitute approval or end-to-end certification.
+
 ## Requirements Transport Bound
 
 R9's representation correction and selected-panel admission succeeded. Its native

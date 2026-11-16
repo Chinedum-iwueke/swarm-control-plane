@@ -71,6 +71,8 @@ def reviewed_successor_inputs(report, evidence, mandate, source_commit):
     from app.services.alpha_coverage_successor import validate_native_proposal
 
     proposal = report.get("coverage_successor_proposal")
+    if any(str(reason).startswith("event_support:") for reason in report.get("reasons", [])):
+        return None
     if not isinstance(proposal, dict) or proposal.get("status") != "proposed":
         return None
     if (report["feature_history"]["minimum_prior_bars"] > report["feature_history"]["declared_warmup_bars"]

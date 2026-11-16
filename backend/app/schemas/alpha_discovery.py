@@ -376,6 +376,7 @@ class AlphaRepresentationTransformation(StrictModel):
         "identity",
         "simple_return",
         "log_return",
+        "natural_log",
         "fractional_difference",
         "rolling_zscore",
         "realized_volatility",
@@ -390,17 +391,19 @@ class AlphaRepresentationTransformation(StrictModel):
 
     @model_validator(mode="after")
     def operation_contract(self):
-        if self.operation in {"identity", "simple_return", "log_return"}:
+        if self.operation in {"identity", "natural_log", "simple_return", "log_return"}:
             if len(self.input_fields) != 1:
                 raise ValueError(f"{self.operation} requires one input")
-            expected = set() if self.operation == "identity" else {"periods"}
+            expected = set() if self.operation in {"identity", "natural_log"} else {"periods"}
             if set(self.parameters) != expected:
                 raise ValueError(f"{self.operation} parameters are invalid")
             if (
-                self.operation != "identity"
+                self.operation in {"simple_return", "log_return"}
                 and not 1 <= int(self.parameters["periods"]) <= 10_000
             ):
                 raise ValueError("return periods are outside the bounded range")
+            if self.operation == "natural_log" and self.fit_policy != "stateless":
+                raise ValueError("natural_log is stateless")
         elif self.operation == "fractional_difference":
             if len(self.input_fields) != 1 or set(self.parameters) != {
                 "d",
@@ -461,6 +464,13 @@ class AlphaScientificRequirements(StrictModel):
         return value
 
 
+class AlphaQuantileSupportPlan(StrictModel):
+    gate: str = Field(min_length=1, max_length=200)
+    partition: Literal["training", "validation", "test"]
+    quantile: float = Field(strict=True, gt=0, lt=1)
+    threshold_policy: Literal["fixed_training_linear_strict_upper_tail"]
+
+
 class AlphaScientificSpecification(StrictModel):
     """Preregistered method definitions; completeness is not scientific approval."""
 
@@ -473,10 +483,13 @@ class AlphaScientificSpecification(StrictModel):
     missing_data_policy: str = Field(min_length=20, max_length=4000)
     event_support_rationale: str = Field(min_length=20, max_length=4000)
     falsification_rule: str = Field(min_length=20, max_length=4000)
+    quantile_support_plan: list[AlphaQuantileSupportPlan] = Field(default_factory=list, max_length=100)
 
     @field_validator("*", mode="after")
     @classmethod
     def no_placeholder(cls, value):
+        if not isinstance(value, str):
+            return value
         if value.strip().lower() in {"tbd", "todo", "to be determined", "to be determined later", "not yet specified", "not applicable"}:
             raise ValueError("scientific method must be specified, not deferred")
         return value

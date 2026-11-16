@@ -346,6 +346,17 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
             for name in ("target_equation", "estimator", "threshold_rule", "control_rule",
                          "uncertainty_procedure", "split_and_update_policy", "missing_data_policy",
                          "event_support_rationale", "falsification_rule")}
+        specification_fields["quantile_support_plan"] = {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "object", "additionalProperties": False,
+                "required": ["gate", "partition", "quantile", "threshold_policy"],
+                "properties": {
+                    "gate": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "partition": {"type": "string", "enum": ["training", "validation", "test"]},
+                    "quantile": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+                    "threshold_policy": {"type": "string", "enum": ["fixed_training_linear_strict_upper_tail"]},
+                }},
+        }
         requirement_fields = {
             key: {"type": "integer", "minimum": 0 if key in {
                 "feature_warmup_bars", "purge_bars", "embargo_bars"
@@ -508,6 +519,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                                                 "identity",
                                                 "simple_return",
                                                 "log_return",
+                                                "natural_log",
                                                 "fractional_difference",
                                                 "rolling_zscore",
                                                 "realized_volatility",
@@ -600,7 +612,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
         branches = []
         # Encode native operation signatures at generation, not only after a paid call.
         for operation, names in {
-            "identity": (), "simple_return": ("periods",), "log_return": ("periods",),
+            "identity": (), "natural_log": (), "simple_return": ("periods",), "log_return": ("periods",),
             "fractional_difference": ("d", "weight_threshold"),
             "rolling_zscore": ("window", "lag"), "realized_volatility": ("window", "lag"),
             "spread": (), "ratio": (), "cross_sectional_rank": ("target_index",),
@@ -610,6 +622,8 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
             properties["operation"]["enum"] = [operation]
             if operation == "fractional_difference":
                 properties["fit_policy"]["enum"] = ["train_only"]
+            elif operation == "natural_log":
+                properties["fit_policy"]["enum"] = ["stateless"]
             params = properties["parameters"]
             params["required"] = list(names)
             params["properties"] = {name: params["properties"][name] for name in names}
@@ -1027,6 +1041,11 @@ used downstream. Never average all ranks in a complete cross-section: that value
 asset identity.
 Rolling z-score and realized-volatility windows must contain between 2 and 100000 completed research bars; a
 simple_return or log_return accepts only parameters.periods (an integer from 1 to 10000), never lag.
+natural_log accepts one input and no parameters: it computes ln(x) at the same completed bar,
+with nonpositive/nonfinite inputs invalid. It is stateless and adds no history requirement.
+For log(high/low), compose ratio(high, low) then natural_log; log_return of that ratio
+instead computes a temporal change and is NOT equivalent. Likewise simple_return is
+relative change, not an arithmetic spread. Do not substitute operators to fit the schema.
 For these operations periods selects the return horizon; it is not a post-calculation shift.
 Identity, spread and ratio require an empty parameters object. A
 prior-only rolling feature must encode parameters.lag=1 (or its explicitly required positive research-bar lag).
@@ -1043,6 +1062,13 @@ minimum_history_observations is source-panel history, not automatically the numb
 Declare independent validation/test minima, target_horizon_bars, purge and embargo bars, and at least 365 days
 for scientific evaluation. Keep smoke_bars within 31 days; smoke is runner commissioning, never scientific proof.
 List named minimum_event_support counts and explain the statistical rationale without claiming those events exist.
+For a fixed training-fitted linear empirical quantile with strict upper-tail selection,
+declare scientific_specification.quantile_support_plan for every relevant support gate,
+partition and quantile variant, retaining exact gate names. Do not use this policy for
+rolling/refitted thresholds, inclusive comparisons or other quantile methods. For other
+designs provide an empty list and explain their independent support-planning justification.
+The native planner checks training-population capacity; held-out nominal rates are not
+guaranteed counts or power evidence. Never change the declared policy merely to evade a gate.
 These are proposed requirements for independent review, not coverage receipts, observed support, or permission
 to expand the mandate. Never invent receipt digests or weaken support to fit a short smoke run.
 Also supply scientific_specification before review or coding. Define the exact target equation, return convention,

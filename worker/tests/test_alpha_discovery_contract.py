@@ -25,7 +25,10 @@ def test_representation_proposes_requirements_without_receipt_authority():
     method = plan["properties"]["scientific_specification"]
     assert set(method["required"]) == {"target_equation", "estimator", "threshold_rule",
         "control_rule", "uncertainty_procedure", "split_and_update_policy", "missing_data_policy",
-        "event_support_rationale", "falsification_rule"}
+        "event_support_rationale", "falsification_rule", "quantile_support_plan"}
+    support = method["properties"]["quantile_support_plan"]
+    assert support["maxItems"] == 100
+    assert support["items"]["properties"]["threshold_policy"]["enum"] == ["fixed_training_linear_strict_upper_tail"]
     properties = plan["properties"]["scientific_requirements"]["properties"]
     assert properties["minimum_scientific_window_days"]["minimum"] == 365
     assert "coverage" not in properties and "basis_digest" not in properties
@@ -526,8 +529,9 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
         "minimum": 2,
         "maximum": 100_000,
     }
-    for operation in ("identity", "spread", "ratio"):
+    for operation in ("identity", "natural_log", "spread", "ratio"):
         assert branches[operation]["parameters"]["properties"] == {}
+    assert branches["natural_log"]["fit_policy"]["enum"] == ["stateless"]
     transformation = branches["log_return"]
     assert transformation["output_field"]["pattern"] == "^[a-z][a-z0-9_]{0,99}$"
     input_pattern = transformation["input_fields"]["items"]["pattern"]

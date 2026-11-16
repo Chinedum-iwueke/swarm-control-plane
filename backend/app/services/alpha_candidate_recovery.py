@@ -155,6 +155,9 @@ def validate_method_revision(candidate, scope):
     for value in (methods, prior):
         if isinstance(value.get("representation_plan"), dict):
             value["representation_plan"].pop("candidate_key", None)
+        specification = value.get("scientific_specification", {})
+        if specification.get("quantile_support_plan") == []:
+            specification.pop("quantile_support_plan")
     if methods == prior:
         raise ValueError("method correction must change rejected methods, not merely retry them")
     return {"mode": "scientific_method_correction", "parent_candidate_id": scope["candidate_id"],

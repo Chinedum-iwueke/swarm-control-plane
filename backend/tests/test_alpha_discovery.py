@@ -152,6 +152,17 @@ def test_rolling_lag_matches_native_contract(operation, lag):
     assert value.parameters["lag"] == lag
 
 
+@pytest.mark.parametrize("change", [{}, {"parameters": {"periods": 1}}, {"input_fields": ["ratio", "close"]}, {"fit_policy": "train_only"}])
+def test_natural_log_has_an_explicit_stateless_level_contract(change):
+    payload = dict(output_field="log_range", operation="natural_log", input_fields=["ratio"], parameters={}, fit_policy="stateless", rationale="Natural logarithm of the completed same-bar range ratio.")
+    payload.update(change)
+    if change:
+        with pytest.raises(ValidationError):
+            AlphaRepresentationTransformation(**payload)
+    else:
+        assert AlphaRepresentationTransformation(**payload).operation == "natural_log"
+
+
 @pytest.mark.parametrize("lag", [-1, 100001, 1.5, True, "1"])
 def test_rolling_lag_cannot_be_negative_fractional_or_coerced(lag):
     with pytest.raises(ValidationError, match="rolling lag"):
@@ -2316,7 +2327,8 @@ def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatc
     raw["scientific_requirements"] = requirements
     from app.schemas.alpha_discovery import AlphaScientificSpecification
     method = {name: "Explicit fixture definition, not a scientific verification claim."
-              for name in AlphaScientificSpecification.model_fields}
+              for name in AlphaScientificSpecification.model_fields if name != "quantile_support_plan"}
+    method["quantile_support_plan"] = []
     raw["scientific_specification"] = method
     cycle = SimpleNamespace(id=uuid4(), cycle_digest=DIGEST, context={
         "research_intelligence": {"citations": [{"object_id": str(object_id), "content_digest": DIGEST}]}

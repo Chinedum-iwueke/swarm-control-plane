@@ -105,3 +105,9 @@ def test_successor_cannot_hide_invalid_requirements_or_stale_custody(fault):
     proposal["successor_digest"] = digest({k: v for k, v in proposal.items() if k != "successor_digest"})
     with pytest.raises(ValueError):
         service.reviewed_successor_inputs(report, evidence, mandate, "a" * 40)
+
+
+def test_coverage_successor_does_not_bypass_support_capacity_rejection():
+    report, evidence, mandate = successor_fixture()
+    report["reasons"].append("event_support:training_events:strict_training_quantile_capacity_below_minimum")
+    assert service.reviewed_successor_inputs(report, evidence, mandate, "a" * 40) is None

@@ -237,7 +237,7 @@ def test_rehashed_invalid_input_cannot_be_published(change):
 def specification():
     from app.schemas.alpha_discovery import AlphaScientificSpecification
     return {name: "Explicit fixture method for schema completeness testing only."
-            for name in AlphaScientificSpecification.model_fields}
+            for name in AlphaScientificSpecification.model_fields if name != "quantile_support_plan"}
 
 
 @pytest.mark.parametrize("missing", list(specification()))
