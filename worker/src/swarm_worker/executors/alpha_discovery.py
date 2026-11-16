@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 import time
+from copy import deepcopy
 from collections import Counter
 from datetime import UTC, datetime
 
@@ -350,7 +351,7 @@ def _schema(stage: str) -> dict:
         }
         requirement_fields["minimum_scientific_window_days"].update(minimum=365, maximum=1095)
         requirement_fields["rationale"] = {"type": "string", "minLength": 20, "maxLength": 4000}
-        return {
+        schema = {
             "type": "object",
             "additionalProperties": False,
             "required": ["representation_plans"],
@@ -564,6 +565,30 @@ def _schema(stage: str) -> dict:
                 }
             },
         }
+        transformations = schema["properties"]["representation_plans"]["items"]["properties"]["transformations"]
+        template = transformations["items"]
+        branches = []
+        # Encode native operation signatures at generation, not only after a paid call.
+        for operation, names in {
+            "identity": (), "simple_return": ("periods",), "log_return": ("periods",),
+            "fractional_difference": ("d", "weight_threshold"),
+            "rolling_zscore": ("window", "lag"), "realized_volatility": ("window", "lag"),
+            "spread": (), "ratio": (), "cross_sectional_rank": ("target_index",),
+        }.items():
+            branch = deepcopy(template)
+            properties = branch["properties"]
+            properties["operation"]["enum"] = [operation]
+            if operation == "fractional_difference":
+                properties["fit_policy"]["enum"] = ["train_only"]
+            params = properties["parameters"]
+            params["required"] = list(names)
+            params["properties"] = {name: params["properties"][name] for name in names}
+            for name, field in params["properties"].items():
+                if name != "lag":
+                    field["type"] = "integer" if name in {"periods", "window", "target_index"} else "number"
+            branches.append(branch)
+        transformations["items"] = {"anyOf": branches}
+        return schema
     equation = {
         "type": "object",
         "additionalProperties": False,
@@ -954,6 +979,9 @@ to that input's zero-based position in input_fields and emit a separate ordered 
 used downstream. Never average all ranks in a complete cross-section: that value is mechanically constant and loses
 asset identity.
 Rolling z-score and realized-volatility windows must contain between 2 and 100000 completed research bars; a
+simple_return or log_return accepts only parameters.periods (an integer from 1 to 10000), never lag.
+For these operations periods selects the return horizon; it is not a post-calculation shift.
+Identity, spread and ratio require an empty parameters object. A
 prior-only rolling feature must encode parameters.lag=1 (or its explicitly required positive research-bar lag).
 Both rolling operations support integer lag from 0 to 100000 applied after the rolling calculation. Include the
 lag in composed warmup requirements; a rolling return-volatility feature also needs the return's input history.

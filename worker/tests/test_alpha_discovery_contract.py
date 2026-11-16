@@ -41,7 +41,9 @@ def test_representation_proposes_requirements_without_receipt_authority():
 
 def test_representation_schema_encodes_and_preserves_rolling_lag():
     plan = _schema("representation")["properties"]["representation_plans"]["items"]
-    params = plan["properties"]["transformations"]["items"]["properties"]["parameters"]
+    branches = plan["properties"]["transformations"]["items"]["anyOf"]
+    rolling = next(x for x in branches if x["properties"]["operation"]["enum"] == ["rolling_zscore"])
+    params = rolling["properties"]["parameters"]
     assert "lag" in params["required"]
     assert params["properties"]["lag"] == {"type": ["integer", "null"], "minimum": 0, "maximum": 100_000}
     output = {"representation_plans": [{"transformations": [
@@ -480,35 +482,26 @@ def test_representation_schema_is_outcome_blind_and_records_alternatives():
     }.issubset(required)
     assert plan["properties"]["source_timeframe"]["enum"] == ["1m"]
     assert plan["properties"]["outcome_data_consulted"]["const"] is False
-    assert (
-        "fractional_difference"
-        in plan["properties"]["transformations"]["items"]["properties"]["operation"][
-            "enum"
-        ]
-    )
-    parameters = plan["properties"]["transformations"]["items"]["properties"][
-        "parameters"
-    ]
+    branches = {x["properties"]["operation"]["enum"][0]: x["properties"]
+                for x in plan["properties"]["transformations"]["items"]["anyOf"]}
+    assert "fractional_difference" in branches
+    parameters = branches["log_return"]["parameters"]
     assert parameters["additionalProperties"] is False
-    assert set(parameters["required"]) == {
-        "lag",
-        "periods",
-        "window",
-        "d",
-        "weight_threshold",
-        "target_index",
-    }
+    assert set(parameters["required"]) == {"periods"}
+    assert set(parameters["properties"]) == {"periods"}
     assert parameters["properties"]["periods"] == {
-        "type": ["number", "null"],
+        "type": "integer",
         "minimum": 1,
         "maximum": 10_000,
     }
-    assert parameters["properties"]["window"] == {
-        "type": ["number", "null"],
+    assert branches["rolling_zscore"]["parameters"]["properties"]["window"] == {
+        "type": "integer",
         "minimum": 2,
         "maximum": 100_000,
     }
-    transformation = plan["properties"]["transformations"]["items"]["properties"]
+    for operation in ("identity", "spread", "ratio"):
+        assert branches[operation]["parameters"]["properties"] == {}
+    transformation = branches["log_return"]
     assert transformation["output_field"]["pattern"] == "^[a-z][a-z0-9_]{0,99}$"
     input_pattern = transformation["input_fields"]["items"]["pattern"]
     assert "quote_volume" in input_pattern
