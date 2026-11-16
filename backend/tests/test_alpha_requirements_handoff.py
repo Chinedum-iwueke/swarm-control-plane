@@ -277,9 +277,13 @@ def test_durable_publication_is_reused_and_only_verified_approval_releases(
     ))
     create = MagicMock(return_value=route)
     monkeypatch.setattr(service, "create_route", create)
-    monkeypatch.setattr(
-        alpha_campaign, "_materialize_strategy_review_tasks", MagicMock()
-    )
+    def verify_routed_subject(db, route, subject, qualification):
+        assert subject["card_digest"] == digest(qualification["card"])
+        assert subject["artifact_bundle_digest"] == digest(qualification["artifact_bundle"])
+        assert qualification["card"] != evidence["discovery_candidate"]
+        assert qualification["card"]["source_candidate_document_digest"] == digest(evidence["discovery_candidate"])
+
+    monkeypatch.setattr(alpha_campaign, "_materialize_strategy_review_tasks", verify_routed_subject)
 
     def append(*args):
         event = SimpleNamespace(payload=args[-1], event_digest="a" * 64)

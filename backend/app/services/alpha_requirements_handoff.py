@@ -402,7 +402,7 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "review_scope": "scientific_requirements",
         "candidate_id": handoff["candidate_id"],
         "source_commit": campaign.specification["bulletproof_source_commit"],
-        "card_digest": digest(candidate),
+        "card_digest": digest(qualification["card"]),
         "artifact_bundle_digest": digest(qualification["artifact_bundle"]),
         "producer_agent_ids": sorted({str(identity["agent_id"]), str(feasibility_identity["agent_id"])}),
         "producer_task_id": str(producer.id),
