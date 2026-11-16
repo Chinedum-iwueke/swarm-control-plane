@@ -62,6 +62,68 @@ async def test_focused_timeout_does_not_spend_paid_correction(tmp_path):
     executor._write_patch.assert_called_once_with(["docs/change.md"], workspace)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_stage", [None, "unit", "smoke", "scientific"])
+async def test_native_validation_has_separate_bounded_stages(tmp_path, failed_stage):
+    from unittest.mock import AsyncMock
+
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "strategy-scaffold-manifest.json").write_text(json.dumps({
+        "paths": {"tests/test_strategy.py": "fixture"}
+    }))
+    harness = tmp_path / "src/bt/validation/authoring_harness.py"
+    harness.parent.mkdir(parents=True)
+    harness.touch()
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path, codex_model="test", timeout_seconds=7200,
+        heartbeat_interval_seconds=1,
+    )
+    calls = []
+    async def run(**kwargs):
+        calls.append(kwargs)
+        step = successful_step(kwargs["name"])
+        if kwargs["name"].endswith("-" + str(failed_stage)):
+            return step.model_copy(update={"success": False, "return_code": 1})
+        return step
+    executor._run_bounded_command = run
+    result = await executor._run_strategy_focused_tests(
+        workspace=SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=tmp_path),
+        heartbeat=AsyncMock(), heartbeat_failures=[], timeout_seconds=7200,
+    )
+    stages = ["unit", "smoke", "scientific"]
+    length = 3 if failed_stage is None else stages.index(failed_stage) + 1
+    assert len(calls) == length
+    assert [c["timeout_seconds"] for c in calls] == [300, 900, 1800][:length]
+    assert [c["args"][-1] for c in calls] == [f"--phase={x}" for x in stages[:length]]
+    report = json.loads((artifacts / "focused-strategy-tests-stages.json").read_text())
+    assert report["complete"] is (failed_stage is None)
+    assert report["scientific_certification"] is False
+    assert result.success is (failed_stage is None)
+
+
+@pytest.mark.asyncio
+async def test_validation_does_not_start_process_after_mission_deadline(tmp_path):
+    from unittest.mock import AsyncMock
+
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "strategy-scaffold-manifest.json").write_text(json.dumps({
+        "paths": {"tests/test_strategy.py": "fixture"}
+    }))
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path, codex_model="test", timeout_seconds=60,
+        heartbeat_interval_seconds=1,
+    )
+    executor._run_bounded_command = AsyncMock()
+    result = await executor._run_strategy_focused_tests(
+        workspace=SimpleNamespace(repository=tmp_path, artifacts=artifacts, logs=tmp_path),
+        heartbeat=AsyncMock(), heartbeat_failures=[], timeout_seconds=0,
+    )
+    assert result.timed_out
+    executor._run_bounded_command.assert_not_awaited()
+
+
 def contract() -> EngineeringMissionContract:
     return EngineeringMissionContract(
         repository="swarm-control-plane",

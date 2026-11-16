@@ -206,7 +206,7 @@ class EngineeringMissionExecutor:
                 workspace=workspace,
                 heartbeat=heartbeat,
                 heartbeat_failures=heartbeat_failures,
-                timeout_seconds=min(300.0, max(1.0, deadline - time.monotonic())),
+                timeout_seconds=max(1.0, deadline - time.monotonic()),
             )
             steps.append(focused)
             if focused.timed_out:
@@ -289,7 +289,7 @@ class EngineeringMissionExecutor:
                     workspace=workspace,
                     heartbeat=heartbeat,
                     heartbeat_failures=heartbeat_failures,
-                    timeout_seconds=min(300.0, max(1.0, deadline - time.monotonic())),
+                    timeout_seconds=max(1.0, deadline - time.monotonic()),
                     name="focused-strategy-tests-after-correction",
                 )
                 steps.append(corrected_focused)
@@ -1197,14 +1197,49 @@ class EngineeringMissionExecutor:
             if (workspace.repository / "src/bt/validation/authoring_harness.py").is_file()
             else []
         )
-        return await self._run_bounded_command(
-            name=name,
-            args=["python", "-c", RUNNER_PROBE_PROGRAM, tests[0], *harness_args],
-            workspace=workspace,
-            heartbeat=heartbeat,
-            heartbeat_failures=heartbeat_failures,
-            timeout_seconds=timeout_seconds,
+        phases = (
+            [("unit", 300.0), ("smoke", 900.0), ("scientific", 1800.0)]
+            if harness_args else [("all", 300.0)]
         )
+        deadline = time.monotonic() + timeout_seconds
+        stage_results = []
+        for phase, cap in phases:
+            stage_name = f"{name}-{phase}"
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                moment = datetime.now(timezone.utc)
+                (workspace.logs / f"{stage_name}.stdout.log").write_text("")
+                (workspace.logs / f"{stage_name}.stderr.log").write_text(
+                    "Mission deadline exhausted before validation stage; no process started.\n"
+                )
+                result = StepExecutionResult(
+                    name=stage_name, success=False, return_code=None,
+                    started_at=moment, ended_at=moment, duration_seconds=0,
+                    timed_out=True, stdout_log=f"logs/{stage_name}.stdout.log",
+                    stderr_log=f"logs/{stage_name}.stderr.log",
+                )
+            else:
+                result = await self._run_bounded_command(
+                    name=stage_name,
+                    args=["python", "-c", RUNNER_PROBE_PROGRAM, tests[0],
+                          *harness_args, f"--phase={phase}"],
+                    workspace=workspace,
+                    heartbeat=heartbeat,
+                    heartbeat_failures=heartbeat_failures,
+                    timeout_seconds=min(cap, remaining),
+                )
+            stage_results.append(result.model_dump(mode="json"))
+            report = workspace.artifacts / f"{name}-stages.json"
+            report.write_text(json.dumps({
+                "schema_version": "strategy-validation-stages-v1",
+                "stages": stage_results,
+                "complete": result.success and phase == phases[-1][0],
+                "scientific_certification": False,
+            }, indent=2) + "\n", encoding="utf-8")
+            report.chmod(0o600)
+            if not result.success:
+                return result
+        return result
 
     async def _run_bounded_command(
         self,
@@ -1707,6 +1742,10 @@ class EngineeringMissionExecutor:
             "read docs/authoring_harness.md and use write_fixture_binding, run_native_case "
             "for bounded smoke, and run_scientific_case for four full-length synthetic "
             "terminal cases. Read the frozen validation_requirements and preflight plans; "
+            "Mark the smoke test with pytest.mark.native_smoke and all scientific "
+            "terminal cases with pytest.mark.scientific_terminal. Keep fast unit "
+            "checks unmarked. Stages run separately under the mission deadline; "
+            "never invoke a native harness from an unmarked unit test. "
             "feature warmup is not training and smoke does not certify scientific support. "
             "Inspect the pinned runner's evaluator inputs: frame is the execution "
             "panel, not necessarily the research clock. When decision_frame is "
@@ -1973,6 +2012,7 @@ class EngineeringMissionExecutor:
             "run_native_case for smoke and run_scientific_case for each positive, "
             "negative, invalid and failed case. Reuse its fixture/provenance helpers; "
             "a hand-built execute_registered test alone is not sufficient. Check these "
+            "tests have native_smoke and scientific_terminal pytest markers respectively. "
             "prerequisites before spending time running the suite. A timeout is not "
             "permission to weaken support thresholds or shrink scientific windows.\n"
             "Check execution-clock versus research-clock semantics. If the pinned "

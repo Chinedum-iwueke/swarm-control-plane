@@ -45,6 +45,27 @@ mandate counters and candidate contracts remain unchanged.
 These changes reduce wasted retries; they do not complete the candidate's tests,
 approve its code, or certify its scientific execution.
 
+## Staged Validation Repair
+
+Worker validation now separates unmarked unit tests (300 seconds), tests marked
+`pytest.mark.native_smoke` (900 seconds), and tests marked
+`pytest.mark.scientific_terminal` (1800 seconds). Each allowance is capped by the
+remaining immutable mission deadline; an exhausted deadline starts no process.
+These are separate subprocess stages in one mission, not independently scheduled
+or resumable jobs. Completed stage results are retained in an artifact JSON.
+
+The trusted runtime probe rejects native calls in the wrong stage. Smoke must
+complete both the real runner and smoke harness; the scientific stage must retain
+all four scientific outcomes. Empty stages fail. No gate is replaced by a pytest
+marker alone. Timeout still retains the patch without invoking paid correction.
+
+New campaign tasks explicitly distinguish short native smoke from full-length
+scientific fixtures. Historical task acceptance criteria remain immutable. New
+tasks also require a cheap canonical-grid/envelope check before native execution:
+the SPX/BTC diagnostic reached all four engine variants but then failed because
+the evaluator enumerated the same parameter tuples in a different order from
+Bulletproof's compiler. This diagnosis is not a scientific negative result.
+
 ## Architectural priorities
 
 1. **Platform-owned test protocol.** Move fixture binding, review-packet assembly,

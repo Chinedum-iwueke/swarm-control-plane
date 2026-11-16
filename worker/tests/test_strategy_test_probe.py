@@ -157,3 +157,53 @@ def test_missing_harness_fails_before_importing_expensive_tests(tmp_path):
     assert result.returncode == 1
     assert not (tmp_path / "should-not-exist").exists()
     assert "missing_harness_calls" in result.stdout
+
+
+@pytest.mark.parametrize("phase", ["unit", "smoke", "scientific"])
+@pytest.mark.parametrize("wrong_phase", [False, True])
+def test_separate_stages_enforce_runtime_boundaries(tmp_path, phase, wrong_phase):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run_alpha_research_assignment.py").write_text(
+        "def execute_registered():\n    return {}\n"
+    )
+    harness = tmp_path / "src/bt/validation/authoring_harness.py"
+    harness.parent.mkdir(parents=True)
+    harness.write_text(
+        "def run_native_case():\n"
+        "    return {'schema_version': 'offline-authoring-case-v1', 'validation_mode': 'smoke', 'scientific_certification': False}\n"
+        "def run_scientific_case(outcome):\n"
+        "    return {'schema_version': 'offline-scientific-case-v1', 'outcome': outcome, 'scientific_certification': False, 'capital_or_order_authority': False}\n"
+    )
+    wrong_call = {
+        "unit": "runner.execute_registered()",
+        "smoke": "harness.run_scientific_case('positive')",
+        "scientific": "runner.execute_registered()",
+    }[phase]
+    (tmp_path / "test_stages.py").write_text(
+        "import importlib.util\nimport pytest\n"
+        "def load(name, path):\n"
+        "    spec = importlib.util.spec_from_file_location(name, path)\n"
+        "    module = importlib.util.module_from_spec(spec)\n"
+        "    spec.loader.exec_module(module)\n    return module\n"
+        "runner = load('runner', 'scripts/run_alpha_research_assignment.py')\n"
+        "harness = load('harness', 'src/bt/validation/authoring_harness.py')\n"
+        "def test_unit():\n    assert True\n"
+        "@pytest.mark.native_smoke\n"
+        "def test_smoke():\n    runner.execute_registered()\n    harness.run_native_case()\n"
+        "@pytest.mark.scientific_terminal\n"
+        "def test_scientific():\n"
+        "    for outcome in ('positive', 'negative', 'invalid', 'failed'):\n"
+        "        harness.run_scientific_case(outcome)\n"
+        + (("@pytest.mark.native_smoke\n" if phase == "smoke" else
+            "@pytest.mark.scientific_terminal\n" if phase == "scientific" else "")
+           + f"def test_wrong():\n    {wrong_call}\n" if wrong_phase else "")
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", RUNNER_PROBE_PROGRAM, "test_stages.py",
+         "--require-terminal-harness", f"--phase={phase}"],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == (1 if wrong_phase else 0), result.stdout + result.stderr
+    if wrong_phase:
+        assert "wrong validation phase" in result.stdout

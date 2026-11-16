@@ -2036,6 +2036,12 @@ def test_alpha003_strategy_gap_materializes_approval_gated_bulletproof_engineeri
     assert task is persisted[0]
     assert task.project == "bulletproof_bt"
     assert task.task_type == "engineering_mission"
+    criteria = "\n".join(task.input_contract["acceptance_criteria"])
+    assert "run_native_case smoke" in criteria
+    assert "run_scientific_case separately proves" in criteria
+    assert "pytest.mark.scientific_terminal" in criteria
+    assert "canonical materialize_grid ordering" in criteria
+    assert "each terminal outcome crosses the real execute_registered boundary" not in criteria
     assert task.approval_required is False
     assert task.status == "queued"
     assert task.approval_policy["kind"] == "bounded_hypothesis_engineering"
