@@ -129,6 +129,20 @@ Replaying an unchanged method is rejected. Old documents/reviews/counters remain
 intact. A fresh mandate, admission, native feasibility and independent review are
 still required; this mechanism does not certify or execute a candidate.
 
+Representation corrections now receive a schema-bound object containing the
+registered event-support names and minimum counts. New support gates use a
+separate extension array that is normalized without overwriting existing names.
+Renaming a gate into prose cannot satisfy the original gate. Backend rejection
+feedback also identifies exact missing/reduced keys and counts.
+
+Cycle allocation exhaustion must not mark an approved mandate complete while
+an already allocated intelligence, hypothesis or representation stage needs
+repair. The existing premature-completion reconciliation now includes these
+stages as well as commissioned campaigns. Recovery requires a still-valid
+approval, spare hypothesis/trial budgets, a recorded budget-exhaustion event and
+no newer approved canonical mandate. It changes no counters, expiry, approval
+or cycle allocation and does not automatically retry exhausted stage corrections.
+
 1. **Platform-owned test protocol.** Move fixture binding, review-packet assembly,
    terminal assertions and runner orchestration out of authored test boilerplate.
    Authors supply typed scenario factories and expected outcomes, while immutable

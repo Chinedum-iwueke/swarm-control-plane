@@ -2936,6 +2936,15 @@ def _unfinished_mandate_campaigns(db: Session, mandate: AlphaResearchMandate) ->
     ).all())
 
 
+def _unfinished_discovery_stages(db: Session, mandate: AlphaResearchMandate) -> list:
+    return list(db.scalars(select(AlphaDiscoveryCycle.id).where(
+        AlphaDiscoveryCycle.mandate_id == mandate.id,
+        AlphaDiscoveryCycle.campaign_id.is_(None),
+        AlphaDiscoveryCycle.status.in_({"running", "needs_attention"}),
+        AlphaDiscoveryCycle.phase.in_({"intelligence_synthesis", "hypothesis_generation", "representation_selection"}),
+    )).all())
+
+
 def _recover_premature_cycle_completion(db, mandate, moment):
     """Repair a scheduler projection, never renew or enlarge founder authority."""
     if (
@@ -2958,12 +2967,14 @@ def _recover_premature_cycle_completion(db, mandate, moment):
     if _is_canonical_mandate(mandate) and any(_is_canonical_mandate(item) for item in newer):
         return
     unfinished = _unfinished_mandate_campaigns(db, mandate)
-    if not unfinished:
+    stages = _unfinished_discovery_stages(db, mandate)
+    if not unfinished and not stages:
         return
     mandate.status = "active"
     _event(db, mandate, "premature_cycle_completion_reconciled", {
         "prior_event_digest": last.event_digest,
         "campaign_ids": sorted(str(item) for item in unfinished),
+        "discovery_cycle_ids": sorted(str(item) for item in stages),
         "budget_changed": False, "approval_changed": False,
         "new_discovery_cycles_allowed": False,
     })
@@ -3145,6 +3156,10 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             # Discovery exhaustion does not revoke already commissioned work.
             # Keep reconciling it, but do not create another discovery cycle.
             if _unfinished_mandate_campaigns(db, mandate):
+                return
+            if (mandate.hypothesis_count < mandate.budget["maximum_hypotheses"]
+                    and mandate.trial_count < mandate.budget["maximum_total_trials"]
+                    and _unfinished_discovery_stages(db, mandate)):
                 return
             mandate.status = "completed"
             _event(

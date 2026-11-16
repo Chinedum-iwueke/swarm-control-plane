@@ -1816,8 +1816,9 @@ def test_running_campaign_replenishment_consumes_queued_founder_idea(monkeypatch
     create.assert_called_once_with(db,mandate,idea)
 
 
-@pytest.mark.parametrize("blocker", [None, "expired", "unapproved", "trials", "hypotheses", "different_event", "newer_mandate", "no_work"])
-def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, blocker):
+@pytest.mark.parametrize("work_kind", ["campaign", "discovery"])
+@pytest.mark.parametrize("blocker", [None, "expired", "unapproved", "trials", "hypotheses", "different_event", "newer_mandate", "no_work", "revoked", "superseded"])
+def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, blocker, work_kind):
     from app.services import alpha_discovery as service
 
     moment = datetime.now(UTC)
@@ -1835,6 +1836,9 @@ def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, bl
         mandate.trial_count = 24
     if blocker == "hypotheses":
         mandate.hypothesis_count = 3
+    if blocker in {"revoked", "superseded"}:
+        mandate.status = blocker
+    previous_status = mandate.status
     db = MagicMock()
     db.scalar.return_value = SimpleNamespace(
         event_type="other" if blocker == "different_event" else "mandate_budget_exhausted",
@@ -1843,13 +1847,16 @@ def test_premature_cycle_completion_recovery_preserves_authority(monkeypatch, bl
     db.scalars.return_value.all.return_value = [object()] if blocker == "newer_mandate" else []
     monkeypatch.setattr(service, "_is_canonical_mandate", lambda _: True)
     monkeypatch.setattr(service, "_unfinished_mandate_campaigns",
-                        lambda *_: [] if blocker == "no_work" else [uuid4()])
+                        lambda *_: [uuid4()] if work_kind == "campaign" and blocker != "no_work" else [])
+    monkeypatch.setattr(service, "_unfinished_discovery_stages",
+                        lambda *_: [uuid4()] if work_kind == "discovery" and blocker != "no_work" else [])
     event = MagicMock()
     monkeypatch.setattr(service, "_event", event)
     budget = dict(mandate.budget)
     service._recover_premature_cycle_completion(db, mandate, moment)
-    assert mandate.status == ("active" if blocker is None else "completed")
+    assert mandate.status == ("active" if blocker is None else previous_status)
     assert mandate.budget == budget
+    assert mandate.cycle_count == 3
     assert event.called is (blocker is None)
     if blocker is None:
         assert event.call_args.args[3]["new_discovery_cycles_allowed"] is False
@@ -1875,8 +1882,9 @@ def test_needs_attention_campaigns_do_not_consume_parallel_slots(monkeypatch):
     assert active_campaigns == 1
 
 
+@pytest.mark.parametrize("work_kind", ["campaign", "discovery"])
 @pytest.mark.parametrize("unfinished", [True, False])
-def test_cycle_exhaustion_waits_for_commissioned_campaigns(monkeypatch, unfinished):
+def test_cycle_exhaustion_waits_for_commissioned_campaigns(monkeypatch, unfinished, work_kind):
     from app.services import alpha_discovery as service
 
     moment = datetime.now(UTC)
@@ -1895,7 +1903,9 @@ def test_cycle_exhaustion_waits_for_commissioned_campaigns(monkeypatch, unfinish
     monkeypatch.setattr(service, "_question_pipeline_state", lambda *_: (0, 0))
     monkeypatch.setattr(service, "_reconcile_data_admissions", lambda *_: False)
     monkeypatch.setattr(service, "_unfinished_mandate_campaigns",
-                        lambda *_: [uuid4()] if unfinished else [])
+                        lambda *_: [uuid4()] if unfinished and work_kind == "campaign" else [])
+    monkeypatch.setattr(service, "_unfinished_discovery_stages",
+                        lambda *_: [uuid4()] if unfinished and work_kind == "discovery" else [])
     new_cycle = MagicMock()
     monkeypatch.setattr(service, "_new_cycle", new_cycle)
     monkeypatch.setattr(service, "_event", MagicMock())
