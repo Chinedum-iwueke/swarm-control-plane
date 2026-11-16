@@ -91,9 +91,27 @@ def bound_review_card(candidate, bindings):
     return card
 
 
-def hydrate_retained_rejection(db, campaign):
+def requirements_basis_lineage(candidate, package, clock, source_commit):
+    binding = {"candidate": candidate, "clock_digest": clock["evidence_digest"],
+               "source_commit": source_commit}
+    coverage_basis = digest(binding)
+    if package["requirements"]["basis_digest"] != coverage_basis:
+        raise ValueError("Coverage-bound requirements basis differs from its preimage")
+    return {
+        "proposal_basis_digest": candidate.get("scientific_requirements_basis_digest"),
+        "proposal_basis_scope": "original discovery proposal before coverage binding",
+        "coverage_bound_basis_digest": coverage_basis,
+        "coverage_bound_basis_scope": "digest of candidate, clock_digest and source_commit",
+        "candidate_document_digest": digest(candidate),
+        "clock_digest": clock["evidence_digest"], "source_commit": source_commit,
+        "distinct_scopes_not_equal_hashes": True,
+        "approval_authority": False,
+    }
+
+
+def hydrate_retained_rejection(db, campaign, *, verify_current=False):
     """Restore display details from verified receipts, without reopening work."""
-    if campaign.next_action != "scientific_requirements_rejected" or campaign.terminal_reason:
+    if campaign.next_action != "scientific_requirements_rejected" or (campaign.terminal_reason and not verify_current):
         return
     publication = db.scalar(select(AlphaCampaignEvent).where(
         AlphaCampaignEvent.campaign_id == campaign.id,
@@ -101,6 +119,16 @@ def hydrate_retained_rejection(db, campaign):
     ).order_by(AlphaCampaignEvent.created_at.desc(), AlphaCampaignEvent.id.desc()))
     if publication is None:
         return
+    subject = publication.payload["subject"]
+    if verify_current:
+        queue = campaign.specification.get("research_queue", [])
+        if not 0 <= campaign.hypothesis_count < len(queue):
+            return False
+        current = queue[campaign.hypothesis_count]
+        if (subject.get("candidate_id") != str(current["source_candidate_id"])
+                or subject.get("source_commit") != campaign.specification["bulletproof_source_commit"]
+                or subject.get("review_scope") != "scientific_requirements"):
+            return False
     route = db.get(EvaluationRoute, publication.payload["route_id"])
     if route is None:
         return
@@ -110,6 +138,8 @@ def hydrate_retained_rejection(db, campaign):
     if reviews and any(review.verdict == "reject" for review in reviews):
         campaign.terminal_reason = {"category": "scientific_requirements_rejected",
             "detail": rejection_detail(route, subject_digest, reviews)}
+        return True
+    return False
 
 
 def _admission_reattestation(db, campaign, producer):
@@ -403,10 +433,18 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         defer("requirements_engineering_context_exceeds_bound")
     if identity is None:
         defer("restore_requirements_producer_identity")
+    try:
+        lineage = requirements_basis_lineage(
+            candidate, package, batch["predictor_coverage_evidence"],
+            campaign.specification["bulletproof_source_commit"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        defer("repair_scientific_requirements_evidence", str(exc))
     qualification = {
         "card": bound_review_card(candidate, evidence["dataset_bindings"]),
         "artifact_bundle": {
             "validation_requirements": package,
+            "requirements_basis_lineage": lineage,
             "predictor_coverage_evidence": batch["predictor_coverage_evidence"],
             "representation_plan": evidence["representation_plan"],
             "dataset_bindings": evidence["dataset_bindings"],

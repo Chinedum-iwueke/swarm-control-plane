@@ -1038,13 +1038,15 @@ def test_deferral_cannot_claim_review_or_qualification():
             AlphaCampaignAttemptCreate.model_validate(changed)
 
 
-def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch):
+@pytest.mark.parametrize("action", ["produce_admitted_predictor_coverage", "scientific_requirements_rejected"])
+def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch, action):
     from copy import deepcopy
 
     record = campaign()
     record.status = "needs_attention"
-    record.next_action = "produce_admitted_predictor_coverage"
-    record.terminal_reason = {"detail": "missing representation-specific coverage"}
+    record.next_action = action
+    record.terminal_reason = {"detail": "retained blocker", "reviews": [{"verdict": "reject"}]}
+    rejection = deepcopy(record.terminal_reason)
     before = deepcopy(record.specification)
     event = MagicMock(return_value=SimpleNamespace(event_digest="4" * 64))
     retained = MagicMock()
@@ -1059,11 +1061,14 @@ def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch
     details = event.call_args.args[4]
     assert details["retry_condition"]
     assert details["automatic_unchanged_retry_allowed"] is False
+    assert details["detail"] == rejection
+    assert payload.gate_report.qualification_authority is False
 
 
 @pytest.mark.parametrize("status,action,expected", [
     ("needs_attention", "resolve_native_requirements_feasibility", True),
     ("needs_attention", "produce_admitted_predictor_coverage", True),
+    ("needs_attention", "scientific_requirements_rejected", True),
     ("running", "produce_admitted_predictor_coverage", False),
     ("running", "await_independent_requirements_review", False),
     ("needs_attention", "unknown_failure", False),
@@ -1078,6 +1083,22 @@ def test_only_known_blocked_requirements_defer(monkeypatch, status, action, expe
     monkeypatch.setattr(service, "_retain_pre_authoring_deferral", retain)
     assert service._advance_governed_pipeline(MagicMock(), record) is None
     assert retain.called is expected
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_retained_requirements_rejection_advances_without_reauthoring(monkeypatch, verified):
+    record = campaign(status="needs_attention", next_action="scientific_requirements_rejected")
+    verify = MagicMock(return_value=verified)
+    monkeypatch.setattr("app.services.alpha_requirements_handoff.hydrate_retained_rejection", verify)
+    retain = MagicMock()
+    author = MagicMock()
+    monkeypatch.setattr(service, "_retain_pre_authoring_deferral", retain)
+    monkeypatch.setattr(service, "_advance_governed_pipeline", author)
+    db = MagicMock()
+    service.reconcile_campaign(db, record)
+    verify.assert_called_once_with(db, record, verify_current=True)
+    assert retain.called is verified
+    author.assert_not_called()
 
 
 def test_contract_has_no_capital_or_order_authority():

@@ -1064,6 +1064,10 @@ feature_warmup_bars never counts as training. Requirements count completed resea
 minimum_history_observations is source-panel history, not automatically the number of training research bars.
 Declare independent validation/test minima, target_horizon_bars, purge and embargo bars, and at least 365 days
 for scientific evaluation. Keep smoke_bars within 31 days; smoke is runner commissioning, never scientific proof.
+The native planner excludes max(purge_bars, target_horizon_bars) + embargo_bars at EACH
+train/validation and validation/test boundary. State both gaps consistently; do not apply purge
+only at the first boundary and embargo only at the second. Warmup and the final target tail
+are separate. Native partition timestamps govern any extra training bars for duration minima.
 List named minimum_event_support counts and explain the statistical rationale without claiming those events exist.
 For a fixed training-fitted linear empirical quantile with strict tail selection,
 declare scientific_specification.quantile_support_plan for every relevant support gate,
@@ -1083,8 +1087,13 @@ variants), reference history, interpolation and tie rules; controls, matching di
 dependence-aware uncertainty method, inference unit, block/bandwidth settings, confidence level and multiplicity;
 train-only fitting, frozen or causal OOS updates, purge/embargo and UTC buckets; missing-data behavior; rationale
 for event minima; and the explicit falsification rule. If a method does not require controls, explain why rather
-than writing N/A. Do not leave implementation choices to the engineer. These are proposed preregistered methods,
-not verified equations or evidence of predictive value. Never consult target outcomes to choose them.
+than writing N/A. Do not leave implementation choices to the engineer.
+For fitted models distinguish searched hyperparameters from fitted nuisance coefficients. Specify design-matrix
+columns, intercept, categorical coding/reference levels, coefficient count and rank-deficiency behavior explicitly;
+a categorical feature block is not one fitted coefficient. Justify observation minima with explicit precision or
+detectable-effect assumptions and dependence sensitivity, not merely "basic precision" or calendar duration.
+These are proposed preregistered methods, not verified equations or evidence of predictive value.
+Never consult target outcomes to choose them.
 Transformation output_field values must be lowercase snake_case identifiers. Raw transform inputs must be
 instrument-qualified canonical panel columns such as BTCUSDT__close or ETHUSDT__quote_volume; later transforms may
 reference an earlier snake_case output_field. The adaptive compiler materializes only open, high, low, close, volume,

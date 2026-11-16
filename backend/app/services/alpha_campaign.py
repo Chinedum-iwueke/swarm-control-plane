@@ -2095,6 +2095,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
 
 
 PRE_AUTHORING_DEFERRALS = {
+    "scientific_requirements_rejected": "Preserve the independent rejection; submit a changed, evidence-bound method successor and obtain fresh independent review. Never retry unchanged inputs.",
     "propose_scientific_specification": "Produce a complete immutable statistical method successor, then obtain independent review; do not retry unchanged inputs.",
     "resolve_native_requirements_feasibility": "Publish a bounded requirements or coverage successor with feasible native smoke/scientific plans, then obtain independent review; do not retry unchanged inputs.",
     "produce_admitted_predictor_coverage": "Obtain candidate-specific native predictor coverage and independent requirements review.",
@@ -3310,7 +3311,9 @@ def record_attempt(
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     if campaign.status == "needs_attention" and campaign.next_action == "scientific_requirements_rejected":
         from app.services.alpha_requirements_handoff import hydrate_retained_rejection
-        hydrate_retained_rejection(db, campaign)
+        if hydrate_retained_rejection(db, campaign, verify_current=True):
+            _retain_pre_authoring_deferral(db, campaign)
+        return
     if (
         campaign.status == "needs_attention"
         and campaign.phase == "scientific_requirements_review"

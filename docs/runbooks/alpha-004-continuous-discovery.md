@@ -85,6 +85,14 @@ the cycle without spending a representation-model call. It neither resets the
 cycle budget nor manufactures a hypothesis; new cycles still require capacity
 under an approved mandate.
 
+Independently rejected requirements are retained as zero-trial deferrals, not
+scientific negative results. Before advancing an admitted sibling, reconciliation
+re-verifies the rejection against the current candidate, source and routed receipts.
+It does not re-review unchanged evidence or authorize the rejected candidate.
+Future method corrections require their own immutable successor and fresh review.
+Review bundles distinguish the original proposal basis from the coverage-bound
+requirements basis and expose the latter's candidate/clock/source lineage.
+
 1. Deploy through migration `a0d6e8f92b51` and rebuild the VM2 API. Assert both
    `/v1/research/alpha-discovery/mandates` and
    `/v1/research/scientific-fidelity/assurance/overview` exist in OpenAPI first.

@@ -41,6 +41,26 @@ def test_engineering_preflight_measures_final_lossless_wire_shape(successor):
     assert ("coverage_successor_receipt" in projected["validation_requirements"]) is successor
 
 
+def test_requirements_lineage_distinguishes_proposal_and_coverage_binding():
+    from app.services.alpha_requirements_handoff import requirements_basis_lineage
+    candidate = {"scientific_requirements_basis_digest": "a" * 64, "question": "fixed"}
+    clock = {"evidence_digest": "b" * 64}
+    source = "c" * 40
+    basis = digest({"candidate": candidate, "clock_digest": clock["evidence_digest"],
+                    "source_commit": source})
+    package = {"requirements": {"basis_digest": basis}}
+    before = deepcopy((candidate, package, clock))
+    lineage = requirements_basis_lineage(candidate, package, clock, source)
+    assert lineage["proposal_basis_digest"] != lineage["coverage_bound_basis_digest"]
+    assert lineage["coverage_bound_basis_digest"] == basis
+    assert lineage["candidate_document_digest"] == digest(candidate)
+    assert lineage["approval_authority"] is False
+    assert (candidate, package, clock) == before
+    package["requirements"]["basis_digest"] = "d" * 64
+    with pytest.raises(ValueError, match="preimage"):
+        requirements_basis_lineage(candidate, package, clock, source)
+
+
 def test_engineering_encoding_preserves_unicode_and_rejects_nonfinite_evidence():
     from app.services.alpha_requirements_handoff import encode_engineering_evidence
     evidence = {"equation": "\\u03b1", "large": "x" * 48000}
@@ -160,6 +180,35 @@ def test_old_rejection_details_require_verified_receipts_and_never_resume(monkey
         verify.assert_called_once()
     else:
         assert campaign.terminal_reason == {}
+
+
+@pytest.mark.parametrize("condition", ["valid", "other_candidate", "other_source", "approve"])
+def test_current_rejection_rechecks_receipts_before_queue_advance(monkeypatch, condition):
+    from app.services import alpha_requirements_handoff as service
+    from app.schemas.evaluator_routing import AlphaStrategyReview
+    candidate_id = str(uuid4())
+    campaign = SimpleNamespace(id=uuid4(), status="needs_attention",
+        next_action="scientific_requirements_rejected", terminal_reason={"untrusted": True},
+        hypothesis_count=0, specification={"bulletproof_source_commit": "a" * 40,
+            "research_queue": [{"source_candidate_id": candidate_id}]})
+    subject = {"candidate_id": candidate_id, "source_commit": "a" * 40,
+               "review_scope": "scientific_requirements"}
+    if condition == "other_candidate":
+        subject["candidate_id"] = str(uuid4())
+    if condition == "other_source":
+        subject["source_commit"] = "b" * 40
+    db = MagicMock()
+    db.scalar.return_value = SimpleNamespace(payload={"route_id": str(uuid4()), "subject": subject})
+    db.get.return_value = SimpleNamespace(id=uuid4(), producer={"agent_id": str(uuid4())})
+    verdict = "approve" if condition == "approve" else "reject"
+    verify = MagicMock(return_value=[AlphaStrategyReview(subject_digest=digest(subject),
+        verdict=verdict, rationale="Independent reviewed scientific requirements.",
+        checks=["Frozen requirements checked"], blockers=["Unjustified support"] if verdict == "reject" else [])])
+    monkeypatch.setattr(service, "validated_alpha_strategy_reviews", verify)
+    assert bool(service.hydrate_retained_rejection(db, campaign, verify_current=True)) is (condition == "valid")
+    assert campaign.status == "needs_attention"
+    if condition in {"other_candidate", "other_source"}:
+        verify.assert_not_called()
 
 
 def test_package_binds_final_data_clock_without_issuing_approval():
