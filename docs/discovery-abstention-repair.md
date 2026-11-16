@@ -1,7 +1,8 @@
 # Discovery abstention repair
 
-Status: abstention/context repair deployed at `fa1adda`; real-model certification
-remains outstanding. The subsequent retrieval refinement is covered below.
+Status: abstention/context repair deployed at `fa1adda`; retrieval refinement
+deployed at `9587ac9`. Explained abstention was observed in production. Candidate
+generation and the engineering-to-backtest path remain uncertified.
 
 ## Retained failure
 
@@ -66,7 +67,31 @@ the selection-policy version; canonical sources are untouched. Navigation-only
 results leave grounding abstained. The heuristic is intentionally conservative;
 remaining passages still require relevance assessment and mathematical assurance.
 
-Remaining validation: deploy the retrieval refinement, then run an authorized
-real-model comparison. The completed
-one-cycle mandate is not reopened. These tests do not certify a viable hypothesis,
-engineering episode, backtest or autonomous recovery.
+## Bounded production observation
+
+The founder approved mandate `6a93ee1f-8d3c-49f4-b8fa-2c609a5888ed`, digest
+`f48dbd3153fab29baa505977f6c2b8734e1f921f070419834ca3821b4a90a4d4`.
+Cycle `e8f33c39-7e85-4764-8083-e5d46c4b4431` completed intelligence task
+`cb1b8693-c852-4a74-9943-66b5c00f90e3` and hypothesis task
+`a6c64213-47c5-4df7-9a2f-9c062e34c1c6` on their first attempts.
+
+The latter returned `candidates=[]` with an explicit `duplicate_only` abstention,
+evidence, research-intelligence ownership and a recovery condition. Its reported
+reason was that supplied BTCUSDT/SPXUSDT mechanisms overlapped excluded prior
+questions. This is a model-reported explanation, not an independent proof that no
+new question exists. The cycle was rejected; the mandate completed its single
+cycle with zero hypotheses and zero trials. Representation, engineering and
+backtesting did not start. Technical task success is not scientific success.
+
+API health and API/director image parity were verified after deployment. The
+backend discovery suite passed 137 tests, including navigation-only abstention
+and retention of excluded IDs in query receipts. Live synthesis referenced the
+retrieved HAC uncertainty material, but this does not qualify its mathematical
+fidelity or prove the broader retrieval architecture sufficient.
+
+Next architectural investigation: use retained abstention reasons to select
+different evidence mechanisms within authorized scope, with a bounded retrieval
+preflight before allocating another paid cycle. Do not silently broaden authority,
+remove novelty checks, weaken old requirements or claim an unchanged question is
+new. Another identical narrow request is not an engineering-episode test.
+Completed mandates and historical records remain immutable.
