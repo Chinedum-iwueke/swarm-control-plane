@@ -132,3 +132,20 @@ exclusion, normalized passage fingerprints across retained history, and minimum
 passage length plus literal query-term coverage. These checks are conservative
 retrieval heuristics, not scientific relevance judgments. They retain exclusion
 IDs in query receipts and do not qualify reconstructed equations.
+
+The founder subsequently approved mandate `5c388ad4-c520-48a3-8704-8e45f6c26014`,
+digest `6d777d9b48d61fcae10743458d69bfda16c062ad3e664d2aee0a66f863d37a9e`.
+Its intelligence task `ba1fdce6-293a-4572-8f91-af89d5e03bdd` and hypothesis task
+`5dad9c69-ce8c-4a9d-81d9-d95d68b9206c` technically succeeded, but again produced
+`duplicate_only` abstention. The new brief did discuss seasonality and asymmetric
+adjustment; hypothesis output nevertheless demanded direct BTC/SPX applicability.
+This observation motivates, but does not prove, a prompt-level reasoning defect.
+
+The subsequent worker repair explicitly separates abductive transfer hypotheses
+from source-established effects. It requires applicability limits, rivals,
+falsification and independently reviewed design choices, without weakening novelty
+or scientific gates. It also deterministically rejects intelligence citation pairs
+absent from the supplied corpus: the observed brief included a fabricated digest.
+Historical task success is retained, not retrospectively rewritten as valid
+provenance. The new worker contract still needs a fresh authorized live trial;
+neither this cycle nor the prior cycle reached strategy engineering or backtesting.

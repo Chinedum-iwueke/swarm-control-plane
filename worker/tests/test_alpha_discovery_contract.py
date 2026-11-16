@@ -478,6 +478,17 @@ def test_representation_prompt_compacts_duplicate_catalog_bodies():
     assert len(_prompt(contract)) < 50_000
 
 
+def test_intelligence_rejects_invented_citation_digest():
+    context = {"research_intelligence": {"citations": [{"object_id": "source", "content_digest": "a" * 64}]}}
+    good = {"research_brief": {"evidence_pairs": [{"object_id": "source", "content_digest": "a" * 64}]}}
+    assert _normalize_output("intelligence", good, context=context) == good
+    bad = {"research_brief": {"evidence_pairs": [{"object_id": "source", "content_digest": "b" * 64}]}}
+    with pytest.raises(AlphaDiscoveryError, match="exactly match supplied citations"):
+        _normalize_output("intelligence", bad, context=context)
+    with pytest.raises(AlphaDiscoveryError, match="exactly match supplied citations"):
+        _normalize_output("intelligence", good, context={})
+
+
 def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
     document = alpha_discovery_contract()
     document["stage"] = "hypothesis"
@@ -493,6 +504,9 @@ def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
     assert "Do not return an empty candidate list" in prompt
     assert "awaiting_data_admission" in prompt
     assert "before execution" in prompt
+    assert "Hypothesis generation is abductive" in prompt
+    assert "do not present them as findings of the source" in prompt
+    assert "General mechanism evidence" in prompt
 
 
 def test_hypothesis_prompt_receives_novelty_memory_and_bounded_diversity_direction():

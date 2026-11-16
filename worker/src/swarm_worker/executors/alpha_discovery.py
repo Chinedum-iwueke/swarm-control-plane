@@ -206,6 +206,7 @@ class AlphaDiscoveryExecutor:
             output = _normalize_output(
                 contract.stage,
                 json.loads(output_path.read_text(encoding="utf-8")),
+                context=contract.context,
             )
             if len(json.dumps(output, separators=(",", ":"))) > 100_000:
                 raise AlphaDiscoveryError(
@@ -262,7 +263,13 @@ class AlphaDiscoveryExecutor:
         )
 
 
-def _normalize_output(stage: str, output: dict) -> dict:
+def _normalize_output(stage: str, output: dict, *, context: dict | None = None) -> dict:
+    if stage == "intelligence" and context is not None:
+        allowed = {(str(c["object_id"]), c["content_digest"])
+                   for c in context.get("research_intelligence", {}).get("citations", [])}
+        pairs = output.get("research_brief", {}).get("evidence_pairs", [])
+        if any((str(p.get("object_id")), p.get("content_digest")) not in allowed for p in pairs):
+            raise AlphaDiscoveryError("Intelligence evidence pairs must exactly match supplied citations; invented digests are invalid.")
     if stage == "hypothesis":
         candidates = output.get("candidates")
         abstention = output.get("abstention")
@@ -1014,6 +1021,13 @@ Distinguish source-supported claims from proposed preregistered design assumptio
 explicit effect-size/precision and dependence assumptions with rationale and sensitivity analysis for independent
 review; do not claim they were observed or verified. Lack of a published numerical effect size alone does not
 prove that no research question can be proposed. Never change frozen recovery minima under this permission.
+Hypothesis generation is abductive, not a demand for an already demonstrated trading effect. Literature from
+another market may motivate a transfer hypothesis when you identify what is source-supported, what applicability
+is uncertain, the causal mechanism, rival explanations and how the transfer could be falsified. Predictor, horizon
+and direction may be preregistered design choices with rationale; do not present them as findings of the source.
+Absence of a published BTCUSDT/SPXUSDT effect alone is not a rejection criterion. General mechanism evidence
+does not excuse a duplicate, unavailable inputs, unsupported causal claims or an untestable target. The intelligence
+brief is advisory: assess its claims against the actual cited passages rather than inheriting its conclusion.
 Without typed retained_candidate_recovery, this is discovery of a genuinely distinct design, not authorization
 to amend an old candidate. Identify the substantive scientific difference; paraphrasing is still duplication.
 Read recent_research_memory before proposing anything. Its recent candidate questions are novelty exclusions even
