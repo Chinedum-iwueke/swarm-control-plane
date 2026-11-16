@@ -39,6 +39,33 @@ def test_representation_proposes_requirements_without_receipt_authority():
         }}]})
 
 
+def test_method_correction_schema_binds_registered_support_and_preserves_extensions():
+    previous = {"minimum_event_support": {"qualified_predictor_events_test": 40},
+                "research_bar_minutes": 240, "target_horizon_bars": 2,
+                "feature_warmup_bars": 13, "minimum_training_bars": 1095,
+                "minimum_validation_bars": 365, "minimum_test_bars": 365,
+                "purge_bars": 2, "embargo_bars": 2, "minimum_scientific_window_days": 365}
+    context = {"founder_research_idea": {"constraints": {"retained_candidate_recovery": {
+        "schema_version": 3, "rejected_method_identity": {"scientific_requirements": previous}}}}}
+    plan = _schema("representation", context=context)["properties"]["representation_plans"]["items"]
+    fields = plan["properties"]["scientific_requirements"]["properties"]
+    assert fields["minimum_event_support"] == {
+        "type": "object", "additionalProperties": False, "required": ["qualified_predictor_events_test"],
+        "properties": {"qualified_predictor_events_test": {"type": "integer", "minimum": 40}},
+    }
+    assert fields["minimum_training_bars"]["minimum"] == 1095
+    assert fields["research_bar_minutes"]["enum"] == [240]
+    output = {"representation_plans": [{"scientific_requirements": {
+        "minimum_event_support": {"qualified_predictor_events_test": 40},
+        "additional_event_support": [{"name": "new_gate", "minimum": 80}],
+    }}]}
+    normalized = _normalize_output("representation", output)["representation_plans"][0]["scientific_requirements"]
+    assert normalized == {"minimum_event_support": {"qualified_predictor_events_test": 40, "new_gate": 80}}
+    normalized["additional_event_support"] = [{"name": "qualified_predictor_events_test", "minimum": 1}]
+    with pytest.raises(ValueError, match="cannot replace"):
+        _normalize_output("representation", output)
+
+
 def test_representation_schema_encodes_and_preserves_rolling_lag():
     plan = _schema("representation")["properties"]["representation_plans"]["items"]
     branches = plan["properties"]["transformations"]["items"]["anyOf"]

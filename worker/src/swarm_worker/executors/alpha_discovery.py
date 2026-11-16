@@ -102,7 +102,7 @@ class AlphaDiscoveryExecutor:
         stdout_path = workspace.logs / "alpha-discovery.stdout.log"
         stderr_path = workspace.logs / "alpha-discovery.stderr.log"
         schema_path.write_text(
-            json.dumps(_schema(contract.stage), sort_keys=True), encoding="utf-8"
+            json.dumps(_schema(contract.stage, context=contract.context), sort_keys=True), encoding="utf-8"
         )
         prompt_document = _prompt(contract)
         if len(prompt_document) > _MAX_PROMPT_CHARS:
@@ -276,6 +276,14 @@ def _normalize_output(stage: str, output: dict) -> dict:
                 requirements["minimum_event_support"] = {
                     item["name"]: item["minimum"] for item in support
                 }
+            additions = requirements.pop("additional_event_support", [])
+            canonical = requirements.get("minimum_event_support", {})
+            for item in additions:
+                if item["name"] in canonical:
+                    raise ValueError("additional event support cannot replace a registered name")
+                if type(item["minimum"]) is not int or item["minimum"] < 1:
+                    raise ValueError("additional event support must be a positive integer")
+                canonical[item["name"]] = item["minimum"]
         for transformation in plan.get("transformations", []):
             parameters = transformation.get("parameters", {})
             transformation["parameters"] = {
@@ -284,7 +292,7 @@ def _normalize_output(stage: str, output: dict) -> dict:
     return output
 
 
-def _schema(stage: str) -> dict:
+def _schema(stage: str, *, context: dict | None = None) -> dict:
     string_array = {"type": "array", "items": {"type": "string"}}
     uuid_string = {
         "type": "string",
@@ -357,6 +365,22 @@ def _schema(stage: str) -> dict:
         }
         requirement_fields["minimum_scientific_window_days"].update(minimum=365, maximum=1095)
         requirement_fields["rationale"] = {"type": "string", "minLength": 20, "maxLength": 4000}
+        recovery = (context or {}).get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery", {})
+        if recovery.get("schema_version") == 3:
+            previous = recovery["rejected_method_identity"]["scientific_requirements"]
+            # Fixed identifiers belong in a typed contract, not generated prose.
+            requirement_fields["additional_event_support"] = requirement_fields["minimum_event_support"]
+            requirement_fields["minimum_event_support"] = {
+                "type": "object", "additionalProperties": False,
+                "required": sorted(previous["minimum_event_support"]),
+                "properties": {key: {"type": "integer", "minimum": count}
+                               for key, count in previous["minimum_event_support"].items()},
+            }
+            for key in ("feature_warmup_bars", "minimum_training_bars", "minimum_validation_bars",
+                        "minimum_test_bars", "purge_bars", "embargo_bars", "minimum_scientific_window_days"):
+                requirement_fields[key]["minimum"] = previous[key]
+            for key in ("research_bar_minutes", "target_horizon_bars"):
+                requirement_fields[key]["enum"] = [previous[key]]
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -939,6 +963,9 @@ partition minima and distinguish them from proportions: never claim a 60/20/20 a
 actually produces it. Event-support counts are gates measured after execution, not promises inferred from coverage
 or nominal quantiles. State precision/power limitations and return invalid when support is insufficient; never
 choose a window or method using target outcomes. Fresh independent review is mandatory even if a prior source ran.
+For this correction, minimum_event_support is a schema-bound object: retain every exact registered key, never
+rename it into human-readable prose. Put genuinely new support gates in additional_event_support (an empty array
+when none are needed); additions cannot replace an existing key. All counts remain proposed post-execution gates.
 Do not extend that exception to any other prior question. Fresh data admission and independent review remain
 mandatory; this context grants no execution authority. Report infeasibility rather than changing the frozen identity.
 Its coverage counts reveal overused instruments,
