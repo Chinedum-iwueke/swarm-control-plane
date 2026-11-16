@@ -95,3 +95,30 @@ preflight before allocating another paid cycle. Do not silently broaden authorit
 remove novelty checks, weaken old requirements or claim an unchanged question is
 new. Another identical narrow request is not an engineering-episode test.
 Completed mandates and historical records remain immutable.
+
+## Abstention-aware retrieval repair (not yet deployed)
+
+The next implementation reads the latest cycle and its recorded abstention under
+identical dataset bindings and discovery-catalog authority. Only `duplicate_only`
+and `insufficient_evidence` steer retrieval; authority, capacity and scientific
+infeasibility dispositions do not become permission to search around their gates.
+
+Recovery searches at most four field-compatible mechanism queries, ordered by
+bounded retained query usage. Additional seeds cover seasonality, asymmetry,
+persistence and range-based forecasting. These are search directions, not claims
+of predictive value. Model-written recovery prose is not executed or used as an
+instruction. Recovery omits the previous statistical-method queries in favor of
+mechanism queries. Search ranking can still return irrelevant material; passage
+novelty alone does not establish mechanism relevance.
+
+Retrieved passages not present in up to 32 same-authority cycles are prioritized.
+If no unseen object/digest pair survives navigation filtering, grounding abstains
+before a cycle, model task or cycle-budget debit is created. Receipts preserve the
+source abstention event digest, prior evidence, queries and new passage IDs.
+Unseen evidence does not prove semantic novelty: existing candidate novelty,
+feasibility, mathematical assurance and independent review gates remain required.
+
+This is bounded deterministic evidence exploration, not a general reasoning
+controller or end-to-end certification. It does not renew mandates, change data
+authority or restart historical tasks. Live recovery remains to be demonstrated
+under a separately approved mandate; the previous exhausted mandate stays closed.

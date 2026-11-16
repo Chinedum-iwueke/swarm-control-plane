@@ -1148,6 +1148,80 @@ def test_navigation_excerpts_are_not_method_support():
     assert not _navigation_excerpt("\n".join(f"The experiment has {n} observations." for n in range(10)))
 
 
+def test_recovery_queries_rotate_without_expanding_field_authority():
+    mandate = SimpleNamespace(objective="Feasibility", cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close", "high", "low", "volume"]}]})
+    first = _discovery_queries(mandate, recovery=True)
+    second = _discovery_queries(mandate, recovery=True, previous_queries=first)
+    assert len(first) == len(second) == 4
+    assert first != second
+    assert not any("funding" in query or "open interest" in query for query in first + second)
+    assert not any("sample size" in query for query in first)
+    mandate.specification["dataset_bindings"] = [{"output_columns": []}]
+    assert _discovery_queries(mandate, recovery=True) == []
+
+
+@pytest.mark.parametrize("reason,expected", [("duplicate_only", True), ("insufficient_evidence", True),
+    ("await_authority_or_capacity", False), ("scientifically_infeasible", False)])
+def test_retrieval_recovery_uses_recorded_typed_abstention(reason, expected):
+    from app.services.alpha_discovery import _discovery_retrieval_recovery
+    mandate = SimpleNamespace(specification={"dataset_bindings": []})
+    cycle = SimpleNamespace(id=uuid4(), context={"research_intelligence": {"citations": []}})
+    db = MagicMock()
+    previous = {"object_id": str(uuid4()), "content_digest": DIGEST}
+    db.scalars.return_value.all.return_value = [[previous], [previous], None]
+    db.scalar.side_effect = [cycle, SimpleNamespace(event_digest=DIGEST, payload={"abstention": {"reason_code": reason}})]
+    result = _discovery_retrieval_recovery(db, mandate)
+    assert bool(result) is expected
+    if expected:
+        assert result["event_digest"] == DIGEST
+        assert result["source_cycle_id"] == str(cycle.id)
+        assert result["execution_authority"] is False
+        assert result["reason_verified"] is False
+        assert result["prior_evidence"] == [previous]
+        assert db.scalars.call_args.args[0]._limit_clause.value == 32
+    statement = str(db.scalar.call_args_list[0].args[0])
+    assert "alpha_research_mandates" in statement and "LIMIT" in statement
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+def test_recovery_requires_changed_evidence_before_paid_discovery(monkeypatch, fresh):
+    mandate = SimpleNamespace(objective="Feasibility", cycle_count=0,
+        specification={"dataset_bindings": [{"output_columns": ["close"]}]})
+    old_id, new_id = str(uuid4()), str(uuid4())
+    monkeypatch.setattr("app.services.alpha_discovery._discovery_retrieval_recovery", lambda db, m: {
+        "reason_code": "duplicate_only", "prior_evidence": [{"object_id": old_id, "content_digest": DIGEST}]})
+    hit = {"object_id": new_id if fresh else old_id, "text": "Mechanism passage.", "confidence": 0.8,
+           "citation": {"content_digest": DIGEST, "coordinates": {}}}
+    search = MagicMock(return_value={"corpus_digest": DIGEST, "abstained": False, "hits": [hit], "confidence": 0.8})
+    monkeypatch.setattr("app.services.alpha_discovery.hybrid_search", search)
+    result = _discovery_corpus(MagicMock(), mandate)
+    assert result["abstained"] is (not fresh)
+    assert result["retrieval_recovery"]["new_evidence_object_ids"] == ([new_id] if fresh else [])
+    assert search.call_count <= 4
+    assert result["citations"]  # Preserve old evidence even when it cannot reopen paid work.
+    if not fresh:
+        assert "defer paid discovery" in result["error"]
+
+
+def test_unchanged_recovery_grounding_does_not_allocate_cycle_or_model_task(monkeypatch):
+    from app.services.alpha_discovery import _new_cycle
+    mandate = SimpleNamespace(id=uuid4(), cycle_count=0)
+    db = MagicMock()
+    db.scalar.return_value = None
+    event, task = MagicMock(), MagicMock()
+    monkeypatch.setattr("app.services.alpha_discovery._event", event)
+    monkeypatch.setattr("app.services.alpha_discovery._task", task)
+    grounding = {"abstained": True, "citations": [{"object_id": str(uuid4())}],
+                 "error": "Recovery found no changed mechanism evidence."}
+    assert _new_cycle(db, mandate, prepared_context={"research_intelligence": grounding}) is None
+    assert mandate.cycle_count == 0
+    task.assert_not_called()
+    db.add.assert_not_called()
+    assert event.call_args.args[3]["cycle_budget_consumed"] is False
+    assert event.call_args.args[3]["model_task_created"] is False
+
+
 def test_replacement_mandate_does_not_reset_evidence_facets():
     mandate = SimpleNamespace(
         objective="Discover mechanisms.", cycle_count=0,

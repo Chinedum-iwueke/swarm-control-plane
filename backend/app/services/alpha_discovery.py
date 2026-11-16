@@ -575,7 +575,42 @@ def _navigation_excerpt(text: str) -> bool:
             and sum(len(line) < 90 for line in lines) / len(lines) >= 0.9)
 
 
-def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
+def _discovery_retrieval_recovery(db, mandate) -> dict:
+    # Only the latest cycle with identical admitted data authority can steer recovery.
+    catalog = mandate.specification.get("discovery_catalog")
+    catalog_scope = (AlphaResearchMandate.specification["discovery_catalog"] == catalog
+                     if catalog is not None else AlphaResearchMandate.specification["discovery_catalog"].astext.is_(None))
+    cycle = db.scalar(select(AlphaDiscoveryCycle).join(AlphaResearchMandate)
+        .where(AlphaResearchMandate.specification["dataset_bindings"] == mandate.specification["dataset_bindings"],
+               catalog_scope)
+        .order_by(AlphaDiscoveryCycle.created_at.desc(), AlphaDiscoveryCycle.id.desc()).limit(1))
+    if cycle is None or not isinstance(cycle.context, dict):
+        return {}
+    event = db.scalar(select(AlphaDiscoveryEvent).where(
+        AlphaDiscoveryEvent.cycle_id == cycle.id,
+        AlphaDiscoveryEvent.event_type == "hypothesis_generation_abstained"
+    ).order_by(AlphaDiscoveryEvent.id.desc()).limit(1))
+    if event is None or not isinstance(event.payload, dict):
+        return {}
+    reason = event.payload.get("abstention", {}).get("reason_code")
+    if reason not in {"duplicate_only", "insufficient_evidence"}:
+        return {}
+    past = db.scalars(select(AlphaDiscoveryCycle.context["research_intelligence"]["citations"])
+        .join(AlphaResearchMandate)
+        .where(AlphaResearchMandate.specification["dataset_bindings"] == mandate.specification["dataset_bindings"],
+               catalog_scope)
+        .order_by(AlphaDiscoveryCycle.created_at.desc(), AlphaDiscoveryCycle.id.desc()).limit(32)).all()
+    passages = [*cycle.context.get("research_intelligence", {}).get("citations", []),
+                *(c for citations in past if isinstance(citations, list) for c in citations)]
+    pairs = sorted({(c["object_id"], c["content_digest"]) for c in passages})
+    return {"policy": "abstention-aware-retrieval-v1", "source_cycle_id": str(cycle.id),
+            "event_digest": event.event_digest, "reason_code": reason,
+            "reason_verified": False,
+            "prior_evidence": [{"object_id": oid, "content_digest": digest} for oid, digest in pairs],
+            "execution_authority": False}
+
+
+def _discovery_queries(mandate, *, previous_queries=(), recovery=False) -> list[str]:
     columns = {
         column
         for binding in mandate.specification["dataset_bindings"]
@@ -599,6 +634,19 @@ def _discovery_queries(mandate, *, previous_queries=()) -> list[str]:
             "funding open interest cross asset spillover",
         ]
     usage = Counter(previous_queries)
+    if recovery:
+        # Search seeds, not claims of predictability or permission to use new fields.
+        alternatives = []
+        if "close" in columns:
+            alternatives.extend(["intraday return seasonality", "return autocorrelation asymmetry",
+                                 "time series trend persistence"])
+        if {"high", "low", "close"}.issubset(columns):
+            alternatives.extend(["range based volatility forecasting", "price range expansion predictability"])
+        if "volume" in columns:
+            alternatives.extend(["trading volume seasonality", "volume volatility asymmetry"])
+        if "funding_rate" in columns:
+            alternatives.append("funding rate persistence")
+        return sorted(alternatives, key=lambda query: usage[query])[:4]
     if facets:
         offset = mandate.cycle_count % len(facets)
         rotated = facets[offset:] + facets[:offset]
@@ -625,7 +673,9 @@ def _discovery_corpus(db, mandate) -> dict:
         item["query"] for receipt in history if isinstance(receipt, list)
         for item in receipt if isinstance(item, dict) and isinstance(item.get("query"), str)
     ]
-    queries = _discovery_queries(mandate, previous_queries=previous_queries)
+    recovery = _discovery_retrieval_recovery(db, mandate)
+    queries = _discovery_queries(mandate, previous_queries=previous_queries, recovery=bool(recovery))
+    prior_evidence = {(c["object_id"], c["content_digest"]) for c in recovery.get("prior_evidence", [])}
     citations = {}
     receipts = []
     corpus_digest = None
@@ -650,6 +700,8 @@ def _discovery_corpus(db, mandate) -> dict:
             receipts[-1]["navigation_only_object_ids"] = [str(hit["object_id"]) for hit in navigation]
             receipts[-1]["passage_selection_policy"] = "discovery-navigation-filter-v1"
             support = [hit for hit in retrieval["hits"] if not _navigation_excerpt(hit["text"])]
+            if recovery:
+                support.sort(key=lambda hit: (str(hit["object_id"]), hit["citation"]["content_digest"]) in prior_evidence)
             for hit in support[:3]:
                 key = str(hit["object_id"])
                 if key in citations:
@@ -663,11 +715,16 @@ def _discovery_corpus(db, mandate) -> dict:
                     "confidence": hit["confidence"],
                     "retrieved_for": [query],
                 }
+        fresh = [key for key, hit in citations.items() if (key, hit["content_digest"]) not in prior_evidence]
+        unchanged = bool(recovery) and not fresh
         return {
             "digest": corpus_digest,
-            "abstained": not citations,
+            "abstained": not citations or unchanged,
             "citations": list(citations.values()),
             "query_receipts": receipts,
+            "retrieval_recovery": {**recovery, "new_evidence_object_ids": fresh,
+                "claim_boundary": "New passages are not proof of a novel or valid hypothesis."} if recovery else {},
+            **({"error": "Recovery found no changed mechanism evidence; defer paid discovery until evidence changes."} if unchanged else {}),
         }
     except HTTPException as exc:
         return {
