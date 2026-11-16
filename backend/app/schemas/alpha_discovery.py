@@ -469,7 +469,10 @@ class AlphaQuantileSupportPlan(StrictModel):
     gate: str = Field(min_length=1, max_length=200)
     partition: Literal["training", "validation", "test"]
     quantile: float = Field(strict=True, gt=0, lt=1)
-    threshold_policy: Literal["fixed_training_linear_strict_upper_tail"]
+    threshold_policy: Literal[
+        "fixed_training_linear_strict_upper_tail",
+        "fixed_training_linear_strict_lower_tail",
+    ]
 
 
 class AlphaScientificSpecification(StrictModel):

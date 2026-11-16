@@ -2910,3 +2910,16 @@ def test_verified_equation_requires_a_bound_assurance_receipt():
     db.scalar.return_value = None
     reasons, _ = _candidate_reasons(value, cycle, mandate, [], db)
     assert "equation_assurance_receipt_invalid_or_unbound" in reasons
+
+
+@pytest.mark.parametrize("tail", ["upper", "lower"])
+def test_quantile_support_contract_preserves_tail_direction(tail):
+    from app.schemas.alpha_discovery import AlphaQuantileSupportPlan
+
+    policy = f"fixed_training_linear_strict_{tail}_tail"
+    design = AlphaQuantileSupportPlan.model_validate({
+        "gate": "events", "partition": "test", "quantile": 0.025,
+        "threshold_policy": policy,
+    })
+    assert design.threshold_policy == policy
+    assert design.quantile == 0.025

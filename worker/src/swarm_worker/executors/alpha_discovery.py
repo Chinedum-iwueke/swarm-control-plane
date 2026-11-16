@@ -354,7 +354,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                     "gate": {"type": "string", "minLength": 1, "maxLength": 200},
                     "partition": {"type": "string", "enum": ["training", "validation", "test"]},
                     "quantile": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
-                    "threshold_policy": {"type": "string", "enum": ["fixed_training_linear_strict_upper_tail"]},
+                    "threshold_policy": {"type": "string", "enum": ["fixed_training_linear_strict_upper_tail", "fixed_training_linear_strict_lower_tail"]},
                 }},
         }
         requirement_fields = {
@@ -1065,9 +1065,12 @@ minimum_history_observations is source-panel history, not automatically the numb
 Declare independent validation/test minima, target_horizon_bars, purge and embargo bars, and at least 365 days
 for scientific evaluation. Keep smoke_bars within 31 days; smoke is runner commissioning, never scientific proof.
 List named minimum_event_support counts and explain the statistical rationale without claiming those events exist.
-For a fixed training-fitted linear empirical quantile with strict upper-tail selection,
+For a fixed training-fitted linear empirical quantile with strict tail selection,
 declare scientific_specification.quantile_support_plan for every relevant support gate,
-partition and quantile variant, retaining exact gate names. Do not use this policy for
+partition and quantile variant, retaining exact gate names. Use fixed_training_linear_strict_lower_tail
+for values BELOW the quantile (nominal mass q), and fixed_training_linear_strict_upper_tail
+for values ABOVE it (nominal mass 1-q). Never label a lower-tail event as upper-tail.
+Two-sided events need separate direction-specific entries. Do not use these policies for
 rolling/refitted thresholds, inclusive comparisons or other quantile methods. For other
 designs provide an empty list and explain their independent support-planning justification.
 The native planner checks training-population capacity; held-out nominal rates are not

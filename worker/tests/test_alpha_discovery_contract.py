@@ -28,7 +28,9 @@ def test_representation_proposes_requirements_without_receipt_authority():
         "event_support_rationale", "falsification_rule", "quantile_support_plan"}
     support = method["properties"]["quantile_support_plan"]
     assert support["maxItems"] == 100
-    assert support["items"]["properties"]["threshold_policy"]["enum"] == ["fixed_training_linear_strict_upper_tail"]
+    assert support["items"]["properties"]["threshold_policy"]["enum"] == [
+        "fixed_training_linear_strict_upper_tail", "fixed_training_linear_strict_lower_tail",
+    ]
     properties = plan["properties"]["scientific_requirements"]["properties"]
     assert properties["minimum_scientific_window_days"]["minimum"] == 365
     assert "coverage" not in properties and "basis_digest" not in properties
