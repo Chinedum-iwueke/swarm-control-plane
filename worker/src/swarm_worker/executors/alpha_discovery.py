@@ -924,12 +924,21 @@ Read recent_research_memory before proposing anything. Its recent candidate ques
 when they never reached a backtest; do not paraphrase them. The sole scoped exception is an explicit
 founder_research_idea.constraints.retained_candidate_recovery: preserve its scientific_identity fields verbatim,
 including the question, predictor, target, horizon, null, direction, falsification criteria, features and data scope.
-Treat this as reassessment of an untested retained question at a new native source, never as novel discovery.
+Treat this as reassessment of an untested retained question, never as novel discovery.
 When retained_candidate_recovery supplies method_identity, reuse those representation, scientific requirements,
 scientific specification and parameter-budget documents verbatim. Source migration is not permission to redesign
 splits, thresholds, support minima or estimators. The controller binds the retained methods with explicit provenance;
 fresh admission, feasibility and independent review still apply. Report an infeasible frozen design rather than
 silently reducing requirements or introducing a new scientific method during source recovery.
+When recovery_kind is scientific_method_correction, rejected_method_identity and review_blockers instead identify
+an explicitly rejected method to correct. Preserve scientific_identity; propose a complete corrected method with
+an explanation addressing each blocker. Do not merely replay the rejected method. Do not reduce any prior warmup,
+training/validation/test minima, purge/embargo, scientific duration or named event-support minimum, or expand its
+variant budget. The research clock and target horizon stay fixed. Split prose must name the exact proposed
+partition minima and distinguish them from proportions: never claim a 60/20/20 allocation unless the native plan
+actually produces it. Event-support counts are gates measured after execution, not promises inferred from coverage
+or nominal quantiles. State precision/power limitations and return invalid when support is insufficient; never
+choose a window or method using target outcomes. Fresh independent review is mandatory even if a prior source ran.
 Do not extend that exception to any other prior question. Fresh data admission and independent review remain
 mandatory; this context grants no execution authority. Report infeasibility rather than changing the frozen identity.
 Its coverage counts reveal overused instruments,

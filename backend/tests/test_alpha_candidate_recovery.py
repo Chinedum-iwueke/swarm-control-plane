@@ -37,6 +37,122 @@ def test_explicit_untested_source_recovery_preserves_identity():
     assert matching_recovery(db,mandate,SimpleNamespace(context={}),candidate) is None
 
 
+def method_fixture(monkeypatch):
+    from app.services.graph import digest_document
+    from app.services import evaluator_routing
+    db, mandate, parent, proposed = fixture()
+    previous_get = db.get.side_effect
+    cycle = previous_get(None, parent.cycle_id)
+    cycle.campaign_id = uuid4()
+    parent.document.update({
+        "scientific_requirements": {
+            "research_bar_minutes": 240, "feature_warmup_bars": 13,
+            "minimum_training_bars": 1095, "minimum_validation_bars": 365,
+            "minimum_test_bars": 365, "target_horizon_bars": 2,
+            "purge_bars": 2, "embargo_bars": 2,
+            "minimum_scientific_window_days": 365, "smoke_bars": 168,
+            "minimum_event_support": {"heldout_events": 40},
+            "rationale": "Prespecified support, not an observation of available events.",
+        },
+        "scientific_specification": {key: "Complete prespecified scientific method definition."
+            for key in ("target_equation", "estimator", "threshold_rule", "control_rule",
+                        "uncertainty_procedure", "split_and_update_policy", "missing_data_policy",
+                        "event_support_rationale", "falsification_rule")},
+        "parameter_budget": {"maximum_variants": 4},
+        "representation_plan": {"candidate_key": "parent", "transformations": []},
+    })
+    card = {"source_candidate_document_digest": digest_document(parent.document)}
+    subject = {"candidate_id": str(parent.id), "review_scope": "scientific_requirements",
+               "source_commit": "a" * 40, "card_digest": digest_document(card),
+               "artifact_bundle_digest": digest_document({})}
+    digest = digest_document(subject)
+    route = SimpleNamespace(id=uuid4(), subject_id=f"requirements:{parent.id}",
+        subject_digest=digest, producer={"agent_id": str(uuid4())})
+    event = SimpleNamespace(id=70854, campaign_id=cycle.campaign_id,
+        event_type="scientific_requirements_published",
+        payload={"subject": subject, "route_id": str(route.id),
+                 "qualification": {"card": card, "artifact_bundle": {}}})
+    db.get.side_effect = lambda model, key: event if key == event.id else route if key == route.id else previous_get(model, key)
+    review = MagicMock(verdict="reject", blockers=["Split prose disagrees with native partition minima"])
+    review.model_dump.return_value = {"verdict": "reject", "blockers": review.blockers}
+    verifier = MagicMock(return_value=[review])
+    monkeypatch.setattr(evaluator_routing, "validated_alpha_strategy_reviews", verifier)
+    return db, mandate, parent, proposed, event, route, digest, verifier
+
+
+@pytest.mark.parametrize("fault", [None, "missing_digest", "missing_candidate", "uuid_event"])
+def test_method_correction_intake_binds_integer_publication_id(fault):
+    from app.schemas.alpha_discovery import AlphaFounderResearchIdeaCreate
+    payload = dict(mandate_id=uuid4(), expected_mandate_digest="a" * 64,
+        idea="Correct an explicitly rejected scientific specification.", submitted_by="founder-operator",
+        recovery_candidate_id=uuid4(), expected_recovery_candidate_digest="b" * 64,
+        requirements_rejection_event_id=70854, expected_requirements_rejection_digest="c" * 64)
+    if fault == "missing_digest": payload.pop("expected_requirements_rejection_digest")
+    elif fault == "missing_candidate":
+        payload.pop("recovery_candidate_id")
+        payload.pop("expected_recovery_candidate_digest")
+    elif fault == "uuid_event": payload["requirements_rejection_event_id"] = uuid4()
+    if fault:
+        with pytest.raises(ValueError): AlphaFounderResearchIdeaCreate.model_validate(payload)
+    else:
+        assert AlphaFounderResearchIdeaCreate.model_validate(payload).requirements_rejection_event_id == 70854
+
+
+def test_method_correction_requires_rejection_and_preserves_history(monkeypatch):
+    db, mandate, parent, proposed, event, route, digest, verifier = method_fixture(monkeypatch)
+    mandate.specification["bulletproof_source_commit"] = "a" * 40
+    before = deepcopy(parent.document)
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=3,
+                           rejection_event_id=event.id, expected_rejection_digest=digest)
+    cycle = SimpleNamespace(context={"founder_research_idea": {"constraints": {"retained_candidate_recovery": scope}}})
+    assert matching_recovery(db, mandate, cycle, proposed) == scope
+    revised = deepcopy(before)
+    revised["candidate_key"] = "new"
+    revised["representation_plan"]["candidate_key"] = "new"
+    with pytest.raises(ValueError, match="must change"):
+        apply_recovered_methods(revised, scope)
+    revised["scientific_specification"]["split_and_update_policy"] = "Fixed minima of 1095/365/365, not percentage allocations."
+    audit = apply_recovered_methods(revised, scope)
+    assert audit["execution_authority"] is False
+    assert audit["requires_fresh_independent_review"] is True
+    assert parent.document == before
+    verifier.assert_called()
+
+
+@pytest.mark.parametrize("fault", ["candidate", "campaign", "route", "digest", "unverified", "approved", "observed", "card", "bundle"])
+def test_method_correction_rejects_wrong_or_unverified_evidence(monkeypatch, fault):
+    db, mandate, parent, proposed, event, route, digest, verifier = method_fixture(monkeypatch)
+    if fault == "candidate": event.payload["subject"]["candidate_id"] = str(uuid4())
+    elif fault == "campaign": event.campaign_id = uuid4()
+    elif fault == "route": route.subject_id = "requirements:another-candidate"
+    elif fault == "digest": digest = "f" * 64
+    elif fault == "unverified": verifier.return_value = None
+    elif fault == "approved": verifier.return_value[0].verdict = "approve"
+    elif fault == "card": event.payload["qualification"]["card"]["source_candidate_document_digest"] = "f" * 64
+    elif fault == "bundle": event.payload["qualification"]["artifact_bundle"]["changed"] = True
+    else: db.scalar.return_value = uuid4()
+    with pytest.raises(ValueError):
+        recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=3,
+                       rejection_event_id=event.id, expected_rejection_digest=digest)
+
+
+@pytest.mark.parametrize("fault", ["bars", "events", "clock", "horizon", "variants", "question"])
+def test_method_correction_cannot_weaken_constraints(monkeypatch, fault):
+    db, mandate, parent, proposed, event, route, digest, verifier = method_fixture(monkeypatch)
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=3,
+                           rejection_event_id=event.id, expected_rejection_digest=digest)
+    revised = deepcopy(parent.document)
+    revised["candidate_key"] = "new"
+    if fault == "bars": revised["scientific_requirements"]["minimum_test_bars"] = 364
+    elif fault == "events": revised["scientific_requirements"]["minimum_event_support"] = {}
+    elif fault == "clock": revised["scientific_requirements"]["research_bar_minutes"] = 60
+    elif fault == "horizon": revised["scientific_requirements"]["target_horizon_bars"] = 1
+    elif fault == "variants": revised["parameter_budget"]["maximum_variants"] = 8
+    else: revised["question"] = "A different question"
+    with pytest.raises(ValueError):
+        apply_recovered_methods(revised, scope)
+
+
 def test_source_recovery_reuses_methods_without_rewriting_parent_or_claiming_review():
     db, mandate, parent, proposed = fixture()
     parent.document.update({

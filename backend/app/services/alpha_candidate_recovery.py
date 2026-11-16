@@ -35,8 +35,9 @@ def panel_fields(fields, instruments):
     return result
 
 
-def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version=2):
-    if schema_version not in {1, 2}:
+def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version=2,
+                   rejection_event_id=None, expected_rejection_digest=None):
+    if schema_version not in {1, 2, 3}:
         raise ValueError("unsupported retained recovery scope version")
     candidate = db.get(AlphaDiscoveryCandidate, UUID(str(candidate_id)))
     if candidate is None or candidate.candidate_digest != expected_digest:
@@ -44,7 +45,7 @@ def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version
     cycle = db.get(AlphaDiscoveryCycle, candidate.cycle_id)
     original = db.get(AlphaResearchMandate, cycle.mandate_id) if cycle else None
     source = mandate.specification["bulletproof_source_commit"]
-    if original is None or original.specification["bulletproof_source_commit"] == source:
+    if original is None or (schema_version != 3 and original.specification["bulletproof_source_commit"] == source):
         raise ValueError("source recovery requires a distinct approved native revision")
     if candidate.disposition not in {"accepted", "deferred"}:
         raise ValueError("source recovery requires a previously admissible candidate")
@@ -75,13 +76,96 @@ def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version
         scope["schema_version"] = 2
         scope["method_identity"] = {key: deepcopy(document[key]) for key in METHOD_FIELDS
                                     if document.get(key) is not None}
+    if schema_version == 3:
+        scope.update(method_revision_scope(db, candidate, cycle, rejection_event_id,
+                                          expected_rejection_digest, scope["parent_source_commit"]))
     return scope
+
+
+def method_revision_scope(db, candidate, cycle, event_id, expected_digest, parent_source):
+    from app.models.alpha_campaign import AlphaCampaignEvent
+    from app.models.evaluator_routing import EvaluationRoute
+    from app.services.evaluator_routing import validated_alpha_strategy_reviews
+
+    if not event_id or not expected_digest:
+        raise ValueError("method correction requires exact rejection evidence")
+    event = db.get(AlphaCampaignEvent, int(event_id))
+    if (event is None or event.campaign_id != cycle.campaign_id
+            or event.event_type != "scientific_requirements_published"):
+        raise ValueError("method correction publication does not belong to this candidate's campaign")
+    subject = event.payload["subject"]
+    qualification = event.payload.get("qualification", {})
+    card = qualification.get("card", {})
+    if (subject.get("candidate_id") != str(candidate.id)
+            or subject.get("review_scope") != "scientific_requirements"
+            or subject.get("source_commit") != parent_source
+            or card.get("source_candidate_document_digest") != digest_document(candidate.document)
+            or subject.get("card_digest") != digest_document(card)
+            or subject.get("artifact_bundle_digest") != digest_document(qualification.get("artifact_bundle", {}))
+            or digest_document(subject) != expected_digest):
+        raise ValueError("method correction rejected subject changed")
+    route = db.get(EvaluationRoute, UUID(str(event.payload["route_id"])))
+    if (route is None or route.subject_digest != expected_digest
+            or route.subject_id != f"requirements:{candidate.id}"):
+        raise ValueError("method correction review route differs from publication")
+    reviews = validated_alpha_strategy_reviews(
+        db, route, subject_digest=expected_digest,
+        producer_agent_id=route.producer.get("agent_id"),
+    )
+    if not reviews or not any(review.verdict == "reject" for review in reviews):
+        raise ValueError("method correction requires a validated independent rejection")
+    return {
+        "schema_version": 3, "recovery_kind": "scientific_method_correction",
+        "rejection_event_id": event.id, "rejection_subject_digest": expected_digest,
+        "rejection_route_id": str(route.id),
+        "review_digest": digest_document([review.model_dump(mode="json") for review in reviews]),
+        "review_blockers": sorted({item for review in reviews for item in review.blockers}),
+        "rejected_method_identity": {key: deepcopy(candidate.document[key]) for key in METHOD_FIELDS
+                                     if candidate.document.get(key) is not None},
+    }
+
+
+def validate_method_revision(candidate, scope):
+    from app.schemas.alpha_discovery import AlphaScientificRequirements, AlphaScientificSpecification
+
+    old = scope["rejected_method_identity"]
+    requirements = AlphaScientificRequirements.model_validate(candidate.get("scientific_requirements"))
+    previous = AlphaScientificRequirements.model_validate(old.get("scientific_requirements"))
+    AlphaScientificSpecification.model_validate(candidate.get("scientific_specification"))
+    for key in ("research_bar_minutes", "target_horizon_bars"):
+        if getattr(requirements, key) != getattr(previous, key):
+            raise ValueError("method correction cannot change the research clock or target horizon")
+    for key in ("feature_warmup_bars", "minimum_training_bars", "minimum_validation_bars",
+                "minimum_test_bars", "purge_bars", "embargo_bars", "minimum_scientific_window_days"):
+        if getattr(requirements, key) < getattr(previous, key):
+            raise ValueError("method correction cannot reduce scientific support: " + key)
+    if any(requirements.minimum_event_support.get(key, 0) < count
+           for key, count in previous.minimum_event_support.items()):
+        raise ValueError("method correction cannot remove or reduce event support")
+    if candidate["parameter_budget"]["maximum_variants"] > old["parameter_budget"]["maximum_variants"]:
+        raise ValueError("method correction cannot expand the variant budget")
+    methods = {key: deepcopy(candidate.get(key)) for key in METHOD_FIELDS}
+    prior = deepcopy(old)
+    for value in (methods, prior):
+        if isinstance(value.get("representation_plan"), dict):
+            value["representation_plan"].pop("candidate_key", None)
+    if methods == prior:
+        raise ValueError("method correction must change rejected methods, not merely retry them")
+    return {"mode": "scientific_method_correction", "parent_candidate_id": scope["candidate_id"],
+            "parent_candidate_digest": scope["candidate_digest"],
+            "rejection_subject_digest": scope["rejection_subject_digest"],
+            "method_identity_digest": digest_document(methods),
+            "requires_fresh_independent_review": True, "execution_authority": False}
 
 
 def apply_recovered_methods(candidate, scope):
     """A source migration reuses methods; it is not a scientific redesign."""
     if not scope or scope.get("schema_version", 1) == 1:
         return {}
+    if normalized(candidate.get("question")) != normalized(scope["scientific_identity"]["question"]):
+        raise ValueError("retained methods cannot be applied to another question")
+    if scope.get("schema_version") == 3:
+        return validate_method_revision(candidate, scope)
     if scope.get("schema_version") != 2:
         raise ValueError("unsupported retained recovery scope version")
     methods = scope.get("method_identity", {})
@@ -106,7 +190,9 @@ def matching_recovery(db, mandate, cycle, candidate):
     if not scope:
         return None
     current = recovery_scope(db, mandate, scope["candidate_id"], scope["candidate_digest"],
-                             schema_version=scope.get("schema_version", 1))
+                             schema_version=scope.get("schema_version", 1),
+                             rejection_event_id=scope.get("rejection_event_id"),
+                             expected_rejection_digest=scope.get("rejection_subject_digest"))
     if current != scope:
         raise ValueError("retained recovery scope changed")
     identity = scope["scientific_identity"]

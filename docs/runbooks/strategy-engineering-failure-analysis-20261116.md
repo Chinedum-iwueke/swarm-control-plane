@@ -112,6 +112,23 @@ method is not made valid by reuse; scientific redesign needs its own explicit
 successor, not an incidental source migration. Version-1 historical scopes remain
 byte-compatible and are not rewritten.
 
+### Explicit scientific-method correction
+
+Version-3 recovery is distinct from source migration. Intake binds a retained
+candidate and digest, an integer scientific-requirements publication event ID,
+and its exact rejected subject digest. The service verifies the publication's
+candidate/source/card/bundle linkage and the existing independent review receipts.
+Only an untested question with a verified rejection can use this path. Prior
+scientific observations and in-flight execution still prohibit this recovery.
+
+The successor preserves question, basket, clock, target and falsification
+identity. It may correct the rejected method, including at the same native
+source, but cannot lower prior scientific partition/support minima, warmup,
+purge/embargo or duration, remove event-support gates, or expand variant count.
+Replaying an unchanged method is rejected. Old documents/reviews/counters remain
+intact. A fresh mandate, admission, native feasibility and independent review are
+still required; this mechanism does not certify or execute a candidate.
+
 1. **Platform-owned test protocol.** Move fixture binding, review-packet assembly,
    terminal assertions and runner orchestration out of authored test boilerplate.
    Authors supply typed scenario factories and expected outcomes, while immutable

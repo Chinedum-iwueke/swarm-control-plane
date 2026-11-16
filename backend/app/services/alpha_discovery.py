@@ -1562,7 +1562,10 @@ def queue_founder_idea(
         from app.services.alpha_candidate_recovery import recovery_scope
         try:
             constraints["retained_candidate_recovery"] = recovery_scope(
-                db, mandate, payload.recovery_candidate_id, payload.expected_recovery_candidate_digest
+                db, mandate, payload.recovery_candidate_id, payload.expected_recovery_candidate_digest,
+                schema_version=3 if payload.requirements_rejection_event_id is not None else 2,
+                rejection_event_id=payload.requirements_rejection_event_id,
+                expected_rejection_digest=payload.expected_requirements_rejection_digest,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc

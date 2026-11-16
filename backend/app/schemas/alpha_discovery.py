@@ -259,6 +259,8 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
     conversation_id: uuid.UUID | None = None
     recovery_candidate_id: uuid.UUID | None = None
     expected_recovery_candidate_digest: str | None = Field(default=None, pattern=_DIGEST)
+    requirements_rejection_event_id: int | None = Field(default=None, strict=True, ge=1)
+    expected_requirements_rejection_digest: str | None = Field(default=None, pattern=_DIGEST)
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
     minimum_instruments: int = Field(default=1, ge=1, le=128)
@@ -274,6 +276,10 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
     def ordered_instrument_bounds(self):
         if (self.recovery_candidate_id is None) != (self.expected_recovery_candidate_digest is None):
             raise ValueError("retained recovery requires both candidate identity and digest")
+        if (self.requirements_rejection_event_id is None) != (self.expected_requirements_rejection_digest is None):
+            raise ValueError("method correction requires both rejection event and subject digest")
+        if self.requirements_rejection_event_id is not None and self.recovery_candidate_id is None:
+            raise ValueError("method correction requires an explicit retained candidate")
         if self.minimum_instruments > self.maximum_instruments:
             raise ValueError("minimum instruments cannot exceed maximum instruments")
         return self
