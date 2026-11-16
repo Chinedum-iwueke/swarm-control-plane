@@ -190,7 +190,7 @@ def test_current_rejection_rechecks_receipts_before_queue_advance(monkeypatch, c
     campaign = SimpleNamespace(id=uuid4(), status="needs_attention",
         next_action="scientific_requirements_rejected", terminal_reason={"untrusted": True},
         hypothesis_count=0, specification={"bulletproof_source_commit": "a" * 40,
-            "research_queue": [{"source_candidate_id": candidate_id}]})
+            "research_queue": [{"source_candidate_id": str(uuid4()), "discovery_candidate_id": candidate_id}]})
     subject = {"candidate_id": candidate_id, "source_commit": "a" * 40,
                "review_scope": "scientific_requirements"}
     if condition == "other_candidate":

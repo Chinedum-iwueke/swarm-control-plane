@@ -125,7 +125,7 @@ def hydrate_retained_rejection(db, campaign, *, verify_current=False):
         if not 0 <= campaign.hypothesis_count < len(queue):
             return False
         current = queue[campaign.hypothesis_count]
-        if (subject.get("candidate_id") != str(current["source_candidate_id"])
+        if (subject.get("candidate_id") != str(current.get("discovery_candidate_id", current["source_candidate_id"]))
                 or subject.get("source_commit") != campaign.specification["bulletproof_source_commit"]
                 or subject.get("review_scope") != "scientific_requirements"):
             return False
