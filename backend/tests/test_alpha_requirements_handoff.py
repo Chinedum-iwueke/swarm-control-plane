@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -10,6 +11,64 @@ from app.services.alpha_requirements_handoff import (
     ensure_reviewed_requirements,
 )
 from app.services.graph import digest_document as digest
+
+
+@pytest.mark.parametrize("successor", [False, True])
+def test_engineering_preflight_measures_final_lossless_wire_shape(successor):
+    from app.services.alpha_requirements_handoff import (
+        encode_engineering_evidence, prospective_engineering_evidence,
+    )
+    evidence = {
+        "discovery_candidate": {"scientific_specification": "Exact unchanged method"},
+        "coverage_successor_context": {"retained_planning_inputs": "x" * 8000},
+        "representation_plan": {"outputs": list(range(2000))},
+        "dataset_binding": {"legacy": True}, "instrument": "BTCUSDT", "tier": "Tier2B",
+    }
+    package = {"requirements": {"minimum_event_support": {"events": 40}}}
+    before = deepcopy((evidence, package))
+    projected = prospective_engineering_evidence(evidence, package, {"start": "fixed"}, successor=successor)
+    encoded = encode_engineering_evidence(projected)
+    assert json.loads(encoded) == projected
+    assert len(encoded.encode()) < len(json.dumps(projected).encode())
+    assert (evidence, package) == before
+    assert projected["discovery_candidate"] == evidence["discovery_candidate"]
+    assert projected["representation_plan"] == evidence["representation_plan"]
+    assert ("coverage_successor_context" in projected) is (not successor)
+    assert not {"instrument", "tier", "dataset_binding"} & projected.keys()
+    receipt = projected["validation_requirements"]["review_receipt"]
+    assert len(receipt["route_id"]) == 36
+    assert len(receipt["subject_digest"]) == 64
+    assert ("coverage_successor_receipt" in projected["validation_requirements"]) is successor
+
+
+def test_engineering_encoding_preserves_unicode_and_rejects_nonfinite_evidence():
+    from app.services.alpha_requirements_handoff import encode_engineering_evidence
+    evidence = {"equation": "\\u03b1", "large": "x" * 48000}
+    encoded = encode_engineering_evidence(evidence)
+    assert json.loads(encoded) == evidence
+    assert len(encoded.encode()) > 48000
+    with pytest.raises(ValueError):
+        encode_engineering_evidence({"threshold": float("nan")})
+
+
+@pytest.mark.parametrize("action", [
+    "requirements_engineering_context_exceeds_bound",
+    "requirements_review_context_exceeds_bound",
+])
+def test_transport_blocker_does_not_consume_a_scientific_attempt(monkeypatch, action):
+    from app.services import alpha_campaign as service
+    campaign = SimpleNamespace(status="running", hypothesis_count=0, trial_count=0)
+    def blocked(*args):
+        campaign.status = "needs_attention"
+        campaign.next_action = action
+        raise RequirementsPending()
+    monkeypatch.setattr(service, "_advance_governed_pipeline_ready", blocked)
+    retain = MagicMock()
+    monkeypatch.setattr(service, "_retain_pre_authoring_deferral", retain)
+    assert service._advance_governed_pipeline(MagicMock(), campaign) is None
+    retain.assert_not_called()
+    assert campaign.hypothesis_count == campaign.trial_count == 0
+    assert action in service.PRE_AUTHORING_PLATFORM_BLOCKERS
 
 
 def inputs():

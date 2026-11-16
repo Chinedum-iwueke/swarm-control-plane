@@ -1,5 +1,26 @@
 # Strategy engineering: retained SPX/BTC failure
 
+## Requirements Transport Bound
+
+R9's representation correction and selected-panel admission succeeded. Its native
+planner found a coverage-only successor with sufficient historical bars, but the
+requirements handoff rejected the engineering context before review. The guard
+counted temporary coverage-planning context that approved successors remove and
+used a padded JSON serialization rather than the final worker payload.
+
+Preflight and task materialization now use the same compact, lossless JSON
+encoding. Preflight includes fixed-width placeholders for both routed-review and
+coverage-successor receipts and measures UTF-8 bytes against the unchanged
+48,000-byte/20-key worker bounds. Placeholders are never published as approval;
+actual independently validated receipts remain required. Scientific requirements,
+candidate provenance and representation content are not truncated.
+
+Transport-size blockers now hold a campaign for platform repair instead of
+retaining a scientific deferral and advancing its hypothesis cursor. R9's prior
+deferral remains immutable; this repair does not reopen that completed campaign
+or replenish its mandate counters. Regression coverage includes lossless encoding,
+receipt sizing, nonfinite-value rejection and zero-attempt transport blocking.
+
 ## Observed evidence
 
 Task `A3-6b49fb31-001-G3` (53a46fd1-0c24-4e2d-8cb9-a9ee98d63b52)

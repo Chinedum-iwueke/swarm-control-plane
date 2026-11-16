@@ -31,6 +31,34 @@ class RequirementsPending(Exception):
     """A durable gate was updated; commit it without creating engineering work."""
 
 
+def encode_engineering_evidence(evidence):
+    """Use the same lossless wire encoding for preflight and materialization."""
+    return json.dumps(evidence, sort_keys=True, allow_nan=False, separators=(",", ":"))
+
+
+def prospective_engineering_evidence(evidence, package, window, *, successor):
+    prospective = {
+        key: value for key, value in evidence.items()
+        if key not in {"dataset_binding", "instrument", "tier"}
+    } | {"validation_requirements": deepcopy(package), "window": window}
+    # Receipt identifiers have fixed lengths. Account for the exact final shape
+    # without implying approval or copying temporary planning inputs downstream.
+    requirements = prospective["validation_requirements"]
+    requirements["review_receipt"] = {
+        "route_id": "0" * 36, "publication_digest": "0" * 64,
+        "subject_digest": "0" * 64,
+    }
+    if successor:
+        prospective.pop("coverage_successor_context", None)
+        requirements["coverage_successor_receipt"] = {
+            "publication_digest": "0" * 64, "route_id": "0" * 36,
+            "successor_digest": "0" * 64, "parent_task_id": "0" * 36,
+        }
+    if len(prospective) > 20:
+        prospective.pop("maximum_variants", None)
+    return prospective
+
+
 def rejection_detail(route, subject_digest, reviews):
     return {
         "route_id": str(route.id), "subject_digest": subject_digest,
@@ -368,15 +396,10 @@ def ensure_reviewed_requirements(db, campaign, evidence):
         "task_id": str(feasibility_task.id), "report_digest": feasibility["report_digest"],
         "feature_history": feasibility["feature_history"],
     }}
-    prospective = {
-        key: value
-        for key, value in evidence.items()
-        if key not in {"dataset_binding", "instrument", "tier"}
-    } | {"validation_requirements": package, "window": review_window}
-    if len(prospective) > 20:
-        prospective.pop("maximum_variants", None)
-    if len(prospective) > 20 or len(json.dumps(prospective, allow_nan=False)) > 46_000:
-        # Reserve room for the actual routed receipt within the worker's 48k cap.
+    prospective = prospective_engineering_evidence(
+        evidence, package, review_window, successor=successor is not None,
+    )
+    if len(prospective) > 20 or len(encode_engineering_evidence(prospective).encode()) > 48_000:
         defer("requirements_engineering_context_exceeds_bound")
     if identity is None:
         defer("restore_requirements_producer_identity")

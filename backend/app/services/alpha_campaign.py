@@ -992,7 +992,10 @@ def _create_strategy_engineering_task(
                 correction_feedback.get("review_summary", "")
             )[:1000]
             evidence["independent_review_correction"] = compact_feedback
-    from app.services.alpha_requirements_handoff import ensure_reviewed_requirements
+    from app.services.alpha_requirements_handoff import (
+        encode_engineering_evidence,
+        ensure_reviewed_requirements,
+    )
 
     evidence["validation_requirements"] = ensure_reviewed_requirements(
         db, campaign, evidence
@@ -1027,7 +1030,7 @@ def _create_strategy_engineering_task(
         )
         + question,
         "allowed_paths": list(STRATEGY_ENGINEERING_ALLOWED_PATHS),
-        "evidence_context": json.dumps(evidence, sort_keys=True, allow_nan=False),
+        "evidence_context": encode_engineering_evidence(evidence),
         "context_paths": STRATEGY_ENGINEERING_CONTEXT_PATHS,
         "acceptance_criteria": [
             "The exact Research Intelligence question is represented without proxy substitution.",
@@ -2097,8 +2100,12 @@ PRE_AUTHORING_DEFERRALS = {
     "produce_admitted_predictor_coverage": "Obtain candidate-specific native predictor coverage and independent requirements review.",
     "propose_scientific_requirements": "Produce explicit requirements in a reviewed immutable successor.",
     "repair_scientific_requirements_evidence": "Repair producer custody or coverage in a reviewed immutable successor.",
-    "requirements_engineering_context_exceeds_bound": "Repair lossless context compaction before authoring.",
-    "requirements_review_context_exceeds_bound": "Repair bounded review context before requesting another review.",
+}
+
+
+PRE_AUTHORING_PLATFORM_BLOCKERS = {
+    "requirements_engineering_context_exceeds_bound",
+    "requirements_review_context_exceeds_bound",
 }
 
 
@@ -3307,7 +3314,7 @@ def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
     if (
         campaign.status == "needs_attention"
         and campaign.phase == "scientific_requirements_review"
-        and campaign.next_action in {*PRE_AUTHORING_DEFERRALS, "renew_weekly_research_mandate", "restore_requirements_producer_identity"}
+        and campaign.next_action in {*PRE_AUTHORING_DEFERRALS, *PRE_AUTHORING_PLATFORM_BLOCKERS, "renew_weekly_research_mandate", "restore_requirements_producer_identity"}
     ):
         # Re-enter the normal mandate check and requirements gate. Do not
         # manufacture an outcome directly from a stale operator-status label.
