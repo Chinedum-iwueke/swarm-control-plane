@@ -9,15 +9,21 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from swarm_worker.model_lane import model_call_allowed, route_command
 from swarm_worker.models import (
     FounderConversationReasoningDocument,
     FounderProposalDocument,
     Task,
 )
+from swarm_worker.provider_capacity import CAPACITY_MARKERS
 
 
 class PlannerError(Exception):
     """A safe planner failure."""
+
+
+class PlannerCapacityError(PlannerError):
+    """Model work is deferred, not a failed scientific or conversation task."""
 
 
 class CodexProposalPlanner:
@@ -150,6 +156,8 @@ class CodexProposalPlanner:
                 )
 
     async def _invoke(self, schema: dict, prompt: str, prefix: str) -> dict:
+        if not await model_call_allowed():
+            raise PlannerCapacityError("Model provider capacity gate is closed or unavailable.")
         self._working_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(
             prefix=f"{prefix}-", dir=self._working_directory
@@ -179,12 +187,14 @@ class CodexProposalPlanner:
                 str(root),
                 "-",
             ]
+            environment = self._environment()
+            command = route_command(command, environment)
             process = await asyncio.create_subprocess_exec(
                 *command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=self._environment(),
+                env=environment,
                 start_new_session=True,
             )
             try:
@@ -200,6 +210,8 @@ class CodexProposalPlanner:
                 raise
             if process.returncode != 0:
                 detail = stderr.decode(errors="replace")[-500:]
+                if any(marker in detail.lower() for marker in CAPACITY_MARKERS):
+                    raise PlannerCapacityError(detail)
                 raise PlannerError(f"Founder proposal generation failed: {detail}")
             try:
                 payload = json.loads(output_path.read_text(encoding="utf-8"))

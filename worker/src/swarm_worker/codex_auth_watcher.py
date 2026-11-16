@@ -46,6 +46,11 @@ class RecoveryClient:
     def close(self) -> None:
         self._client.close()
 
+    def capacity_blocked(self) -> bool:
+        response = self._client.get("/v1/provider-capacity/circuits")
+        response.raise_for_status()
+        return any(item["provider"] == "codex" and item["state"] != "closed" for item in response.json())
+
     def current(self, runtime_key: str) -> dict[str, Any] | None:
         response = self._client.get(
             "/v1/codex-auth/recoveries", params={"runtime_key": runtime_key}
@@ -165,6 +170,12 @@ class CodexAuthWatcher:
 
     def run(self, *, once: bool = False) -> int:
         while not self.stopping:
+            if self.client.capacity_blocked():
+                if once:
+                    return 3
+                # Capacity recovery belongs to the single claimed worker probe.
+                time.sleep(self.probe_interval_seconds)
+                continue
             current = self.client.current(self.runtime_key)
             if current and current["state"] == "expired":
                 if not _retry_pending(current):

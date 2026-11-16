@@ -129,6 +129,13 @@ class AsyncProcessRunner:
         )
         if environment_overrides:
             environment.update(environment_overrides)
+        from swarm_worker.model_lane import model_call_allowed, route_command
+        if Path(command[0]).name == "codex" and not await model_call_allowed():
+            # Return through the ordinary capacity-deferral path, preserving work.
+            command = (str(virtualenv_bin / "python"), "-c",
+                       "import sys; sys.stderr.write('usage limit: model provider gate is closed or unavailable'); sys.exit(75)")
+        else:
+            command = route_command(command, environment)
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,

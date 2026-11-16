@@ -13,7 +13,7 @@ from app.schemas.provider_capacity import (
     ProviderProbeReport,
     ProviderProbeResponse,
 )
-from app.services.provider_capacity import report_probe
+from app.services.provider_capacity import claim_due_probes_or_block, report_probe
 
 router = APIRouter(prefix="/v1/provider-capacity", tags=["provider-capacity"])
 
@@ -35,6 +35,30 @@ def list_circuits(
 agent_router = APIRouter(
     prefix="/v1/agent/provider-capacity", tags=["agent-provider-capacity"]
 )
+
+
+@agent_router.post("/check")
+def check_capacity(
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    providers, reasons = claim_due_probes_or_block(db, agent)
+    db.commit()
+    return {"providers": providers, "reasons": reasons}
+
+
+@agent_router.get("/{provider}/permit")
+def permit_model_call(
+    provider: str,
+    agent: Annotated[Agent, Depends(get_current_agent)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    circuit = db.scalar(
+        select(ProviderCapacityCircuit).where(
+            ProviderCapacityCircuit.provider == provider
+        )
+    )
+    return {"allowed": circuit is None or circuit.state == "closed"}
 
 
 @agent_router.post(

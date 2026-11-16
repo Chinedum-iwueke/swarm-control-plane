@@ -27,7 +27,7 @@ def test_discovery_usage_limit_is_structured_for_global_circuit(tmp_path):
     ) == {
         "provider": "codex",
         "failure_summary": "You've hit your usage limit. Retry in 45 minutes.",
-        "retry_after_seconds": 2700,
+        "retry_after_seconds": 21_600,
     }
 
 

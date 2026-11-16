@@ -23,6 +23,7 @@ from swarm_worker.config import WorkerSettings
 from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.code_validation import LeaseLost
 from swarm_worker.executors.restricted import RestrictedExecutor
+from swarm_worker.model_lane import provider_key, worker_providers
 from swarm_worker.models import (
     AgentHeartbeat,
     AgentHeartbeatResponse,
@@ -49,6 +50,7 @@ from swarm_worker.policy import (
     WorkerPolicyError,
     validate_task_policy,
 )
+from swarm_worker.provider_capacity import probe_capacity
 from swarm_worker.role_package import VerifiedRolePackage, load_role_package
 from swarm_worker.workflows import (
     WorkflowDefinition,
@@ -189,6 +191,8 @@ class AgentAPI(Protocol):
         self, provider: str, request: ProviderProbeReport
     ) -> ProviderProbeResponse: ...
 
+    async def check_provider_capacity(self) -> dict: ...
+
     async def release_task(
         self,
         task_id: UUID | str,
@@ -325,6 +329,7 @@ class WorkerService:
                         "agent_slug": settings.swarm_agent_slug,
                         "machine": settings.swarm_machine,
                         "worker_version": __version__,
+                        "model_providers": worker_providers(role_package.manifest.task_types),
                         "role_package": role_package.manifest.name,
                         "role_package_version": role_package.manifest.version,
                         "role_package_digest": role_package.manifest_digest,
@@ -338,6 +343,23 @@ class WorkerService:
                 raise WorkerServiceError(
                     "Control plane did not confirm idle online presence."
                 )
+
+            capacity = await api.check_provider_capacity()
+            if capacity["reasons"]:
+                return PausedOutcome(reasons=capacity["reasons"])
+            for provider in capacity["providers"]:
+                if provider != provider_key():
+                    return PausedOutcome(reasons=[f"No availability probe configured for {provider}"])
+                try:
+                    healthy, detail = await probe_capacity(settings.swarm_codex_home, settings.swarm_codex_model)
+                except (OSError, ValueError) as exc:
+                    healthy, detail = False, f"Provider probe configuration failure: {type(exc).__name__}"
+                await api.report_provider_probe(provider, ProviderProbeReport(
+                    outcome="healthy" if healthy else "exhausted",
+                    failure_summary=detail, retry_after_seconds=21_600,
+                ))
+                if not healthy:
+                    return PausedOutcome(reasons=[detail or "Provider capacity unavailable"])
 
             lease = await api.lease_task(
                 TaskLeaseRequest(lease_seconds=settings.swarm_lease_seconds)
@@ -775,7 +797,7 @@ class WorkerService:
             "copilot-author": "copilot",
         }
         return {
-            provider
+            provider_key() if provider == "codex" else provider
             for step in execution.steps
             if step.return_code == 0 and not step.timed_out
             if (provider := step_providers.get(step.name)) is not None

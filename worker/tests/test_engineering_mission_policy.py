@@ -457,7 +457,7 @@ def test_codex_usage_limit_becomes_provider_capacity_deferral(tmp_path: Path) ->
 
     assert capacity is not None
     assert capacity["provider"] == "codex"
-    assert capacity["retry_after_seconds"] == 7200
+    assert capacity["retry_after_seconds"] == 21_600
 
 
 def test_copilot_model_output_cannot_authorize_fallback(tmp_path: Path) -> None:

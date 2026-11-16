@@ -263,6 +263,9 @@ class FakeAPI:
     async def aclose(self) -> None:
         self.closed = True
 
+    async def check_provider_capacity(self) -> dict:
+        return getattr(self, "capacity_check", {"providers": [], "reasons": []})
+
     async def get_identity(self) -> AgentIdentity:
         self.events.append("identity")
         if self.identity_error:
@@ -656,6 +659,37 @@ async def test_unexercised_half_open_probe_is_not_closed(tmp_path: Path) -> None
 
     assert isinstance(outcome, SucceededOutcome)
     assert not api.requests["provider_probe"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("healthy", [True, False])
+async def test_cheap_capacity_probe_precedes_any_task_lease(tmp_path, monkeypatch, healthy):
+    from unittest.mock import AsyncMock
+    events = []
+    api = FakeAPI(events)
+    api.capacity_check = {"providers": ["codex"], "reasons": []}
+    probe = AsyncMock(return_value=(healthy, None if healthy else "quota unavailable"))
+    monkeypatch.setattr("swarm_worker.service.probe_capacity", probe)
+    outcome = await make_service(tmp_path, api, events).run_once()
+    probe.assert_awaited_once()
+    assert api.requests["provider_probe"][0][1].outcome == ("healthy" if healthy else "exhausted")
+    if not healthy:
+        assert outcome.status == "paused"
+        assert "lease" not in events
+        assert not api.requests["fail"]
+
+
+@pytest.mark.asyncio
+async def test_open_provider_circuit_does_not_invoke_model(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    events = []
+    api = FakeAPI(events)
+    api.capacity_check = {"providers": [], "reasons": ["codex quota unavailable"]}
+    probe = AsyncMock()
+    monkeypatch.setattr("swarm_worker.service.probe_capacity", probe)
+    assert (await make_service(tmp_path, api, events).run_once()).status == "paused"
+    probe.assert_not_awaited()
+    assert "lease" not in events
 
 
 @pytest.mark.parametrize("return_code,timed_out", [(1, False), (None, False), (0, True)])

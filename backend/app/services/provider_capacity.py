@@ -14,9 +14,29 @@ from app.models.provider_capacity import (
 from app.services.founder_notifications import _insert_once
 
 PROBE_LEASE_SECONDS = 300
+PROBE_INTERVAL_SECONDS = 21_600
+MODEL_CAPABILITIES = {
+    "alpha-strategy-engineering",
+    "research-intelligence",
+    "research-proposal",
+    "data-representation",
+    "alpha-strategy-review-strategy_spec",
+    "alpha-strategy-review-causality_leakage",
+    "coding",
+    "founder-intake-planning",
+}
 
 
 def _matches(circuit: ProviderCapacityCircuit, agent: Agent) -> bool:
+    metadata = getattr(agent, "heartbeat_metadata", None) or {}
+    providers = metadata.get("model_providers")
+    if isinstance(providers, list):
+        return circuit.provider in providers
+    # Compatibility for workers not yet restarted with explicit billing lanes.
+    if circuit.provider == "codex" and MODEL_CAPABILITIES.intersection(
+        agent.capabilities or []
+    ):
+        return True
     required = set(circuit.blocked_capabilities or [])
     return bool(required) and required.issubset(set(agent.capabilities or []))
 
@@ -39,6 +59,17 @@ def claim_due_probes_or_block(
 
     blocked: list[str] = []
     for circuit in relevant:
+        if (
+            circuit.state == "half_open"
+            and circuit.probe_expires_at is not None
+            and circuit.probe_expires_at <= now
+        ):
+            circuit.state = "open"
+            circuit.probe_agent_id = None
+            circuit.next_probe_at = circuit.probe_expires_at + timedelta(
+                seconds=PROBE_INTERVAL_SECONDS
+            )
+            circuit.probe_expires_at = None
         probe_is_live = (
             circuit.state == "half_open"
             and circuit.probe_expires_at is not None
@@ -91,6 +122,7 @@ def open_circuit(
         .with_for_update()
     )
     new_incident = circuit is None or circuit.state == "closed"
+    was_probe = circuit is not None and circuit.state == "half_open"
     if circuit is None:
         circuit = ProviderCapacityCircuit(
             provider=provider,
@@ -108,10 +140,7 @@ def open_circuit(
             circuit.consecutive_failures += 1
         circuit.state = "open"
 
-    cooldown = min(
-        21_600,
-        retry_after_seconds * (2 ** max(0, circuit.consecutive_failures - 1)),
-    )
+    cooldown = PROBE_INTERVAL_SECONDS
     circuit.blocked_capabilities = sorted(
         set(task.required_capabilities or agent.capabilities or [])
     )
@@ -120,7 +149,13 @@ def open_circuit(
     circuit.probe_agent_id = None
     circuit.probe_expires_at = None
     circuit.opened_at = circuit.opened_at if not new_incident else now
-    circuit.next_probe_at = now + timedelta(seconds=cooldown)
+    # Concurrent in-flight failures must not postpone the original recovery probe.
+    due = now + timedelta(seconds=cooldown)
+    circuit.next_probe_at = (
+        due
+        if new_incident or was_probe or circuit.next_probe_at is None
+        else min(circuit.next_probe_at, due)
+    )
     circuit.recovered_at = None
     circuit.updated_at = now
     db.flush()
@@ -139,9 +174,7 @@ def open_circuit(
     )
     key = f"provider-capacity:{circuit.id}:{circuit.generation}"
     existing_notification = db.scalar(
-        select(FounderNotification).where(
-            FounderNotification.deduplication_key == key
-        )
+        select(FounderNotification).where(FounderNotification.deduplication_key == key)
     )
     _insert_once(
         db,
@@ -209,11 +242,7 @@ def report_probe(
         circuit.failure_summary = failure_summary or circuit.failure_summary
         circuit.probe_agent_id = None
         circuit.probe_expires_at = None
-        cooldown = min(
-            21_600,
-            retry_after_seconds * (2 ** max(0, circuit.consecutive_failures - 1)),
-        )
-        circuit.next_probe_at = now + timedelta(seconds=cooldown)
+        circuit.next_probe_at = now + timedelta(seconds=PROBE_INTERVAL_SECONDS)
         event_type = "probe_exhausted"
     circuit.updated_at = now
     db.add(

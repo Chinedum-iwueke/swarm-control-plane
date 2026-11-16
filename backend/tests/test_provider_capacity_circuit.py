@@ -62,6 +62,53 @@ def test_open_circuit_blocks_only_matching_provider_workers() -> None:
     assert deterministic_reasons == []
 
 
+def test_subscription_circuit_blocks_other_model_roles_but_not_api_lane():
+    from app.services.provider_capacity import _matches
+
+    circuit = _circuit()
+    assert _matches(circuit, _agent(capabilities=["research-intelligence"]))
+    assert _matches(circuit, _agent(heartbeat_metadata={"model_providers": ["codex"]}))
+    assert not _matches(
+        circuit, _agent(heartbeat_metadata={"model_providers": ["openai-api"]})
+    )
+    assert not _matches(circuit, _agent(heartbeat_metadata={"model_providers": []}))
+
+
+def test_failed_probe_waits_six_hours_even_with_short_retry_hint():
+    agent = _agent()
+    circuit = _circuit(state="half_open", probe_agent_id=agent.id)
+    db = MagicMock()
+    db.scalar.return_value = circuit
+    before = datetime.now(UTC)
+    report_probe(
+        db,
+        provider="codex",
+        agent=agent,
+        healthy=False,
+        failure_summary="try again Nov 19",
+        retry_after_seconds=60,
+    )
+    assert (
+        before + timedelta(hours=6)
+        <= circuit.next_probe_at
+        <= datetime.now(UTC) + timedelta(hours=6)
+    )
+
+
+def test_crashed_probe_does_not_start_retry_storm():
+    circuit = _circuit(
+        state="half_open",
+        next_probe_at=datetime.now(UTC) - timedelta(seconds=1),
+        probe_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [circuit]
+    probes, reasons = claim_due_probes_or_block(db, _agent())
+    assert not probes and reasons
+    assert circuit.state == "open"
+    assert circuit.next_probe_at > datetime.now(UTC) + timedelta(hours=5)
+
+
 def test_due_probe_is_claimed_by_one_matching_agent() -> None:
     circuit = _circuit(next_probe_at=datetime.now(UTC) - timedelta(seconds=1))
     agent = _agent()
@@ -155,9 +202,7 @@ def test_capacity_deferral_restores_attempt_and_requeues_task() -> None:
     with (
         patch("app.api.routes.task_runtime.lock_task", return_value=task),
         patch("app.api.routes.task_runtime.verify_task_lease"),
-        patch(
-            "app.api.routes.task_runtime._append_terminal_event", return_value=event
-        ),
+        patch("app.api.routes.task_runtime._append_terminal_event", return_value=event),
         patch("app.api.routes.task_runtime.clear_lease") as clear,
         patch(
             "app.api.routes.task_runtime.open_circuit",

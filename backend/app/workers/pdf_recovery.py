@@ -6,9 +6,12 @@ import os
 import time
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.api.routes.ingestion import _pipeline, _store
 from app.db.session import SessionLocal
 from app.ingestion.recovery_controller import CodexRecoveryAdviser
+from app.models.provider_capacity import ProviderCapacityCircuit
 from app.schemas.ingestion import IngestionRecoveryCreate
 from app.services.ingestion_recovery import (
     process_next_recovery,
@@ -76,7 +79,9 @@ def run(
             time.sleep(poll_seconds)
             continue
         with SessionLocal() as db:
-            recovery = process_next_recovery(db, _store(), _pipeline(), adviser)
+            circuit = db.scalar(select(ProviderCapacityCircuit).where(ProviderCapacityCircuit.provider == "codex"))
+            available_adviser = adviser if circuit is None or circuit.state == "closed" else None
+            recovery = process_next_recovery(db, _store(), _pipeline(), available_adviser)
         if recovery is None:
             if dirty and time.monotonic() - last_recovery_at >= settle_seconds:
                 with SessionLocal() as db:

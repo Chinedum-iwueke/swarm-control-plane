@@ -180,6 +180,11 @@ class SwarmAPIClient:
             payload=request,
         )
 
+    async def check_provider_capacity(self) -> dict:
+        response = await self._client.post("/v1/agent/provider-capacity/check")
+        response.raise_for_status()
+        return response.json()
+
     async def release_task(
         self,
         task_id: UUID | str,

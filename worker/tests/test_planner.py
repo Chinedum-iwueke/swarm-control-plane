@@ -15,6 +15,12 @@ from swarm_worker.planner.engine import CodexProposalPlanner, PlannerError
 from swarm_worker.planner.service import FounderIntakePlannerService
 
 
+@pytest.fixture(autouse=True)
+def offline_model_gate(monkeypatch):
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr("swarm_worker.planner.engine.model_call_allowed", AsyncMock(return_value=True))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("repair_valid", [True, False])
 async def test_reasoning_repairs_semantic_contract_once(
@@ -547,6 +553,9 @@ async def test_planner_lifecycle_submits_before_completion(tmp_path: Path) -> No
     )
 
     class API:
+        async def check_provider_capacity(self):
+            return {"providers": [], "reasons": []}
+
         async def get_identity(self):
             events.append("identity")
             return SimpleNamespace(
@@ -617,6 +626,9 @@ async def test_planner_lifecycle_submits_before_completion(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_planner_reports_paused_lease_instead_of_no_work(tmp_path: Path) -> None:
     class API:
+        async def check_provider_capacity(self):
+            return {"providers": [], "reasons": []}
+
         async def get_identity(self):
             return SimpleNamespace(
                 slug="vm1-founder-intake-planner",
@@ -676,6 +688,9 @@ async def test_planner_records_validation_failure_without_crashing_daemon(
     )
 
     class API:
+        async def check_provider_capacity(self):
+            return {"providers": [], "reasons": []}
+
         async def get_identity(self):
             return SimpleNamespace(
                 slug="vm1-founder-intake-planner",

@@ -4,13 +4,15 @@ import asyncio
 import fcntl
 import json
 import os
+import sys
 import time
-from copy import deepcopy
 from collections import Counter
+from copy import deepcopy
 from datetime import UTC, datetime
 
 from swarm_worker import __version__
 from swarm_worker.executors.code_validation import HeartbeatCallback, RootExecutionError
+from swarm_worker.model_lane import model_call_allowed, route_command
 from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResult
 from swarm_worker.policy import AlphaDiscoveryContract
 from swarm_worker.provider_capacity import detect_provider_capacity
@@ -155,6 +157,10 @@ class AlphaDiscoveryExecutor:
         started_at = datetime.now(UTC)
         started = time.monotonic()
         env = self._environment(workspace)
+        if not await model_call_allowed():
+            command = (sys.executable, "-c", "import sys; sys.stderr.write('usage limit: model provider gate is closed or unavailable'); sys.exit(75)")
+        else:
+            command = route_command(command, env)
         try:
             with (
                 prompt_path.open("rb") as stdin,

@@ -220,7 +220,7 @@ async def test_alpha_discovery_usage_limit_defers_through_provider_circuit(
     assert result.termination_reason == "provider_capacity"
     assert result.retryable is False
     assert result.summary["provider_capacity"]["provider"] == "codex"
-    assert result.summary["provider_capacity"]["retry_after_seconds"] == 1800
+    assert result.summary["provider_capacity"]["retry_after_seconds"] == 21_600
 
 
 def test_alpha_data_admission_fixed_workflow_is_allowlisted():

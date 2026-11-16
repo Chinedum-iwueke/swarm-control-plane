@@ -8,10 +8,13 @@ from pydantic import ValidationError
 
 from swarm_worker import __version__
 from swarm_worker.api_client import ConflictError, SwarmAPIClient
+from swarm_worker.model_lane import provider_key
 from swarm_worker.models import (
     AgentHeartbeat,
     FounderProposalCreate,
     FounderProposalDocument,
+    ProviderCapacityDeferral,
+    ProviderProbeReport,
     Task,
     TaskCompleteRequest,
     TaskExecutionHeartbeatRequest,
@@ -21,7 +24,12 @@ from swarm_worker.models import (
     TaskStartRequest,
 )
 from swarm_worker.planner.config import PlannerSettings
-from swarm_worker.planner.engine import CodexProposalPlanner, PlannerError
+from swarm_worker.planner.engine import (
+    CodexProposalPlanner,
+    PlannerCapacityError,
+    PlannerError,
+)
+from swarm_worker.provider_capacity import probe_capacity
 from swarm_worker.role_package import load_role_package
 
 PlannerOutcomeKind = Literal[
@@ -62,9 +70,25 @@ class FounderIntakePlannerService:
             runtime="hermes-founder-planner",
             runtime_version=__version__,
             capabilities=identity.capabilities,
-            metadata=self._package_attestation(),
+            metadata={**self._package_attestation(), "model_providers": [provider_key()]},
         )
         await self._api.send_agent_heartbeat(heartbeat)
+        capacity = await self._api.check_provider_capacity()
+        if capacity["reasons"]:
+            return PlannerOutcome("paused")
+        for provider in capacity["providers"]:
+            if provider != provider_key():
+                return PlannerOutcome("paused")
+            try:
+                healthy, detail = await probe_capacity(self._settings.swarm_codex_home, self._settings.swarm_codex_model)
+            except (OSError, ValueError) as exc:
+                healthy, detail = False, f"Provider probe configuration failure: {type(exc).__name__}"
+            await self._api.report_provider_probe(provider, ProviderProbeReport(
+                outcome="healthy" if healthy else "exhausted", failure_summary=detail,
+                retry_after_seconds=21_600,
+            ))
+            if not healthy:
+                return PlannerOutcome("paused")
         lease = await self._api.lease_task(
             TaskLeaseRequest(lease_seconds=self._settings.swarm_lease_seconds)
         )
@@ -113,6 +137,12 @@ class FounderIntakePlannerService:
             )
         except ConflictError:
             return PlannerOutcome("lease_lost", str(task.id))
+        except PlannerCapacityError as exc:
+            await self._api.defer_provider_capacity(task.id, ProviderCapacityDeferral(
+                lease_token=token, provider=provider_key(), failure_summary=str(exc)[:2000],
+                retry_after_seconds=21_600,
+            ))
+            return PlannerOutcome("paused", str(task.id))
         except (PlannerError, ValidationError) as exc:
             try:
                 await self._api.fail_task(
