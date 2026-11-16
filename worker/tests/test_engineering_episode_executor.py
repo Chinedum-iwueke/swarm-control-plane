@@ -1,0 +1,148 @@
+import json
+import os
+import subprocess
+import sys
+from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from swarm_worker.engineering_episode import EngineeringEpisodePolicy
+from swarm_worker.executors.code_validation import AsyncProcessRunner, CodeValidationExecutor
+from swarm_worker.executors.engineering_mission import EngineeringMissionExecutor
+from swarm_worker.models import StepExecutionResult
+from swarm_worker.policy import EngineeringMissionContract
+from swarm_worker.workflows import WorkflowDefinition
+from swarm_worker.workspace import TaskWorkspace, WorkspaceMetadata, WorkspacePlan
+
+
+def step(name, workspace):
+    for stream in ("stdout", "stderr"):
+        (workspace.logs / f"{name}.{stream}.log").write_text("")
+    now = datetime.now(timezone.utc)
+    return StepExecutionResult(name=name, success=True, return_code=0, started_at=now,
+        ended_at=now, duration_seconds=0, stdout_log=f"logs/{name}.stdout.log", stderr_log=f"logs/{name}.stderr.log")
+
+
+def fixture(tmp_path, expression, expected):
+    attempt = tmp_path / "task" / "attempt-1"
+    repo = attempt / "repository"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests/test_signal.py").write_text(f"from signal_logic import signal\ndef test_signal():\n    assert signal() == {expected!r}\n")
+    (repo / "signal_logic.py").write_text("def signal():\n    return None\n")
+    (repo / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n")
+    for command in (["git", "init", "-q"], ["git", "add", "."], ["git", "-c", "user.name=Test",
+                    "-c", "user.email=test@localhost", "commit", "-qm", "baseline"]):
+        subprocess.run(command, cwd=repo, check=True, capture_output=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    task_id = uuid4()
+    logs, artifacts = attempt / "logs", attempt / "artifacts"
+    logs.mkdir()
+    artifacts.mkdir()
+    plan = WorkspacePlan(task_id, "EPISODE", 1, "fixture", repo, attempt, repo,
+                         logs, artifacts, attempt / "metadata.json", commit, commit)
+    metadata = WorkspaceMetadata(task_id=task_id, task_number="EPISODE", attempt_number=1,
+        repository="fixture", source_repository=repo, workspace_repository=repo,
+        base_ref=commit, resolved_base_commit=commit, created_at=datetime.now(timezone.utc))
+    workspace = TaskWorkspace(plan, metadata)
+    contract = EngineeringMissionContract(repository="fixture", workflow="engineering-mission", base_ref=commit,
+        milestone_id="EPISODE-TEST", work_item_id="signal", objective="Implement the immutable signal specification.",
+        allowed_paths=["signal_logic.py"], acceptance_criteria=["Frozen regression passes"],
+        stop_conditions=["Scope cannot expand"], max_files_changed=1, max_diff_lines=40, max_duration_seconds=60,
+        engineering_episode=EngineeringEpisodePolicy(focused_tests=["tests/test_signal.py"]))
+    task = SimpleNamespace(id=task_id, task_number="EPISODE", task_type="engineering_mission", attempt_count=1,
+                           prior_failure=None, input_contract=contract.model_dump(mode="json"))
+    workflow = WorkflowDefinition(name="engineering-mission", task_type="engineering_mission", timeout_seconds=60,
+        allowed_repositories=["fixture"], steps=[{"name": "tests", "command": ["python", "-m", "pytest", "-q"]}])
+    runner = AsyncProcessRunner(environment=dict(os.environ, PYTHONPATH=".", PYTHONDONTWRITEBYTECODE="1"),
+                                virtualenv=Path(sys.executable).parent.parent)
+    executor = EngineeringMissionExecutor(codex_home=tmp_path, codex_model="fixture", timeout_seconds=60,
+        heartbeat_interval_seconds=1, effective_uid=lambda: 1000, process_runner=runner,
+        validation_executor=CodeValidationExecutor(process_runner=runner, effective_uid=lambda: 1000))
+    return executor, task, workflow, workspace
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expression,expected", [
+    ("int(2 >= 2)", 1),
+    ("sum([2, 4, 6]) / 3", 4.0),
+    ("[10, 20, 30][:-1]", [10, 20]),
+])
+async def test_real_subprocess_checks_drive_repair_and_bundle(tmp_path, expression, expected):
+    executor, task, workflow, workspace = fixture(tmp_path, expression, expected)
+    authors = []
+
+    async def author(**kwargs):
+        authors.append(kwargs["prompt"])
+        value = "None" if len(authors) == 1 else expression
+        (workspace.repository / "signal_logic.py").write_text(f"def signal():\n    return {value}\n")
+        # First write must differ from the baseline, even though it is deliberately wrong.
+        with (workspace.repository / "signal_logic.py").open("a") as file:
+            file.write("# retained work\n")
+        return step("coding-agent", kwargs["workspace"])
+
+    async def reviewer(**kwargs):
+        output = kwargs["workspace"].artifacts / "decision.json"
+        output.write_text(json.dumps({"approved": True, "summary": "fixture review", "findings": []}))
+        return step("independent-review", kwargs["workspace"])
+
+    async def heartbeat(_):
+        pass
+
+    executor._run_author = author
+    executor._run_codex = reviewer
+    result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    assert result.success, result.model_dump()
+    assert len(authors) == 2
+    assert "Continue the retained implementation" in authors[1]
+    assert result.summary["engineering_episode"]["repairs"] == 1
+    assert (workspace.artifacts / "changes.patch").exists()
+    assert (workspace.artifacts / "pr-bundle.json").exists()
+    for outcome in result.steps:
+        assert (workspace.plan.attempt_directory / outcome.stdout_log).exists()
+    again = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    assert again.success
+    assert len(authors) == 2
+
+
+@pytest.mark.asyncio
+async def test_new_attempt_restores_partial_workspace_without_resetting_call_budget(tmp_path):
+    executor, task, workflow, workspace = fixture(tmp_path, "1", 1)
+
+    async def interrupted(**kwargs):
+        (workspace.repository / "signal_logic.py").write_text("def signal():\n    return 1\n# partial\n")
+        raise RuntimeError("lost worker")
+
+    async def heartbeat(_):
+        pass
+
+    executor._run_author = interrupted
+    with pytest.raises(RuntimeError, match="lost worker"):
+        await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    retry_dir = workspace.plan.attempt_directory.parent / "attempt-2"
+    retry_repo = retry_dir / "repository"
+    retry_dir.mkdir()
+    subprocess.run(["git", "worktree", "add", "--detach", str(retry_repo), workspace.metadata.resolved_base_commit],
+                   cwd=workspace.repository, check=True, capture_output=True)
+    (retry_dir / "logs").mkdir()
+    (retry_dir / "artifacts").mkdir()
+    retry = TaskWorkspace(replace(workspace.plan, attempt_number=2, attempt_directory=retry_dir,
+        workspace_repository=retry_repo, logs_directory=retry_dir / "logs", artifacts_directory=retry_dir / "artifacts"),
+        workspace.metadata.model_copy(update={"attempt_number": 2, "workspace_repository": retry_repo}))
+    task.attempt_count = 2
+
+    async def author(**kwargs):
+        assert "# partial" in (retry_repo / "signal_logic.py").read_text()
+        return step("coding-agent", kwargs["workspace"])
+
+    async def reviewer(**kwargs):
+        (kwargs["workspace"].artifacts / "decision.json").write_text(json.dumps({"approved": True, "summary": "fixture", "findings": []}))
+        return step("independent-review", kwargs["workspace"])
+
+    executor._run_author, executor._run_codex = author, reviewer
+    result = await executor.execute(task=task, workflow=workflow, workspace=retry, heartbeat=heartbeat)
+    assert result.success, result.model_dump()
+    assert result.summary["engineering_episode"]["model_calls"] == 3

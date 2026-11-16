@@ -15,6 +15,7 @@ from pydantic import (
 
 from swarm_worker.models import AgentIdentity, Task
 from swarm_worker.strategy_review_contract import AlphaStrategyReviewContract
+from swarm_worker.engineering_episode import EngineeringEpisodePolicy
 from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
 
 _SAFE_REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -90,6 +91,7 @@ class EngineeringMissionContract(BaseModel):
     max_files_changed: int = Field(ge=1, le=100)
     max_diff_lines: int = Field(ge=1, le=10000)
     max_duration_seconds: int = Field(ge=60, le=86400)
+    engineering_episode: EngineeringEpisodePolicy | None = None
 
     @field_validator("evidence_context")
     @classmethod

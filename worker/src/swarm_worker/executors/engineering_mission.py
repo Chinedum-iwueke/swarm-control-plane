@@ -120,6 +120,12 @@ class EngineeringMissionExecutor:
             raise ExecutionPolicyError(
                 "Engineering executor requires its named workflow."
             )
+        if contract.engineering_episode is not None:
+            if self._author_provider != "codex":
+                raise ExecutionPolicyError("Engineering episode commissioning currently requires Codex authoring.")
+            from swarm_worker.executors.engineering_episode import execute_episode
+
+            return await execute_episode(self, task, contract, workflow, workspace, heartbeat)
         started = time.monotonic()
         deadline = started + min(contract.max_duration_seconds, self._timeout)
         heartbeat_failures: list[str] = []
@@ -2217,6 +2223,7 @@ class EngineeringMissionExecutor:
                 "coding-agent": "codex",
                 "coding-correction": "codex",
                 "independent-review": "codex",
+                "episode-adjudication": "codex",
                 "copilot-author": "copilot",
             },
         )

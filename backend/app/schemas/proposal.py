@@ -54,6 +54,25 @@ class ProposalCodeValidationContract(StrictModel):
     base_ref: str = Field(min_length=1, max_length=255)
 
 
+class EngineeringEpisodePolicy(StrictModel):
+    version: int = Field(default=1, ge=1, le=1)
+    max_repairs: int = Field(default=2, ge=0, le=3)
+    max_model_calls: int = Field(default=8, ge=2, le=12)
+    max_adjudications: int = Field(default=1, ge=0, le=2)
+    focused_tests: list[str] = Field(min_length=1, max_length=20)
+    review_tests: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("focused_tests", "review_tests")
+    @classmethod
+    def safe_selectors(cls, values):
+        for value in values:
+            path = value.split("::", 1)[0]
+            if (not re.fullmatch(r"tests/[A-Za-z0-9_/.-]+\.py(?:::[A-Za-z0-9_]+)*", value)
+                    or ".." in path.split("/")):
+                raise ValueError("episode tests must be explicit repository test selectors")
+        return values
+
+
 class ProposalEngineeringMissionContract(StrictModel):
     repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     workflow: Literal["engineering-mission"]
@@ -69,6 +88,7 @@ class ProposalEngineeringMissionContract(StrictModel):
     max_files_changed: int = Field(ge=1, le=100)
     max_diff_lines: int = Field(ge=1, le=10000)
     max_duration_seconds: int = Field(ge=60, le=86400)
+    engineering_episode: EngineeringEpisodePolicy | None = None
 
     @field_validator("evidence_context")
     @classmethod

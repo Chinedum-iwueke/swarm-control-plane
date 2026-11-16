@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from swarm_worker.engineering_episode import EngineeringEpisodePolicy
 
 AgentRuntimeStatus = Literal["idle", "busy", "degraded"]
 
@@ -255,6 +256,7 @@ class ProposalEngineeringMissionContract(StrictModel):
     max_files_changed: int = Field(ge=1, le=100)
     max_diff_lines: int = Field(ge=1, le=10000)
     max_duration_seconds: int = Field(ge=60, le=86400)
+    engineering_episode: EngineeringEpisodePolicy | None = None
 
     @field_validator("evidence_context")
     @classmethod
