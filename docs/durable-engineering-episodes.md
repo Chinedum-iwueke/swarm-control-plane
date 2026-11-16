@@ -1,7 +1,43 @@
 # Durable engineering episodes
 
-Status: opt-in implementation; offline infrastructure validation only. Not deployed
-or scientifically certified. Existing tasks are not migrated or resumed.
+Status: opt-in implementation deployed at `737ed3a`; offline infrastructure
+validation passed. Genuine-candidate commissioning is blocked at its upstream
+requirements gates, not scientifically certified. Existing tasks are not migrated
+or resumed.
+
+## 2026-11-16 deployment and commissioning checkpoint
+
+- GitHub main contains `737ed3a`. VM2 API and both alpha directors were rebuilt
+  and restarted. The final runtime image-parity check passed with API healthy;
+  directors reported zero active mandates/campaigns. Their inherited HTTP health
+  probe is not director readiness. The first check ran during replacement and
+  failed; only the subsequent matching-image check is deployment evidence.
+- VM1 imports the new executor from its deployed checkout. The strategy engineer
+  remains stopped deliberately: no eligible commissioning task has been released.
+- Pre-deploy verification: 110 worker tests and 10 backend contract tests passed.
+- Genuine SPX candidate `069e4b37-cbe5-4a12-bcb3-dcfe99ea6a96`, campaign
+  `a2184c56-d356-443a-b55c-1c82094628f1`, remains independently rejected. Its
+  4,380/2,190/2,190-bar partitions cannot satisfy 10,000/5,000/5,000 observation
+  minima. Dataset indices also disagree. Retained rejection subject:
+  `f57b2d7fe2dbf3ad637ca7e4d176f1e20a6a0465ff9a48f40a6d74ea8b2de61a`.
+- Genuine BTC candidate `12ede0a8-a9c8-4af0-8e3f-f57842c1877a`, campaign
+  `4c6ecb6c-4170-435f-9fd2-be496be7a6fd`, remains native-feasibility deferred:
+  2,927,645 required hourly bars versus 6,790 available contiguous bars. The
+  declared warmup is 2,531 bars versus a structural lower bound of 25; that
+  discrepancy requires investigation, not automatic reduction. Retained report:
+  `349a6eb438bcfdd0ce8b311894b602df9770fe0844c4182a25d82dbf123c307d`.
+- R15 is completed. A replacement proposal, not an approval, was created:
+  `ALPHA004-EPISODE-COMMISSIONING-20261116`, ID
+  `c7cc3a59-4392-4747-b66c-5b38d89648bf`, exact digest
+  `845f73d8d9b77282cb64bd4315fcf50ed4d43da1dbfa325894205cd5abb658a6`.
+  It permits one cycle, two hypotheses, eight trials, four variants each and one
+  campaign, retaining source `72dbd59`, data and historical envelope. It awaits
+  founder approval. Successor requests and episode opt-in task contracts still
+  require correct lineage and accepted requirements before release.
+
+No paid authoring, new backtest, scientific receipt or promotion was produced by
+this deployment/preflight. The candidate failures above precede episode entry;
+they neither validate nor invalidate real-model episode repair performance.
 
 ## Evidence and architectural decision
 
