@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from app.schemas.method_task import MethodTaskContract
 
 _DIGEST = r"^[0-9a-f]{64}$"
 _COMMIT = r"^[0-9a-f]{40,64}$"
@@ -69,9 +70,19 @@ class AlphaCampaignCreate(StrictModel):
     execution_window_end: datetime | None = None
     research_mandate_id: uuid.UUID | None = None
     research_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
+    method_design_requests: dict[str, MethodTaskContract] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def unique_scope(self):
+        if self.method_design_requests:
+            if self.execution_protocol not in {'alpha003-governed-v1', 'alpha004-delegated-v1'}:
+                raise ValueError('Method design requires a governed campaign')
+            for key, request in self.method_design_requests.items():
+                if (key != str(request.candidate_id)
+                        or request.base_ref != self.bulletproof_source_commit
+                        or request.mandate_id != self.research_mandate_id
+                        or request.mandate_digest != self.research_mandate_digest):
+                    raise ValueError('Method request candidate, source or mandate binding differs')
         if len(self.allowed_venues) != len(set(self.allowed_venues)):
             raise ValueError("allowed venues must be unique")
         normalized = [item.upper() for item in self.allowed_instruments]

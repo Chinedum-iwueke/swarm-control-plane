@@ -70,3 +70,16 @@ async def test_call_gate_fails_closed_when_control_plane_is_unavailable(monkeypa
     )
     monkeypatch.setattr("swarm_worker.model_lane.httpx.AsyncClient", lambda **_: client)
     assert await model_call_allowed() is False
+
+
+@pytest.mark.asyncio
+async def test_capacity_permit_preserves_server_recovery_revision(monkeypatch):
+    import httpx
+    from swarm_worker.model_lane import model_capacity_permit
+
+    monkeypatch.setenv('SWARM_API_URL', 'https://control.invalid')
+    monkeypatch.setenv('SWARM_AGENT_TOKEN', 'test-token')
+    client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json={'allowed': True, 'recovery_token': 'codex:record:3:closed'})))
+    monkeypatch.setattr('swarm_worker.model_lane.httpx.AsyncClient', lambda **_: client)
+    assert await model_capacity_permit() == {'allowed': True, 'recovery_token': 'codex:record:3:closed'}

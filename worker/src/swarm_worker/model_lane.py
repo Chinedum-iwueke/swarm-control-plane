@@ -54,6 +54,7 @@ def worker_providers(task_types: list[str]) -> list[str]:
         "engineering_mission",
         "alpha_discovery",
         "alpha_strategy_review",
+        "alpha_method_design",
         "founder_request",
     }:
         return [provider_key()]
@@ -61,11 +62,15 @@ def worker_providers(task_types: list[str]) -> list[str]:
 
 
 async def model_call_allowed() -> bool:
+    return (await model_capacity_permit()).get('allowed') is True
+
+
+async def model_capacity_permit() -> dict:
     url, token = os.environ.get("SWARM_API_URL"), os.environ.get("SWARM_AGENT_TOKEN")
     if not token:
-        return True  # Offline tests/rehearsals have no control-plane identity.
+        return {'allowed': True, 'recovery_token': 'offline:initial'}
     if not url or not token:
-        return False
+        return {'allowed': False}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(
@@ -74,6 +79,10 @@ async def model_call_allowed() -> bool:
                 headers={"Authorization": f"Bearer {token}"},
             )
             response.raise_for_status()
-            return response.json().get("allowed") is True
+            result = response.json()
+            if not isinstance(result, dict):
+                return {'allowed': False}
+            return {'allowed': result.get('allowed') is True,
+                    'recovery_token': result.get('recovery_token')}
     except (httpx.HTTPError, ValueError):
-        return False
+        return {'allowed': False}

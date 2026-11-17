@@ -1,0 +1,6 @@
+name: alpha-method-design
+task_type: alpha_method_design
+allowed_repositories:
+  - bulletproof_bt
+timeout_seconds: 1800
+steps: []

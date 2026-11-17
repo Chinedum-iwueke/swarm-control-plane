@@ -15,6 +15,7 @@ from pydantic import (
 
 from swarm_worker.models import AgentIdentity, Task
 from swarm_worker.strategy_review_contract import AlphaStrategyReviewContract
+from swarm_worker.method_task import MethodTaskContract
 from swarm_worker.engineering_episode import EngineeringEpisodePolicy
 from swarm_worker.workflows import WorkflowDefinition, WorkflowLoader
 
@@ -505,6 +506,7 @@ class ValidatedTaskPolicy(BaseModel):
         | AlphaDiscoveryContract
         | AlphaDataAdmissionContract
         | AlphaStrategyReviewContract
+        | MethodTaskContract
     )
     workflow: WorkflowDefinition
 
@@ -540,6 +542,7 @@ def validate_task_policy(
         "alpha_discovery",
         "alpha_data_admission",
         "alpha_strategy_review",
+        "alpha_method_design",
     }:
         raise UnsupportedTaskType(f"Task type {task.task_type!r} is not supported.")
 
@@ -582,6 +585,7 @@ def _parse_contract(
     | AlphaDiscoveryContract
     | AlphaDataAdmissionContract
     | AlphaStrategyReviewContract
+    | MethodTaskContract
 ):
     try:
         models = {
@@ -593,6 +597,7 @@ def _parse_contract(
             "alpha_discovery": AlphaDiscoveryContract,
             "alpha_data_admission": AlphaDataAdmissionContract,
             "alpha_strategy_review": AlphaStrategyReviewContract,
+            "alpha_method_design": MethodTaskContract,
         }
         model = models[task_type]
         return model.model_validate(input_contract)

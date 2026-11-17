@@ -44,7 +44,7 @@ def test_lease_query_filters_invalid_approval_before_selection() -> None:
     assert "alpha_research_mandates.valid_until >" in sql
     params = statement.compile(dialect=postgresql.dialect()).params
     assert "alpha_strategy_review" in params.values()
-    assert "alpha_discovery" in params.values()
+    assert ["alpha_discovery", "alpha_method_design"] in params.values()
     assert "mandate_digest" in params.values()
     assert "evaluator_agent_id" in params.values()
 

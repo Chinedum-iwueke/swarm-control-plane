@@ -5,6 +5,7 @@ from swarm_worker.executors.alpha_data_admission import AlphaDataAdmissionExecut
 from swarm_worker.executors.alpha_discovery import AlphaDiscoveryExecutor
 from swarm_worker.executors.alpha_research import AlphaResearchExecutor
 from swarm_worker.executors.alpha_strategy_review import AlphaStrategyReviewExecutor
+from swarm_worker.executors.alpha_method_design import AlphaMethodDesignExecutor
 from swarm_worker.executors.code_validation import (
     AsyncProcessRunner,
     CodeValidationExecutor,
@@ -117,6 +118,11 @@ class RestrictedExecutor:
             codex_model=codex_model,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
+        self._alpha_method_design = AlphaMethodDesignExecutor(
+            self._engineering,
+            python=(settings.swarm_engineering_virtualenv / 'bin/python'
+                    if settings is not None and settings.swarm_engineering_virtualenv else None),
+        )
 
     async def execute(
         self,
@@ -135,6 +141,7 @@ class RestrictedExecutor:
             "alpha_discovery": self._alpha_discovery,
             "alpha_data_admission": self._alpha_data_admission,
             "alpha_strategy_review": self._alpha_strategy_review,
+            "alpha_method_design": self._alpha_method_design,
         }
         executor = executors[task.task_type]
         if executor is None:

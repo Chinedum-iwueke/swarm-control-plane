@@ -306,6 +306,8 @@ def start_task(
     db: Annotated[Session, Depends(get_db)],
 ) -> TaskMutationResponse:
     task = lock_task(db, task_id)
+    from app.services.alpha_method_tasks import require_current_method_authority
+    require_current_method_authority(db, task)
 
     now = verify_task_lease(
         task,
@@ -352,6 +354,8 @@ def heartbeat_task(
     db: Annotated[Session, Depends(get_db)],
 ) -> TaskMutationResponse:
     task = lock_task(db, task_id)
+    from app.services.alpha_method_tasks import require_current_method_authority
+    require_current_method_authority(db, task)
 
     now = verify_task_lease(
         task,

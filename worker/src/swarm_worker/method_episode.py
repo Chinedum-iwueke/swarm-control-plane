@@ -84,7 +84,7 @@ class MethodEpisode:
     """
 
     def __init__(self, root: Path, *, binding: dict, proposal: dict,
-                 policy: MethodEpisodePolicy, diagnose, propose, authorized):
+                 policy: MethodEpisodePolicy, diagnose, propose, authorized, model_permitted=None):
         if set(proposal) != {"scientific_identity", "support_minima", "method"}:
             raise ValueError("explicit scientific identity, support minima and method required")
         if any(not isinstance(value, dict) for value in proposal.values()):
@@ -100,6 +100,7 @@ class MethodEpisode:
             "initial_digest": canonical_digest(proposal), "policy": policy.model_dump()},
             policy.max_duration_seconds, str(root))
         self.diagnose, self.propose, self.authorized = diagnose, propose, authorized
+        self.model_permitted = model_permitted
 
     def _retain(self, state, value):
         bounded(value)
@@ -166,6 +167,9 @@ class MethodEpisode:
                 if stage == "propose":
                     if state["repairs"] >= self.policy.max_repairs or state["model_calls"] >= self.policy.max_model_calls:
                         self._stop(state, "repair_or_model_budget_exhausted")
+                        break
+                    if self.model_permitted is not None and await self.model_permitted() is not True:
+                        self._stop(state, 'capacity')
                         break
                     try:
                         context = self._context(state)

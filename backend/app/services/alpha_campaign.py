@@ -511,6 +511,8 @@ def activate_campaign(
         raise HTTPException(409, "Only an awaiting campaign can be activated.")
     if campaign.campaign_digest != payload.expected_campaign_digest:
         raise HTTPException(409, "Campaign digest changed before activation.")
+    if campaign.specification.get('method_design_requests') and payload.actor != 'founder-operator':
+        raise HTTPException(403, 'Method episode commissioning requires explicit campaign activation.')
     if payload.actor == "alpha-continuous-director":
         if campaign.specification.get("execution_protocol") != "alpha004-delegated-v1":
             raise HTTPException(403, "Director activation requires ALPHA-004 protocol.")
@@ -2096,6 +2098,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
 
 
 PRE_AUTHORING_DEFERRALS = {
+    "method_design_deferred": "Retain the method episode and its blocker; reconsider only with changed evidence or explicitly renewed bounded authority.",
     "scientific_requirements_rejected": "Preserve the independent rejection; submit a changed, evidence-bound method successor and obtain fresh independent review. Never retry unchanged inputs.",
     "propose_scientific_specification": "Produce a complete immutable statistical method successor, then obtain independent review; do not retry unchanged inputs.",
     "resolve_native_requirements_feasibility": "Publish a bounded requirements or coverage successor with feasible native smoke/scientific plans, then obtain independent review; do not retry unchanged inputs.",
@@ -2198,6 +2201,11 @@ def _advance_governed_pipeline_ready(db: Session, campaign: AlphaCampaign) -> Ta
         campaign.phase = "hypothesis_draft"
         campaign.next_action = "await_vm1_hypothesis_drafter"
         return draft
+    candidate_key = str(source.get('discovery_candidate_id', source['source_candidate_id']))
+    method_request = (campaign.specification.get('method_design_requests') or {}).get(candidate_key)
+    if method_request is not None:
+        from app.services.alpha_method_tasks import advance_method_task
+        return advance_method_task(db, campaign, source, draft, method_request)
     summary = draft.result.get("summary", {})
     card = summary.get("hypothesis_card")
     if not isinstance(card, dict):

@@ -334,7 +334,7 @@ def lease_next_task(
             valid_approval,
             graph_parallelism_available,
             or_(
-                Task.task_type != "alpha_discovery",
+                Task.task_type.notin_(["alpha_discovery", "alpha_method_design"]),
                 exists(select(AlphaResearchMandate.id).where(
                     AlphaResearchMandate.mandate_digest == Task.input_contract["mandate_digest"].astext,
                     AlphaResearchMandate.status == "active",
@@ -372,6 +372,7 @@ def lease_next_task(
 
     task = None
     admission_identity = None
+    method_identity = None
     for candidate in candidates:
         blocking_workflow = next(
             (
@@ -385,6 +386,16 @@ def lease_next_task(
             continue
         authority_snapshots = resolve_task_authority(db, candidate, agent, now)
         if authority_snapshots and all(item["allowed"] for item in authority_snapshots):
+            if candidate.task_type == 'alpha_method_design':
+                from app.services.alpha_method_tasks import require_current_method_authority
+                try:
+                    require_current_method_authority(db, candidate)
+                except HTTPException:
+                    continue
+                method_identity = producer_identity_for_lease(
+                    db, agent, [item['package_digest'] for item in authority_snapshots])
+                if method_identity is None:
+                    continue
             if candidate.task_type == "alpha_data_admission":
                 admission_identity = native_admission_identity_for_lease(
                     agent, [item["package_digest"] for item in authority_snapshots]
@@ -438,6 +449,8 @@ def lease_next_task(
     task.failure = {}
 
     producer_identity = admission_identity if task.task_type == "alpha_data_admission" else None
+    if task.task_type == 'alpha_method_design':
+        producer_identity = method_identity
     if task.task_type == "alpha_strategy_review" or (
         task.task_type == "alpha_research_execution"
         and task.input_contract.get("stage") in {"draft", "qualify"}

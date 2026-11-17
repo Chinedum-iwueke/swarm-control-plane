@@ -45,6 +45,13 @@ def disposition_for(reason_code, evidence):
                     "requirements_engineering_context_exceeds_bound", "repair_native_requirements_feasibility",
                     "repair_coverage_exposure_history", "admission_provenance_reattestation_failed"}
     kind = "repair" if reason_code in repair_codes else "requirements_conflict"
+    if reason_code == 'method_design_deferred':
+        recorded = evidence.get('reason') if isinstance(evidence, dict) else None
+        if recorded in ROUTES and recorded != 'repair':
+            kind = recorded
+        elif recorded in {'capacity', 'authority', 'deadline_exhausted',
+                          'repair_or_model_budget_exhausted', 'tool_budget_exhausted'}:
+            kind = 'await_authority_or_capacity'
     if reason_code == "produce_admitted_predictor_coverage":
         kind = "await_data"
     elif reason_code in {"mandate_inactive", "mandate_expired", "mandate_budget_exhausted",

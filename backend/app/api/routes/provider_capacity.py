@@ -58,7 +58,15 @@ def permit_model_call(
             ProviderCapacityCircuit.provider == provider
         )
     )
-    return {"allowed": circuit is None or circuit.state == "closed"}
+    return {
+        "allowed": circuit is None or circuit.state == "closed",
+        # Stable through polling, changed by a real circuit transition. Never
+        # use the wall clock as permission to repeat an interrupted model call.
+        "recovery_token": (
+            f"{provider}:initial" if circuit is None else
+            f"{provider}:{circuit.id}:{circuit.generation}:{circuit.state}"
+        ),
+    }
 
 
 @agent_router.post(

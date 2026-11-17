@@ -10,6 +10,7 @@ AUTONOMOUS_RESEARCH_TASK_TYPES = {
     "alpha_discovery",
     "alpha_research_execution",
     "alpha_strategy_review",
+    "alpha_method_design",
     "founder_hypothesis_intake",
 }
 

@@ -22,6 +22,7 @@ WORKFLOW_FILES = {
     "alpha-discovery": "alpha-discovery.yaml",
     "alpha-data-admission": "alpha-data-admission.yaml",
     "alpha-strategy-review": "alpha-strategy-review.yaml",
+    "alpha-method-design": "alpha-method-design.yaml",
 }
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -159,6 +160,7 @@ class WorkflowDefinition(BaseModel):
         "code_validation",
         "engineering_mission",
         "alpha_strategy_review",
+        "alpha_method_design",
         "research_experiment",
         "research_memory_sync",
         "alpha_research_execution",
@@ -198,6 +200,7 @@ class WorkflowDefinition(BaseModel):
                 "alpha_discovery",
                 "alpha_data_admission",
                 "alpha_strategy_review",
+                "alpha_method_design",
             }
             and steps
         ):
@@ -210,6 +213,7 @@ class WorkflowDefinition(BaseModel):
                 "alpha_discovery",
                 "alpha_data_admission",
                 "alpha_strategy_review",
+                "alpha_method_design",
             }
             and not steps
         ):

@@ -17,6 +17,7 @@ PROBE_LEASE_SECONDS = 300
 PROBE_INTERVAL_SECONDS = 21_600
 MODEL_CAPABILITIES = {
     "alpha-strategy-engineering",
+    "alpha-method-design",
     "research-intelligence",
     "research-proposal",
     "data-representation",

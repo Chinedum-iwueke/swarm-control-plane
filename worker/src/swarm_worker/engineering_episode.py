@@ -106,12 +106,14 @@ class EngineeringEpisode:
 
     def __init__(self, store: EpisodeStore, policy: EngineeringEpisodePolicy,
                  fingerprint: Callable[[], str], perform: Callable[..., Awaitable[dict]],
-                 restore: Callable[[dict], None] | None = None):
+                 restore: Callable[[dict], None] | None = None,
+                 before_stage: Callable[..., Awaitable[dict]] | None = None):
         self.store, self.policy = store, policy
         self.fingerprint, self.perform = fingerprint, perform
         self.restore = restore
+        self.before_stage = before_stage
 
-    async def run(self):
+    async def run(self, *, recovery_token=None):
         with self.store.locked():
             state = self.store.load()
             if self.restore:
@@ -121,7 +123,12 @@ class EngineeringEpisode:
                     self._finish(state, "completed_workspace_changed")
                     self.store.save(state)
                 return state
+            if state['status'] == 'deferred':
+                if not recovery_token or recovery_token == state.get('recovery_token'):
+                    return state
+            state['recovery_token'] = recovery_token
             state["status"] = "running"
+            state.pop('reason', None)
             if state["pending"] is not None:
                 state["events"].append({"stage": state["stage"], "status": "interrupted",
                                         "reservation": state["pending"]})
@@ -135,6 +142,15 @@ class EngineeringEpisode:
                 if remaining <= 0:
                     self._finish(state, "deadline_exhausted")
                     break
+                if self.before_stage:
+                    permit = await self.before_stage(stage, state)
+                    if permit.get('allowed') is not True:
+                        state.update(status='deferred', reason=permit.get('reason', 'authority'))
+                        break
+                    remaining = state['deadline'] - time.time()
+                    if remaining <= 0:
+                        self._finish(state, 'deadline_exhausted')
+                        break
                 before = self.fingerprint()
                 if state["code_digest"] and before != state["code_digest"] and stage not in {"prepare", "author"}:
                     state["stage"] = stage = "focused"

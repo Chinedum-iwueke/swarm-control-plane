@@ -16,6 +16,7 @@ from swarm_worker.workspace import TaskWorkspace
 from swarm_worker.engineering_evidence import decode_engineering_evidence
 from swarm_worker.accepted_method_handoff import verify_handoff, bundle_binding
 from swarm_worker.method_episode import MethodCapacityUnavailable
+from swarm_worker.model_lane import model_capacity_permit, provider_key
 
 
 REVIEW_SCHEMA = {"type": "object", "additionalProperties": False,
@@ -115,7 +116,7 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
                                            "stderr_log": f"logs/{segment}/{Path(step.stderr_log).name}"})
             steps.append(step)
             capacity = detect_provider_capacity([step], workspace.plan.attempt_directory,
-                {step.name: "codex"} if stage in {"author", "review", "adjudicate"} else {})
+                {step.name: provider_key()} if stage in {"author", "review", "adjudicate"} else {})
             status = "pass" if step.success else "capacity" if capacity else "infrastructure" if step.timed_out else "fail"
             diagnostics = {}
             for stream, relative in (("stdout", step.stdout_log), ("stderr", step.stderr_log)):
@@ -236,8 +237,34 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
         except (ExecutionPolicyError, ValueError, EpisodeIntegrityError) as error:
             return {"status": "policy_violation", "reason": str(error)}
 
-    episode = EngineeringEpisode(store, policy, fingerprint, perform, restore)
-    state = await episode.run()
+    def progress(state):
+        return {
+            'phase': 'engineering_episode', 'stage': state['stage'],
+            'status': state['status'], 'blocker': state.get('reason'),
+            'repairs': state['repairs'], 'max_repairs': policy.max_repairs,
+            'model_calls': state['model_calls'], 'max_model_calls': policy.max_model_calls,
+            'deadline': state['deadline'], 'reported_tokens': state['metrics']['reported_tokens'],
+            'usage_complete': state['metrics']['model_calls_without_usage'] == 0,
+            'evidence_receipts': [e['receipt_id'] for e in state['events'] if 'receipt_id' in e][-8:],
+        }
+
+    async def before_stage(stage, state):
+        # A successful task heartbeat revalidates the lease before any effect.
+        # Drain pause remains a scheduling gate, not cancellation of active work.
+        await heartbeat(progress(state))
+        if stage in EngineeringEpisode.MODEL_STAGES:
+            permit = await model_capacity_permit()
+            if permit.get('allowed') is not True:
+                return {'allowed': False, 'reason': 'capacity'}
+        return {'allowed': True}
+
+    permit = await model_capacity_permit()
+    retained = store.load()
+    recovery = (permit.get('recovery_token') if permit.get('allowed') is True
+                and retained.get('reason') in {None, 'capacity'} else None)
+    episode = EngineeringEpisode(store, policy, fingerprint, perform, restore, before_stage)
+    state = await episode.run(recovery_token=recovery)
+    await heartbeat(progress(state))
     if state['status'] == 'completed' and accepted_method is not None:
         handoff = bundle_binding(accepted_method, state, contract=contract,
             patch=(workspace.artifacts/'changes.patch').read_text(),
@@ -254,10 +281,18 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
         [str(p.relative_to(workspace.plan.attempt_directory)) for p in workspace.artifacts.glob("episode-*/*") if p.is_file()]))
     result.summary["engineering_episode"] = {key: state[key] for key in ("status", "stage", "repairs", "model_calls", "adjudications", "metrics")}
     result.summary['engineering_episode']['author_continuity'] = continuity
+    result.summary['engineering_episode']['progress'] = progress(state)
     if state['status'] == 'completed' and accepted_method is not None:
         result.artifacts = sorted(set(result.artifacts + ['artifacts/accepted-method-native-handoff.json']))
         result.summary['accepted_method_native_handoff'] = handoff
-    if not (state["status"] == "deferred" and state.get("reason") == "capacity"):
+    if state['status'] == 'deferred' and state.get('reason') == 'capacity':
+        result.termination_reason = 'provider_capacity'
+        result.summary['provider_capacity'] = {
+            'provider': provider_key(), 'failure_summary': 'Engineering episode awaits a changed healthy provider circuit.',
+            'retry_after_seconds': 21600,
+        }
+        result.retryable = False
+    else:
         result.termination_reason = reason
         result.summary.pop("provider_capacity", None)
     result.retryable = False

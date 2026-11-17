@@ -9,6 +9,35 @@ from app.schemas.task import TaskLeaseRequest
 from app.services.provider_capacity import claim_due_probes_or_block, report_probe
 
 
+def test_permit_revision_is_stable_until_circuit_changes():
+    from app.api.routes.provider_capacity import permit_model_call
+
+    db = MagicMock()
+    circuit = _circuit(state='closed')
+    db.scalar.return_value = circuit
+    first = permit_model_call('codex', _agent(), db)
+    assert first['allowed'] is True
+    assert permit_model_call('codex', _agent(), db) == first
+    circuit.generation += 1
+    circuit.state = 'open'
+    opened = permit_model_call('codex', _agent(), db)
+    assert opened['allowed'] is False
+    circuit.state = 'closed'
+    recovered = permit_model_call('codex', _agent(), db)
+    assert recovered['allowed'] is True
+    assert recovered['recovery_token'] != first['recovery_token']
+
+
+def test_absent_circuit_has_stable_initial_revision():
+    from app.api.routes.provider_capacity import permit_model_call
+
+    db = MagicMock()
+    db.scalar.return_value = None
+    assert permit_model_call('codex', _agent(), db) == {
+        'allowed': True, 'recovery_token': 'codex:initial',
+    }
+
+
 def _circuit(**overrides):
     now = datetime.now(UTC)
     values = {

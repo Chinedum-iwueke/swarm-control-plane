@@ -66,6 +66,34 @@ def fixture(tmp_path, expression, expected):
 
 
 @pytest.mark.asyncio
+async def test_episode_capacity_gate_publishes_deferral_without_authoring(tmp_path, monkeypatch):
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    progress = []
+
+    async def permit():
+        return {'allowed': False, 'recovery_token': 'codex:1:open'}
+
+    async def heartbeat(value):
+        progress.append(value)
+
+    async def author(**_):
+        pytest.fail('provider gate must precede author invocation')
+
+    monkeypatch.setattr('swarm_worker.executors.engineering_episode.model_capacity_permit', permit)
+    executor._run_author = author
+    for _ in range(2):
+        result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+        assert not result.success
+        assert result.termination_reason == 'provider_capacity'
+        assert result.summary['provider_capacity']['provider'] == 'codex'
+        assert result.summary['engineering_episode']['model_calls'] == 0
+    assert progress[-1]['status'] == 'deferred'
+    assert progress[-1]['stage'] == 'author'
+    assert progress[-1]['max_model_calls'] == 8
+    assert progress[-1]['usage_complete'] is True
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("expression,expected", [
     ("int(2 >= 2)", 1),
     ("sum([2, 4, 6]) / 3", 4.0),

@@ -134,6 +134,64 @@ async def test_capacity_defers_without_consuming_repairs_or_retry_loop(tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_duplicate_capacity_delivery_needs_changed_trusted_recovery(tmp_path):
+    calls = []
+
+    async def perform(stage, *_):
+        calls.append(stage)
+        return {'status': 'capacity' if stage == 'author' else 'pass'}
+
+    engine = EngineeringEpisode(store(tmp_path), policy(), lambda: 'code', perform)
+    first = await engine.run(recovery_token='circuit:1:closed')
+    deadline = first['deadline']
+    for token in (None, 'circuit:1:closed', 'circuit:1:closed'):
+        again = await engine.run(recovery_token=token)
+        assert again['model_calls'] == 1
+    assert calls == ['prepare', 'author']
+    recovered = await engine.run(recovery_token='circuit:2:closed')
+    assert recovered['model_calls'] == 2
+    assert recovered['deadline'] == deadline
+    assert recovered['repairs'] == 0
+
+
+@pytest.mark.asyncio
+async def test_gate_before_reservation_keeps_deterministic_stage_and_budget(tmp_path):
+    calls = []
+
+    async def permit(stage, state):
+        return {'allowed': stage not in EngineeringEpisode.MODEL_STAGES, 'reason': 'capacity'}
+
+    async def perform(stage, *_):
+        calls.append(stage)
+        return {'status': 'pass'}
+
+    engine = EngineeringEpisode(store(tmp_path), policy(), lambda: 'code', perform,
+                                before_stage=permit)
+    result = await engine.run()
+    assert calls == ['prepare']
+    assert result['stage'] == 'author'
+    assert result['model_calls'] == 0
+    assert result['pending'] is None
+    assert result['reason'] == 'capacity'
+
+
+@pytest.mark.asyncio
+async def test_lost_lease_gate_does_not_reserve_or_execute(tmp_path):
+    async def gate(*_):
+        raise RuntimeError('lease lost')
+
+    async def perform(*_):
+        pytest.fail('no effects after lease loss')
+
+    engine = EngineeringEpisode(store(tmp_path), policy(), lambda: 'code', perform,
+                                before_stage=gate)
+    with pytest.raises(RuntimeError, match='lease lost'):
+        await engine.run()
+    assert store(tmp_path).load()['model_calls'] == 0
+    assert store(tmp_path).load()['pending'] is None
+
+
+@pytest.mark.asyncio
 async def test_repair_budget_and_deadline_do_not_reset(tmp_path):
     calls = []
 

@@ -1,0 +1,29 @@
+schema_version: 1
+name: alpha-method-designer
+version: 1.0.0
+role: Bounded scientific method designer
+task_types:
+- alpha_method_design
+workflows:
+- name: alpha-method-design
+  file: alpha-method-design.yaml
+  sha256: c325d4c24ab2ba7829eb74d748c87c9d1ca13e5dfc317a23a99c0c98e6ae6e8c
+required_capabilities:
+- alpha-method-design
+allowed_machines:
+- vm1-developer
+risk_ceiling: 0
+compatibility:
+  worker_version_min: 0.3.0
+  worker_version_max_exclusive: 0.4.0
+permission_profile:
+  name: bounded-method-design
+  network_access: control-plane
+  privileged_operations: false
+  writable_roots:
+  - workspace
+repository_profile:
+  repositories:
+  - bulletproof_bt
+  primary_checkout_write: false
+  remote_write: false
