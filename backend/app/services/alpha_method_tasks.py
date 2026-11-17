@@ -219,6 +219,16 @@ def advance_method_task(db, campaign, source, parent, request):
     result = verified_method_result(task)
     state = result['state']
     if state['status'] != 'ready_for_independent_review':
+        from app.contracts.native_design_shape import defects
+        if (state['status'] == 'blocked' and state.get('reason') == 'invalid_stage_result'
+                and defects(state['proposal']['method'])):
+            try:
+                correction = materialize_correction(db, campaign, task, result, [], diagnostic_recovery=True)
+            except RecoveryDeferred:
+                pass  # Preserve the original result and explicit deferral below.
+            else:
+                campaign.next_action = 'await_bounded_native_shape_correction'
+                return correction
         campaign.status = 'needs_attention'
         campaign.next_action = 'method_design_deferred'
         campaign.terminal_reason = {'category': 'method_design_deferred',

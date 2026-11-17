@@ -45,6 +45,33 @@ def test_review_correction_conserves_budget_identity_deadline_and_citations():
     assert report['scientific_approval'] is False
 
 
+def test_diagnostic_successor_retains_spend_and_does_not_recover_unknown_failures():
+    task, result, _, now = rejected()
+    from app.contracts.native_design_shape import defects
+    state = result['state']
+    state.update(status='blocked', reason='invalid_stage_result', repairs=1, model_calls=1)
+    allowed = sorted(defects(state['proposal']['method']))
+    task.input_contract['policy']['allowed_method_fields'] = allowed
+    corrected = recovery.diagnostic_correction_contract(task, result, now=now)
+    assert corrected['proposal'] == state['proposal']
+    assert corrected['policy']['max_model_calls'] == task.input_contract['policy']['max_model_calls'] - 1
+    assert corrected['policy']['max_repairs'] == task.input_contract['policy']['max_repairs'] - 1
+    assert datetime.fromisoformat(corrected['valid_until']).timestamp() <= state['deadline']
+    state['reason'] = 'unknown_infrastructure_error'
+    with pytest.raises(ValueError, match='wire-shape'):
+        recovery.diagnostic_correction_contract(task, result, now=now)
+    state['reason'] = 'invalid_stage_result'
+    state['model_calls'] = task.input_contract['policy']['max_model_calls']
+    with pytest.raises(recovery.RecoveryDeferred, match='budget_exhausted'):
+        recovery.diagnostic_correction_contract(task, result, now=now)
+
+
+def test_native_shape_contract_parity():
+    from pathlib import Path
+    root = Path(__file__).parents[2]
+    assert (root/'backend/app/contracts/native_design_shape.py').read_text() == (root/'worker/src/swarm_worker/native_design_shape.py').read_text()
+
+
 @pytest.mark.parametrize('limit', ['repairs', 'model_calls', 'tool_calls', 'reserved_work', 'deadline'])
 def test_review_correction_cannot_reset_exhausted_budgets(limit):
     task, result, reviews, now = rejected()

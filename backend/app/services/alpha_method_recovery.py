@@ -112,7 +112,42 @@ def recorded_successor(db, campaign, parent):
     return successor
 
 
-def materialize_correction(db, campaign, parent, result, reviews, *, adjudication=None):
+def diagnostic_correction_contract(parent, result, *, now):
+    from app.contracts.native_design_shape import defects, SHAPE
+    contract = MethodTaskContract.model_validate(parent.input_contract)
+    state = result['state']
+    invalid = defects(state['proposal']['method'])
+    if state['status'] != 'blocked' or state.get('reason') != 'invalid_stage_result' or not invalid:
+        raise ValueError('Only a reproducible wire-shape defect permits diagnostic recovery')
+    if not set(invalid) <= set(contract.policy.allowed_method_fields):
+        raise RecoveryDeferred('shape_defect_outside_approved_repair_scope')
+    require_recovery_capacity(parent, result, now=now)
+    policy = contract.policy.model_dump()
+    for name, used in (('max_repairs', 'repairs'), ('max_model_calls', 'model_calls'),
+                      ('max_tool_calls', 'tool_calls'), ('max_work_units', 'reserved_work')):
+        policy[name] -= state[used]
+    if (policy['max_repairs'] < 1 or policy['max_model_calls'] < 1
+            or policy['max_tool_calls'] < 2 or policy['max_work_units'] < 2*policy['tool_work_limit']):
+        raise RecoveryDeferred('repair_or_model_budget_exhausted')
+    deadline = min(float(state['deadline']), contract.valid_until.timestamp(),
+                   parent.started_at.timestamp() + contract.policy.max_duration_seconds)
+    policy['max_duration_seconds'] = int(deadline - now.timestamp())
+    report = dict(schema_version='method-shape-recovery-v1', parent_task_id=str(parent.id),
+                  result_digest=result['result_digest'], defects=invalid, required_shape=SHAPE,
+                  scientific_approval=False, execution_authority=False)
+    catalog = dict(contract.evidence_catalog)
+    catalog[digest(report)] = report
+    try:
+        return MethodTaskContract.model_validate(contract.model_dump(mode='json') | dict(
+            proposal=deepcopy(state['proposal']), policy=policy, evidence_catalog=catalog,
+            findings_digest=digest(report), valid_until=datetime.fromtimestamp(deadline, timezone.utc).isoformat()
+        )).model_dump(mode='json')
+    except ValueError as exc:
+        raise RecoveryDeferred('context_requires_compaction') from exc
+
+
+def materialize_correction(db, campaign, parent, result, reviews, *, adjudication=None,
+                           diagnostic_recovery=False):
     from app.services.alpha_campaign import _append_event
     from app.services.alpha_method_tasks import require_current_method_authority
     # Serialize the receipt lookup and task creation even outside reconciliation.
@@ -121,11 +156,13 @@ def materialize_correction(db, campaign, parent, result, reviews, *, adjudicatio
     existing = recorded_successor(db, campaign, parent)
     if existing is not None:
         return existing
-    raw = correction_contract(parent, result, reviews, now=datetime.now(timezone.utc), adjudication=adjudication)
+    raw = (diagnostic_correction_contract(parent, result, now=datetime.now(timezone.utc))
+           if diagnostic_recovery else correction_contract(parent, result, reviews,
+                now=datetime.now(timezone.utc), adjudication=adjudication))
     task = build_task(TaskCreate(
         task_number='AMC-' + digest({'parent': str(parent.id), 'reviews': [r.model_dump(mode='json') for r in reviews]})[:40],
         project='bulletproof_bt', task_type='alpha_method_design',
-        title='Correct independently reviewed method findings',
+        title='Correct native method shape' if diagnostic_recovery else 'Correct independently reviewed method findings',
         objective='Repair only approved method fields within remaining original budgets; obtain fresh independent review.',
         parent_task_id=parent.id, created_by='alpha-campaign-director', risk_level=0,
         max_attempts=1, input_contract=raw, required_capabilities=['alpha-method-design'],

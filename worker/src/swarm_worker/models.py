@@ -803,9 +803,11 @@ class WorkflowExecutionResult(BaseModel):
     @model_validator(mode="after")
     def bounded_summary(self):
         large_result_workflows = {"alpha-data-admission", "alpha-discovery"}
-        limit = 131_072 if self.workflow in large_result_workflows else 16_384
+        limit = (262_144 if self.workflow == 'alpha-method-design' else
+                 131_072 if self.workflow in large_result_workflows else 16_384)
         if len(json.dumps(self.summary, ensure_ascii=True, sort_keys=True)) > limit:
-            label = "128 KiB" if self.workflow in large_result_workflows else "16 KiB"
+            label = ('256 KiB' if self.workflow == 'alpha-method-design' else
+                     "128 KiB" if self.workflow in large_result_workflows else "16 KiB")
             raise ValueError(f"execution summary exceeds {label}")
         return self
 

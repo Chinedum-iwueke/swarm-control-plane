@@ -31,8 +31,9 @@ def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_co
             raise MethodCapacityUnavailable('provider circuit unavailable')
         # Include complete current findings/evidence; never trim scientific clauses.
         context = {**context, 'current_evidence':{
-            finding['evidence_digest']: read_evidence(finding['evidence_digest'])
-            for finding in context['findings']}}
+            reference: read_evidence(reference)
+            for reference in sorted(set(context.get('evidence_refs', [])) |
+                {finding['evidence_digest'] for finding in context['findings']})}}
         bounded(context, max_context_bytes)
         segment = 'method-' + operation
         logs, artifacts = workspace.logs/segment, workspace.artifacts/segment

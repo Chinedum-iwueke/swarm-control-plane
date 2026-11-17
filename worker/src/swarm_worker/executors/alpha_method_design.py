@@ -14,6 +14,7 @@ from swarm_worker.method_task import MethodTaskContract
 from swarm_worker.model_lane import model_capacity_permit, provider_key
 from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.native_diagnostic_client import NativeDiagnosticClient
+from swarm_worker.native_design_shape import defects, SHAPE
 
 
 class AlphaMethodDesignExecutor:
@@ -57,18 +58,21 @@ class AlphaMethodDesignExecutor:
                             evidence=contract.evidence_catalog)
             # Missing fields are cheap, attributable preflight findings. Invalid
             # native values fail closed, never become invented passing receipts.
-            fields = {'schema_version', 'estimand', 'estimator_id', 'meaningful_effect',
-                      'dependence_assumptions', 'multiplicity', 'eligibility_policy',
-                      'undefined_replicate_policy', 'calibration'}
-            missing = sorted(fields - proposal['method'].keys())
-            if missing:
+            invalid = defects(proposal['method'])
+            if 'meaningful_effect' not in invalid:
+                if any(ref not in contract.evidence_catalog
+                       for ref in proposal['method']['meaningful_effect']['evidence_digests']):
+                    invalid['meaningful_effect'] = 'Justification must reference evidence in the retained contract catalog'
+            if invalid:
                 report = {'schema_version': 'method-fields-preflight-v1',
-                          'proposal_digest': digest(proposal), 'missing': missing}
+                          'proposal_digest': digest(proposal), 'defects': invalid,
+                          'required_shape': SHAPE}
                 key = digest(report)
-                return dict(disposition='repair', work_units=1, evidence={key: report},
+                return dict(disposition='repair', work_units=1,
+                    evidence={**contract.evidence_catalog, key: report},
                     findings=[dict(requirement_ref='native_design.' + field, evidence_digest=key,
-                        message='Native design requires ' + field,
-                        verification='Exact native design-adequacy field set') for field in missing])
+                        message=message,
+                        verification='Exact native design-adequacy field shape') for field, message in invalid.items()])
             receipt = await client.run(tool=contract.diagnostic, subject_digest=digest(proposal),
                 payload=proposal['method'], catalog=contract.evidence_catalog,
                 work_limit=work, timeout=remaining)
