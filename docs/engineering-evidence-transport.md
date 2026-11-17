@@ -16,8 +16,9 @@ worker copy implement the same versioned codec. A parity test prevents drift.
 - Existing JSON packets up to 48,000 bytes retain their original document shape.
 - Larger packets use an engineering-evidence-zlib-v1 envelope carrying base64
   zlib bytes, expanded byte count and SHA-256 of the complete canonical JSON.
-- The wire limit remains 48,000 bytes. Expansion is capped at 96,000 bytes before
-  parsing. Decompression is bounded, not an unrestricted decompress-then-check.
+- The wire limit remains 48,000 bytes. Ordinary evidence remains capped at
+  96,000 expanded bytes. Accepted-method handoffs may use the bounded artifact
+  extension described below. Decompression is bounded before parsing.
 - Both forms require an object with at most 20 top-level keys, depth at most 32,
   finite JSON numbers and no duplicate keys. Unknown versions, nested envelopes,
   trailing streams, incomplete streams and checksum/length mismatches fail closed.
@@ -35,11 +36,32 @@ the immutable wire contract. Author/reviewer prompts, native scaffold inputs and
 retry evidence comparisons use decoded evidence. The scaffold artifact is normal
 JSON with mode 0600; Bulletproof needs no new decoder or source transition.
 
-This reduces transport duplication, not model token cost: models still receive
-the complete evidence. It is not an excuse for unbounded context. Documents over
-96 KB, or incompressible packets over the wire limit, remain explicit platform
-blockers. A future artifact-backed evidence protocol would require its own
-custody, availability and retrieval tests rather than silent truncation.
+Ordinary evidence remains inline. Incompressible packets over the wire limit
+remain explicit platform blockers. No context is silently truncated.
+
+### Accepted-method artifact extension
+
+An accepted-method packet can retain a substantial immutable review history.
+The `engineering-evidence-xz-v1` envelope supports up to 262,144 expanded bytes
+only for the accepted-method handoff shape, still within the 48,000-byte wire
+limit. XZ decoding has a 32 MiB memory bound and bounded output; shape does not
+confer authority. The worker independently verifies source, plans, both reviews
+and the contract binding before writing the evidence artifact.
+
+For oversized handoffs, the prompt retains the current proposal, requirements,
+native plan report and all other top-level engineering evidence. This active
+view must fit 96,000 bytes. Full history, dependencies and review records remain
+in `../artifacts/accepted-method-evidence.json`, with its canonical SHA-256 in
+the prompt. Author and reviewer are instructed to read that file. It is written
+before model work, mode 0600, and checked for modification before every episode
+stage and on retry. Native scaffold inputs still receive the complete document.
+This enables tool-mediated reading; it does not prove a model read every item.
+
+A read-only sizing probe using the real accepted BTC packet and new ready native
+plans measured 174,410 original bytes, 33,237 wire bytes and 88,137 prompt bytes.
+Every original field round-tripped. This probe used no new review verdict and
+does not constitute an authorized or scientifically accepted handoff. Final
+registered reviews still need their own complete-contract preflight.
 
 ## Verification and rollout
 

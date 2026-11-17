@@ -66,6 +66,33 @@ def fixture(tmp_path, expression, expected):
 
 
 @pytest.mark.asyncio
+async def test_handoff_artifact_is_retained_before_model_call_and_retry_checks_integrity(tmp_path, monkeypatch):
+    from swarm_worker.executors.engineering_episode import execute_episode
+    from swarm_worker.engineering_episode import EpisodeIntegrityError
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    contract = EngineeringMissionContract.model_validate(task.input_contract)
+    # This test isolates artifact custody; cryptographic handoff checks have separate tests.
+    monkeypatch.setattr('swarm_worker.executors.engineering_episode.verify_handoff', lambda *_: {'fixture': True})
+
+    async def permit():
+        assert (workspace.artifacts / 'accepted-method-evidence.json').read_text() == '{}'
+        return {'allowed': False, 'recovery_token': 'fixture-open'}
+
+    async def heartbeat(_):
+        pass
+
+    monkeypatch.setattr('swarm_worker.executors.engineering_episode.model_capacity_permit', permit)
+    for _ in range(2):
+        result = await execute_episode(executor, task, contract, workflow, workspace, heartbeat)
+        assert result.termination_reason == 'provider_capacity'
+    artifact = workspace.artifacts / 'accepted-method-evidence.json'
+    assert artifact.stat().st_mode & 0o777 == 0o600
+    artifact.write_text('{"tampered":true}')
+    with pytest.raises(EpisodeIntegrityError, match='evidence differs'):
+        await execute_episode(executor, task, contract, workflow, workspace, heartbeat)
+
+
+@pytest.mark.asyncio
 async def test_episode_capacity_gate_publishes_deferral_without_authoring(tmp_path, monkeypatch):
     executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
     progress = []

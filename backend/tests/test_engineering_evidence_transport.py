@@ -3,6 +3,7 @@ from copy import deepcopy
 import hashlib
 import importlib.util
 import json
+import lzma
 from pathlib import Path
 import zlib
 
@@ -105,3 +106,66 @@ def test_incompressible_payload_still_respects_wire_budget(codec):
     raw = random.Random(42).randbytes(60_000)
     with pytest.raises(ValueError, match="wire"):
         codec.encode_engineering_evidence({"a": base64.b64encode(raw).decode()})
+
+
+def large_handoff():
+    return {"discovery_candidate": {"question": "Frozen question"},
+            "accepted_method_handoff": {
+                "schema_version": "accepted-method-engineering-handoff-v1",
+                "plan_evidence_digest": "plans", "handoff_digest": "test-only",
+                "packet": {"proposal": {"method": "Frozen estimand"},
+                           "requirements": {"support": "Preserve every minimum"},
+                           "evidence": {"plans": {"smoke": "ready", "scientific": "ready"},
+                                        "history": "retained provenance " * 6000}}}}
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
+def test_large_handoff_preserves_full_evidence_and_bounds_model_view(codec):
+    document = large_handoff()
+    before = deepcopy(document)
+    encoded = codec.encode_engineering_evidence(document)
+    for decoder in [backend, worker]:
+        assert decoder.decode_engineering_evidence(encoded) == before
+        assert decoder.expanded_engineering_evidence(encoded) == codec.canonical(before)
+        prompt = json.loads(decoder.prompt_engineering_evidence(encoded))
+        context = prompt['accepted_method_context']
+        assert context['proposal'] == before['accepted_method_handoff']['packet']['proposal']
+        assert context['requirements'] == before['accepted_method_handoff']['packet']['requirements']
+        assert context['full_evidence_sha256'] == hashlib.sha256(codec.canonical(before).encode()).hexdigest()
+        assert len(codec.canonical(prompt).encode()) <= codec.EXPANDED_LIMIT
+    assert document == before
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
+def test_large_active_science_and_excessive_history_still_fail(codec):
+    document = large_handoff()
+    document['accepted_method_handoff']['packet']['proposal']['method'] = 'm' * 96_000
+    with pytest.raises(ValueError, match='active engineering context'):
+        codec.encode_engineering_evidence(document)
+    document = large_handoff()
+    document['accepted_method_handoff']['packet']['evidence']['history'] = 'x' * 262_144
+    with pytest.raises(ValueError, match='expanded'):
+        codec.encode_engineering_evidence(document)
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
+def test_non_handoff_cannot_use_larger_decode_budget(codec):
+    with pytest.raises(ValueError, match='bound'):
+        codec.decode_engineering_evidence(envelope(codec.canonical({'history': 'x' * 100_000}).encode()))
+    with pytest.raises(ValueError, match='reserved'):
+        codec.encode_engineering_evidence({'accepted_method_context': {'spoofed': True}})
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
+@pytest.mark.parametrize("mutation", ['trailing', 'truncated', 'hash', 'bomb'])
+def test_handoff_xz_integrity_and_expansion_limits(codec, mutation):
+    encoded = json.loads(codec.encode_engineering_evidence(large_handoff()))
+    assert encoded['_evidence_transport'] == codec.HANDOFF_FORMAT
+    payload = base64.b64decode(encoded['payload'])
+    if mutation == 'trailing': payload += b'ignored'
+    if mutation == 'truncated': payload = payload[:-1]
+    if mutation == 'hash': encoded['sha256'] = '0' * 64
+    if mutation == 'bomb': payload = lzma.compress(b'x' * 1_000_000, preset=3)
+    encoded['payload'] = base64.b64encode(payload).decode()
+    with pytest.raises(ValueError):
+        codec.decode_engineering_evidence(json.dumps(encoded))

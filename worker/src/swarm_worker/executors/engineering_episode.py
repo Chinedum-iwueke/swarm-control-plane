@@ -13,7 +13,7 @@ from swarm_worker.executors.code_validation import ExecutionPolicyError
 from swarm_worker.models import StepExecutionResult
 from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.workspace import TaskWorkspace
-from swarm_worker.engineering_evidence import decode_engineering_evidence
+from swarm_worker.engineering_evidence import decode_engineering_evidence, expanded_engineering_evidence
 from swarm_worker.accepted_method_handoff import verify_handoff, bundle_binding
 from swarm_worker.method_episode import MethodCapacityUnavailable
 from swarm_worker.model_lane import model_capacity_permit, provider_key
@@ -46,6 +46,13 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
     started = time.monotonic()
     policy = contract.engineering_episode
     accepted_method = verify_handoff(contract, workspace.metadata.resolved_base_commit)
+    if accepted_method is not None:
+        evidence_path = workspace.artifacts / "accepted-method-evidence.json"
+        evidence_text = expanded_engineering_evidence(contract.evidence_context)
+        if evidence_path.is_symlink() or (evidence_path.exists() and evidence_path.read_text() != evidence_text):
+            raise EpisodeIntegrityError("retained accepted method evidence differs")
+        evidence_path.write_text(evidence_text, encoding="utf-8")
+        evidence_path.chmod(0o600)
     continuity = decode_engineering_evidence(contract.evidence_context).get('author_continuity', 'reconstructed')
     if continuity not in {'reconstructed', 'session'}:
         raise ExecutionPolicyError('Unsupported author continuity mode')
@@ -101,6 +108,11 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
         state["workspace"] = str(workspace.repository)
 
     async def perform(stage, state, remaining, sequence):
+        if accepted_method is not None and (
+            evidence_path.is_symlink() or not evidence_path.is_file()
+            or evidence_path.read_text(encoding="utf-8") != evidence_text
+        ):
+            raise EpisodeIntegrityError("accepted method evidence changed between stages")
         segment = f"episode-{sequence:03d}-{stage}"
         logs, artifacts = workspace.logs / segment, workspace.artifacts / segment
         logs.mkdir(mode=0o700)

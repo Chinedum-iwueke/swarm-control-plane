@@ -1,8 +1,9 @@
 # Experiment-to-calibration consistency
 
-Status: implemented locally and tested offline. Not deployed or commissioned on
-a production candidate. This is a structural checking and bounded-repair increment,
-not scientific certification or proof of autonomous research quality.
+Status: structural checking and bounded repair deployed and observed on one real
+candidate, with both independent method acceptances recorded. Engineering and
+execution remain uncommissioned; this is not end-to-end autonomous certification.
+The dated sections below retain the intermediate failures and recovery history.
 
 ## Architecture
 
@@ -168,3 +169,22 @@ engineering authorization. A successful method review does not supply those rece
 
 Both independent method acceptances are now recorded. This commissioning grants no
 engineering, calibration execution, backtests, orders or promotion authority.
+
+### Fresh native planning and engineering boundary
+
+Fresh source-bound admission task `4d13ba48-b777-4eb8-953d-988d2053ea86`
+succeeded. Planning task `f4b54c7b-cf91-4ce2-93f3-bce428a83428` retained the
+original-window coverage deferral and proposed a coverage-only successor.
+Successor planning task `da3c4409-b48c-44d4-b5f8-e3c70f8f645d` succeeded with
+both smoke and scientific plans ready. Its scientific year ends May 18, 2026,
+with separate warmup and outcome-tail partitions. These are native planning
+receipts, not executed experiments or independently reviewed new windows.
+
+Founder approved mandate `ALPHA004-AEP007-ENGINEERING-HANDOFF-20261117`,
+digest `f82b9296db44fd7db3e7d707cea41d1da384cb2513d5231f6635d4c57055e28b`,
+expiring November 18 at 04:03 UTC. It permits a separately approved campaign and
+engineering task after fresh review, not broad discovery, market-data backtests,
+real-data calibration, orders or promotion. No engineering successor has been
+activated under it yet. The accepted-method transport sizing probe exposed a
+second, distinct bound; see `engineering-evidence-transport.md` for the bounded
+artifact-backed repair and its remaining commissioning boundary.
