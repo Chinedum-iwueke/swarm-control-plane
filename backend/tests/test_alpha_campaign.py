@@ -1038,7 +1038,7 @@ def test_deferral_cannot_claim_review_or_qualification():
             AlphaCampaignAttemptCreate.model_validate(changed)
 
 
-@pytest.mark.parametrize("action", ["produce_admitted_predictor_coverage", "scientific_requirements_rejected"])
+@pytest.mark.parametrize("action", ["produce_admitted_predictor_coverage", "scientific_requirements_rejected", "method_design_deferred", "method_dependency_deferred"])
 def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch, action):
     from copy import deepcopy
 
@@ -1069,6 +1069,8 @@ def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch
     ("needs_attention", "resolve_native_requirements_feasibility", True),
     ("needs_attention", "produce_admitted_predictor_coverage", True),
     ("needs_attention", "scientific_requirements_rejected", True),
+    ("needs_attention", "method_design_deferred", True),
+    ("needs_attention", "method_dependency_deferred", True),
     ("running", "produce_admitted_predictor_coverage", False),
     ("running", "await_independent_requirements_review", False),
     ("needs_attention", "unknown_failure", False),

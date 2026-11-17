@@ -121,3 +121,44 @@ def test_method_role_and_workflow_are_digest_verified():
     assert package.manifest.task_types == ['alpha_method_design']
     assert package.manifest.risk_ceiling == 0
     assert package.manifest.required_capabilities == ['alpha-method-design']
+
+
+@pytest.mark.asyncio
+async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path, monkeypatch):
+    engineering, task, _, workspace = fixture(tmp_path, '1', 1)
+    task.input_contract = contract(workspace.metadata.resolved_base_commit)
+    report = dict(schema_version='method-review-correction-v1',
+        proposal_digest=digest(task.input_contract['proposal']), reviews=[{'method_verdict': {
+            'findings': [dict(criterion='design', violation='State dependence precisely',
+                             verification='Check the assumption against the design')]} }])
+    task.input_contract['findings_digest'] = digest(report)
+    task.input_contract['evidence_catalog'][digest(report)] = report
+    workflow = WorkflowLoader(Path(__file__).parents[1]/'workflows').load('alpha-method-design')
+    calls = []
+    def proposer(*_, **__):
+        async def correct(context, operation, remaining):
+            calls.append('model')
+            assert context['findings'][0]['message'] == 'State dependence precisely'
+            return dict(changes={'dependence_assumptions': 'Explicit synthetic IID assumption'},
+                        addressed_findings=context['finding_digests'], rationale='Synthetic fixture correction.')
+        return correct
+    async def native(self, **kwargs):
+        calls.append('native')
+        assert kwargs['payload']['dependence_assumptions'] == 'Explicit synthetic IID assumption'
+        return {'schema_version': 'native-diagnostic-receipt-v1',
+                'result': {'status': 'requires_independent_review_and_native_calibration'}}
+    async def heartbeat(_):
+        pass
+    monkeypatch.setattr('swarm_worker.executors.alpha_method_design.correction_proposer', proposer)
+    monkeypatch.setattr('swarm_worker.executors.alpha_method_design.NativeDiagnosticClient.run', native)
+    monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
+    executor = AlphaMethodDesignExecutor(engineering, python=Path('/unused'), effective_uid=lambda: 1000)
+    for _ in range(2):
+        result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+        state = result.summary['method_episode']['state']
+        assert state['status'] == 'ready_for_independent_review'
+        assert state['repairs'] == state['model_calls'] == 1
+        assert state['scientific_approval'] is False
+        assert state['proposal']['scientific_identity'] == task.input_contract['proposal']['scientific_identity']
+        assert 'review_packet' in result.summary['method_episode']
+    assert calls == ['model', 'native']

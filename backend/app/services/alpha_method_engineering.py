@@ -11,6 +11,10 @@ from app.services.graph import digest_document as digest
 from app.services.tasks import build_task, persist_new_task
 
 
+class MethodPlanUnavailable(ValueError):
+    """Recorded dependency failure; new evidence and authority are required."""
+
+
 def verified_plan_evidence(db, request, packet, method_task):
     from app.services.alpha_requirements_feasibility import verified_report
     from app.models.alpha_discovery import AlphaDiscoveryCandidate
@@ -19,27 +23,30 @@ def verified_plan_evidence(db, request, packet, method_task):
     if (planning is None or planning.status != 'succeeded'
             or planning.task_type != 'alpha_data_admission'
             or planning.input_contract.get('base_ref') != packet['source_commit']):
-        raise ValueError('Current successful native planning task required')
+        raise MethodPlanUnavailable('Current successful native planning task required')
     evidence = planning.input_contract.get('feasibility_evidence')
     if not isinstance(evidence, dict):
-        raise ValueError('Native planning inputs missing')
+        raise MethodPlanUnavailable('Native planning inputs missing')
     candidate = db.get(AlphaDiscoveryCandidate, method_task.input_contract['candidate_id'])
     if (candidate is None or candidate.candidate_digest != method_task.input_contract['candidate_digest']
             or evidence.get('discovery_candidate') != candidate.document):
-        raise ValueError('Native plans belong to another candidate')
-    report = verified_report(planning, evidence, packet['source_commit'])
+        raise MethodPlanUnavailable('Native plans belong to another candidate')
+    try:
+        report = verified_report(planning, evidence, packet['source_commit'])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise MethodPlanUnavailable('Native planning receipt failed custody verification') from exc
     if (report['status'] != 'ready' or digest(report) != request.plan_evidence_digest
             or packet['evidence'].get(request.plan_evidence_digest) != report):
-        raise ValueError('Reviewed evidence does not contain the exact ready native plans')
+        raise MethodPlanUnavailable('Reviewed evidence does not contain the exact ready native plans')
     for mode, plan in report['validation_plans'].items():
         if (plan.get('schema_version') != 'requirements-aware-validation-plan-v1'
                 or plan.get('status') != 'ready' or plan.get('reasons')
                 or not plan.get('partitions') or plan.get('mode') != mode):
-            raise ValueError('Native plans are not ready for both validation modes')
+            raise MethodPlanUnavailable('Native plans are not ready for both validation modes')
     template_evidence = decode_engineering_evidence(request.contract.evidence_context)
     for key in ('discovery_candidate', 'dataset_bindings', 'representation_plan', 'window'):
         if key not in evidence or template_evidence.get(key) != evidence[key]:
-            raise ValueError('Engineering template differs from native planning inputs: ' + key)
+            raise MethodPlanUnavailable('Engineering template differs from native planning inputs: ' + key)
     return report
 
 

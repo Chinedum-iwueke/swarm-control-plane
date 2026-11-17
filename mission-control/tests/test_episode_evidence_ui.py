@@ -30,5 +30,14 @@ assert(html.includes('0 / 3'));
 assert(html.includes('&lt;script&gt;'));
 assert(!html.includes('<script>'));
 assert(html.includes('<details>'));
+const finished = {...TASK, status:'succeeded', result:{summary:{method_episode:{state:{
+  status:'deferred', reason:'repair_budget_exhausted', model_calls:3
+}}}}};
+const terminal = renderEpisodeEvidence(finished, EVENTS);
+assert(terminal.includes('repair_budget_exhausted'));
+assert(terminal.includes('3 / 3'));
+assert(terminal.includes('Retained terminal result'));
+assert(!terminal.includes('>diagnose<'));
+assert(terminal.includes('Recovery condition'));
 """.replace("TASK", json.dumps(task)).replace("EVENTS", json.dumps(events))
     subprocess.run(["node", "-e", code], check=True, capture_output=True, text=True)

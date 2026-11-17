@@ -3074,7 +3074,9 @@ function renderEpisodeEvidence(task, events) {
   const progressEvents = events.filter((event) => event.event_type === "task_heartbeat" &&
     event.attempt_number === task.attempt_count && event.payload?.progress);
   const latest = progressEvents[progressEvents.length - 1];
-  const progress = latest?.payload.progress || engineering?.progress || method || {};
+  const terminal = ["succeeded", "failed", "cancelled"].includes(task.status);
+  const retained = engineering?.progress || method;
+  const progress = (terminal ? retained : latest?.payload.progress) || retained || latest?.payload.progress || {};
   const policy = task.input_contract?.engineering_episode || task.input_contract?.policy || {};
   const relevant = ["alpha_method_design", "alpha_strategy_review"].includes(task.task_type) ||
     task.input_contract?.engineering_episode || method || engineering;
@@ -3086,13 +3088,16 @@ function renderEpisodeEvidence(task, events) {
     <dl class="detail-grid">
       <dt>Stage</dt><dd>${escapeHtml(humanize(progress.stage || progress.phase || "not_reported"))}</dd>
       <dt>Owner</dt><dd>${escapeHtml(task.assigned_agent_id || "Unassigned")}</dd>
+      <dt>Attempt</dt><dd>${escapeHtml(recorded(task.attempt_count))}</dd>
       <dt>Episode state</dt><dd>${escapeHtml(humanize(progress.status || method?.status || engineering?.status || task.status))}</dd>
       <dt>Blocker</dt><dd>${escapeHtml(progress.blocker || progress.reason || task.failure?.message || "None reported")}</dd>
+      <dt>Next action</dt><dd>${escapeHtml(recorded(progress.next_action))}</dd>
+      <dt>Recovery condition</dt><dd>${escapeHtml(recorded(progress.recovery_condition))}</dd>
       <dt>Repair budget</dt><dd>${escapeHtml(budget(progress.repairs, progress.max_repairs ?? policy.max_repairs))}</dd>
       <dt>Model-call budget</dt><dd>${escapeHtml(budget(progress.model_calls, progress.max_model_calls ?? policy.max_model_calls))}</dd>
       <dt>Token usage</dt><dd>${progress.usage_complete === true ? escapeHtml(recorded(progress.reported_tokens)) : "Unknown or incomplete"}</dd>
       <dt>Deadline</dt><dd>${escapeHtml(recorded(progress.deadline))}</dd>
-      <dt>Evidence updated</dt><dd>${latest ? formatDate(latest.created_at) : "Retained result; no current heartbeat shown"}</dd>
+      <dt>Evidence updated</dt><dd>${terminal && retained ? "Retained terminal result" : latest ? formatDate(latest.created_at) : "Retained result; no current heartbeat shown"}</dd>
     </dl>
     <details><summary>Episode evidence and receipts (${receipts.length})</summary>
       <ul>${receipts.map((receipt) => `<li class="mono">${escapeHtml(receipt)}</li>`).join("")}</ul>

@@ -216,6 +216,47 @@ def ensure_native_producer_profile(api: httpx.Client, state: dict) -> dict:
     return profile
 
 
+def ensure_method_producer_profile(api: httpx.Client, state: dict, model: str) -> dict:
+    """Register model provenance, never label method reasoning deterministic."""
+    expected = {
+        "review_kinds": ["alpha_method_producer"],
+        "capabilities": ["alpha-method-design"],
+        "provider": "codex", "model_family": model,
+        "context_group": f"{state['slug']}-method-{state['manifest_digest'][:12]}",
+    }
+    profiles = [p for p in call(api, "GET", "/v1/evaluator-routing/profiles")
+                if p["agent_id"] == state["agent_id"]]
+    matching = [p for p in profiles if p["status"] == "active"
+                and p["package_id"] == state["package_id"]
+                and p["package_digest"] == state["manifest_digest"]]
+    if matching:
+        if len(matching) != 1 or any(matching[0].get(k) != v for k, v in expected.items()):
+            raise RuntimeError("Method producer provenance differs; explicit profile rotation required.")
+        return matching[0]
+    versions = [int(p["profile_version"].split(".")[2]) for p in profiles
+                if p["profile_version"].startswith("1.0.")]
+    profile = call(api, "POST", "/v1/evaluator-routing/profiles", expected | {
+        "agent_id": state["agent_id"], "profile_version": f"1.0.{max(versions, default=-1)+1}",
+        "registered_by": "founder-operator"})
+    if (profile.get("status") != "active" or profile.get("package_id") != state["package_id"]
+            or profile.get("package_digest") != state["manifest_digest"]
+            or any(profile.get(k) != v for k, v in expected.items())):
+        raise RuntimeError("Method producer profile differs from the signed runtime.")
+    return profile
+
+
+def validate_method_environment(path: Path, model: str) -> None:
+    pairs = [line.split('=', 1) for line in path.read_text().splitlines()
+             if line and not line.startswith('#')]
+    if any(len(pair) != 2 for pair in pairs) or len({p[0] for p in pairs}) != len(pairs):
+        raise RuntimeError('Malformed or duplicate method runtime settings.')
+    env = dict(pairs)
+    if (env.get('SWARM_CODEX_MODEL') != model
+            or env.get('SWARM_ENGINEERING_AUTHOR_PROVIDER') != 'codex'
+            or env.get('SWARM_AGENT_SLUG') != 'alpha-method-designer'):
+        raise RuntimeError('Method runtime configuration differs from producer provenance.')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", type=Path, required=True)
@@ -224,8 +265,15 @@ def main() -> int:
     parser.add_argument("--package", default=DEFAULT_PACKAGE)
     parser.add_argument("--recover-registration", action="store_true")
     parser.add_argument("--rotate-package", action="store_true")
+    parser.add_argument("--method-model", help="Explicit Codex model for the method-designer runtime")
     args = parser.parse_args()
     package_name = args.package
+    if package_name == "alpha-method-designer":
+        import re
+        if not args.method_model or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,119}", args.method_model):
+            raise RuntimeError("Method designer requires an explicit valid --method-model.")
+    elif args.method_model:
+        raise RuntimeError("--method-model applies only to alpha-method-designer.")
     if args.state.exists() != args.environment.exists():
         raise RuntimeError(
             "Executor state is partial; refusing implicit credential recovery."
@@ -247,6 +295,10 @@ def main() -> int:
         )
         if state.get("slug") != package_name:
             raise RuntimeError("Existing executor state belongs to another package.")
+        if package_name == "alpha-method-designer" and state.get("method_model") != args.method_model:
+            raise RuntimeError("Method runtime model changed; explicit identity migration required.")
+        if package_name == "alpha-method-designer":
+            validate_method_environment(args.environment, args.method_model)
         if package_changed and not args.rotate_package:
             raise RuntimeError(
                 "Existing executor state differs; use an explicit package/credential rotation."
@@ -269,6 +321,8 @@ def main() -> int:
                 )
                 if "alpha-research-execution" in manifest.required_capabilities:
                     ensure_native_producer_profile(api, state)
+                if package_name == "alpha-method-designer":
+                    ensure_method_producer_profile(api, state, args.method_model)
             state["workload_identity_id"] = identity["id"]
             state["workload_identity_version"] = manifest.version
             state["workload_scopes"] = WORKLOAD_SCOPES
@@ -493,6 +547,9 @@ def main() -> int:
         state["workload_scopes"] = WORKLOAD_SCOPES
         if "alpha-research-execution" in manifest.required_capabilities:
             ensure_native_producer_profile(api, state)
+        if package_name == "alpha-method-designer":
+            state["method_model"] = args.method_model
+            ensure_method_producer_profile(api, state, args.method_model)
         if existing_agent:
             rotated = call(
                 api,
@@ -518,6 +575,8 @@ def main() -> int:
             "",
         ]
     )
+    if package_name == "alpha-method-designer":
+        environment += f"SWARM_CODEX_MODEL={args.method_model}\nSWARM_ENGINEERING_AUTHOR_PROVIDER=codex\n"
     atomic_write(args.environment, environment)
     if existing_agent:
         with httpx.Client(

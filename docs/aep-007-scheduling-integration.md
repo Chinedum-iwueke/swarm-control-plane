@@ -1,143 +1,164 @@
 # AEP-007: scheduling, authority and visible recovery
 
-Status: in progress, not commissioned. AEP-005/AEP-006 are not yet the production
-default. This milestone must not be described as complete based on local episode
-tests alone.
+Status: **in progress; commissioning is not complete**. AEP-005/AEP-006 are not
+the production default. Controlled fixtures are not genuine-candidate receipts.
 
-## Current rollout and acceptance boundary
+## Deployed baseline
 
-The method-task publication increment was committed as `200e09f`, pushed to main,
-and deployed to VM2. The API is healthy and both discovery/campaign directors
-restarted successfully. No method-designer registration or autonomous queue resume
-was performed.
+`200e09f` deployed source-bound method publication. `6631a6d` added separately
+assigned method reviews, accepted-method engineering materialization and the
+Mission Control bounded-episode inspector. VM2 API and both directors were
+verified healthy on the same image. The two VM1 independent reviewers were
+restarted; the Mac serves the inspector. This did not resume autonomous work or
+register a method designer.
 
-The next implementation adds independently assigned method-verdict tasks using the
-existing evaluator registry, exact packet/criterion/evidence validation, and current
-profile/package checks before cached acceptance is consumed. Legacy verdict
-serialization is unchanged. Method reviews use one local call and one task attempt,
-check the lease and billing-lane permit before inference, and retain explicit quota
-deferral. Native planning producers are excluded from reviewing their own evidence.
+## Authority and scheduling
 
-An explicitly frozen `method_engineering_requests` entry can bind the accepted
-packet to an engineering episode. Both native validation plans must be ready and
-present in the reviewed evidence, backed by a successful source/candidate-bound
-planning task. The template must retain the exact dataset, representation and
-window. It is not inferred from model prose. Materialization is idempotent and
-explicitly requires engineering approval during commissioning. Existing task
-approvals are not silently extended. Source merge/rebinding remains a separate gate.
+New campaigns can include exact `method_design_requests` keyed by candidate ID.
+They are frozen into the campaign and require explicit founder activation during
+commissioning. Existing approvals do not authorize this new lane. Materialization
+uses the campaign lock and content-addressed task identity. Source, candidate,
+mandate, deadline and frozen request are checked again during reconciliation,
+task start and heartbeats. Historical specifications and mandate counters remain
+unchanged.
 
-Mission Control's task inspector gains a bounded-episode section using current
-attempt heartbeats or retained results: stage, owner, blocker, call/repair budgets,
-deadline, evidence receipts and explicitly unknown/incomplete token usage.
+The restricted method executor checks its lease before effects and periodically
+during work. Model-call reservations require the configured billing lane's permit.
+Deterministic diagnostics do not require a model permit. Drain pause prevents new
+leases without cancelling already executing work. Provider recovery requires a
+changed trusted circuit revision; unchanged delivery does not repeat model spend.
+Interrupted reservations remain charged, with original budgets and deadlines.
 
-Still open: production wiring of rejected-review adjudication/re-review; verified
-dependency recovery and producer commissioning; integrated browser validation;
-and the scoped scheduler failure-injection/commissioning evidence. An accepted
-packet is not permission to skip these checks. AEP-007 is **not complete**.
+## Review and engineering
 
-The follow-on implementation passed 202 focused backend tests, 110 worker tests
-and one executable JavaScript inspector test. The scheduler materialization test
-also caught and fixed a risk-1 approval default: the new engineering task now
-explicitly requires approval. These are controlled fixtures, not production
-method-acceptance or native-backtest receipts. Browser appearance remains unverified.
+An operationally succeeded method task is not scientific acceptance. Publication
+verifies the task contract, unchanged scientific identity/support minima, repair
+scope, budget counters, exact packet and native diagnostic receipt. Native design
+readiness explicitly retains independent-review and calibration obligations.
 
-Production inspection found the latest commissioning mandates completed, including
-`ALPHA004-BTC-METHOD-CORRECTION-20261117-R3`. They must not be reopened or have their
-counters reset. The founder authorized preparation of a new commissioning proposal,
-not activation of an unspecified digest.
+Two separately leased AGT-006 reviewers receive the exact packet and obligations.
+Evidence references, identities, active profiles/packages and producer exclusion
+are checked before consuming fresh or cached reviews. Legacy review serialization
+is unchanged. Each method-review task permits one attempt and one local call.
 
-## Verified implementation increment
+A frozen `method_engineering_requests` entry can bind an accepted packet to an
+engineering episode. Both native smoke/scientific plans must be ready, included
+in reviewed evidence, and backed by a successful source/candidate-bound planning
+task. Dataset, representation and windows must match. Engineering approval remains
+explicit during commissioning. Source merge/rebinding is a separate gate.
 
-The existing engineering executor now checks its task lease through a heartbeat
-before every stage and checks the current billing lane's provider permit before
-reserving a model call. Deterministic stages do not require a provider permit.
-Drain pause continues to prevent new leases through the existing control plane;
-it is not converted into cancellation of an already executing task.
+## Bounded review correction (local increment)
 
-The provider permit endpoint exposes a stable circuit revision. Deferred episodes
-require a changed trusted recovery token; repeated delivery with the same token
-does not repeat model spend. The executor uses a healthy circuit revision only for
-capacity recovery, not to reopen an infrastructure deferral. Deadlines, repairs,
-call reservations, receipts and source bindings remain unchanged. Lost leases
-prevent new effects. Already launched work remains charged after interruption.
+`alpha_method_recovery.py` creates an immutable successor after a concrete,
+evidence-bound rejection. The successor retains scientific identity, support
+minima, source, authority and remaining deadline. It subtracts already consumed
+repair/model/tool/work budgets. A campaign lock and recorded successor event make
+repeated delivery idempotent; altered lineage fails closed. Authority revocation
+also blocks reuse of an existing successor.
 
-Capacity deferral is returned through the existing worker provider-capacity
-protocol, including when no model was launched. Subscription/API lane identity is
-preserved. There is no wall-clock or random retry token.
+The worker consumes retained rejection findings before another native diagnosis.
+A changed proposal requires a new exact packet and fresh independent review.
+It cannot convert a rejection into acceptance. Exhausted budgets, deadline or
+bounded context produce a retained zero-trial deferral through the existing
+candidate-deferral path; unchanged retry is forbidden and siblings can advance.
+This is bounded correction. The separately authorized dispute lane below does
+not waive either independent review.
 
-Stage-boundary heartbeats and the final execution summary expose stage, status,
-blocker, repairs and call budgets, deadline, recent receipt IDs and usage
-completeness. This provides telemetry through existing task progress; it is not
-a claim that a dedicated Mission Control episode inspector has been implemented.
+## Independent dispute lane
 
-## Remaining acceptance work
+New campaigns may explicitly freeze `method_dispute_policy=independent_once`.
+After rejection, a third review-only evaluator receives the exact retained packet
+and both reviews; the producer and both original reviewers are excluded. It must
+bind each rejected finding to retained evidence and choose `repair`, `recheck`
+or `disputed`. It cannot issue approval. This is interpretation/scope adjudication,
+not an empirical counterexample or proof that a reviewer is scientifically wrong.
 
-- Discovery producers must supply the new typed method request with complete
-  scientific identity, evidence, obligations and permitted repair fields. The
-  initial task adapter supports `design_adequacy_v1`; other diagnostic tools
-  still need explicit adapters rather than model-selected commands.
-- Publish exact method packets into separately leased AEP-005 reviewer tasks;
-  verify registry identity, dependencies and authority on cached results as well
-  as fresh results. Never relabel legacy approvals as AEP-005 evidence.
-- Materialize AEP-006 engineering tasks from those accepted packets, with
-  explicit focused-test selectors and retained scope/budget authority. Default
-  reconstructed continuity; persistent author sessions remain configurable.
-- Prove these routes through existing campaign/replenishment controllers,
-  including eligible siblings, data deferrals, exhausted authority, duplicate
-  delivery, restart, and changed-condition reconsideration.
-- Render and browser-test the complete Mission Control episode state, including
-  method/review stages, owner, recovery condition, budgets and unknown usage.
+One adjudication is allowed per correction lineage, with one task attempt and one
+model call. Expired episodes and exhausted native recheck budgets defer before
+adjudication. A recheck preserves the method, refreshes native diagnostics and
+requires two fresh reviews. Unresolved disputes defer; changed methods follow the
+ordinary bounded repair path. The adjudicator is a separately registered profile
+and context, not the author checking its own work.
 
-No live model calls, campaigns, mandates, orders, or deployment were performed by
-this increment. The implementation is a prerequisite safety repair, not an
-end-to-end autonomy certificate or completion of AEP-007.
+Missing, unready or mismatched native planning evidence now produces
+`method_dependency_deferred` before reviewer task creation. The retained blocker
+names the planning task and `native_feasibility_planner` owner. Reconsideration
+requires verified plans in a successor packet, fresh review and explicit successor
+authority. It is not a retry of the same missing dependency or a waived gate.
 
-Verification: 205 focused worker tests and 11 backend provider-circuit tests
-passed. Backend tests use mocked database access and a non-secret placeholder
-for import-time configuration. No production credentials or database were used.
-Changes remain local and undeployed. Rollout must install the additive permit
-revision field before relying on automatic episode capacity recovery; an older
-API without a revision cannot authorize that recovery.
+## Method-designer provisioning
 
-## Method-task publication increment
+The local bootstrap supports `--package alpha-method-designer --method-model MODEL`.
+The model is mandatory and recorded in both registration state and worker settings.
+Its producer profile uses `provider=codex`, the actual configured model, a dedicated
+context group and `alpha_method_producer`, not deterministic-native provenance or
+reviewer capabilities. Identical registration is reused; changed model/profile or
+runtime settings fail closed rather than silently changing provenance.
 
-`MethodTaskContract`, `AlphaMethodDesignExecutor` and the `alpha-method-designer`
-package connect AEP-004 to the existing restricted worker. A dedicated capability
-and digest-pinned workflow are required. No existing agent receives that capability
-or new authority automatically. The configured native validation environment is
-required; the adapter does not install dependencies or modify Bulletproof.
+`worker/systemd/install-alpha-method-designer.sh` checks root-owned mode-0600
+registration files and installs the dedicated service **without starting or
+enabling it**. It refuses replacement of an active service. The service is non-root,
+has a read-only primary checkout, scoped writable paths, one CPU and a 2 GiB memory
+ceiling. It uses the existing authenticated Codex runtime; it does not copy keys,
+install dependencies, enable hybrid authoring or initiate model calls.
 
-A new campaign can include exact `method_design_requests` keyed by candidate ID.
-They are part of its frozen specification and require explicit founder activation
-for this commissioning phase. Director activation cannot select this uncommissioned
-path. Old campaigns and tasks are not migrated. The campaign director materializes
-a content-addressed child of the completed draft, with a campaign lock, immutable
-contract comparison and no mandate-counter reset. It rechecks the source, candidate,
-mandate and expiry on every reconciliation, including duplicate delivery.
+Registration state and environment must be named
+`/etc/invariance-swarm/alpha-method-designer-state.json` and
+`/etc/invariance-swarm/alpha-method-designer.env`. Register only a released exact
+control-plane commit using the existing operator procedure, then install the unit.
+Activation remains separate and requires the exact approved commissioning campaign.
+These provisioning changes are locally tested, not yet installed or registered.
 
-Method tasks participate in drain pause, provider circuits and normal task leases.
-Leasing requires a registered producer identity; start and heartbeat check current
-mandate authority. The executor checks missing native design fields deterministically,
-uses bounded correction only when needed, and checks provider capacity before a
-model-call reservation. Native diagnostics use the pinned CLI and verified receipts.
-Periodic lease heartbeats and cancellation surround both model and native work.
+## Visibility and verification
 
-An operationally succeeded task means its result was retained, not that its method
-was approved. The campaign verifies result/source/contract/budget bindings, unchanged
-scientific identity, allowed method fields, native receipt custody and the exact
-review packet. A ready packet is published once as `method_packet_published`, with
-lease-time producer identity. It stops at `await_independent_method_review`; it
-cannot fall through to legacy approval or engineering. A deferred method follows
-the existing zero-trial candidate-deferral path so an eligible sibling can advance.
+The task inspector renders current-attempt progress or retained results, owner,
+stage, blocker, repair/model budgets, deadline and expandable evidence. Unknown
+token usage stays explicit. Synthetic browser inspection verified desktop and
+390px mobile rendering and evidence expansion; it was not a production API test.
 
-This increment does not yet materialize AEP-005 reviewer tasks from that publication.
-No author session is exposed to reviewers. Native diagnostic readiness explicitly
-retains the need for independent review and calibration; it is not evidence that
-those checks passed. This is local integration, not a deployed or commissioned loop.
+Focused tests cover source/authority revocation, contract parity, immutable
+publication, separate review routing, exact accepted-method handoff, correction
+budget conservation, duplicate delivery, altered lineage, provider deferral,
+worker repair/restart and zero-trial deferral. Most native/model calls in these
+tests are stubbed. See the test files named for `alpha_method`, `method_review`,
+`method_episode`, `engineering_episode`, `alpha_campaign` and provider capacity.
+The prior follow-on runs passed 172 backend tests, 98 worker tests and one executable
+JavaScript inspector test. Terminal results take precedence over older running
+heartbeats; attempt, next action and recovery condition are explicit when recorded.
+Three worker tests used the actual clean Bulletproof checkout and native CLI,
+with synthetic contracts and scripted corrections. They verified missing-field
+repair, native receipt custody and restart reuse, not paid-model reasoning or
+market-data backtest success.
 
-Increment verification: 192 backend tests and 158 worker tests passed, covering
-campaign dispatch, idempotent task/packet publication, authority revocation,
-schema parity, fixed-workflow/package validation, provider deferral, worker service,
-controls and the existing method/engineering episode regressions. Native transport
-is stubbed in the new executor tests; these are not genuine-candidate or live-model
-commissioning receipts. No deployment or new agent registration was performed.
+The provisioning/dependency increment additionally checks explicit model provenance,
+configuration drift, inactive-by-default installation and native-dependency deferral
+before review. The focused backend suite now has 175 passing tests. The
+worker suite has 113 passes (including three actual native-CLI checks), and the
+JavaScript renderer test passes. The unit passes `systemd-analyze verify`;
+the host reports unrelated existing snapd
+`RestartMode` and netplan unit-read warnings.
+
+## Remaining acceptance boundary
+
+- Deploy and verify this bounded correction increment.
+- Release, register and install the tested dedicated method-designer runtime.
+- Commission typed discovery inputs and dependency recovery under an explicitly
+  approved exact campaign; do not infer requests from prose or migrate old work.
+- Exercise the integrated scheduler with retained commissioning evidence,
+  including restart, quota, unavailable data, exhausted authority and siblings.
+- Commission the independent adjudication route on retained real evidence;
+  synthetic routing tests alone do not establish scientific review quality.
+
+The founder authorized preparing a commissioning proposal, not activating an
+unspecified digest. The latest observed commissioning mandates were completed;
+their budgets must not be reset. AEP-008's genuine-candidate engineering, smoke,
+one-year BT-009, memory and replenishment certificate remains a separate milestone.
+
+Read-only inspection on 2026-11-17 confirmed BTC campaign
+`13a791af-9918-47c0-b924-07bfbf5ffb6c` is `completed_no_candidate` with its queue
+exhausted. Its retained candidate is `bfefd78f-113e-4383-beeb-1ba964a8622d`, bound
+to Bulletproof `ff945426f572d1a72b84714287fc34549b9290b0`. The current clean native
+checkout is `4e98fab3c1073d8a5c83615ecbe2c0a428193b7c`. A commissioning successor
+must explicitly bind its intended source and revalidate dependencies; copying old
+planning receipts into a new source contract is not authorized or valid. No new
+campaign or approval digest has been created by this increment.

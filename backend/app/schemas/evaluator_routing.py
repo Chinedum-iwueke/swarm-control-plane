@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.method_verdict import MethodVerdict
+from app.schemas.method_adjudication import MethodAdjudication
 
 
 class EvaluatorProfileCreate(BaseModel):
@@ -72,8 +73,14 @@ class MethodStrategyReview(AlphaStrategyReview):
     method_verdict: MethodVerdict
 
 
+class MethodAdjudicationReview(AlphaStrategyReview):
+    verdict: Literal['reject'] = 'reject'
+    method_adjudication: MethodAdjudication
+
+
 def parse_strategy_review(value):
-    cls = MethodStrategyReview if isinstance(value, dict) and "method_verdict" in value else AlphaStrategyReview
+    cls = (MethodAdjudicationReview if isinstance(value, dict) and 'method_adjudication' in value
+           else MethodStrategyReview if isinstance(value, dict) and "method_verdict" in value else AlphaStrategyReview)
     return cls.model_validate(value)
 
 
@@ -81,7 +88,7 @@ class EvaluatorAssignmentComplete(BaseModel):
     evaluator_agent_id: uuid.UUID
     review_id: str = Field(min_length=1, max_length=150)
     review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    alpha_strategy_review: MethodStrategyReview | AlphaStrategyReview | None = None
+    alpha_strategy_review: MethodAdjudicationReview | MethodStrategyReview | AlphaStrategyReview | None = None
 
 
 class EvaluatorProfileResponse(BaseModel):

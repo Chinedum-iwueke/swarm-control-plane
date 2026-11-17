@@ -20,6 +20,7 @@ from swarm_worker.strategy_review_contract import (
     AlphaStrategyReviewContract,
     StrategyReviewVerdict,
     MethodStrategyReview,
+    MethodAdjudicationReview,
     review_digest,
 )
 from swarm_worker.workflows import WorkflowDefinition
@@ -48,14 +49,24 @@ class AlphaStrategyReviewExecutor:
         output = workspace.artifacts / "strategy-review.json"
         schema = workspace.artifacts / "strategy-review-schema.json"
         prompt = workspace.artifacts / "strategy-review-prompt.txt"
-        method_scope = contract.subject.get("review_scope") == "method_design"
-        verdict_type = MethodStrategyReview if method_scope else StrategyReviewVerdict
+        adjudication_scope = contract.subject.get('review_scope') == 'method_adjudication'
+        method_scope = contract.subject.get("review_scope") in {"method_design", "method_adjudication"}
+        verdict_type = MethodAdjudicationReview if adjudication_scope else MethodStrategyReview if method_scope else StrategyReviewVerdict
         document = verdict_type.model_json_schema()
         document["required"] = list(document["properties"])
         document["properties"]["subject_digest"]["enum"] = [contract.subject_digest]
         schema.write_text(json.dumps(document), encoding="utf-8")
         prompt.write_text(
-            ("Review the exact method_review_packet, NOT a finished strategy or observed result. "
+            ("Adjudicate only the exact rejected_reviews against method_review_packet. "
+             "You are independent of the producer and original reviewers. Return method_adjudication "
+             "with exact packet and reviews digests; finding_evidence maps every rejected finding's "
+             "canonical digest to retained evidence digests. Choose repair for substantiated defects, "
+             "recheck only for a specific evidence-supported scope or interpretation error, or disputed "
+             "when evidence cannot resolve the conflict. Recheck requests fresh independent review, "
+             "not approval. Never claim an unobserved experiment ran or a diagnostic proved scientific "
+             "validity. Outer verdict MUST remain reject; this is not scientific acceptance.\n"
+             if adjudication_scope else
+             "Review the exact method_review_packet, NOT a finished strategy or observed result. "
              "Return method_verdict with the packet digest and every requirement key checked exactly once. "
              "Every rejection finding must cite a requirement key, retained evidence digests, the violation "
              "and a verification procedure. Outer blockers must exactly equal finding violations; outer "
@@ -97,7 +108,7 @@ class AlphaStrategyReviewExecutor:
                "For strategy_spec review check semantic fidelity, parameter budget and logs; "
                "for causality_leakage check closed-bar availability, splits, joins, resampling "
                "and next-bar execution. Reject unresolved or unverifiable implementation gaps. "
-               if contract.subject.get("review_scope") not in {"coverage_window_successor", "scientific_requirements", "method_design"} else "")
+               if contract.subject.get("review_scope") not in {"coverage_window_successor", "scientific_requirements", "method_design", "method_adjudication"} else "")
             + "Do not infer empirical profitability or mathematical qualification from prose.\n"
             + json.dumps(contract.model_dump(mode="json"), sort_keys=True), encoding="utf-8",
         )
@@ -196,7 +207,10 @@ class AlphaStrategyReviewExecutor:
             if output.is_symlink() or output.stat().st_size > 15_000:
                 raise ValueError("Invalid review output file")
             result = verdict_type.model_validate_json(output.read_text(encoding="utf-8"))
-            if method_scope:
+            if adjudication_scope:
+                from swarm_worker.method_adjudication_contract import validate_adjudication
+                validate_adjudication(result, contract.qualification['artifact_bundle'], review_digest)
+            elif method_scope:
                 from swarm_worker.method_verdict_contract import validate_method_review
                 validate_method_review(result, contract.qualification["artifact_bundle"]["method_review_packet"], review_digest)
             if result.subject_digest != contract.subject_digest:

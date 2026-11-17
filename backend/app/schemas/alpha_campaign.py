@@ -84,10 +84,13 @@ class AlphaCampaignCreate(StrictModel):
     research_mandate_id: uuid.UUID | None = None
     research_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
     method_design_requests: dict[str, MethodTaskContract] | None = Field(default=None, max_length=100)
+    method_dispute_policy: Literal['independent_once'] | None = None
     method_engineering_requests: dict[str, MethodEngineeringRequest] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def unique_scope(self):
+        if self.method_dispute_policy and not self.method_design_requests:
+            raise ValueError('Method dispute policy requires explicit method requests')
         for key, request in (self.method_engineering_requests or {}).items():
             if (key not in (self.method_design_requests or {})
                     or request.contract.base_ref != self.bulletproof_source_commit):

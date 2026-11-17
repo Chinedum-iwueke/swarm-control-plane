@@ -45,6 +45,16 @@ class AlphaMethodDesignExecutor:
 
         async def diagnose(proposal, operation, work, remaining):
             await check_lease('native_diagnosis')
+            retained = contract.evidence_catalog.get(contract.findings_digest, {})
+            if (retained.get('schema_version') == 'method-review-correction-v1'
+                    and retained.get('proposal_digest') == digest(proposal)):
+                findings = [dict(requirement_ref=finding['criterion'], evidence_digest=contract.findings_digest,
+                                 message=finding['violation'], verification=finding['verification'])
+                            for review in retained['reviews'] for finding in review['method_verdict']['findings']]
+                if not findings:
+                    raise ValueError('Review correction has no retained findings')
+                return dict(disposition='repair', work_units=1, findings=findings,
+                            evidence=contract.evidence_catalog)
             # Missing fields are cheap, attributable preflight findings. Invalid
             # native values fail closed, never become invented passing receipts.
             fields = {'schema_version', 'estimand', 'estimator_id', 'meaningful_effect',

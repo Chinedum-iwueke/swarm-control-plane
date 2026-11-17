@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from swarm_worker.method_verdict_contract import MethodVerdict
+from swarm_worker.method_adjudication_contract import MethodAdjudication
 
 
 def review_digest(value: Any) -> str:
@@ -33,6 +34,11 @@ class MethodStrategyReview(StrategyReviewVerdict):
     method_verdict: MethodVerdict
 
 
+class MethodAdjudicationReview(StrategyReviewVerdict):
+    verdict: Literal['reject'] = 'reject'
+    method_adjudication: MethodAdjudication
+
+
 class AlphaStrategyReviewContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -44,7 +50,7 @@ class AlphaStrategyReviewContract(BaseModel):
     evaluator_agent_id: UUID
     evaluator_profile_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     evaluator_package_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    review_kind: Literal["strategy_spec", "causality_leakage"]
+    review_kind: Literal["strategy_spec", "causality_leakage", "method_adjudication"]
     subject_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     subject: dict[str, Any]
     qualification: dict[str, Any]
@@ -53,6 +59,8 @@ class AlphaStrategyReviewContract(BaseModel):
 
     @model_validator(mode="after")
     def exact_subject(self):
+        if (self.review_kind == 'method_adjudication') != (self.subject.get('review_scope') == 'method_adjudication'):
+            raise ValueError('Adjudication requires its dedicated review kind')
         if len(json.dumps(self.model_dump(mode="json"), allow_nan=False).encode()) > 100_000:
             raise ValueError("Review context exceeds the bounded contract")
         if review_digest(self.subject) != self.subject_digest:

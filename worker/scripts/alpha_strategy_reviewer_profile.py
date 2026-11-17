@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-ROLES = {"spec": "strategy_spec", "causality": "causality_leakage"}
+ROLES = {"spec": "strategy_spec", "causality": "causality_leakage", "method": "method_adjudication"}
 
 
 def ensure_profile(

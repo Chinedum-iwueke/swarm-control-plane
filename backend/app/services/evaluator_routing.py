@@ -493,11 +493,17 @@ def complete_strategy_review_task(db: Session, task: Task, agent: Agent, result:
     try:
         route_id = UUID(contract["route_id"])
         assignment_id = UUID(contract["assignment_id"])
-        from app.schemas.evaluator_routing import parse_strategy_review, MethodStrategyReview
+        from app.schemas.evaluator_routing import parse_strategy_review, MethodStrategyReview, MethodAdjudicationReview
         review = parse_strategy_review(result["summary"]["alpha_strategy_review"])
         is_method = contract.get("subject", {}).get("review_scope") == "method_design"
+        is_adjudication = contract.get("subject", {}).get("review_scope") == "method_adjudication"
         if is_method != isinstance(review, MethodStrategyReview):
             raise ValueError("Review type differs from assigned scope")
+        if is_adjudication != isinstance(review, MethodAdjudicationReview):
+            raise ValueError('Adjudication type differs from assigned scope')
+        if is_adjudication:
+            from app.schemas.method_adjudication import validate_adjudication
+            validate_adjudication(review, contract['qualification']['artifact_bundle'], digest)
         if is_method:
             from app.schemas.method_verdict import validate_method_review
             validate_method_review(review, contract["qualification"]["artifact_bundle"]["method_review_packet"], digest)

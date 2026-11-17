@@ -96,7 +96,7 @@ def test_cached_method_authority_is_checked_again():
     db, campaign, _, _, request, mandate, _ = fixture()
     db.scalar.side_effect = None
     db.scalar.return_value = campaign
-    task = SimpleNamespace(task_type='alpha_method_design', input_contract=request,
+    task = SimpleNamespace(id=uuid4(), task_type='alpha_method_design', input_contract=request,
                            approval_policy={'campaign_digest': campaign.campaign_digest})
     service.require_current_method_authority(db, task)
     mandate.status = 'revoked'
@@ -112,7 +112,8 @@ def test_cached_method_authority_is_checked_again():
 def ready_task():
     raw = fixture()[4]
     c = MethodTaskContract.model_validate(raw)
-    task = SimpleNamespace(id=uuid4(), status='succeeded', input_contract=raw)
+    task = SimpleNamespace(id=uuid4(), status='succeeded', input_contract=raw,
+                           started_at=datetime.now(timezone.utc))
     request = dict(schema_version='native-diagnostic-request-v1', tool=c.diagnostic,
         source_commit=c.base_ref, subject_digest=service.digest(c.proposal), payload=c.proposal['method'])
     receipt = dict(schema_version='native-diagnostic-receipt-v1', tool=c.diagnostic,
@@ -129,6 +130,7 @@ def ready_task():
         initial_digest=service.digest(c.proposal), policy=c.policy.model_dump()),
         proposal=c.proposal, scientific_approval=False, execution_authority=False,
         model_calls=0, repairs=0, tool_calls=1, reserved_work=c.policy.tool_work_limit,
+        deadline=task.started_at.timestamp() + c.policy.max_duration_seconds,
         status='ready_for_independent_review', evidence={service.digest(receipt): receipt})
     packet = dict(schema_version='method-review-packet-v1', method_episode_digest=service.digest(state),
         source_commit=c.base_ref, proposal=state['proposal'], requirements=c.requirements,
@@ -184,6 +186,8 @@ def test_campaign_dispatches_explicit_method_request_before_engineering(monkeypa
 
 def test_ready_packet_publication_is_idempotent_and_stops_before_engineering(monkeypatch):
     from app.services import alpha_campaign, evaluator_routing
+    from app.services import alpha_method_recovery
+    monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
     db, campaign, source, parent, request, _, _ = fixture()
     task = ready_task()
     task.plan_digest = '1'*64
@@ -231,3 +235,66 @@ def test_review_route_reuses_exact_publication_and_materializes_separate_tasks(m
     db.scalar.side_effect = [SimpleNamespace(payload=published[0])]
     with pytest.raises(ValueError, match='publication changed'):
         service.route_method_review(db, campaign, task, packet, identity)
+
+
+@pytest.mark.parametrize('exhausted', [False, True])
+def test_campaign_rejection_corrects_or_defers_without_engineering(monkeypatch, exhausted):
+    from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery
+    from app.services.alpha_requirements_handoff import RequirementsPending
+    db, campaign, source, parent, request, _, _ = fixture()
+    task = ready_task()
+    task.plan_digest = '1'*64
+    successor = SimpleNamespace(id=uuid4(), status='queued')
+    route = SimpleNamespace(id=uuid4(), status='completed')
+    monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
+    monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
+    monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *_: {'agent_id': 'producer'})
+    monkeypatch.setattr(alpha_campaign, '_append_event', lambda *args: None)
+    monkeypatch.setattr(service, 'route_method_review', lambda *_: (route, [SimpleNamespace(verdict='reject')]))
+    def correct(*args, **kwargs):
+        if exhausted:
+            raise alpha_method_recovery.RecoveryDeferred('repair_or_model_budget_exhausted')
+        return successor
+    monkeypatch.setattr(alpha_method_recovery, 'materialize_correction', correct)
+    db.scalar.side_effect = [None]
+    before = deepcopy(campaign.specification)
+    if exhausted:
+        with pytest.raises(RequirementsPending):
+            service.advance_method_task(db, campaign, source, parent, request)
+        assert campaign.next_action == 'method_design_deferred'
+        assert campaign.terminal_reason['detail']['reason'] == 'repair_or_model_budget_exhausted'
+    else:
+        assert service.advance_method_task(db, campaign, source, parent, request) is successor
+        assert campaign.next_action == 'await_bounded_method_correction'
+    assert campaign.specification == before
+
+
+def test_missing_native_dependency_defers_before_paid_review(monkeypatch):
+    from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_method_engineering
+    from app.services.alpha_requirements_handoff import RequirementsPending
+    from app.schemas.alpha_campaign import MethodEngineeringRequest
+    from .test_alpha_method_engineering import fixture as engineering_fixture
+    db, campaign, source, parent, request, _, _ = fixture()
+    task = ready_task()
+    task.plan_digest = '1'*64
+    template, _, _, _, _, plan_digest = engineering_fixture()
+    planning_id = uuid4()
+    campaign.specification['method_engineering_requests'] = {task.input_contract['candidate_id']:
+        MethodEngineeringRequest(contract=template, feasibility_task_id=planning_id,
+                                 plan_evidence_digest=plan_digest).model_dump(mode='json')}
+    monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
+    monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
+    monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *_: {'agent_id': 'producer'})
+    monkeypatch.setattr(alpha_campaign, '_append_event', lambda *args: None)
+    def unavailable(*args):
+        raise alpha_method_engineering.MethodPlanUnavailable('Current successful native planning task required')
+    monkeypatch.setattr(alpha_method_engineering, 'verified_plan_evidence', unavailable)
+    review = MagicMock(side_effect=AssertionError('must not pay for review without native plans'))
+    monkeypatch.setattr(service, 'route_method_review', review)
+    db.scalar.side_effect = [None]
+    with pytest.raises(RequirementsPending):
+        service.advance_method_task(db, campaign, source, parent, request)
+    review.assert_not_called()
+    assert campaign.next_action == 'method_dependency_deferred'
+    assert campaign.terminal_reason['detail']['feasibility_task_id'] == str(planning_id)
+    assert campaign.terminal_reason['detail']['owner'] == 'native_feasibility_planner'

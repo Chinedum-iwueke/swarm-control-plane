@@ -1774,7 +1774,7 @@ def _materialize_strategy_review_tasks(
                 objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
                 risk_level=0,
                 created_by="alpha-campaign-director",
-                max_attempts=1 if subject.get("review_scope") == "method_design" else 2,
+                max_attempts=1 if subject.get("review_scope") in {"method_design", "method_adjudication"} else 2,
                 required_capabilities=[
                     f"alpha-strategy-review-{assignment.review_kind}"
                 ],
@@ -2099,6 +2099,7 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
 
 PRE_AUTHORING_DEFERRALS = {
     "method_design_deferred": "Retain the method episode and its blocker; reconsider only with changed evidence or explicitly renewed bounded authority.",
+    "method_dependency_deferred": "Require verified source/candidate-bound native plans, a successor packet containing them, fresh review and explicit successor authority; do not retry unchanged planning evidence.",
     "scientific_requirements_rejected": "Preserve the independent rejection; submit a changed, evidence-bound method successor and obtain fresh independent review. Never retry unchanged inputs.",
     "propose_scientific_specification": "Produce a complete immutable statistical method successor, then obtain independent review; do not retry unchanged inputs.",
     "resolve_native_requirements_feasibility": "Publish a bounded requirements or coverage successor with feasible native smoke/scientific plans, then obtain independent review; do not retry unchanged inputs.",

@@ -46,7 +46,7 @@ def require_current_method_authority(db, task):
             raise HTTPException(409, 'Accepted-method engineering authority is no longer current.') from exc
         return
     if (task.task_type == 'alpha_strategy_review'
-            and task.input_contract.get('subject', {}).get('review_scope') == 'method_design'):
+            and task.input_contract.get('subject', {}).get('review_scope') in {'method_design', 'method_adjudication'}):
         from uuid import UUID
         from fastapi import HTTPException
         try:
@@ -57,6 +57,11 @@ def require_current_method_authority(db, task):
             packet = verified_method_result(parent)['review_packet']
             if task.input_contract['qualification']['artifact_bundle']['method_review_packet'] != packet:
                 raise ValueError('method packet changed')
+            if task.input_contract['subject']['review_scope'] == 'method_adjudication':
+                campaign = db.scalar(select(AlphaCampaign).where(
+                    AlphaCampaign.campaign_digest == parent.approval_policy['campaign_digest']))
+                if campaign is None or campaign.specification.get('method_dispute_policy') != 'independent_once':
+                    raise ValueError('adjudication not authorized')
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(409, 'Method review authority or packet is no longer current.') from exc
         return
@@ -73,11 +78,11 @@ def require_current_method_authority(db, task):
         raise HTTPException(409, 'Method episode authority expired, revoked or source changed.')
     campaign_digest = (task.approval_policy or {}).get('campaign_digest')
     campaign = db.scalar(select(AlphaCampaign).where(AlphaCampaign.campaign_digest == campaign_digest))
+    from app.services.alpha_method_recovery import authorized_successor
     if (campaign is None or campaign.status != 'running'
             or campaign.activated_at is None
             or now >= campaign.activated_at + timedelta(seconds=campaign.budget['max_duration_seconds'])
-            or (campaign.specification.get('method_design_requests') or {}).get(str(contract.candidate_id))
-            != contract.model_dump(mode='json')):
+            or not authorized_successor(db, campaign, task)):
         raise HTTPException(409, 'Method campaign authority is no longer current.')
 
 
@@ -197,6 +202,14 @@ def advance_method_task(db, campaign, source, parent, request):
     from app.services.evaluator_routing import task_producer_identity
 
     task = materialize_method_task(db, campaign, source, parent, request)
+    from app.services.alpha_method_recovery import recorded_successor, materialize_correction, RecoveryDeferred
+    for _ in range(5):
+        successor = recorded_successor(db, campaign, task)
+        if successor is None:
+            break
+        task = successor
+    else:
+        raise ValueError('Method correction lineage exceeds bounded repairs')
     campaign.phase = 'method_design'
     campaign.next_action = 'await_bounded_method_design'
     if task.status in {'queued', 'leased', 'running', 'pending_approval'}:
@@ -234,14 +247,45 @@ def advance_method_task(db, campaign, source, parent, request):
     engineering_request = (campaign.specification.get('method_engineering_requests') or {}).get(
         str(task.input_contract['candidate_id']))
     if engineering_request is not None:
-        from app.services.alpha_method_engineering import verified_plan_evidence
+        from app.services.alpha_method_engineering import verified_plan_evidence, MethodPlanUnavailable
         from app.schemas.alpha_campaign import MethodEngineeringRequest
-        verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+        try:
+            verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+        except MethodPlanUnavailable as exc:
+            campaign.status = 'needs_attention'
+            campaign.next_action = 'method_dependency_deferred'
+            campaign.terminal_reason = {'category': 'method_dependency_deferred', 'detail': {
+                'task_id': str(task.id), 'reason': str(exc),
+                'owner': 'native_feasibility_planner',
+                'feasibility_task_id': engineering_request['feasibility_task_id'],
+                'packet_digest': digest(packet), 'execution_authority': False}}
+            raise RequirementsPending() from exc
     route, reviews = route_method_review(db, campaign, task, packet, identity)
     if reviews is not None:
         campaign.next_action = ('materialize_accepted_method_handoff'
                                 if all(review.verdict == 'approve' for review in reviews)
                                 else 'adjudicate_method_review_findings')
+        if any(review.verdict != 'approve' for review in reviews):
+            from app.services.alpha_method_adjudication import adjudicate_method
+            try:
+                from datetime import datetime, timezone
+                from app.services.alpha_method_recovery import require_recovery_capacity
+                require_recovery_capacity(task, result, now=datetime.now(timezone.utc))
+                adjudication = adjudicate_method(db, campaign, task, packet, identity, route, reviews)
+                if adjudication is not None and adjudication.get('pending'):
+                    return None
+                correction = materialize_correction(db, campaign, task, result, reviews,
+                                                   adjudication=adjudication)
+            except RecoveryDeferred as exc:
+                campaign.status = 'needs_attention'
+                campaign.next_action = 'method_design_deferred'
+                campaign.terminal_reason = {'category': 'method_design_deferred',
+                    'detail': {'task_id': str(task.id), 'reason': str(exc),
+                               'route_id': str(route.id), 'result_digest': result['result_digest']}}
+                raise RequirementsPending()
+            campaign.phase = 'method_design'
+            campaign.next_action = 'await_bounded_method_correction'
+            return correction
         if all(review.verdict == 'approve' for review in reviews) and engineering_request is not None:
             from app.services.alpha_method_engineering import materialize_method_engineering
             engineering = materialize_method_engineering(
@@ -320,13 +364,23 @@ def route_method_review(db, campaign, task, packet, identity):
         excluded_agent_ids=[item['agent_id'] for item in excluded], excluded_identities=excluded)
     if reviews is None:
         return route, None
+    current_review_identities(db, route, expected_count=2)
+    for review in reviews:
+        if not isinstance(review, MethodStrategyReview):
+            raise ValueError('Legacy strategy approval is not method evidence')
+        validate_method_review(review, packet, digest)
+    return route, reviews
+
+
+def current_review_identities(db, route, *, expected_count):
     from app.models.evaluator_routing import EvaluatorAssignment, EvaluatorProfile
     from app.models.agent import Agent
     from app.services.evaluator_routing import producer_identity_for_lease, _profile_identity
     assignments = db.scalars(select(EvaluatorAssignment).where(
         EvaluatorAssignment.route_id == route.id)).all()
-    if len(assignments) != 2:
-        raise ValueError('Method review requires exactly two independent assignments')
+    if len(assignments) != expected_count:
+        raise ValueError('Method review assignment count differs')
+    identities = []
     for assignment in assignments:
         profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
         agent = db.get(Agent, profile.agent_id) if profile is not None else None
@@ -340,8 +394,5 @@ def route_method_review(db, campaign, task, packet, identity):
                 or deployed != profile.package_digest
                 or producer_identity_for_lease(db, agent, [profile.package_digest]) != _profile_identity(profile)):
             raise ValueError('Method reviewer registration is no longer current')
-    for review in reviews:
-        if not isinstance(review, MethodStrategyReview):
-            raise ValueError('Legacy strategy approval is not method evidence')
-        validate_method_review(review, packet, digest)
-    return route, reviews
+        identities.append(_profile_identity(profile))
+    return identities

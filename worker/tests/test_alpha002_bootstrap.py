@@ -198,6 +198,54 @@ def test_native_producer_profile_rotates_with_the_signed_package() -> None:
     assert profile["package_digest"] == current["manifest_digest"]
 
 
+def test_method_producer_records_model_and_reuses_exact_profile():
+    current = state() | {"slug": "alpha-method-designer", "manifest_digest": "d" * 64}
+    profiles = []
+    writes = []
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=profiles)
+        payload = json.loads(request.content)
+        writes.append(payload)
+        assert payload['provider'] == 'codex'
+        assert payload['model_family'] == 'fixture-model'
+        assert payload['review_kinds'] == ['alpha_method_producer']
+        assert payload['capabilities'] == ['alpha-method-design']
+        profile = payload | dict(status='active', package_id=current['package_id'],
+                                 package_digest=current['manifest_digest'])
+        profiles.append(profile)
+        return httpx.Response(201, json=profile)
+    with httpx.Client(base_url='http://control-plane.test', transport=httpx.MockTransport(handler)) as client:
+        first = MODULE.ensure_method_producer_profile(client, current, 'fixture-model')
+        assert MODULE.ensure_method_producer_profile(client, current, 'fixture-model') == first
+        with pytest.raises(RuntimeError, match='provenance differs'):
+            MODULE.ensure_method_producer_profile(client, current, 'changed-model')
+    assert len(writes) == 1
+
+
+def test_method_bootstrap_requires_explicit_model_before_any_registration(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, 'argv', ['bootstrap', '--state', str(tmp_path/'state'),
+        '--environment', str(tmp_path/'env'), '--source-commit', 'a'*40,
+        '--package', 'alpha-method-designer'])
+    with pytest.raises(RuntimeError, match='explicit valid --method-model'):
+        MODULE.main()
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize('extra', ['', 'SWARM_CODEX_MODEL=other\n', 'SWARM_ENGINEERING_AUTHOR_PROVIDER=copilot\n'])
+def test_method_runtime_settings_cannot_drift(tmp_path, extra):
+    env = tmp_path/'runtime.env'
+    env.write_text('SWARM_AGENT_SLUG=alpha-method-designer\nSWARM_CODEX_MODEL=fixture-model\n'
+                   'SWARM_ENGINEERING_AUTHOR_PROVIDER=codex\n' + extra)
+    if extra:
+        with pytest.raises(RuntimeError):
+            MODULE.validate_method_environment(env, 'fixture-model')
+    else:
+        MODULE.validate_method_environment(env, 'fixture-model')
+        with pytest.raises(RuntimeError, match='provenance'):
+            MODULE.validate_method_environment(env, 'other')
+
+
 @pytest.mark.parametrize("recover", [False, True])
 def test_partial_registration_requires_explicit_scoped_recovery(
     tmp_path, monkeypatch, recover
