@@ -138,16 +138,33 @@ retain the original 100,000-byte bound. Unique oversized evidence fails closed.
 
 The API has the same admission implementation before review-task publication;
 a parity test requires its isolated copy and the worker copy to be byte-identical.
-This API guard is locally tested but not yet deployed to VM2. VM1 reviewers were
+This API guard was deployed to VM2 in `04ef880` on 2026-11-17; the rebuilt API
+is healthy and the campaign director is active. VM1 reviewers were
 restarted with the consumer repair. Both existing contracts validate at roughly
 94,400 context bytes. Tests cover lossless reconstruction, original hashes,
 legacy context, reserved-reference collisions, producer/consumer parity and
 rejection before task persistence.
 
 Strategy-spec review `d7c0d0b8-68e9-4f52-ad30-e064eed385d9` subsequently
-succeeded with `approve` and no blockers. Causality review still holds a
-pre-restart lease expiring at 2026-11-17 18:51:00 UTC; it has no verdict yet.
-Both reviewer services are running. No duplicate review was forced.
+succeeded with `approve` and no blockers. Causality review's first lease expired
+without execution; the existing task was resumed through the audited API.
+Attempt 2 produced an accepting verdict, but API deployment interrupted completion
+publication. The saved artifact, exact prompt, metadata, task/source identity and
+typed verdict were validated before publication through the evaluation API, without
+another model invocation. Recovery review digest:
+`70731ccc5a7abe4680a3fac9dfb53963859253c21525f92f7d4c4d43daf32076`.
+Route `937f1152-01ae-4720-9a68-e961227f6812` is completed with both approvals.
+The task-level completion was not fabricated; its interrupted lease history remains.
+This operator-assisted publication is a reliability gap, not autonomous recovery proof.
 
-Both independent acceptances remain necessary. This commissioning grants no
+The campaign now reports `materialize_accepted_method_handoff`. It deliberately
+has no `method_engineering_requests` authorization. Historical feasibility task
+`d9ce3ddb-ddb0-455d-8162-89b4b1c02f5e` is bound to `ff94542` and reported a
+scientific coverage deferral. A read-only planning replay on `f81fb7d` rejected its
+old lineage-bound exposure ledger. No ledger or historical plan was rewritten.
+The next execution increment needs fresh source-bound predictor coverage, regenerated
+exposure lineage and native smoke/scientific plans, followed by reviewed handoff and
+engineering authorization. A successful method review does not supply those receipts.
+
+Both independent method acceptances are now recorded. This commissioning grants no
 engineering, calibration execution, backtests, orders or promotion authority.
