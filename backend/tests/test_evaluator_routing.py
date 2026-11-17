@@ -302,6 +302,31 @@ def test_validated_alpha_review_preserves_rejection_content():
     assert not all(item.verdict == "approve" for item in reviews)
 
 
+def test_adjudication_requires_explicit_lane_and_cannot_approve_science():
+    db, record, receipt, assignments, events = alpha_review_fixture()
+    assignments.pop()
+    events.pop()
+    item = assignments[0]
+    item.review_kind = 'method_adjudication'
+    record.policy['required_review_kinds'] = ['method_adjudication']
+    review = dict(subject_digest=DIGEST, verdict='reject', checks=['design'],
+        blockers=['Repair required'], rationale='Independent method interpretation requires repair.',
+        method_adjudication=dict(packet_digest='a'*64, reviews_digest='b'*64,
+            decision='repair', finding_evidence={'c'*64: ['d'*64]},
+            rationale='Evidence supports the original method rejection.'))
+    item.review_digest = digest(review)
+    events[0].payload.update(review_digest=item.review_digest, alpha_strategy_review=review)
+    receipt.assertion['assignments'] = receipt.assertion['assignments'][:1]
+    receipt.assertion['assignments'][0].update(review_kind=item.review_kind,
+        review_digest=item.review_digest, alpha_strategy_review=review)
+    receipt.receipt_digest = digest(receipt.assertion)
+    assert not alpha_strategy_reviews_approved(db, record, subject_digest=DIGEST, producer_agent_id=ONE)
+    reviews = validated_alpha_strategy_reviews(db, record, subject_digest=DIGEST,
+        producer_agent_id=ONE, required_review_kinds=('method_adjudication',))
+    assert reviews is not None
+    assert reviews[0].method_adjudication.decision == 'repair'
+
+
 def test_original_drafter_cannot_review_on_another_executor_slot():
     db, record, _, _, _ = alpha_review_fixture()
     assert not alpha_strategy_reviews_approved(

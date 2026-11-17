@@ -52,7 +52,7 @@ def adjudicate_method(db, campaign, task, packet, identity, original_route, revi
     _materialize_strategy_review_tasks(db, route, subject, qualification)
     decisions = validated_alpha_strategy_reviews(db, route, subject_digest=digest(subject),
         producer_agent_id=identity['agent_id'], excluded_agent_ids=[i['agent_id'] for i in excluded],
-        excluded_identities=excluded)
+        excluded_identities=excluded, required_review_kinds=('method_adjudication',))
     if decisions is None:
         campaign.phase = 'independent_method_review'
         campaign.next_action = ('restore_method_adjudication_routing' if route.status == 'blocked'

@@ -697,6 +697,7 @@ def validated_alpha_strategy_reviews(
     excluded_agent_ids=(),
     excluded_identities=(),
     qualifier_identity=None,
+    required_review_kinds=("strategy_spec", "causality_leakage"),
 ) -> list[AlphaStrategyReview] | None:
     """Return immutable review content only when the routed evidence is valid."""
     if (
@@ -705,7 +706,9 @@ def validated_alpha_strategy_reviews(
         or route.status != "completed"
         or str(route.producer.get("agent_id")) != str(producer_agent_id)
         or producer_agent_id is None
-        or not {"strategy_spec", "causality_leakage"}.issubset(
+        or set(required_review_kinds) not in (
+            {"strategy_spec", "causality_leakage"}, {"method_adjudication"})
+        or not set(required_review_kinds).issubset(
             set(route.policy.get("required_review_kinds", []))
         )
     ):
@@ -792,11 +795,13 @@ def validated_alpha_strategy_reviews(
                 return None
         reviewed_identities.append(identity)
         try:
-            from app.schemas.evaluator_routing import parse_strategy_review
+            from app.schemas.evaluator_routing import parse_strategy_review, MethodAdjudicationReview
             review = parse_strategy_review(
                 matching[0].payload.get("alpha_strategy_review")
             )
         except ValueError:
+            return None
+        if (assignment.review_kind == 'method_adjudication') != isinstance(review, MethodAdjudicationReview):
             return None
         if (
             review.subject_digest != subject_digest
