@@ -63,6 +63,14 @@ def verified_report(task, evidence, source_commit):
             raise ValueError("Native validation plan custody differs")
     if report.get("status") == "ready" and (report.get("reasons") or any(p.get("status") != "ready" for p in plans.values()) or history["minimum_prior_bars"] > history["declared_warmup_bars"]):
         raise ValueError("Native readiness contradicts retained plans")
+    if "diagnostic_request" in evidence:
+        from app.services.native_diagnostics import verify_diagnostic
+        diagnostic = verify_diagnostic(report.get("native_diagnostic"), evidence["diagnostic_request"],
+            evidence.get("diagnostic_evidence_catalog", {}), source_commit, digest(evidence["discovery_candidate"]))
+        if diagnostic["result"].get("status") == "await_engineering" and report["status"] != "deferred":
+            raise ValueError("unavailable diagnostic cannot be ready")
+    elif "native_diagnostic" in report:
+        raise ValueError("unrequested diagnostic receipt")
     return report
 
 

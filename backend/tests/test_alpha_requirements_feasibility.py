@@ -71,6 +71,34 @@ def successor_fixture():
     return report, evidence, mandate
 
 
+def test_requested_diagnostic_is_required_and_unavailable_tool_blocks_readiness():
+    from .test_native_diagnostics import fixture
+    request, receipt = fixture()
+    candidate = {"question": "fixture"}
+    request["subject_digest"] = digest(candidate)
+    receipt.update(subject_digest=digest(candidate), request_digest=digest(request), result={"status": "await_engineering"})
+    receipt["receipt_digest"] = digest({k:v for k,v in receipt.items() if k!='receipt_digest'})
+    evidence = {"discovery_candidate": candidate, "diagnostic_request": request,
+        "validation_requirements": {"requirements": {"feature_warmup_bars": 12}}}
+    plans = {}
+    for mode in ("smoke", "scientific"):
+        p = {"mode": mode, "status": "ready", "source_commit": "a"*40, "execution_authority": False}
+        plans[mode] = p | {"plan_digest": digest(p)}
+    report = {"schema_version": "native-requirements-feasibility-v1", "source_commit": "a"*40,
+        "input_digest": digest(evidence), "status": "deferred", "reasons": ["diagnostic:await_engineering"],
+        "scientific_certification": False, "execution_authority": False, "validation_plans": plans,
+        "feature_history": {"outputs": {"signal": 12}, "minimum_prior_bars": 12, "declared_warmup_bars": 12},
+        "native_diagnostic": receipt}
+    def verify():
+        report["report_digest"] = digest({k:v for k,v in report.items() if k!='report_digest'})
+        return service.verified_report(SimpleNamespace(result={"summary": {"native_requirements_feasibility": report}}), evidence, "a"*40)
+    assert verify() == report
+    report.update(status="ready", reasons=[])
+    with pytest.raises(ValueError, match="unavailable"): verify()
+    report.pop("native_diagnostic")
+    with pytest.raises(ValueError, match="diagnostic"): verify()
+
+
 def test_successor_is_proposed_for_review_without_mutating_original():
     report, evidence, mandate = successor_fixture()
     before = deepcopy(evidence)

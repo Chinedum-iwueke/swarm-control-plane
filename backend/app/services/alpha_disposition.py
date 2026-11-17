@@ -69,6 +69,8 @@ def disposition_for(reason_code, evidence):
             kind = "await_data"
         elif reasons and all(r == "composed_feature_history_exceeds_declared_warmup" for r in reasons):
             kind = "repair"
+        elif reasons and all(r == "diagnostic:await_engineering" for r in reasons):
+            kind = "await_authority_or_capacity"
     owner, condition = ROUTES[kind]
     stage = {"repair": "method_design", "await_data": "data_admission",
              "scientifically_infeasible": "method_design", "requires_new_question": "method_design",

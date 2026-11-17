@@ -10,6 +10,7 @@ from app.services.alpha_disposition import disposition_for, RequirementsDisposit
     ("resolve_native_requirements_feasibility", {"reasons": ["warmup_wrong"]}, "requirements_conflict"),
     ("resolve_native_requirements_feasibility", {"reasons": ["composed_feature_history_exceeds_declared_warmup"]}, "repair"),
     ("unknown_new_reason", {}, "requirements_conflict"),
+    ("resolve_native_requirements_feasibility", {"reasons": ["diagnostic:await_engineering"]}, "await_authority_or_capacity"),
     ("await_independent_scientific_requirements_review", {}, "await_authority_or_capacity"),
     ("immutable_requirements_conflict", {"constraint": "retained"}, "requirements_conflict"),
     ("scientific_identity_change", {"target": "changed"}, "requires_new_question"),
