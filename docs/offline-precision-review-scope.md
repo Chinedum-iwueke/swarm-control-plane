@@ -131,3 +131,46 @@ probability alongside power and explicitly retain the unchanged-method rejection
 The exact candidate estimator, bootstrap and scientifically justified effect
 threshold remain outstanding. No offline calculation has been published as an
 independent approval receipt.
+
+## Frozen-statistic bootstrap pilot
+
+The next offline increment implements aligned primary/rival residual contrasts,
+circular moving-block resampling, centered one-sided bootstrap p-values, ordinary
+percentile intervals and a separate Holm helper in
+`worker/src/swarm_worker/scientific_bootstrap.py`. This is a reference harness,
+not a strategy implementation. It does not implement the upstream seasonal
+features, fitted OLS nuisance models, split construction or target construction.
+Linear percentile interpolation is an explicit harness convention; the frozen
+prose did not specify that convention. Undefined resampled event/control groups
+invalidate the report rather than being silently discarded. That handling needs
+to be specified in a reviewed successor, not retroactively attributed to the card.
+
+Reproduce the bounded pilot:
+
+```bash
+PYTHONPATH=worker/src worker/.venv/bin/python worker/scripts/scientific_bootstrap_pilot.py
+```
+
+It uses 100 synthetic experiments per condition, 850 rows, independent Bernoulli
+.05 event indicators for each model, shared zero-mean Gaussian residuals, block
+length 24 and 199 inner draws. Residual AR(1) coefficients are 0 and .6; the
+recursion starts at zero. Seeds are 17000+experiment for generation and experiment
+for bootstrap. Events are not clustered or fitted. There is no market input.
+
+| Residual AR coefficient | Primary null rejections | Paired null rejections | Primary zero coverage | Paired zero coverage |
+| --- | --- | --- | --- | --- |
+| 0 | 5/100 | 6/100 | 96/100 | 92/100 |
+| .6 | 6/100 | 6/100 | 92/100 | 95/100 |
+
+No replicate became undefined in these two runs. These are marginal .05 tests,
+not four-variant Holm or joint scientific acceptance. Nominal 5% rejection has
+Monte Carlo standard error about 2.2 percentage points at 100 experiments;
+these results cannot certify calibration. The 199 inner draws are deliberately
+a cheap diagnostic, not the registered 10,000. Tests separately prove zero
+paired advantage for identical models, exact constant contrasts, deterministic
+seeding, partial-block handling, Holm stopping, and fail-closed undefined draws.
+
+Still required: exact upstream fitted-estimator parity, all registered block
+lengths, joint primary/rival families, support/eligibility failures, alternatives
+and effect justification, and a sufficiently precise preregistered calibration
+run. No new approval or discovery cycle has been requested by this pilot.
