@@ -12,15 +12,17 @@ async def heartbeat(_): pass
 
 
 @pytest.mark.asyncio
-async def test_exact_runtime_schema_and_ephemeral_review_context(tmp_path, monkeypatch):
+@pytest.mark.parametrize('lane', ['subscription', 'api'])
+async def test_exact_runtime_schema_and_ephemeral_review_context(tmp_path, monkeypatch, lane):
     executor,_,_,workspace=fixture(tmp_path,'1',1)
     monkeypatch.delenv('SWARM_AGENT_TOKEN',raising=False)
-    monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE','subscription')
+    monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE',lane)
     who=identity('reviewer')
     context={'packet':packet(),'packet_digest':canonical_digest(packet())}
     calls=[]
     async def model(**kw):
         calls.append(kw)
+        assert 'model_provider="invariance_api"' not in kw['args']
         assert '--ephemeral' in kw['args'] and 'read-only' in kw['args']
         (kw['workspace'].artifacts/'verdict.json').write_text(json.dumps(verdict(context)))
         return step('method-review',kw['workspace'])

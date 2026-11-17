@@ -6,7 +6,7 @@ import re
 
 from swarm_worker.engineering_episode import EpisodeIntegrityError
 from swarm_worker.method_episode import MethodCapacityUnavailable, bounded
-from swarm_worker.model_lane import model_call_allowed, provider_key, route_command
+from swarm_worker.model_lane import model_call_allowed, provider_key
 from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.workspace import TaskWorkspace
 
@@ -53,7 +53,7 @@ def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_co
             '--output-last-message',str(output),'-']
         environment = executor._codex_environment()
         step = await executor._run_codex(name='method-proposal',
-            args=route_command(args, environment), prompt=prompt,
+            args=args, prompt=prompt,
             workspace=view, heartbeat=heartbeat, heartbeat_failures=[], timeout_seconds=remaining,
             environment_overrides=environment)
         if not step.success:

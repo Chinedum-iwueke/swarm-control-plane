@@ -14,13 +14,15 @@ async def heartbeat(_): pass
 
 
 @pytest.mark.asyncio
-async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monkeypatch):
+@pytest.mark.parametrize('lane', ['subscription', 'api'])
+async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monkeypatch, lane):
     executor, _, _, workspace = fixture(tmp_path, '1', 1)
     monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
-    monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE', 'subscription')
+    monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE', lane)
     calls = []
     async def model(**kwargs):
         calls.append(kwargs)
+        assert 'model_provider="invariance_api"' not in kwargs['args']  # Runner routes once.
         assert '--sandbox' in kwargs['args'] and 'read-only' in kwargs['args']
         (kwargs['workspace'].artifacts/'correction.json').write_text(json.dumps({
             'changes_json':'{"lag":1}', 'addressed_findings':['a'*64], 'rationale':'Completed bars'}))

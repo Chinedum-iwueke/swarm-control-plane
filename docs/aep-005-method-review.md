@@ -102,3 +102,14 @@ opt-in adapters unselected while retaining all historical evidence.
 
 Verification on 2026-11-17: 109 focused worker regressions and 13 Research Bible
 tests passed. No production route, source transition or deployment was performed.
+
+## Subsequent installation
+
+Committed/pushed as `cd99841`, then installed on the VM1 worker checkout and VM2
+repository through the existing rollout runbook. VM1 imports both review modules;
+the strategy engineer stays inactive, so no queued job starts. VM2 API is healthy
+and API/discovery/campaign containers all use
+`sha256:e9fda34b9adf7943378274afe36ae53a2d43cc03f1ff2aa9d85f8aab04b38832`.
+Director reconciliation reports zero active mandates/campaigns. The API image
+contains no new worker adapter: deployment makes the opt-in worker code available,
+not an automatically enabled production review route.
