@@ -16,6 +16,7 @@ from swarm_worker.executors.code_validation import (
 from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResult
 from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.model_lane import model_call_allowed, provider_key
+from swarm_worker.review_context import review_context, canonical
 from swarm_worker.strategy_review_contract import (
     AlphaStrategyReviewContract,
     StrategyReviewVerdict,
@@ -127,7 +128,11 @@ class AlphaStrategyReviewExecutor:
                "and next-bar execution. Reject unresolved or unverifiable implementation gaps. "
                if contract.subject.get("review_scope") not in {"coverage_window_successor", "scientific_requirements", "method_design", "method_adjudication"} else "")
             + "Do not infer empirical profitability or mathematical qualification from prose.\n"
-            + json.dumps(contract.model_dump(mode="json"), sort_keys=True), encoding="utf-8",
+            + "If schema_version is review-context-dag-v1, root is the complete contract. "
+              "Each $review_ref refers to an exact value in objects keyed by its canonical SHA256. "
+              "Resolve these references recursively when reading; all evidence remains present. "
+              "Use the original subject and packet digests, not the context encoding digest.\n"
+            + canonical(review_context(contract.model_dump(mode="json"))), encoding="utf-8",
         )
         for path in (schema, prompt):
             path.chmod(0o600)

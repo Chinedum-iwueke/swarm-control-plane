@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from swarm_worker.method_verdict_contract import MethodVerdict
 from swarm_worker.method_adjudication_contract import MethodAdjudication
+from swarm_worker.review_context import review_context
 
 
 def review_digest(value: Any) -> str:
@@ -61,8 +62,7 @@ class AlphaStrategyReviewContract(BaseModel):
     def exact_subject(self):
         if (self.review_kind == 'method_adjudication') != (self.subject.get('review_scope') == 'method_adjudication'):
             raise ValueError('Adjudication requires its dedicated review kind')
-        if len(json.dumps(self.model_dump(mode="json"), allow_nan=False).encode()) > 100_000:
-            raise ValueError("Review context exceeds the bounded contract")
+        review_context(self.model_dump(mode="json"))
         if review_digest(self.subject) != self.subject_digest:
             raise ValueError("Review subject digest mismatch")
         if self.subject.get("source_commit") != self.base_ref:

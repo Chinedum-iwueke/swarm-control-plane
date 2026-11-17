@@ -88,5 +88,66 @@ Before live use: release the new Bulletproof source, bind a successor to it, hav
 the producer supply the grounded frozen experiment, obtain exact bounded authority,
 then observe genuine correction and fresh reviews. Test several materially different
 questions and deliberate failures before claiming general autonomous repair.
-Existing R4 evidence and spent authority remain unchanged. No services, campaigns,
-mandates or live trading configuration were changed by this increment.
+Existing R4 evidence and spent authority remain unchanged.
+
+### Deployment and Controlled Commissioning, 2026-11-17
+
+- Bulletproof `f81fb7d2a7a2e3cab654b3b860dab711d85237f7` and control plane
+  `2274919` were pushed to main. VM2's rebuilt API reports healthy and its
+  campaign director is active; VM1's method designer was started with the repair.
+- A bounded BTC admission check completed successfully (one CPU, 2 GiB limit,
+  27 seconds). Registered receipt: `60fc5e9b-5593-428f-9e2e-4fc92fb225b9`,
+  digest `774b880319598afc03947f84420a69867e4bc56e7dc7d70d6a9d7ec7195dad44`.
+- Founder approved mandate `ALPHA004-AEP007-CONSISTENCY-20261117`, digest
+  `c1742f7a15f87c06f2764ec685a56aeb1fb7ce1398c520f0624226eaf21b6e21`.
+- Founder separately approved method campaign
+  `e87a1b1b-d98a-4695-9715-707105637d3b`, digest
+  `fbd6a3505b887aa15f087d89bfa863f130d31782a4ae094293a75d8863b461e3`.
+  It permits two author corrections and four diagnostics, followed by fresh
+  independent reviews, until 2026-11-17 20:17:06 UTC.
+- The 79,491-byte method contract retains R4's proposal and review evidence.
+  Its frozen experiment is an explicit commissioning projection of retained
+  quantiles/reference windows, Holm families, minimum partition sizes and
+  bootstrap count. Nominal event probabilities are assumptions, not observed
+  support. Automatic producer population across arbitrary questions remains
+  unproved.
+
+### Observed Result and Remaining Handoff Gap
+
+Task `2eb5b85a-9f1f-4aef-ad21-85d57bc8534c` succeeded with one actual author
+call, two native diagnostics and one repair. Its terminal state is
+`ready_for_independent_review`, with no structural findings. This is genuine
+correction evidence for this candidate, not general scientific certification.
+
+Independent review tasks `d7c0d0b8-68e9-4f52-ad30-e064eed385d9` and
+`17e5551e-67f2-4df1-8822-5ee7f0b6390a` were materialized but released before
+model execution: their 153,635-byte input exceeds the worker's 100,000-byte
+review-contract bound. The qualification contains a 31,359-byte card and
+121,057-byte artifact bundle. Both reviewer units were stopped to contain
+repeated lease/release churn; the scientific verdict remains pending.
+
+### Lossless Review Handoff Repair
+
+The worker now builds a bounded, content-addressed context for method reviews.
+Exact repeated subtrees (including repeated long strings) appear once in an
+object table; references use the canonical original-value digest. The immutable
+task, routed subject, packet, card and artifact digests do not change. No source
+evidence is summarized, truncated or omitted. Original method evidence is bounded
+at 256 KiB and the deduplicated context at 100,000 bytes. Other review scopes
+retain the original 100,000-byte bound. Unique oversized evidence fails closed.
+
+The API has the same admission implementation before review-task publication;
+a parity test requires its isolated copy and the worker copy to be byte-identical.
+This API guard is locally tested but not yet deployed to VM2. VM1 reviewers were
+restarted with the consumer repair. Both existing contracts validate at roughly
+94,400 context bytes. Tests cover lossless reconstruction, original hashes,
+legacy context, reserved-reference collisions, producer/consumer parity and
+rejection before task persistence.
+
+Strategy-spec review `d7c0d0b8-68e9-4f52-ad30-e064eed385d9` subsequently
+succeeded with `approve` and no blockers. Causality review still holds a
+pre-restart lease expiring at 2026-11-17 18:51:00 UTC; it has no verdict yet.
+Both reviewer services are running. No duplicate review was forced.
+
+Both independent acceptances remain necessary. This commissioning grants no
+engineering, calibration execution, backtests, orders or promotion authority.

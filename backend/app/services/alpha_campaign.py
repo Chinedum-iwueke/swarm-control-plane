@@ -1806,6 +1806,11 @@ def _materialize_strategy_review_tasks(
                 ],
             )
         )
+        from app.services.review_context import review_context
+        try:
+            review_context(task.input_contract)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         persist_new_task(db, task)
 
 
