@@ -1774,7 +1774,7 @@ def _materialize_strategy_review_tasks(
                 objective="Review the exact frozen native card/implementation; retain explicit findings without execution authority.",
                 risk_level=0,
                 created_by="alpha-campaign-director",
-                max_attempts=2,
+                max_attempts=1 if subject.get("review_scope") == "method_design" else 2,
                 required_capabilities=[
                     f"alpha-strategy-review-{assignment.review_kind}"
                 ],

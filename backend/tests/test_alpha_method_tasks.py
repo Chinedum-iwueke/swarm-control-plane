@@ -189,6 +189,7 @@ def test_ready_packet_publication_is_idempotent_and_stops_before_engineering(mon
     task.plan_digest = '1'*64
     monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
     monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *_: {'agent_id': 'producer'})
+    monkeypatch.setattr(service, 'route_method_review', lambda *_: (SimpleNamespace(status='assigned'), None))
     published = []
     monkeypatch.setattr(alpha_campaign, '_append_event', lambda *args: published.append(args[-1]))
     db.scalar.side_effect = [None]
@@ -199,3 +200,34 @@ def test_ready_packet_publication_is_idempotent_and_stops_before_engineering(mon
     assert service.advance_method_task(db, campaign, source, parent, request) is None
     assert len(published) == 1
     assert published[0]['execution_authority'] is False
+
+
+def test_review_route_reuses_exact_publication_and_materializes_separate_tasks(monkeypatch):
+    from app.services import alpha_campaign, evaluator_routing
+    db, campaign, _, _, _, _, _ = fixture()
+    task = ready_task()
+    identity = dict(agent_id=str(uuid4()), machine='vm1-developer', provider='codex',
+                    model_family='test', runtime='test', context_group='producer',
+                    package_digest='a'*64)
+    packet = task.result['summary']['method_episode']['review_packet']
+    route = SimpleNamespace(id=uuid4(), status='assigned')
+    monkeypatch.setattr(service, 'require_current_method_authority', lambda *_: None)
+    create = MagicMock(return_value=route)
+    materialize = MagicMock()
+    published = []
+    monkeypatch.setattr(evaluator_routing, 'create_route', create)
+    monkeypatch.setattr(evaluator_routing, 'validated_alpha_strategy_reviews', lambda *_, **__: None)
+    monkeypatch.setattr(alpha_campaign, '_materialize_strategy_review_tasks', materialize)
+    monkeypatch.setattr(alpha_campaign, '_append_event', lambda *args: published.append(args[-1]))
+    db.scalar.side_effect = [None]
+    assert service.route_method_review(db, campaign, task, packet, identity) == (route, None)
+    assert create.call_args.args[1].required_review_kinds == ['strategy_spec', 'causality_leakage']
+    db.scalar.side_effect = [SimpleNamespace(payload=published[0])]
+    db.get.return_value = route
+    assert service.route_method_review(db, campaign, task, packet, identity) == (route, None)
+    create.assert_called_once()
+    assert materialize.call_count == 2  # Existing AR task identities handle repeated reconciliation.
+    published[0]['qualification'] = {}
+    db.scalar.side_effect = [SimpleNamespace(payload=published[0])]
+    with pytest.raises(ValueError, match='publication changed'):
+        service.route_method_review(db, campaign, task, packet, identity)

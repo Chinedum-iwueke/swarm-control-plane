@@ -493,7 +493,14 @@ def complete_strategy_review_task(db: Session, task: Task, agent: Agent, result:
     try:
         route_id = UUID(contract["route_id"])
         assignment_id = UUID(contract["assignment_id"])
-        review = AlphaStrategyReview.model_validate(result["summary"]["alpha_strategy_review"])
+        from app.schemas.evaluator_routing import parse_strategy_review, MethodStrategyReview
+        review = parse_strategy_review(result["summary"]["alpha_strategy_review"])
+        is_method = contract.get("subject", {}).get("review_scope") == "method_design"
+        if is_method != isinstance(review, MethodStrategyReview):
+            raise ValueError("Review type differs from assigned scope")
+        if is_method:
+            from app.schemas.method_verdict import validate_method_review
+            validate_method_review(review, contract["qualification"]["artifact_bundle"]["method_review_packet"], digest)
         completion = EvaluatorAssignmentComplete(
             evaluator_agent_id=agent.id,
             review_id=f"task:{task.id}:attempt:{task.attempt_count}",
@@ -779,7 +786,8 @@ def validated_alpha_strategy_reviews(
                 return None
         reviewed_identities.append(identity)
         try:
-            review = AlphaStrategyReview.model_validate(
+            from app.schemas.evaluator_routing import parse_strategy_review
+            review = parse_strategy_review(
                 matching[0].payload.get("alpha_strategy_review")
             )
         except ValueError:

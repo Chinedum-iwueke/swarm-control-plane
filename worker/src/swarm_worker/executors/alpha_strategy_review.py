@@ -15,9 +15,11 @@ from swarm_worker.executors.code_validation import (
 )
 from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResult
 from swarm_worker.provider_capacity import detect_provider_capacity
+from swarm_worker.model_lane import model_call_allowed, provider_key
 from swarm_worker.strategy_review_contract import (
     AlphaStrategyReviewContract,
     StrategyReviewVerdict,
+    MethodStrategyReview,
     review_digest,
 )
 from swarm_worker.workflows import WorkflowDefinition
@@ -46,12 +48,21 @@ class AlphaStrategyReviewExecutor:
         output = workspace.artifacts / "strategy-review.json"
         schema = workspace.artifacts / "strategy-review-schema.json"
         prompt = workspace.artifacts / "strategy-review-prompt.txt"
-        document = StrategyReviewVerdict.model_json_schema()
+        method_scope = contract.subject.get("review_scope") == "method_design"
+        verdict_type = MethodStrategyReview if method_scope else StrategyReviewVerdict
+        document = verdict_type.model_json_schema()
         document["required"] = list(document["properties"])
         document["properties"]["subject_digest"]["enum"] = [contract.subject_digest]
         schema.write_text(json.dumps(document), encoding="utf-8")
         prompt.write_text(
-            ("Review only the coverage-window successor proposal, NOT a finished strategy. "
+            ("Review the exact method_review_packet, NOT a finished strategy or observed result. "
+             "Return method_verdict with the packet digest and every requirement key checked exactly once. "
+             "Every rejection finding must cite a requirement key, retained evidence digests, the violation "
+             "and a verification procedure. Outer blockers must exactly equal finding violations; outer "
+             "approve corresponds to method accept. Do not invent evidence or require post-execution "
+             "observations at this pre-authoring stage. Acceptance is not execution authority.\n"
+             if method_scope else
+             "Review only the coverage-window successor proposal, NOT a finished strategy. "
              "Verify unchanged scientific requirements, exact basket/source/budgets, historical "
              "envelope authority, exposure exclusion, latest common eligible interval and "
              "immutable parent lineage. Reject missing or unverifiable coverage evidence. "
@@ -86,7 +97,7 @@ class AlphaStrategyReviewExecutor:
                "For strategy_spec review check semantic fidelity, parameter budget and logs; "
                "for causality_leakage check closed-bar availability, splits, joins, resampling "
                "and next-bar execution. Reject unresolved or unverifiable implementation gaps. "
-               if contract.subject.get("review_scope") not in {"coverage_window_successor", "scientific_requirements"} else "")
+               if contract.subject.get("review_scope") not in {"coverage_window_successor", "scientific_requirements", "method_design"} else "")
             + "Do not infer empirical profitability or mathematical qualification from prose.\n"
             + json.dumps(contract.model_dump(mode="json"), sort_keys=True), encoding="utf-8",
         )
@@ -100,7 +111,21 @@ class AlphaStrategyReviewExecutor:
         stderr_path.touch(mode=0o600, exist_ok=False)
         deadline = started + min(contract.max_duration_seconds, workflow.timeout_seconds)
         running = None
-        for capacity_attempt in range(3):
+        attempts = 1 if method_scope else 3
+        for capacity_attempt in range(attempts):
+            if method_scope:
+                await heartbeat({"phase": "independent_method_review",
+                                 "route_id": str(contract.route_id), "review_kind": contract.review_kind})
+                if not await model_call_allowed():
+                    return WorkflowExecutionResult(
+                        workflow=workflow.name, repository=contract.repository, base_commit=contract.base_ref,
+                        task_attempt=task.attempt_count, total_duration_seconds=time.monotonic()-started,
+                        steps=[], success=False, termination_reason="provider_capacity",
+                        worker_version=__version__, artifacts=[], retryable=False,
+                        summary={"provider_capacity": {"provider": provider_key(),
+                            "failure_summary": "Model provider permit unavailable before independent review.",
+                            "retry_after_seconds": 21600}},
+                    )
             if output.exists():
                 output.unlink()
             with (prompt.open("rb") as stdin, stdout_path.open("ab") as stdout,
@@ -152,10 +177,10 @@ class AlphaStrategyReviewExecutor:
             if detect_provider_capacity(
                 [capacity_step],
                 workspace.logs.parent,
-                {"independent-strategy-review": "codex"},
+                {"independent-strategy-review": provider_key()},
             ):
                 break
-            if capacity_attempt == 2:
+            if capacity_attempt == attempts - 1:
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -170,7 +195,10 @@ class AlphaStrategyReviewExecutor:
         if not timed_out and running.process.returncode == 0 and output.is_file():
             if output.is_symlink() or output.stat().st_size > 15_000:
                 raise ValueError("Invalid review output file")
-            result = StrategyReviewVerdict.model_validate_json(output.read_text(encoding="utf-8"))
+            result = verdict_type.model_validate_json(output.read_text(encoding="utf-8"))
+            if method_scope:
+                from swarm_worker.method_verdict_contract import validate_method_review
+                validate_method_review(result, contract.qualification["artifact_bundle"]["method_review_packet"], review_digest)
             if result.subject_digest != contract.subject_digest:
                 raise ValueError("Reviewer returned a different subject")
             output.chmod(0o600)
@@ -184,7 +212,7 @@ class AlphaStrategyReviewExecutor:
         provider_capacity = detect_provider_capacity(
             [step],
             workspace.logs.parent,
-            {"independent-strategy-review": "codex"},
+            {"independent-strategy-review": provider_key()},
         )
         return WorkflowExecutionResult(
             workflow=workflow.name, repository=contract.repository, base_commit=contract.base_ref,

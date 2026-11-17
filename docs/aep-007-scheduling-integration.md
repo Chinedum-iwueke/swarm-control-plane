@@ -4,6 +4,48 @@ Status: in progress, not commissioned. AEP-005/AEP-006 are not yet the productio
 default. This milestone must not be described as complete based on local episode
 tests alone.
 
+## Current rollout and acceptance boundary
+
+The method-task publication increment was committed as `200e09f`, pushed to main,
+and deployed to VM2. The API is healthy and both discovery/campaign directors
+restarted successfully. No method-designer registration or autonomous queue resume
+was performed.
+
+The next implementation adds independently assigned method-verdict tasks using the
+existing evaluator registry, exact packet/criterion/evidence validation, and current
+profile/package checks before cached acceptance is consumed. Legacy verdict
+serialization is unchanged. Method reviews use one local call and one task attempt,
+check the lease and billing-lane permit before inference, and retain explicit quota
+deferral. Native planning producers are excluded from reviewing their own evidence.
+
+An explicitly frozen `method_engineering_requests` entry can bind the accepted
+packet to an engineering episode. Both native validation plans must be ready and
+present in the reviewed evidence, backed by a successful source/candidate-bound
+planning task. The template must retain the exact dataset, representation and
+window. It is not inferred from model prose. Materialization is idempotent and
+explicitly requires engineering approval during commissioning. Existing task
+approvals are not silently extended. Source merge/rebinding remains a separate gate.
+
+Mission Control's task inspector gains a bounded-episode section using current
+attempt heartbeats or retained results: stage, owner, blocker, call/repair budgets,
+deadline, evidence receipts and explicitly unknown/incomplete token usage.
+
+Still open: production wiring of rejected-review adjudication/re-review; verified
+dependency recovery and producer commissioning; integrated browser validation;
+and the scoped scheduler failure-injection/commissioning evidence. An accepted
+packet is not permission to skip these checks. AEP-007 is **not complete**.
+
+The follow-on implementation passed 202 focused backend tests, 110 worker tests
+and one executable JavaScript inspector test. The scheduler materialization test
+also caught and fixed a risk-1 approval default: the new engineering task now
+explicitly requires approval. These are controlled fixtures, not production
+method-acceptance or native-backtest receipts. Browser appearance remains unverified.
+
+Production inspection found the latest commissioning mandates completed, including
+`ALPHA004-BTC-METHOD-CORRECTION-20261117-R3`. They must not be reopened or have their
+counters reset. The founder authorized preparation of a new commissioning proposal,
+not activation of an unspecified digest.
+
 ## Verified implementation increment
 
 The existing engineering executor now checks its task lease through a heartbeat

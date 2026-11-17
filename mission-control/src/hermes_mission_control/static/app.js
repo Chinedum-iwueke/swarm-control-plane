@@ -3034,9 +3034,11 @@ function bindEntityButtons() {
 async function openTask(id) {
   const summary = state.dashboard.tasks.find((item) => String(item.id) === String(id));
   let task = summary;
+  let events = [];
   try {
     const detail = await request(`/api/tasks/${encodeURIComponent(id)}`);
     task = detail.task || summary || detail;
+    events = detail.events || [];
   } catch (error) {
     toast(`Full task evidence is unavailable: ${error.message}`);
   }
@@ -3053,6 +3055,7 @@ async function openTask(id) {
       <dt>Updated</dt><dd>${formatDate(task.updated_at)}</dd>
     </dl></section>
     <section class="detail-section"><h3>Objective</h3><p>${escapeHtml(task.objective)}</p></section>
+    ${renderEpisodeEvidence(task, events)}
     <section class="detail-section"><h3>Execution evidence</h3><dl class="detail-grid">
       <dt>Artifacts</dt><dd>${artifacts.length}</dd>
       <dt>Base commit</dt><dd class="mono">${escapeHtml(task.result?.base_commit || "Not recorded")}</dd>
@@ -3062,6 +3065,40 @@ async function openTask(id) {
     ${task.result?.summary ? `<section class="detail-section"><h3>Result summary</h3><pre class="json-view">${escapeHtml(JSON.stringify(task.result.summary, null, 2))}</pre></section>` : ""}
     <section class="detail-section"><h3>Structured contract</h3><pre class="json-view">${escapeHtml(JSON.stringify(task.input_contract || {}, null, 2))}</pre></section>
   `);
+}
+
+function renderEpisodeEvidence(task, events) {
+  const summary = task.result?.summary || {};
+  const method = summary.method_episode?.state;
+  const engineering = summary.engineering_episode;
+  const progressEvents = events.filter((event) => event.event_type === "task_heartbeat" &&
+    event.attempt_number === task.attempt_count && event.payload?.progress);
+  const latest = progressEvents[progressEvents.length - 1];
+  const progress = latest?.payload.progress || engineering?.progress || method || {};
+  const policy = task.input_contract?.engineering_episode || task.input_contract?.policy || {};
+  const relevant = ["alpha_method_design", "alpha_strategy_review"].includes(task.task_type) ||
+    task.input_contract?.engineering_episode || method || engineering;
+  if (!relevant) return "";
+  const recorded = (value) => value === undefined || value === null ? "Not reported" : String(value);
+  const budget = (used, maximum) => `${recorded(used)} / ${recorded(maximum)}`;
+  const receipts = progress.evidence_receipts || [];
+  return `<section class="detail-section episode-evidence"><h3>Bounded episode</h3>
+    <dl class="detail-grid">
+      <dt>Stage</dt><dd>${escapeHtml(humanize(progress.stage || progress.phase || "not_reported"))}</dd>
+      <dt>Owner</dt><dd>${escapeHtml(task.assigned_agent_id || "Unassigned")}</dd>
+      <dt>Episode state</dt><dd>${escapeHtml(humanize(progress.status || method?.status || engineering?.status || task.status))}</dd>
+      <dt>Blocker</dt><dd>${escapeHtml(progress.blocker || progress.reason || task.failure?.message || "None reported")}</dd>
+      <dt>Repair budget</dt><dd>${escapeHtml(budget(progress.repairs, progress.max_repairs ?? policy.max_repairs))}</dd>
+      <dt>Model-call budget</dt><dd>${escapeHtml(budget(progress.model_calls, progress.max_model_calls ?? policy.max_model_calls))}</dd>
+      <dt>Token usage</dt><dd>${progress.usage_complete === true ? escapeHtml(recorded(progress.reported_tokens)) : "Unknown or incomplete"}</dd>
+      <dt>Deadline</dt><dd>${escapeHtml(recorded(progress.deadline))}</dd>
+      <dt>Evidence updated</dt><dd>${latest ? formatDate(latest.created_at) : "Retained result; no current heartbeat shown"}</dd>
+    </dl>
+    <details><summary>Episode evidence and receipts (${receipts.length})</summary>
+      <ul>${receipts.map((receipt) => `<li class="mono">${escapeHtml(receipt)}</li>`).join("")}</ul>
+      <pre class="json-view">${escapeHtml(JSON.stringify(summary.method_episode || engineering || progress, null, 2))}</pre>
+    </details>
+  </section>`;
 }
 
 function openOperation(id) {

@@ -73,9 +73,15 @@ def test_review_cannot_approve_unresolved_findings():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("verdict", ["approve", "reject"])
-@pytest.mark.parametrize("scope", [None, "scientific_requirements"])
+@pytest.mark.parametrize("scope", [None, "scientific_requirements", "method_design"])
 async def test_read_only_reviewer_retains_real_verdict_without_execution_authority(tmp_path, verdict, scope):
     payload = contract()
+    packet = None
+    if scope == "method_design":
+        evidence = {"kind": "synthetic evidence"}
+        packet = {"requirements": {"target": "Exact target"}, "evidence": {review_digest(evidence): evidence}}
+        payload["qualification"]["artifact_bundle"] = {"method_review_packet": packet}
+        payload["subject"]["artifact_bundle_digest"] = review_digest(payload["qualification"]["artifact_bundle"])
     if scope:
         payload["subject"]["review_scope"] = scope
         payload["subject_digest"] = review_digest(payload["subject"])
@@ -93,7 +99,10 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
             assert "--ephemeral" in args
             prompt = kwargs["stdin"].read().decode()
             assert "review_only_no_execution" in prompt
-            if scope:
+            if scope == "method_design":
+                assert "every requirement key checked exactly once" in prompt
+                assert "Inspect the pinned native implementation" not in prompt
+            elif scope:
                 assert "Do not reject solely because correctly specified post-construction checks" in prompt
                 assert "Precision arithmetic does not establish adequate power" in prompt
                 assert "name the stage that must resolve it" in prompt
@@ -105,14 +114,23 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
                 "rationale": "Reviewed the exact frozen card and pinned source.",
                 "checks": ["semantic fidelity"], "blockers": [] if verdict == "approve" else ["missing timing"],
             }
+            if packet is not None:
+                output["method_verdict"] = dict(packet_digest=review_digest(packet),
+                    verdict="accept" if verdict == "approve" else "reject", checks=["target"],
+                    findings=[] if verdict == "approve" else [dict(criterion="target",
+                        evidence_digests=list(packet["evidence"]), violation="missing timing",
+                        verification="Inspect timing against exact evidence.")],
+                    rationale="Exact method evidence was checked.")
             (workspace.artifacts / "strategy-review.json").write_text(json.dumps(output))
             return SimpleNamespace(process=process)
 
     executor = AlphaStrategyReviewExecutor(codex_home=tmp_path, codex_model="test-model",
                                            heartbeat_interval_seconds=1, process_runner=Runner(), effective_uid=lambda: 1000)
     task = SimpleNamespace(input_contract=payload, assigned_agent_id=UUID(payload["evaluator_agent_id"]), attempt_count=1)
+    async def heartbeat(_metadata):
+        pass
     result = await executor.execute(task=task, workflow=SimpleNamespace(name=payload["workflow"], steps=[], timeout_seconds=60),
-                                    workspace=workspace, heartbeat=None)
+                                    workspace=workspace, heartbeat=heartbeat)
     assert result.success
     assert result.summary["alpha_strategy_review"]["verdict"] == verdict
     assert result.summary["review_digest"] == review_digest(result.summary["alpha_strategy_review"])

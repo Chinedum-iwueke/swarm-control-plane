@@ -4,6 +4,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from swarm_worker.method_verdict_contract import MethodVerdict
 
 
 def review_digest(value: Any) -> str:
@@ -26,6 +27,10 @@ class StrategyReviewVerdict(BaseModel):
         if self.verdict == "approve" and self.blockers:
             raise ValueError("Approval cannot contain unresolved blockers")
         return self
+
+
+class MethodStrategyReview(StrategyReviewVerdict):
+    method_verdict: MethodVerdict
 
 
 class AlphaStrategyReviewContract(BaseModel):

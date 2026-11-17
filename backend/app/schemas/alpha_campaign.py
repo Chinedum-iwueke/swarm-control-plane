@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.method_task import MethodTaskContract
+from app.schemas.proposal import ProposalEngineeringMissionContract
 
 _DIGEST = r"^[0-9a-f]{64}$"
 _COMMIT = r"^[0-9a-f]{40,64}$"
@@ -15,6 +16,18 @@ _KEY = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class MethodEngineeringRequest(StrictModel):
+    contract: ProposalEngineeringMissionContract
+    feasibility_task_id: uuid.UUID
+    plan_evidence_digest: str = Field(pattern=_DIGEST)
+
+    @model_validator(mode="after")
+    def bounded_episode(self):
+        if self.contract.repository != 'bulletproof_bt' or self.contract.engineering_episode is None:
+            raise ValueError('Method handoff requires a bounded Bulletproof engineering episode')
+        return self
 
 
 class AlphaCampaignBudget(StrictModel):
@@ -71,9 +84,14 @@ class AlphaCampaignCreate(StrictModel):
     research_mandate_id: uuid.UUID | None = None
     research_mandate_digest: str | None = Field(default=None, pattern=_DIGEST)
     method_design_requests: dict[str, MethodTaskContract] | None = Field(default=None, max_length=100)
+    method_engineering_requests: dict[str, MethodEngineeringRequest] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def unique_scope(self):
+        for key, request in (self.method_engineering_requests or {}).items():
+            if (key not in (self.method_design_requests or {})
+                    or request.contract.base_ref != self.bulletproof_source_commit):
+                raise ValueError('Engineering handoff requires the exact source-bound method request')
         if self.method_design_requests:
             if self.execution_protocol not in {'alpha003-governed-v1', 'alpha004-delegated-v1'}:
                 raise ValueError('Method design requires a governed campaign')

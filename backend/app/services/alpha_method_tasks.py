@@ -13,6 +13,53 @@ from app.services.tasks import build_task, persist_new_task
 
 
 def require_current_method_authority(db, task):
+    if (task.task_type == 'engineering_mission'
+            and (task.approval_policy or {}).get('kind') == 'accepted_method_engineering'):
+        from uuid import UUID
+        from fastapi import HTTPException
+        from app.contracts.engineering_evidence import decode_engineering_evidence
+        try:
+            parent = db.get(Task, UUID(task.approval_policy['method_task_id']))
+            if parent is None or parent.task_type != 'alpha_method_design':
+                raise ValueError('missing method parent')
+            require_current_method_authority(db, parent)
+            packet = verified_method_result(parent)['review_packet']
+            handoff = decode_engineering_evidence(task.input_contract['evidence_context'])['accepted_method_handoff']
+            if handoff['packet'] != packet or task.input_contract['base_ref'] != packet['source_commit']:
+                raise ValueError('method handoff changed')
+            from app.services.evaluator_routing import task_producer_identity
+            from app.services.alpha_method_engineering import verified_plan_evidence
+            from app.schemas.alpha_campaign import MethodEngineeringRequest
+            campaign = db.scalar(select(AlphaCampaign).where(
+                AlphaCampaign.campaign_digest == parent.approval_policy['campaign_digest']))
+            identity = task_producer_identity(db, parent)
+            if campaign is None or identity is None:
+                raise ValueError('method campaign or producer missing')
+            route, reviews = route_method_review(db, campaign, parent, packet, identity)
+            if (str(route.id) != handoff['registration_receipt']['route_id']
+                    or reviews is None or any(review.verdict != 'approve' for review in reviews)):
+                raise ValueError('method review no longer current')
+            request = MethodEngineeringRequest.model_validate(
+                campaign.specification['method_engineering_requests'][parent.input_contract['candidate_id']])
+            verified_plan_evidence(db, request, packet, parent)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, 'Accepted-method engineering authority is no longer current.') from exc
+        return
+    if (task.task_type == 'alpha_strategy_review'
+            and task.input_contract.get('subject', {}).get('review_scope') == 'method_design'):
+        from uuid import UUID
+        from fastapi import HTTPException
+        try:
+            parent = db.get(Task, UUID(task.input_contract['subject']['producer_task_id']))
+            if parent is None or parent.task_type != 'alpha_method_design':
+                raise ValueError('missing method parent')
+            require_current_method_authority(db, parent)
+            packet = verified_method_result(parent)['review_packet']
+            if task.input_contract['qualification']['artifact_bundle']['method_review_packet'] != packet:
+                raise ValueError('method packet changed')
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, 'Method review authority or packet is no longer current.') from exc
+        return
     if task.task_type != 'alpha_method_design':
         return
     from fastapi import HTTPException
@@ -184,5 +231,117 @@ def advance_method_task(db, campaign, source, parent, request):
         raise ValueError('Published method packet changed')
     campaign.phase = 'independent_method_review'
     campaign.next_action = 'await_independent_method_review'
-    # No legacy approval conversion and no engineering materialization here.
+    engineering_request = (campaign.specification.get('method_engineering_requests') or {}).get(
+        str(task.input_contract['candidate_id']))
+    if engineering_request is not None:
+        from app.services.alpha_method_engineering import verified_plan_evidence
+        from app.schemas.alpha_campaign import MethodEngineeringRequest
+        verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+    route, reviews = route_method_review(db, campaign, task, packet, identity)
+    if reviews is not None:
+        campaign.next_action = ('materialize_accepted_method_handoff'
+                                if all(review.verdict == 'approve' for review in reviews)
+                                else 'adjudicate_method_review_findings')
+        if all(review.verdict == 'approve' for review in reviews) and engineering_request is not None:
+            from app.services.alpha_method_engineering import materialize_method_engineering
+            engineering = materialize_method_engineering(
+                db, campaign, task, packet, identity, route, engineering_request)
+            campaign.phase = 'strategy_engineering'
+            campaign.next_action = {
+                'pending_approval': 'founder_strategy_engineering_approval',
+                'succeeded': 'founder_merge_strategy_and_rebind_source_commit',
+                'failed': 'strategy_engineering_failed',
+                'cancelled': 'strategy_engineering_cancelled',
+            }.get(engineering.status, 'await_bounded_strategy_engineering')
+            if engineering.status in {'succeeded', 'failed', 'cancelled'}:
+                campaign.status = 'needs_attention'
+                campaign.terminal_reason = {'category': campaign.next_action, 'task_id': str(engineering.id)}
+            return engineering
+    elif route.status == 'blocked':
+        campaign.next_action = 'restore_independent_method_review_routing'
+    # Accepted review still needs native-plan custody before engineering.
     return None
+
+
+def route_method_review(db, campaign, task, packet, identity):
+    """Publish a separate review route without converting readiness to authority."""
+    from app.models.evaluator_routing import EvaluationRoute
+    from app.schemas.evaluator_routing import EvaluationRouteCreate, ProducerIdentity, MethodStrategyReview
+    from app.schemas.method_verdict import validate_method_review
+    from app.services.evaluator_routing import create_route, validated_alpha_strategy_reviews
+    from app.services.alpha_campaign import _append_event, _materialize_strategy_review_tasks
+
+    require_current_method_authority(db, task)
+    qualification = {'card': packet['proposal'],
+                     'artifact_bundle': {'method_review_packet': packet}}
+    excluded = []
+    handoff_request = (campaign.specification.get('method_engineering_requests') or {}).get(
+        str(task.input_contract['candidate_id']))
+    if handoff_request is not None:
+        from uuid import UUID
+        from app.services.evaluator_routing import task_producer_identity
+        planning = db.get(Task, UUID(handoff_request['feasibility_task_id']))
+        native_identity = task_producer_identity(db, planning) if planning is not None else None
+        if native_identity is None:
+            raise ValueError('Native planning producer custody missing')
+        if native_identity != identity:
+            excluded.append(native_identity)
+    subject = {'review_scope': 'method_design', 'source_commit': packet['source_commit'],
+               'card_digest': digest(qualification['card']),
+               'artifact_bundle_digest': digest(qualification['artifact_bundle']),
+               'packet_digest': digest(packet), 'producer_task_id': str(task.id),
+               'producer_agent_ids': sorted({str(identity['agent_id']),
+                                            *(str(item['agent_id']) for item in excluded)})}
+    previous = db.scalar(select(AlphaCampaignEvent).where(
+        AlphaCampaignEvent.campaign_id == campaign.id,
+        AlphaCampaignEvent.event_type == 'method_review_routed',
+        AlphaCampaignEvent.payload['subject_digest'].astext == digest(subject)))
+    if previous is None:
+        route = create_route(db, EvaluationRouteCreate(
+            subject_type='alpha_strategy_qualification', subject_id=f'method:{task.id}',
+            subject_digest=digest(subject),
+            producer=ProducerIdentity.model_validate(identity | {'actor': str(identity['agent_id'])}),
+            excluded_producers=[ProducerIdentity.model_validate(item | {'actor': str(item['agent_id'])})
+                                for item in excluded],
+            required_review_kinds=['strategy_spec', 'causality_leakage'],
+            requested_by='alpha-campaign-director'))
+        _append_event(db, campaign, 'method_review_routed', 'alpha-campaign-director',
+                      {'subject_digest': digest(subject), 'subject': subject,
+                       'qualification': qualification, 'route_id': str(route.id)})
+    else:
+        if previous.payload['qualification'] != qualification or previous.payload['subject'] != subject:
+            raise ValueError('Method review publication changed')
+        route = db.get(EvaluationRoute, previous.payload['route_id'])
+        if route is None:
+            raise ValueError('Method review route missing')
+    _materialize_strategy_review_tasks(db, route, subject, qualification)
+    reviews = validated_alpha_strategy_reviews(db, route, subject_digest=digest(subject),
+        producer_agent_id=identity['agent_id'],
+        excluded_agent_ids=[item['agent_id'] for item in excluded], excluded_identities=excluded)
+    if reviews is None:
+        return route, None
+    from app.models.evaluator_routing import EvaluatorAssignment, EvaluatorProfile
+    from app.models.agent import Agent
+    from app.services.evaluator_routing import producer_identity_for_lease, _profile_identity
+    assignments = db.scalars(select(EvaluatorAssignment).where(
+        EvaluatorAssignment.route_id == route.id)).all()
+    if len(assignments) != 2:
+        raise ValueError('Method review requires exactly two independent assignments')
+    for assignment in assignments:
+        profile = db.get(EvaluatorProfile, assignment.evaluator_profile_id)
+        agent = db.get(Agent, profile.agent_id) if profile is not None else None
+        from app.models import PackageDeployment, RolePackage
+        deployed = db.scalar(select(RolePackage.manifest_digest).join(
+            PackageDeployment, PackageDeployment.package_id == RolePackage.id).where(
+                PackageDeployment.agent_id == profile.agent_id,
+                PackageDeployment.package_id == profile.package_id,
+                PackageDeployment.is_active.is_(True))) if profile is not None else None
+        if (profile is None or profile.status != 'active' or agent is None or not agent.is_enabled
+                or deployed != profile.package_digest
+                or producer_identity_for_lease(db, agent, [profile.package_digest]) != _profile_identity(profile)):
+            raise ValueError('Method reviewer registration is no longer current')
+    for review in reviews:
+        if not isinstance(review, MethodStrategyReview):
+            raise ValueError('Legacy strategy approval is not method evidence')
+        validate_method_review(review, packet, digest)
+    return route, reviews
