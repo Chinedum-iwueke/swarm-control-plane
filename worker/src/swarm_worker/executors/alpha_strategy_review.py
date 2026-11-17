@@ -55,6 +55,23 @@ class AlphaStrategyReviewExecutor:
         document = verdict_type.model_json_schema()
         document["required"] = list(document["properties"])
         document["properties"]["subject_digest"]["enum"] = [contract.subject_digest]
+        if adjudication_scope:
+            bundle = contract.qualification['artifact_bundle']
+            packet, reviews = bundle['method_review_packet'], bundle['rejected_reviews']
+            findings = sorted({review_digest(f) for r in reviews
+                               for f in r['method_verdict']['findings']})
+            if not findings or len(findings) > 32 or not packet['evidence']:
+                raise ValueError('Adjudication requires bounded findings and retained evidence')
+            decision = document['$defs']['MethodAdjudication']['properties']
+            decision['packet_digest']['enum'] = [review_digest(packet)]
+            decision['reviews_digest']['enum'] = [review_digest(reviews)]
+            # Strict provider schemas require closed objects, not open-ended
+            # dicts with minProperties. Compile the exact frozen findings.
+            decision['finding_evidence'] = {
+                'type': 'object', 'additionalProperties': False, 'required': findings,
+                'properties': {key: {'type': 'array', 'minItems': 1, 'maxItems': 16,
+                    'items': {'type': 'string', 'enum': sorted(packet['evidence'])}}
+                    for key in findings}}
         schema.write_text(json.dumps(document), encoding="utf-8")
         prompt.write_text(
             ("Adjudicate only the exact rejected_reviews against method_review_packet. "

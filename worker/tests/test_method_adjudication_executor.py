@@ -35,6 +35,17 @@ async def test_independent_adjudicator_emits_recheck_not_approval(tmp_path, monk
             prompt = kwargs['stdin'].read().decode()
             assert 'Outer verdict MUST remain reject' in prompt
             assert 'Inspect the pinned native implementation' not in prompt
+            schema = json.loads((workspace.artifacts/'strategy-review-schema.json').read_text())
+            decision = schema['$defs']['MethodAdjudication']['properties']
+            refs = decision['finding_evidence']
+            assert refs['required'] == [digest(finding)]
+            assert refs['additionalProperties'] is False
+            assert set(refs['properties']) == {digest(finding)}
+            assert refs['properties'][digest(finding)]['items']['enum'] == [digest(evidence)]
+            assert decision['packet_digest']['enum'] == [digest(packet)]
+            assert decision['reviews_digest']['enum'] == [digest(reviews)]
+            assert 'minProperties' not in json.dumps(schema)
+            assert 'maxProperties' not in json.dumps(schema)
             output = dict(subject_digest=raw['subject_digest'], verdict='reject',
                 rationale='Independent interpretation recheck, not scientific approval.', checks=['target'],
                 blockers=['Fresh independent review required'], method_adjudication={
