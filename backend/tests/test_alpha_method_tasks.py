@@ -168,6 +168,40 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
         assert service.verified_method_result(task)['scientific_approval'] is False
 
 
+@pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle'])
+def test_v2_transport_reconstructs_exact_audit_state(tamper):
+    task = ready_task()
+    result = task.result['summary']['method_episode']
+    state = result['state']
+    envelope = dict(disposition='ready', findings=[], work_units=1,
+                    evidence=deepcopy(state['evidence']))
+    key = service.digest(envelope)
+    full = deepcopy(state)
+    full['evidence'][key] = envelope
+    result.update(schema_version='method-task-result-v2',
+                  audit_state_digest=service.digest(full),
+                  state_evidence_envelopes={key: envelope | {'evidence': sorted(envelope['evidence'])}})
+    result['review_packet']['method_episode_digest'] = service.digest(full)
+    if tamper == 'reference':
+        result['state_evidence_envelopes'][key]['evidence'] = ['f'*64]
+    elif tamper == 'envelope':
+        result['state_evidence_envelopes'][key]['work_units'] += 1
+    elif tamper == 'audit':
+        result['audit_state_digest'] = 'f'*64
+    elif tamper == 'cycle':
+        result['state_evidence_envelopes'][key]['evidence'] = [key]
+    result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    before = deepcopy(task.result)
+    if tamper:
+        with pytest.raises(ValueError):
+            service.verified_method_result(task)
+    else:
+        verified = service.verified_method_result(task)
+        assert verified['state'] == full
+        assert verified['result_digest'] == result['result_digest']
+    assert task.result == before
+
+
 @pytest.mark.parametrize('change', ['identity', 'scope', 'budget', 'source', 'receipt'])
 def test_rehashed_invalid_method_state_cannot_publish(change):
     task = ready_task()

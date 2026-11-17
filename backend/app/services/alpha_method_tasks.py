@@ -142,11 +142,36 @@ def verified_method_result(task):
     """Validate readiness custody, not the method's scientific correctness."""
     contract = MethodTaskContract.model_validate(task.input_contract)
     result = (task.result or {}).get('summary', {}).get('method_episode', {})
-    if (task.status != 'succeeded' or result.get('schema_version') != 'method-task-result-v1'
+    if (task.status != 'succeeded' or result.get('schema_version') not in {'method-task-result-v1', 'method-task-result-v2'}
             or result.get('contract_digest') != digest(contract.model_dump(mode='json'))
             or result.get('result_digest') != digest({k: v for k, v in result.items() if k != 'result_digest'})
             or result.get('scientific_approval') is not False or result.get('execution_authority') is not False):
         raise ValueError('Method result custody mismatch')
+    if result['schema_version'] == 'method-task-result-v2':
+        from copy import deepcopy
+        import json
+        result = deepcopy(result)
+        evidence = result['state']['evidence']
+        envelopes = result.get('state_evidence_envelopes', {})
+        if not isinstance(envelopes, dict) or not 1 <= len(envelopes) <= 64:
+            raise ValueError('Invalid method evidence envelope table')
+        leaves = dict(evidence)
+        for key, envelope in envelopes.items():
+            if (key in leaves or not isinstance(envelope, dict)
+                    or set(envelope) != {'disposition', 'evidence', 'findings', 'work_units'}
+                    or not isinstance(envelope['evidence'], list)
+                    or len(envelope['evidence']) > 256
+                    or any(not isinstance(ref, str) or ref not in leaves for ref in envelope['evidence'])
+                    or len(set(envelope['evidence'])) != len(envelope['evidence'])):
+                raise ValueError('Invalid method evidence envelope references')
+            restored = envelope | {'evidence': {ref: leaves[ref] for ref in envelope['evidence']}}
+            if digest(restored) != key:
+                raise ValueError('Method evidence envelope digest mismatch')
+            evidence[key] = restored
+            if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 262144:
+                raise ValueError('Reconstructed method state exceeds bound')
+        if digest(result['state']) != result.get('audit_state_digest'):
+            raise ValueError('Method audit state digest mismatch')
     state = result.get('state', {})
     expected_binding = dict(task_id=str(task.id), source_commit=contract.base_ref,
         mandate_digest=contract.mandate_digest, findings_digest=contract.findings_digest,

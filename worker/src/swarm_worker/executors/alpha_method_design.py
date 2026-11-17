@@ -1,5 +1,6 @@
 """Registered-task adapter for the bounded method episode and native diagnosis."""
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import os
@@ -15,6 +16,28 @@ from swarm_worker.model_lane import model_capacity_permit, provider_key
 from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.native_diagnostic_client import NativeDiagnosticClient
 from swarm_worker.native_design_shape import defects, SHAPE
+
+
+def compact_method_result(document):
+    """Transport catalog envelopes by hash; keep the durable episode unchanged."""
+    result = deepcopy(document)
+    state = result['state']
+    evidence = state['evidence']
+    envelopes = {key: value for key, value in evidence.items()
+        if set(value) == {'disposition', 'evidence', 'findings', 'work_units'}
+        and isinstance(value['evidence'], dict)
+        and all(evidence.get(ref) == doc for ref, doc in value['evidence'].items())}
+    # Only flatten envelopes whose children are leaf documents, never cycles.
+    envelopes = {key: value for key, value in envelopes.items()
+                 if not set(value['evidence']) & set(envelopes)}
+    if envelopes:
+        result['schema_version'] = 'method-task-result-v2'
+        result['audit_state_digest'] = digest(state)
+        result['state_evidence_envelopes'] = {
+            key: value | {'evidence': sorted(value['evidence'])}
+            for key, value in envelopes.items()}
+        state['evidence'] = {key: value for key, value in evidence.items() if key not in envelopes}
+    return result
 
 
 class AlphaMethodDesignExecutor:
@@ -130,6 +153,7 @@ class AlphaMethodDesignExecutor:
             document['review_packet'] = method_review_packet(state,
                 requirements=contract.requirements, evidence=evidence,
                 dependencies=contract.dependencies)
+        document = compact_method_result(document)
         document['result_digest'] = digest(document)
         path = workspace.artifacts / 'method-episode-result.json'
         path.write_text(json.dumps(document, sort_keys=True))

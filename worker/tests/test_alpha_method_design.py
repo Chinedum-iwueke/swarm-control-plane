@@ -57,11 +57,13 @@ async def test_fixed_executor_retains_native_packet_and_duplicate_is_free(tmp_pa
         assert result.success
         document = result.summary['method_episode']
         assert document['state']['status'] == 'ready_for_independent_review'
-        assert document['review_packet']['method_episode_digest'] == digest(document['state'])
+        assert document['schema_version'] == 'method-task-result-v2'
+        assert document['review_packet']['method_episode_digest'] == document['audit_state_digest']
         assert document['execution_authority'] is False
         assert document['state']['model_calls'] == 0
         evidence = document['review_packet']['evidence']
-        assert set(evidence) < set(document['state']['evidence'])
+        assert set(evidence) == set(document['state']['evidence'])
+        assert document['state_evidence_envelopes']
         assert set(task.input_contract['evidence_catalog']) <= set(evidence)
         assert any(v.get('schema_version') == 'native-diagnostic-receipt-v1'
                    for v in evidence.values())
