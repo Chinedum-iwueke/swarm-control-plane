@@ -1679,6 +1679,10 @@ def queue_founder_idea(
                 rejection_event_id=payload.requirements_rejection_event_id,
                 expected_rejection_digest=payload.expected_requirements_rejection_digest,
             )
+            if constraints["retained_candidate_recovery"].get("schema_version") == 3:
+                from app.services.alpha_requirements_correction import correction_worklist
+                constraints["requirements_correction_worklist"] = correction_worklist(
+                    constraints["retained_candidate_recovery"])
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
     idea_digest = digest_document(

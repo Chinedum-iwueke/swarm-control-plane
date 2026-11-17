@@ -149,3 +149,27 @@ absent from the supplied corpus: the observed brief included a fabricated digest
 Historical task success is retained, not retrospectively rewritten as valid
 provenance. The new worker contract still needs a fresh authorized live trial;
 neither this cycle nor the prior cycle reached strategy engineering or backtesting.
+
+## Requirements Correction Follow-Up (Local)
+
+The next approved cycle (`ec9b86f6-6d5d-4ea4-9107-e12f3ef999e3`) produced
+two candidates, passed representation and data admission, and automatically
+advanced from BTC's independent rejection to SPX. BTC still needs a coherent
+held-out estimand/inference procedure, consistent range controls, and adequate
+planned held-out support. SPX's native planner stopped on identical support
+entries; the local Bulletproof fix is documented in its requirements-aware
+validation guide and requires a source-bound rollout before live use.
+
+Both controller-generated and explicitly authorized method-correction requests
+now carry an evidence-bound worklist: each retained reviewer blocker has its own
+digest, unresolved status and required verification order. The rejection subject
+and worklist are bound together. Worker instructions require a proposed repair
+and affected fields for each item, deterministic checks before paid review, and
+no weakening of event gates or scientific identity. These instructions and
+worklists are not proof that the model fixed a method; native feasibility and
+fresh independent review remain authoritative. Existing two-correction lineage,
+idempotency, mandate-budget and pause checks remain unchanged.
+
+No historical candidate was edited, no mandate was renewed, and no live repair
+task was authorized by these local changes. Remaining commissioning requires
+an authorized source transition and a budgeted correction successor.

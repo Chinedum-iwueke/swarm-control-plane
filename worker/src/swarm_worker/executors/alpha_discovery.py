@@ -1044,7 +1044,17 @@ When recovery_kind is scientific_method_correction, rejected_method_identity and
 an explicitly rejected method to correct. Preserve scientific_identity; propose a complete corrected method with
 an explanation addressing each blocker. Do not merely replay the rejected method. Do not reduce any prior warmup,
 training/validation/test minima, purge/embargo, scientific duration or named event-support minimum, or expand its
-variant budget. The research clock and target horizon stay fixed. Split prose must name the exact proposed
+variant budget. The research clock and target horizon stay fixed.
+When requirements_correction_worklist is supplied, account for every blocker digest in the scientific rationale:
+state the proposed correction, the exact affected contract fields and the check that must verify it. A worklist
+is not approval. For inference defects, specify the estimand, training-fitted quantities, frozen held-out quantities,
+bootstrap statistic, uncertainty and multiplicity procedure. For representation conflicts, keep the original
+feature definition consistent across the candidate, transformations, controls and falsification rules; changing
+scientific identity requires a separately authorized question, not a silent method repair. For event support,
+calculate nominal tail mass for every registered quantile and partition before independent review. If a larger
+partition is needed, propose increased minima within authorized coverage; do not lower event gates or assert
+that nominal counts prove observed support. If these obligations cannot coexist, return an explicit disposition.
+Split prose must name the exact proposed
 partition minima and distinguish them from proportions: never claim a 60/20/20 allocation unless the native plan
 actually produces it. Event-support counts are gates measured after execution, not promises inferred from coverage
 or nominal quantiles. State precision/power limitations and return invalid when support is insufficient; never

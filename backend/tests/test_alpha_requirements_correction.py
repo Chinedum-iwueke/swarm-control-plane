@@ -25,6 +25,18 @@ def test_lineage_counts_corrections_and_rejects_cycles():
         correction.correction_depth(db, child)
 
 
+def test_worklist_binds_every_blocker_without_claiming_resolution():
+    scope = {"rejection_subject_digest": "a" * 64,
+             "review_blockers": ["Fix estimator", "Fix controls", "Fix estimator"]}
+    plan = correction.correction_worklist(scope)
+    assert len(plan["items"]) == 2
+    assert plan["execution_authority"] is plan["scientific_approval"] is False
+    assert plan == correction.correction_worklist({**scope, "review_blockers": list(reversed(scope["review_blockers"]))})
+    changed = correction.correction_worklist({**scope, "rejection_subject_digest": "b" * 64})
+    assert plan["plan_digest"] != changed["plan_digest"]
+    assert all(item["status"] == "requires_proposed_correction_and_fresh_review" for item in plan["items"])
+
+
 @pytest.mark.parametrize("blocked", ["paused", "budget", "expired", "inactive"])
 def test_no_work_outside_authority(monkeypatch, blocked):
     now = datetime.now(UTC)
@@ -64,6 +76,7 @@ def test_verified_rejection_queues_once_with_controller_identity(monkeypatch):
     idea = correction.queue_requirements_correction(db, mandate)
     assert idea.submitted_by == "requirements-correction-controller"
     assert idea.constraints["retained_candidate_recovery"] == scope
+    assert idea.constraints["requirements_correction_worklist"]["items"][0]["reviewer_blocker"] == "Fix estimator"
     assert event.call_args.args[2] == "requirements_correction_queued"
     assert verifier.call_args.kwargs["schema_version"] == 3
     db.scalar.return_value = uuid4()

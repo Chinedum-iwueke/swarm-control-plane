@@ -14,6 +14,20 @@ from app.services.alpha_disposition import retain_disposition
 MAX_CORRECTIONS = 2
 
 
+def correction_worklist(scope):
+    """Bind every obligation to the rejection; never infer that a fix passed."""
+    items = [{"blocker_digest": digest_document(blocker), "reviewer_blocker": blocker,
+              "status": "requires_proposed_correction_and_fresh_review"}
+             for blocker in sorted(set(scope["review_blockers"]))]
+    plan = {"schema_version": "requirements-correction-worklist-v1",
+            "rejection_subject_digest": scope["rejection_subject_digest"],
+            "items": items, "maximum_corrections": MAX_CORRECTIONS,
+            "verification_order": ["deterministic_contract_checks", "native_feasibility",
+                                   "independent_scientific_review"],
+            "execution_authority": False, "scientific_approval": False}
+    return {**plan, "plan_digest": digest_document(plan)}
+
+
 def correction_depth(db, candidate):
     """Follow persisted parents rather than trusting an LLM-provided retry count."""
     seen = {str(candidate.id)}
@@ -82,6 +96,7 @@ def queue_requirements_correction(db, mandate):
             continue
         instruments = scope["scientific_identity"]["data"]["instruments"]
         disposition = retain_disposition(db, mandate, "scientific_requirements_rejected", scope)
+        worklist = correction_worklist(scope)
         idea = AlphaFounderResearchIdea(
             mandate_id=mandate.id, submitted_by="requirements-correction-controller",
             idea=("Correct the independently rejected methods for the unchanged question: "
@@ -89,6 +104,7 @@ def queue_requirements_correction(db, mandate):
                   "scientific identity and support minima; do not claim approval or observed "
                   "power. Abstain explicitly if the corrections are infeasible."),
             constraints={"retained_candidate_recovery": scope, "requirements_disposition": disposition,
+                "requirements_correction_worklist": worklist,
                 "minimum_history_days": 365, "maximum_variants": min(8,
                     candidate.document["parameter_budget"]["maximum_variants"]),
                 "minimum_instruments": len(instruments), "maximum_instruments": len(instruments),
@@ -102,6 +118,7 @@ def queue_requirements_correction(db, mandate):
         _event(db, mandate, "requirements_correction_queued", {
             "idea_id": str(idea.id), "parent_candidate_id": str(candidate.id),
             "rejection_subject_digest": scope["rejection_subject_digest"],
+            "correction_worklist_digest": worklist["plan_digest"],
             "maximum_corrections": MAX_CORRECTIONS, "execution_authority": False,
         })
         return idea
