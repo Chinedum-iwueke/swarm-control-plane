@@ -252,3 +252,37 @@ After deployment, automatic reconciliation retained a deferred attempt
 and closed R3 as `completed_no_candidate`, with zero trials. The dedicated method
 designer and adjudicator were stopped after closeout; broad discovery was not
 resumed. No old budget or scientific result was rewritten.
+
+### R4 correction and transport validation
+
+The founder approved R4 (`8c3a0f28-5ac1-4884-b927-3572330af65a`), exact digest
+`95d9090ed2257683c045b52abbadec36ce6a90159585325465d65534a302947a`.
+It retained both R3 reviews and adjudication and allowed one further author call,
+three diagnostics and fresh reviews, with no repeat adjudication or execution.
+The corrected method reached native diagnostic readiness with one author call
+and two diagnostics. Publication again exceeded 256 KiB because catalog-bearing
+audit envelopes still duplicated their children in transport.
+
+Repair `80160ec` adds `method-task-result-v2`: audit envelopes travel as bounded
+content-addressed references. The API verifies each reconstructed envelope digest
+and the original complete audit-state digest before applying existing custody
+checks. Local checkpoints remain unchanged. R4 transport decreased from 274,294
+to 161,883 bytes with an exact state roundtrip. Tests cover invalid references,
+modified envelopes, mismatched audit hashes and cycles (51 backend, eight worker
+tests passed). After temporary sudo renewal, the API and worker were deployed
+and task `52b7314d-c032-4cb7-93ab-bea0ede7e446` resumed publication without another
+author or diagnostic call.
+
+Published packet `6cbe1264a7e9aac9c4ed9d9aa9b3c71e283ae9abca67c97a4212540607a3965f`
+reached fresh review route `4ff7aff9-6c44-4e15-8db2-06a807ac3c3b`. Both reviewers
+rejected the proposed calibration: it lacked a joint four-variant construction
+for the registered Holm families; fixed event counts did not distinguish the
+registered quantiles or partition sizes; and the inner-replicate schedule
+conflicted with the retained bootstrap procedure. These are prospective design
+defects, not failed empirical results. Identity, minima and retained obligations
+were accepted by both reviewers.
+
+R4 automatically closed as `completed_no_candidate`, with zero trials. The method
+designer was stopped after closeout. The transport/restart/review/deferral path
+is observed; successful scientific correction and engineering remain unproved.
+Further authoring requires fresh bounded authority, not reuse of the spent R4 call.
