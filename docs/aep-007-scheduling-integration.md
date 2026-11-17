@@ -172,4 +172,31 @@ to Bulletproof `ff945426f572d1a72b84714287fc34549b9290b0`. The current clean nat
 checkout is `4e98fab3c1073d8a5c83615ecbe2c0a428193b7c`. A commissioning successor
 must explicitly bind its intended source and revalidate dependencies; copying old
 planning receipts into a new source contract is not authorized or valid. No new
-campaign or approval digest has been created by this increment.
+campaign was activated by this increment.
+
+## Pending commissioning records (2026-11-17)
+
+The bounded native admission command revalidated only the BTC panel with a 2 GiB
+memory ceiling and one CPU. It finished successfully in 25.9 seconds. Registered
+receipt `0a5c75b0-b17a-40f0-9a3c-4251b98383b2` binds native source `4e98fab` and
+unchanged panel digest `9a211d8818c5ab8ec82ad5a7d38957e63eb387ea83d4b00541922a0eeca4aacb`.
+This is data admission, not feature coverage, power or scientific acceptance.
+
+- Mandate `5ab5a83d-aa24-4d7f-82c5-363172b2a54a`,
+  `ALPHA004-AEP007-COMMISSIONING-20261117`, awaits approval of digest
+  `078aecffa81580c3a1c10eeda238d39fca6c90a72b5a64fccf9230aa2dc1df19`.
+  Limits: one cycle, two hypotheses, four total trials, one concurrent campaign.
+  Expiry: 2026-11-19 16:54:57 UTC. No capital, orders, shadow or live promotion.
+- Method-only campaign `e17260b6-2d51-4f21-95af-1b96a7d4b8d0` awaits exact activation
+  of digest `a5eb727506c26ee77882fd2cf345edeefd9a795bb01eb7aae31e0fc977645291`.
+  It retains the historical BTC candidate and original support minima, with two
+  author calls/repairs, six diagnostics, a two-hour method episode and one
+  interpretation adjudication per lineage. Missing prospective-design fields
+  are explicit work for the designer, not manually invented scientific evidence.
+  No engineering handoff request is present; this campaign cannot authorize
+  engineering or native market-data trials. Those require separately reviewed
+  source-bound planning evidence and an explicitly approved successor handoff.
+
+Both records are pending, not evidence of commissioned behavior. Workers remain
+inactive pending approval. Provisioning repair `85cc7db` is on main; it changes no
+backend runtime code from the verified `2112f09` deployment.
