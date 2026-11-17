@@ -59,3 +59,15 @@ not mutate their immutable contracts to make an older worker accept them.
 SPX's discovery-abstention-to-method-correction authority path is a separate
 unresolved issue. This transport change does not reinterpret its abstention as
 an independent scientific rejection.
+
+## Live checkpoint, 2026-11-17
+
+Release dd50976 was pushed to main and deployed. VM1's engineering interpreter
+loads the decoder; stopped engineering units were not started. The API and both
+directors passed image parity and API health verification.
+
+Supported reconciliation of campaign fe25230c-088e-44c0-84ac-98d97ca86739 cleared
+the context-size blocker without changing its candidate or mandate. Requirements
+publication 70899 created route e0065f3b-5bf2-4a28-9d58-7f07479ef090.
+The strategy-spec and causality-leakage review tasks were both observed running
+on attempt 1. No engineering or backtest completion is inferred from this.
