@@ -257,6 +257,28 @@ def validate_method_environment(path: Path, model: str) -> None:
         raise RuntimeError('Method runtime configuration differs from producer provenance.')
 
 
+def attest_registered_runtime(environment, state):
+    """Attest this installed worker without leasing a task or invoking a model."""
+    from swarm_worker import __version__
+    env = dict(line.split('=', 1) for line in environment.read_text().splitlines()
+               if line and not line.startswith('#'))
+    package = load_role_package(ROOT / 'role-packages' / state['slug'] / 'manifest.yaml', ROOT / 'workflows')
+    if package.manifest_digest != state['manifest_digest']:
+        raise RuntimeError('Installed runtime package differs from registration')
+    with httpx.Client(base_url=env['SWARM_API_URL'].rstrip('/').removesuffix('/v1'),
+                      headers={'Authorization': 'Bearer ' + env['SWARM_AGENT_TOKEN']}, timeout=60) as client:
+        identity = call(client, 'GET', '/v1/agent/me')
+        if identity['id'] != state['agent_id'] or identity['slug'] != state['slug']:
+            raise RuntimeError('Runtime credential does not match registration')
+        call(client, 'POST', '/v1/agent/heartbeat', {
+            'status': 'idle', 'runtime': 'hermes', 'runtime_version': __version__,
+            'capabilities': identity['capabilities'],
+            'metadata': {'provisioning_only': True, 'agent_slug': state['slug'],
+                         'role_package': package.manifest.name,
+                         'role_package_version': package.manifest.version,
+                         'role_package_digest': state['manifest_digest']}})
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", type=Path, required=True)
@@ -322,6 +344,7 @@ def main() -> int:
                 if "alpha-research-execution" in manifest.required_capabilities:
                     ensure_native_producer_profile(api, state)
                 if package_name == "alpha-method-designer":
+                    attest_registered_runtime(args.environment, state)
                     ensure_method_producer_profile(api, state, args.method_model)
             state["workload_identity_id"] = identity["id"]
             state["workload_identity_version"] = manifest.version
@@ -549,7 +572,6 @@ def main() -> int:
             ensure_native_producer_profile(api, state)
         if package_name == "alpha-method-designer":
             state["method_model"] = args.method_model
-            ensure_method_producer_profile(api, state, args.method_model)
         if existing_agent:
             rotated = call(
                 api,
@@ -578,6 +600,12 @@ def main() -> int:
     if package_name == "alpha-method-designer":
         environment += f"SWARM_CODEX_MODEL={args.method_model}\nSWARM_ENGINEERING_AUTHOR_PROVIDER=codex\n"
     atomic_write(args.environment, environment)
+    if package_name == "alpha-method-designer":
+        attest_registered_runtime(args.environment, state)
+        with httpx.Client(base_url=os.environ['SWARM_API_URL'].rstrip('/'),
+                          headers={'Authorization': f"Bearer {os.environ['SWARM_ORCHESTRATOR_TOKEN']}"},
+                          timeout=60) as api:
+            ensure_method_producer_profile(api, state, args.method_model)
     if existing_agent:
         with httpx.Client(
             base_url=os.environ["SWARM_API_URL"].rstrip("/"),

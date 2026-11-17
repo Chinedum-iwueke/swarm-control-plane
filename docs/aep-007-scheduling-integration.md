@@ -107,7 +107,19 @@ Registration state and environment must be named
 `/etc/invariance-swarm/alpha-method-designer.env`. Register only a released exact
 control-plane commit using the existing operator procedure, then install the unit.
 Activation remains separate and requires the exact approved commissioning campaign.
-These provisioning changes are locally tested, not yet installed or registered.
+On 2026-11-17, the dedicated unit was installed but left inactive. Live producer
+`7199afe8-a966-45c2-b7d3-51fde6ef373d` and adjudicator
+`634608fa-3182-4b62-9a3f-70989e608daf` were registered against release `2112f09`,
+using `gpt-5.6-sol` and distinct context groups. Adjudicator profile
+`744c057f-e475-4c88-8b0c-29276226ffdd` has review-only authority.
+Provisioning now persists credentials before sending an authenticated,
+package-attested heartbeat and registering the producer profile. This does not
+lease work or call a model; retries preserve identity after partial provisioning.
+
+Release `2112f09` was deployed to the VM2 API and both directors, verified on image
+`sha256:5ee9229940a01a8eac9099d55ad21fa1e382e7f015fc29adf388caf6e837d317`.
+The API was healthy. Mission Control was installed/restarted on the Mac and
+returned HTTP 200. No commissioning campaign was activated by this rollout.
 
 ## Visibility and verification
 
@@ -140,8 +152,7 @@ the host reports unrelated existing snapd
 
 ## Remaining acceptance boundary
 
-- Deploy and verify this bounded correction increment.
-- Release, register and install the tested dedicated method-designer runtime.
+- Retain rollout evidence and complete exact-digest commissioning authorization.
 - Commission typed discovery inputs and dependency recovery under an explicitly
   approved exact campaign; do not infer requests from prose or migrate old work.
 - Exercise the integrated scheduler with retained commissioning evidence,

@@ -32,6 +32,26 @@ def identity() -> dict:
     }
 
 
+def test_runtime_attestation_is_heartbeat_only(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    env = tmp_path / 'worker.env'
+    env.write_text('SWARM_API_URL=http://fixture\nSWARM_AGENT_TOKEN=fixture-only\n')
+    package = MODULE.load_role_package(MODULE.ROOT / 'role-packages/alpha-method-designer/manifest.yaml', MODULE.ROOT / 'workflows')
+    record = state() | {'slug': 'alpha-method-designer', 'manifest_digest': package.manifest_digest}
+    client = MagicMock()
+    monkeypatch.setattr(MODULE.httpx, 'Client', lambda **_: client)
+    calls = []
+    def call(api, method, path, payload=None):
+        calls.append((method, path, payload))
+        return {'id': record['agent_id'], 'slug': record['slug'], 'capabilities': ['alpha-method-design']}
+    monkeypatch.setattr(MODULE, 'call', call)
+    MODULE.attest_registered_runtime(env, record)
+    assert [p for _, p, _ in calls] == ['/v1/agent/me', '/v1/agent/heartbeat']
+    assert calls[-1][2]['metadata']['provisioning_only'] is True
+    assert calls[-1][2]['runtime_version']
+    assert calls[-1][2]['metadata']['role_package_version'] == package.manifest.version
+
+
 def test_historical_executor_charter_is_compatible_only_when_authority_matches() -> (
     None
 ):
