@@ -25,15 +25,11 @@ from app.services.evaluator_routing import (
 )
 from app.services.graph import digest_document as digest
 from app.services.tasks import build_task, persist_new_task
+from app.contracts.engineering_evidence import encode_engineering_evidence
 
 
 class RequirementsPending(Exception):
     """A durable gate was updated; commit it without creating engineering work."""
-
-
-def encode_engineering_evidence(evidence):
-    """Use the same lossless wire encoding for preflight and materialization."""
-    return json.dumps(evidence, sort_keys=True, allow_nan=False, separators=(",", ":"))
 
 
 def prospective_engineering_evidence(evidence, package, window, *, successor):
@@ -429,8 +425,10 @@ def ensure_reviewed_requirements(db, campaign, evidence):
     prospective = prospective_engineering_evidence(
         evidence, package, review_window, successor=successor is not None,
     )
-    if len(prospective) > 20 or len(encode_engineering_evidence(prospective).encode()) > 48_000:
-        defer("requirements_engineering_context_exceeds_bound")
+    try:
+        encode_engineering_evidence(prospective)
+    except ValueError as exc:
+        defer("requirements_engineering_context_exceeds_bound", str(exc))
     if identity is None:
         defer("restore_requirements_producer_identity")
     try:

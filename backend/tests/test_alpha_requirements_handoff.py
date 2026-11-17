@@ -63,10 +63,11 @@ def test_requirements_lineage_distinguishes_proposal_and_coverage_binding():
 
 def test_engineering_encoding_preserves_unicode_and_rejects_nonfinite_evidence():
     from app.services.alpha_requirements_handoff import encode_engineering_evidence
+    from app.contracts.engineering_evidence import decode_engineering_evidence
     evidence = {"equation": "\\u03b1", "large": "x" * 48000}
     encoded = encode_engineering_evidence(evidence)
-    assert json.loads(encoded) == evidence
-    assert len(encoded.encode()) > 48000
+    assert decode_engineering_evidence(encoded) == evidence
+    assert len(encoded.encode()) < 48000
     with pytest.raises(ValueError):
         encode_engineering_evidence({"threshold": float("nan")})
 

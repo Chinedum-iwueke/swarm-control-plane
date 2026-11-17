@@ -1650,6 +1650,36 @@ def test_scientific_evidence_is_optional_and_bounded_across_consumers():
             model.model_validate(oversized)
 
 
+def test_large_transport_is_expanded_for_prompts_and_native_artifacts(tmp_path):
+    from swarm_worker.engineering_evidence import encode_engineering_evidence
+    from swarm_worker.models import ProposalEngineeringMissionContract
+
+    evidence = {
+        "question": "A distinct multi-asset experiment",
+        "scientific_specification": {"method": "exact frozen method " * 2600},
+        "provenance": {"prior_receipts": ["a" * 64, "b" * 64]},
+    }
+    wire = encode_engineering_evidence(evidence)
+    document = dict(contract().model_dump(), evidence_context=wire)
+    for model in (EngineeringMissionContract, ProposalEngineeringMissionContract):
+        assert model.model_validate(document).evidence_context == wire
+    value = EngineeringMissionContract.model_validate(document)
+    for prompt in (EngineeringMissionExecutor._coding_prompt(value),
+                   EngineeringMissionExecutor._review_prompt(value)):
+        assert evidence["scientific_specification"]["method"] in prompt
+        assert "_evidence_transport" not in prompt
+    workspace = SimpleNamespace(repository=tmp_path, artifacts=tmp_path, logs=tmp_path)
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path, codex_model="test", timeout_seconds=3600,
+        heartbeat_interval_seconds=1, effective_uid=lambda: 1000,
+    )
+    # A missing scaffold cannot execute; its retained input still proves native hydration.
+    executor._run_strategy_scaffold(value, workspace)
+    artifact = tmp_path / "strategy-engineering-evidence.json"
+    assert json.loads(artifact.read_text()) == evidence
+    assert artifact.stat().st_mode & 0o777 == 0o600
+
+
 @pytest.mark.parametrize(
     "evidence",
     [

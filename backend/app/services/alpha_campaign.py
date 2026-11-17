@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.contracts.engineering_evidence import decode_engineering_evidence
 from app.models import Agent
 from app.models.alpha_campaign import (
     AlphaCampaign,
@@ -1137,7 +1138,7 @@ def _create_strategy_engineering_task(
 def _is_bounded_hypothesis_engineering_task(task: Task) -> bool:
     contract = task.input_contract if isinstance(task.input_contract, dict) else {}
     try:
-        evidence = json.loads(contract.get("evidence_context", "{}"))
+        evidence = decode_engineering_evidence(contract.get("evidence_context", "{}"))
         authority = evidence.get("authority", {})
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
@@ -1311,8 +1312,8 @@ def _requires_admission_handoff_recovery(task: Task) -> bool:
         return False
     failure = getattr(task, "failure", {}) or {}
     try:
-        evidence = json.loads(task.input_contract.get("evidence_context", "{}"))
-    except (AttributeError, json.JSONDecodeError, TypeError):
+        evidence = decode_engineering_evidence(task.input_contract.get("evidence_context", "{}"))
+    except (AttributeError, ValueError, TypeError):
         return False
     if not isinstance(evidence, dict) or not isinstance(evidence.get("discovery_candidate"), dict):
         return False
@@ -1467,10 +1468,10 @@ def _independent_review_correction(task: Task) -> dict | None:
         normalized.append({"severity": severity, "message": message})
     prior_findings: list[dict] = []
     try:
-        prior = json.loads(
+        prior = decode_engineering_evidence(
             getattr(task, "input_contract", {}).get("evidence_context", "{}")
         ).get("independent_review_correction")
-    except (AttributeError, json.JSONDecodeError, TypeError):
+    except (AttributeError, ValueError, TypeError):
         prior = None
     if isinstance(prior, dict):
         candidates = prior.get("cumulative_findings", prior.get("findings", []))
@@ -1602,10 +1603,10 @@ def _scope_budget_correction(task: Task) -> dict | None:
         return None
     prior_findings: list[dict] = []
     try:
-        prior = json.loads(task.input_contract.get("evidence_context", "{}")).get(
+        prior = decode_engineering_evidence(task.input_contract.get("evidence_context", "{}")).get(
             "independent_review_correction"
         )
-    except (AttributeError, json.JSONDecodeError, TypeError):
+    except (AttributeError, ValueError, TypeError):
         prior = None
     if isinstance(prior, dict):
         candidates = prior.get("cumulative_findings", prior.get("findings", []))

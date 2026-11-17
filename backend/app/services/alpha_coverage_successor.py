@@ -12,6 +12,10 @@ from datetime import UTC, datetime
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from app.contracts.engineering_evidence import (
+    decode_engineering_evidence,
+    encode_engineering_evidence,
+)
 from app.models.alpha_campaign import AlphaCampaignEvent
 from app.models.alpha_discovery import AlphaResearchMandate
 from app.models.evaluator_routing import EvaluationRoute
@@ -29,7 +33,7 @@ from app.services.tasks import build_task, persist_new_task
 
 
 def validate_proposal(parent, mandate, proposal):
-    evidence = json.loads(parent.input_contract["evidence_context"])
+    evidence = decode_engineering_evidence(parent.input_contract["evidence_context"])
     execution = parent.result or (parent.failure or {}).get("execution_evidence", {})
     parent_plan = execution["summary"]["validation_plans"]["scientific"]
     return validate_native_proposal(evidence, parent_plan, parent.input_contract["base_ref"], mandate, proposal)
@@ -290,9 +294,7 @@ def reconcile_coverage_successor(db, campaign, parent):
         "successor_digest": proposal["successor_digest"],
         "parent_task_id": str(parent.id),
     }
-    contract["evidence_context"] = json.dumps(
-        successor_evidence, sort_keys=True, allow_nan=False
-    )
+    contract["evidence_context"] = encode_engineering_evidence(successor_evidence)
     task = build_task(
         TaskCreate(
             task_number=number,
