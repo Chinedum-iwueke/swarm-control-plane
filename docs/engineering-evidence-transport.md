@@ -96,3 +96,19 @@ the context-size blocker without changing its candidate or mandate. Requirements
 publication 70899 created route e0065f3b-5bf2-4a28-9d58-7f07479ef090.
 The strategy-spec and causality-leakage review tasks were both observed running
 on attempt 1. No engineering or backtest completion is inferred from this.
+
+### Accepted-method extension checkpoint
+
+Commits `e0a20a1` and `72d58ae` were pushed to main on November 17 and the API
+was rebuilt from the latter; health passed and the campaign director restarted.
+VM1's decoder is installed in the shared repository; the engineering unit remains
+inactive. Verification: 58 backend transport/handoff tests and 18 worker
+handoff/episode tests passed, plus the focused readable-copy tampering check.
+
+The subsequent read-only review preflight exposed a separate remaining blocker:
+adding the genuine ready plan report to the accepted method's fresh review
+context exceeds the existing 100,000-byte deduplicated review limit. No review
+or author invocation was launched for this proposal. The engineering transport
+repair does not change the independent-review context bound. That handoff must
+be made admissible before a new campaign is activated; no end-to-end engineering
+or execution certification is claimed.
