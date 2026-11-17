@@ -84,3 +84,50 @@ remain immutable; any changed scientific method needs a reviewed successor.
 
 No unchanged discovery retry, new mandate allocation, paid review, market-data
 scan, native backtest or production approval is part of this offline increment.
+
+## Deployment and continued support analysis
+
+Commit `65b5d18` was pushed to main. Both VM1 reviewer services were restarted
+at 2026-11-17 11:51:27 UTC after a read-only database query confirmed no queued,
+leased or running `alpha_strategy_review` tasks. Both reported `daemon_started`
+and subsequent successful `no_work` cycles, with zero automatic restarts.
+This deploy is worker-only; no API migration, native-source transition or new
+review assignment was necessary. Live candidate review behavior remains untested.
+
+`worker/src/swarm_worker/scientific_support.py` adds bounded binomial survival
+calculations and joint-event Frechet bounds. It tests support fragility before
+expensive estimator simulation. For 850 rows and a 40-event floor:
+
+| Assumed event probability | Interpretation | Probability of reaching floor |
+| --- | --- | --- |
+| .05 | Ideal fixed 95th-percentile threshold | .67493 |
+| .0475 | 5% independent event loss | .54661 |
+| .045 | 10% independent event loss | .40874 |
+| .04 | 20% independent event loss | .16713 |
+| .10 | Ideal fixed 90th-percentile threshold | .999999995 |
+
+This assumes IID Bernoulli events and fixed eligible opportunities. It does not
+estimate a fitted training quantile's held-out event rate, clustered counts,
+ties, market drift or data-dependent row selection. Event-loss rows concern loss
+of qualifying events, not proof that the minimum eligible row count survives.
+For two .67493-probability gates, without assuming gate independence the joint
+probability is bounded by .34985 and .67493. Neither primary/rival nor validation/
+test gate independence is established. These are conditional mathematical bounds,
+not calibrated market probabilities or scientific acceptance probabilities.
+
+Reproduce the first row without reading any lake data:
+
+```bash
+PYTHONPATH=worker/src worker/.venv/bin/python - <<'PY'
+from swarm_worker.scientific_support import event_floor_probability
+print(event_floor_probability(rows=850, floor=40, event_probability=.05))
+PY
+```
+
+The nominal 42.5 events is an expectation, not a reliable support guarantee.
+This supports retaining the robustness objection; it does not authorize changing
+q, event floors, windows or the question. A correction must assess support
+probability alongside power and explicitly retain the unchanged-method rejection.
+The exact candidate estimator, bootstrap and scientifically justified effect
+threshold remain outstanding. No offline calculation has been published as an
+independent approval receipt.
