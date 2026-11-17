@@ -94,7 +94,8 @@ class AlphaMethodDesignExecutor:
             authorized=lambda _: datetime.now(timezone.utc) < contract.valid_until,
             model_permitted=model_permitted)
         adapter = correction_proposer(self.engineering, workspace, heartbeat,
-            read_evidence=episode.read_evidence, max_context_bytes=contract.policy.max_context_bytes)
+            read_evidence=episode.read_evidence, max_context_bytes=contract.policy.max_context_bytes,
+            context_evidence=contract.evidence_catalog)
         permit = await model_capacity_permit()
         async def run_with_lease():
             pending = asyncio.create_task(episode.run(recovery_token=(permit.get('recovery_token')

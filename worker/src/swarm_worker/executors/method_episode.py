@@ -18,7 +18,8 @@ SCHEMA = {'type':'object', 'additionalProperties':False,
         'rationale':{'type':'string'}}}
 
 
-def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_context_bytes=48000):
+def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_context_bytes=48000,
+                        context_evidence=None):
     """Return a callback; caller must bind it to an authorized MethodEpisode.
 
     Not a task router or a reviewer. No patch is applied to the repository.
@@ -30,10 +31,12 @@ def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_co
         if not await model_call_allowed():
             raise MethodCapacityUnavailable('provider circuit unavailable')
         # Include complete current findings/evidence; never trim scientific clauses.
-        context = {**context, 'current_evidence':{
+        # Episode storage also contains whole diagnostic return envelopes. Those
+        # duplicate the catalog; only declared evidence and current findings are
+        # model inputs, not every durable storage object.
+        context = {**context, 'current_evidence':{**(context_evidence or {}), **{
             reference: read_evidence(reference)
-            for reference in sorted(set(context.get('evidence_refs', [])) |
-                {finding['evidence_digest'] for finding in context['findings']})}}
+            for reference in sorted({finding['evidence_digest'] for finding in context['findings']})}}}
         bounded(context, max_context_bytes)
         segment = 'method-' + operation
         logs, artifacts = workspace.logs/segment, workspace.artifacts/segment

@@ -28,11 +28,15 @@ async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monke
             'changes_json':'{"lag":1}', 'addressed_findings':['a'*64], 'rationale':'Completed bars'}))
         return step('method-proposal', kwargs['workspace'])
     executor._run_codex = model
-    callback = correction_proposer(executor, workspace, heartbeat, read_evidence=lambda _: {'observed':0})
-    context = {'findings':[{'evidence_digest':'b'*64}], 'finding_digests':['a'*64]}
+    callback = correction_proposer(executor, workspace, heartbeat,
+        read_evidence=lambda ref: {'observed':0} if ref == 'b'*64 else pytest.fail('storage envelope must not be re-expanded'),
+        context_evidence={'d'*64: {'retained_scientific_requirement': 'complete'}})
+    context = {'findings':[{'evidence_digest':'b'*64}], 'finding_digests':['a'*64],
+               'evidence_refs': ['b'*64, 'e'*64]}
     result = await callback(context, 'c'*64, 30)
     assert result['changes'] == {'lag':1}
     assert 'current_evidence' in calls[0]['prompt']
+    assert 'retained_scientific_requirement' in calls[0]['prompt']
     assert 'environment_overrides' in calls[0]
 
 
