@@ -73,8 +73,12 @@ def test_review_cannot_approve_unresolved_findings():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("verdict", ["approve", "reject"])
-async def test_read_only_reviewer_retains_real_verdict_without_execution_authority(tmp_path, verdict):
+@pytest.mark.parametrize("scope", [None, "scientific_requirements"])
+async def test_read_only_reviewer_retains_real_verdict_without_execution_authority(tmp_path, verdict, scope):
     payload = contract()
+    if scope:
+        payload["subject"]["review_scope"] = scope
+        payload["subject_digest"] = review_digest(payload["subject"])
     for name in ("artifacts", "logs", "repository"):
         (tmp_path / name).mkdir()
     workspace = SimpleNamespace(
@@ -87,7 +91,15 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
         async def start(self, args, **kwargs):
             assert args[args.index("--sandbox") + 1] == "read-only"
             assert "--ephemeral" in args
-            assert "review_only_no_execution" in kwargs["stdin"].read().decode()
+            prompt = kwargs["stdin"].read().decode()
+            assert "review_only_no_execution" in prompt
+            if scope:
+                assert "Do not reject solely because correctly specified post-construction checks" in prompt
+                assert "Precision arithmetic does not establish adequate power" in prompt
+                assert "name the stage that must resolve it" in prompt
+                assert "Inspect the pinned native implementation" not in prompt
+            else:
+                assert "Inspect the pinned native implementation" in prompt
             output = {
                 "subject_digest": payload["subject_digest"], "verdict": verdict,
                 "rationale": "Reviewed the exact frozen card and pinned source.",
