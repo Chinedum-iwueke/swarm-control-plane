@@ -216,3 +216,39 @@ counters and the original method deadline of 19:00:37 UTC, and requires fresh
 independent review. The method designer and adjudicator units were started;
 broad discovery remains stopped. No engineering, backtests, orders or promotion
 are authorized. AEP-007 remains unqualified pending observed commissioning results.
+
+### R3 observed review path
+
+R3 reached native diagnostic readiness with one author call and two diagnostics.
+Its first publication exceeded 256 KiB because the audit state and review packet
+both repeated diagnostic catalog envelopes. Repair `4d28468` preserves the full
+checkpoint while projecting each underlying evidence document once for review.
+The retained result shrank from 312,936 to 220,436 bytes; the review packet is
+62,980 bytes. Resuming task `1fe761d2-17df-42f5-9db0-6a3d8744b86f` published it
+without another author call or diagnostic.
+
+Packet `8b2fce05ed2726de8aff1dc36c98b2df6e21f0c6792699761447951e36a1a8d3`
+was routed to both independent reviewers under route
+`645a9a25-0370-41cd-a6e2-3cf2f1016a42`. Both rejected the missing reproducible DGP
+definitions while preserving identity and support minima. The scheduler routed
+a separate adjudication under `acff2562-040b-428b-afde-4d7a3d9d344b`.
+The provider initially rejected an unsupported open-map output schema before
+inference. Repair `4b3ae6e` compiles the exact finding keys and admissible evidence
+references into a strict closed schema. The same adjudication task then completed
+with decision `repair`, review digest
+`e6bfedf275a4829f33d35695f8da4e8d182c360d9f31885887701debcde83442`.
+
+Repair `b4bedc5` lets the shared evidence validator explicitly validate the
+single-adjudicator lane; default scientific acceptance still requires both
+original review kinds. Validation: 74 focused backend and 32 worker tests passed.
+These observations prove diagnostic publication and genuine rejection/adjudication
+routing, not scientific acceptance, a successful repair successor, engineering,
+calibration execution or a backtest. Further authoring requires fresh bounded
+authority because R3's single author call is spent.
+
+After deployment, automatic reconciliation retained a deferred attempt
+`23e2f4cf-66de-4b0d-9852-815da8291132` (digest
+`88e14bd861e3412969d8f3e6b68643aa1ad267d123660c3d5c061681e6acd3bb`)
+and closed R3 as `completed_no_candidate`, with zero trials. The dedicated method
+designer and adjudicator were stopped after closeout; broad discovery was not
+resumed. No old budget or scientific result was rewritten.
