@@ -53,6 +53,17 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
             raise EpisodeIntegrityError("retained accepted method evidence differs")
         evidence_path.write_text(evidence_text, encoding="utf-8")
         evidence_path.chmod(0o600)
+        readable_evidence = workspace.repository / ".invariance-accepted-method-evidence.json"
+        tracked = executor._git.run(
+            ['git', 'ls-files', '--', readable_evidence.name], cwd=workspace.repository
+        ).stdout.strip()
+        if tracked or readable_evidence.is_symlink() or (
+            readable_evidence.exists() and readable_evidence.read_text(encoding='utf-8') != evidence_text
+        ):
+            raise EpisodeIntegrityError("reserved readable evidence path conflicts")
+        if not readable_evidence.exists():
+            readable_evidence.write_text(evidence_text, encoding='utf-8')
+        readable_evidence.chmod(0o400)
     continuity = decode_engineering_evidence(contract.evidence_context).get('author_continuity', 'reconstructed')
     if continuity not in {'reconstructed', 'session'}:
         raise ExecutionPolicyError('Unsupported author continuity mode')
@@ -111,6 +122,8 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
         if accepted_method is not None and (
             evidence_path.is_symlink() or not evidence_path.is_file()
             or evidence_path.read_text(encoding="utf-8") != evidence_text
+            or readable_evidence.is_symlink() or not readable_evidence.is_file()
+            or readable_evidence.read_text(encoding='utf-8') != evidence_text
         ):
             raise EpisodeIntegrityError("accepted method evidence changed between stages")
         segment = f"episode-{sequence:03d}-{stage}"

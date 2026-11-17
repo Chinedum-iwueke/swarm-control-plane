@@ -51,10 +51,13 @@ and the contract binding before writing the evidence artifact.
 For oversized handoffs, the prompt retains the current proposal, requirements,
 native plan report and all other top-level engineering evidence. This active
 view must fit 96,000 bytes. Full history, dependencies and review records remain
-in `../artifacts/accepted-method-evidence.json`, with its canonical SHA-256 in
-the prompt. Author and reviewer are instructed to read that file. It is written
-before model work, mode 0600, and checked for modification before every episode
-stage and on retry. Native scaffold inputs still receive the complete document.
+in the private `artifacts/accepted-method-evidence.json`, with its canonical
+SHA-256 in the prompt. A mode-0400 copy at the repository root,
+`.invariance-accepted-method-evidence.json`, makes it readable without widening
+the model sandbox. Only a byte-identical, untracked copy is excluded from patches;
+tracked-path collisions and tampering fail closed. Both copies are checked before
+every episode stage and on retry. The private copy is mode 0600. Native scaffold
+inputs still receive the complete document.
 This enables tool-mediated reading; it does not prove a model read every item.
 
 A read-only sizing probe using the real accepted BTC packet and new ready native

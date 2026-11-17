@@ -76,6 +76,8 @@ async def test_handoff_artifact_is_retained_before_model_call_and_retry_checks_i
 
     async def permit():
         assert (workspace.artifacts / 'accepted-method-evidence.json').read_text() == '{}'
+        assert (workspace.repository / '.invariance-accepted-method-evidence.json').read_text() == '{}'
+        assert executor._changed_paths(workspace) == []
         return {'allowed': False, 'recovery_token': 'fixture-open'}
 
     async def heartbeat(_):
@@ -87,6 +89,14 @@ async def test_handoff_artifact_is_retained_before_model_call_and_retry_checks_i
         assert result.termination_reason == 'provider_capacity'
     artifact = workspace.artifacts / 'accepted-method-evidence.json'
     assert artifact.stat().st_mode & 0o777 == 0o600
+    readable = workspace.repository / '.invariance-accepted-method-evidence.json'
+    assert readable.stat().st_mode & 0o777 == 0o400
+    readable.chmod(0o600)
+    readable.write_text('{"tampered":true}')
+    from swarm_worker.executors.code_validation import ExecutionPolicyError
+    with pytest.raises(ExecutionPolicyError, match='evidence was altered'):
+        executor._changed_paths(workspace)
+    readable.write_text('{}')
     artifact.write_text('{"tampered":true}')
     with pytest.raises(EpisodeIntegrityError, match='evidence differs'):
         await execute_episode(executor, task, contract, workflow, workspace, heartbeat)

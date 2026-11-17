@@ -1487,6 +1487,14 @@ class EngineeringMissionExecutor:
             if "R" in status or "C" in status:
                 index += 1
                 path = entries[index]
+            if path == '.invariance-accepted-method-evidence.json' and status == '??':
+                retained = workspace.plan.attempt_directory / 'artifacts' / 'accepted-method-evidence.json'
+                readable = workspace.repository / path
+                if retained.is_file() and not retained.is_symlink():
+                    if readable.is_symlink() or not readable.is_file() or readable.read_bytes() != retained.read_bytes():
+                        raise ExecutionPolicyError('Managed accepted method evidence was altered')
+                    index += 1
+                    continue
             paths.append(path)
             index += 1
         return sorted(set(paths))
