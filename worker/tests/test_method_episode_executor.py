@@ -6,6 +6,7 @@ import pytest
 
 from swarm_worker.engineering_episode import canonical_digest
 from swarm_worker.executors.method_episode import correction_proposer
+from swarm_worker.executors.method_episode import correction_schema
 from swarm_worker.method_episode import MethodCapacityUnavailable
 from test_engineering_episode_executor import fixture, step
 
@@ -13,9 +14,20 @@ from test_engineering_episode_executor import fixture, step
 async def heartbeat(_): pass
 
 
+def test_typed_output_limits_evidence_and_method_fields():
+    schema = correction_schema(['meaningful_effect', 'calibration'], ['a'*64], ['b'*64])
+    changes = schema['properties']['changes']
+    assert set(changes['properties']) == {'meaningful_effect', 'calibration'}
+    effect = changes['properties']['meaningful_effect']['anyOf'][0]
+    assert effect['properties']['evidence_digests']['items']['enum'] == ['a'*64]
+    assert effect['additionalProperties'] is False
+    assert schema['properties']['addressed_findings']['items']['enum'] == ['b'*64]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('lane', ['subscription', 'api'])
-async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monkeypatch, lane):
+@pytest.mark.parametrize('typed', [False, True])
+async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monkeypatch, lane, typed):
     executor, _, _, workspace = fixture(tmp_path, '1', 1)
     monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
     monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE', lane)
@@ -24,8 +36,9 @@ async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monke
         calls.append(kwargs)
         assert 'model_provider="invariance_api"' not in kwargs['args']  # Runner routes once.
         assert '--sandbox' in kwargs['args'] and 'read-only' in kwargs['args']
-        (kwargs['workspace'].artifacts/'correction.json').write_text(json.dumps({
-            'changes_json':'{"lag":1}', 'addressed_findings':['a'*64], 'rationale':'Completed bars'}))
+        result = {'addressed_findings':['a'*64], 'rationale':'Completed bars'}
+        result.update({'changes': {'dependence_assumptions': 'Completed bars'}} if typed else {'changes_json':'{"lag":1}'})
+        (kwargs['workspace'].artifacts/'correction.json').write_text(json.dumps(result))
         return step('method-proposal', kwargs['workspace'])
     executor._run_codex = model
     callback = correction_proposer(executor, workspace, heartbeat,
@@ -33,8 +46,10 @@ async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monke
         context_evidence={'d'*64: {'retained_scientific_requirement': 'complete'}})
     context = {'findings':[{'evidence_digest':'b'*64}], 'finding_digests':['a'*64],
                'evidence_refs': ['b'*64, 'e'*64]}
+    if typed:
+        context['allowed_method_fields'] = ['dependence_assumptions']
     result = await callback(context, 'c'*64, 30)
-    assert result['changes'] == {'lag':1}
+    assert result['changes'] == ({'dependence_assumptions': 'Completed bars'} if typed else {'lag':1})
     assert 'current_evidence' in calls[0]['prompt']
     assert 'retained_scientific_requirement' in calls[0]['prompt']
     assert 'environment_overrides' in calls[0]
