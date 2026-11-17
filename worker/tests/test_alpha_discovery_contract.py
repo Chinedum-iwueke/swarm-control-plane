@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from swarm_worker.executors.alpha_discovery import (
+    _correction_stage_instructions,
     AlphaDiscoveryError,
     AlphaDiscoveryExecutor,
     _normalize_output,
@@ -16,6 +17,61 @@ from swarm_worker.executors.alpha_discovery import (
 from swarm_worker.models import WorkflowExecutionResult
 from swarm_worker.policy import AlphaDiscoveryContract, validate_task_policy
 from swarm_worker.workflows import WorkflowLoader
+
+
+@pytest.mark.parametrize("stage", ["intelligence", "hypothesis", "representation"])
+@pytest.mark.parametrize("instruments", [["ETHUSDT"], ["SOLUSDT", "AVAXUSDT"]])
+def test_correction_stage_owns_only_its_output_and_retains_recovery_context(stage, instruments):
+    from copy import deepcopy
+
+    document = alpha_discovery_contract()
+    document["stage"] = stage
+    requirements = {
+        "minimum_event_support": {"held_out_events": 55},
+        "research_bar_minutes": 15, "target_horizon_bars": 4,
+        "feature_warmup_bars": 100, "minimum_training_bars": 2000,
+        "minimum_validation_bars": 500, "minimum_test_bars": 500,
+        "purge_bars": 4, "embargo_bars": 1, "minimum_scientific_window_days": 365,
+    }
+    founder = {"idea": "Resolve the recorded scientific method defects.",
+        "constraints": {
+            "retained_candidate_recovery": {
+                "schema_version": 3, "recovery_kind": "scientific_method_correction",
+                "scientific_identity": {"data": {"instruments": instruments}},
+                "rejected_method_identity": {"scientific_requirements": requirements,
+                    "scientific_specification": {"estimator": "retained rejected estimator"}},
+            },
+            "requirements_correction_worklist": {
+                "plan_digest": "a" * 64,
+                "items": [{"blocker_digest": "b" * 64, "reviewer_blocker": "Define estimator"}],
+                "scientific_approval": False, "execution_authority": False,
+            },
+        }}
+    document["context"]["founder_research_idea"] = founder
+    before = deepcopy(document)
+    contract = AlphaDiscoveryContract.model_validate(document)
+    projected = _prompt_context(contract)
+    assert projected["founder_research_idea"] == founder
+    assert document == before
+    schema = _schema(stage, context=projected)
+    instructions = _correction_stage_instructions(stage)
+    assert instructions in _prompt(contract)
+    if stage == "hypothesis":
+        fields = schema["properties"]["candidates"]["items"]["properties"]
+        assert not {"representation_plan", "scientific_requirements", "scientific_specification"} & fields.keys()
+        assert "not this hypothesis stage" in instructions
+        assert "Do not abstain merely" in instructions
+        assert "Substantive scientific contradictions" in instructions
+    elif stage == "representation":
+        fields = schema["properties"]["representation_plans"]["items"]["properties"]
+        assert {"scientific_requirements", "scientific_specification"} <= fields.keys()
+        support = fields["scientific_requirements"]["properties"]["minimum_event_support"]
+        assert support["properties"]["held_out_events"]["minimum"] == 55
+        assert "post-construction gates" in instructions
+        assert "never fabricate" in instructions
+    else:
+        assert list(schema["properties"]) == ["research_brief"]
+        assert "do not emit corrected method documents" in instructions
 
 
 def test_hypothesis_empty_output_requires_explanation_not_synthetic_candidate():
