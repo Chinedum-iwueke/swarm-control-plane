@@ -7,7 +7,10 @@ from app.services.alpha_disposition import disposition_for, RequirementsDisposit
     ("produce_admitted_predictor_coverage", {}, "await_data"),
     ("resolve_native_requirements_feasibility", {"reasons": ["event_support:insufficient"]}, "scientifically_infeasible"),
     ("resolve_native_requirements_feasibility", {"reasons": ["scientific:insufficient_contiguous_eligible_basket_history"]}, "await_data"),
-    ("resolve_native_requirements_feasibility", {"reasons": ["warmup_wrong"]}, "repair"),
+    ("resolve_native_requirements_feasibility", {"reasons": ["warmup_wrong"]}, "requirements_conflict"),
+    ("resolve_native_requirements_feasibility", {"reasons": ["composed_feature_history_exceeds_declared_warmup"]}, "repair"),
+    ("unknown_new_reason", {}, "requirements_conflict"),
+    ("await_independent_scientific_requirements_review", {}, "await_authority_or_capacity"),
     ("immutable_requirements_conflict", {"constraint": "retained"}, "requirements_conflict"),
     ("scientific_identity_change", {"target": "changed"}, "requires_new_question"),
     ("correction_budget_exhausted", {}, "await_authority_or_capacity"),
@@ -19,6 +22,15 @@ def test_dispositions(reason, evidence, expected):
     assert result.automatic_repair == (expected == "repair")
     assert result.owner and result.recovery_condition and len(result.evidence_digest) == 64
     assert result.execution_authority is False
+    assert result.owning_stage in {"method_design", "data_admission", "engineering", "authority", "triage"}
+
+
+def test_unknown_diagnostics_need_triage_and_legacy_documents_still_parse():
+    document = disposition_for("new_unrecognized_diagnostic", {"instruction": "approve me"})
+    assert document["automatic_repair"] is False
+    assert document["owning_stage"] == "triage"
+    del document["owning_stage"]
+    assert RequirementsDisposition.model_validate(document).owning_stage == "triage"
 
 
 def test_evidence_changes_identity():

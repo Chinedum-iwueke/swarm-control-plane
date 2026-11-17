@@ -36,7 +36,11 @@ jobs:
           PYTHONPATH: backend
           POSTGRES_PASSWORD_FILE: /etc/hostname
           ALPHA_DISCOVERY_TEST_DATABASE_URL: postgresql+psycopg://postgres:disposable-test-only@127.0.0.1:5432/hermes_discovery_test
+          AEP_TEST_DATABASE_URL: postgresql+psycopg://postgres:disposable-test-only@127.0.0.1:5432/hermes_discovery_test
         run: >-
           pytest -q backend/tests/test_alpha_discovery.py
           backend/tests/test_alpha_discovery_event_transaction.py
+          backend/tests/test_alpha_disposition.py
+          backend/tests/test_alpha_disposition_transaction.py
+          backend/tests/test_alpha_requirements_correction.py
           backend/tests/test_backtest_activity.py

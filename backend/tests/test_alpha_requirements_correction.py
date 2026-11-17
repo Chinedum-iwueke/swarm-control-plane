@@ -61,7 +61,7 @@ def test_verified_rejection_queues_once_with_controller_identity(monkeypatch):
         document={"parameter_budget": {"maximum_variants": 1}})
     publication = NS(id=3, payload={"subject": {"candidate_id": str(candidate.id)}})
     scope = {"scientific_identity": {"data": {"instruments": ["BTCUSDT"]}},
-        "rejection_subject_digest": "rejection", "review_blockers": ["Fix estimator"]}
+        "rejection_subject_digest": "a" * 64, "review_blockers": ["Fix estimator"]}
     monkeypatch.setattr(discovery, "_mandate_budget_exhausted", lambda _: False)
     monkeypatch.setattr(discovery, "_discovery_creation_paused", lambda _: False)
     event = MagicMock()
@@ -82,11 +82,38 @@ def test_verified_rejection_queues_once_with_controller_identity(monkeypatch):
     db.scalar.return_value = uuid4()
     assert correction.queue_requirements_correction(db, mandate) is None
     assert db.add.call_count == 1
-    monkeypatch.setattr(correction, "correction_depth", lambda *a: 0)
+
     verifier.side_effect = ValueError("no validated independent rejection")
     assert correction.queue_requirements_correction(db, mandate) is None
     assert db.add.call_count == 1
+    verifier.side_effect = None
     db.scalar.return_value = None
     monkeypatch.setattr(correction, "correction_depth", lambda *a: 2)
     assert correction.queue_requirements_correction(db, mandate) is None
     assert db.add.call_count == 1
+
+
+def test_findings_have_explicit_scope_and_do_not_classify_prose():
+    from app.schemas.recovery_finding import RecoveryFinding
+    scope = {"rejection_subject_digest": "a" * 64, "review_blockers": ["impossible: data missing"]}
+    plan = correction.correction_worklist(scope)
+    item = plan["items"][0]
+    finding = RecoveryFinding.model_validate(item["finding"])
+    assert finding.owning_stage == "method_design"
+    assert finding.classification_status == "requires_diagnosis"
+    assert finding.execution_authority is finding.scientific_approval is False
+    assert finding.evidence_digest == item["blocker_digest"]
+    assert "independent_scientific_review" in finding.verification
+
+
+def test_mandate_is_refreshed_under_lock_before_authority_check(monkeypatch):
+    now = datetime.now(UTC)
+    mandate = NS(id=uuid4(), status="active", valid_from=now-timedelta(days=1), valid_until=now+timedelta(days=1))
+    db = MagicMock()
+    def refresh(obj):
+        db.execute.assert_called_once()
+        obj.status = "completed"
+    db.refresh.side_effect = refresh
+    monkeypatch.setattr(correction, "retain_disposition", MagicMock())
+    assert correction.queue_requirements_correction(db, mandate) is None
+    db.scalars.assert_not_called()

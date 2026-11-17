@@ -10,15 +10,27 @@ from app.models.alpha_discovery import (
 from app.services.alpha_candidate_recovery import recovery_scope
 from app.services.graph import digest_document
 from app.services.alpha_disposition import retain_disposition
+from app.schemas.recovery_finding import RecoveryFinding
 
 MAX_CORRECTIONS = 2
 
 
 def correction_worklist(scope):
     """Bind every obligation to the rejection; never infer that a fix passed."""
-    items = [{"blocker_digest": digest_document(blocker), "reviewer_blocker": blocker,
-              "status": "requires_proposed_correction_and_fresh_review"}
-             for blocker in sorted(set(scope["review_blockers"]))]
+    items = []
+    for blocker in sorted(set(scope["review_blockers"])):
+        finding = RecoveryFinding(
+            subject_digest=scope["rejection_subject_digest"], evidence_digest=digest_document(blocker),
+            requirement_ref="review_obligation:" + digest_document(blocker), finding=blocker,
+            owning_stage="method_design", classification_status="requires_diagnosis",
+            allowed_changes=["diagnose_against_frozen_requirements",
+                             "method_successor_preserving_scientific_identity_and_support_minima"],
+            verification=["deterministic_contract_checks", "native_feasibility", "independent_scientific_review"],
+            recovery_condition="Resolve or evidence-dispute this obligation in a successor; retain the original review.",
+        ).model_dump(mode="json")
+        items.append({"blocker_digest": digest_document(blocker), "reviewer_blocker": blocker,
+                      "status": "requires_proposed_correction_and_fresh_review",
+                      "finding": finding, "finding_digest": digest_document(finding)})
     plan = {"schema_version": "requirements-correction-worklist-v1",
             "rejection_subject_digest": scope["rejection_subject_digest"],
             "items": items, "maximum_corrections": MAX_CORRECTIONS,
@@ -56,6 +68,12 @@ def queue_requirements_correction(db, mandate):
     from app.services.alpha_discovery import (
         _discovery_creation_paused, _event, _mandate_budget_exhausted, now,
     )
+    # Serialize before inspecting status/counters, including direct callers that
+    # loaded the ORM object before another reconciler committed its changes.
+    db.execute(select(AlphaResearchMandate.id).where(
+        AlphaResearchMandate.id == mandate.id).with_for_update())
+    db.flush()
+    db.refresh(mandate)
     blocked = ("mandate_inactive" if mandate.status != "active" else
         "mandate_expired" if not mandate.valid_from <= now() < mandate.valid_until else
         "mandate_budget_exhausted" if _mandate_budget_exhausted(mandate) else
@@ -63,9 +81,6 @@ def queue_requirements_correction(db, mandate):
     if blocked:
         retain_disposition(db, mandate, blocked, {"mandate_id": str(mandate.id)})
         return None
-    # Also serialize direct reconciliation callers, not only the director tick.
-    db.execute(select(AlphaResearchMandate.id).where(
-        AlphaResearchMandate.id == mandate.id).with_for_update())
     publications = db.scalars(select(AlphaCampaignEvent).join(
         AlphaDiscoveryCycle, AlphaDiscoveryCycle.campaign_id == AlphaCampaignEvent.campaign_id
     ).where(
