@@ -324,6 +324,23 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
     }
     sha256_string = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
     if stage == "intelligence":
+        pair_schema = {
+            "type": "object", "additionalProperties": False,
+            "required": ["object_id", "content_digest"],
+            "properties": {"object_id": uuid_string, "content_digest": sha256_string},
+        }
+        evidence_pairs = {"type": "array", "items": pair_schema}
+        if context is not None:
+            pairs = sorted({(str(c["object_id"]), c["content_digest"])
+                            for c in context.get("research_intelligence", {}).get("citations", [])})
+            if pairs:
+                evidence_pairs["items"] = {"anyOf": [
+                    {**pair_schema, "properties": {
+                        "object_id": {"type": "string", "enum": [oid]},
+                        "content_digest": {"type": "string", "enum": [digest]},
+                    }} for oid, digest in pairs]}
+            else:
+                evidence_pairs["maxItems"] = 0
         return {
             "type": "object",
             "additionalProperties": False,
@@ -346,18 +363,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                         "prior_failures": string_array,
                         "market_observations": string_array,
                         "portfolio_gaps": string_array,
-                        "evidence_pairs": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": ["object_id", "content_digest"],
-                                "properties": {
-                                    "object_id": uuid_string,
-                                    "content_digest": sha256_string,
-                                },
-                            },
-                        },
+                        "evidence_pairs": evidence_pairs,
                     },
                 }
             },

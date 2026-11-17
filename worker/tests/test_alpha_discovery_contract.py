@@ -489,6 +489,20 @@ def test_intelligence_rejects_invented_citation_digest():
         _normalize_output("intelligence", good, context={})
 
 
+def test_intelligence_schema_binds_citation_pairs_not_independent_enums():
+    context = {"research_intelligence": {"citations": [
+        {"object_id": "source-a", "content_digest": "a" * 64},
+        {"object_id": "source-b", "content_digest": "b" * 64},
+        {"object_id": "source-a", "content_digest": "a" * 64}]}}
+    def evidence_schema(ctx):
+        return _schema("intelligence", context=ctx)["properties"]["research_brief"]["properties"]["evidence_pairs"]
+    choices = evidence_schema(context)["items"]["anyOf"]
+    assert len(choices) == 2
+    assert [(c["properties"]["object_id"]["enum"][0], c["properties"]["content_digest"]["enum"][0])
+            for c in choices] == [("source-a", "a" * 64), ("source-b", "b" * 64)]
+    assert evidence_schema({})["maxItems"] == 0
+
+
 def test_hypothesis_prompt_routes_visible_panels_to_lazy_admission():
     document = alpha_discovery_contract()
     document["stage"] = "hypothesis"
