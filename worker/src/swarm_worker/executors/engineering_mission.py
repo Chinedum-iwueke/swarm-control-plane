@@ -1342,6 +1342,7 @@ class EngineeringMissionExecutor:
         heartbeat: HeartbeatCallback,
         heartbeat_failures: list[str],
         timeout_seconds: float,
+        environment_overrides: dict[str, str] | None = None,
     ) -> StepExecutionResult:
         stdout_path = workspace.logs / f"{name}.stdout.log"
         stderr_path = workspace.logs / f"{name}.stderr.log"
@@ -1356,6 +1357,7 @@ class EngineeringMissionExecutor:
         credential_lock_path = self._codex_home / "credential-refresh.lock"
         credential_lock = credential_lock_path.open("a+b")
         credential_lock_path.chmod(0o600)
+        running = None
         try:
             while True:
                 try:
@@ -1391,7 +1393,8 @@ class EngineeringMissionExecutor:
                         stdin=stdin_file,
                         stdout=stdout_file,
                         stderr=stderr_file,
-                        environment_overrides=self._codex_environment(),
+                        environment_overrides=(self._codex_environment() if environment_overrides is None
+                                               else environment_overrides),
                     )
                     while running.process.returncode is None:
                         remaining = deadline - time.monotonic()
@@ -1426,8 +1429,12 @@ class EngineeringMissionExecutor:
                                     )
                     return_code = running.process.returncode
         finally:
-            fcntl.flock(credential_lock.fileno(), fcntl.LOCK_UN)
-            credential_lock.close()
+            try:
+                if running is not None and running.process.returncode is None:
+                    await self._runner.terminate(running, grace_seconds=5)
+            finally:
+                fcntl.flock(credential_lock.fileno(), fcntl.LOCK_UN)
+                credential_lock.close()
         self._secure_evidence(workspace)
         ended_at = datetime.now(timezone.utc)
         result = StepExecutionResult(

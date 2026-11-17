@@ -1,7 +1,8 @@
 # AEP-003: native diagnostic receipt custody
 
-Implemented on 2026-11-17. Not deployed or scientifically commissioned by this
-change. Quantitative computation belongs to Bulletproof, not the control plane.
+Implemented on 2026-11-17. Control-plane custody verification is deployed; native
+candidate source transition and scientific commissioning remain separate.
+Quantitative computation belongs to Bulletproof, not the control plane.
 
 Bulletproof's `docs/aep-003-native-diagnostics.md` defines the tool registry,
 design-adequacy contract, bounded seeded calibration and clean-source CLI. The
@@ -53,3 +54,11 @@ conditional on valid experiments was 57/64, 57/62 and 50/63. These are diagnosti
 warnings, not satisfactory calibration or candidate acceptance. The pilot proves
 reproducible execution, explicit invalid denominators and cross-repository receipt
 compatibility only. No raw market output was created or committed.
+
+## Control-plane deployment
+
+VM2 was updated to `ab1fe051b75de89bf8b1a534be27c9e1426be32b` using the repository
+rollout runbook. API health passed. API, discovery director and campaign director
+all ran image `sha256:efdd0126976831b4ad676639e2b41d7694567fca8ac33d91c15c765bbff62da1`.
+Both directors completed reconciliation with zero active mandates/campaigns and
+no failed campaigns. No mandate, live candidate or trading action was started.
