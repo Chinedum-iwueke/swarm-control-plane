@@ -171,12 +171,18 @@ def verified_method_result(task):
             raise ValueError('Method result exceeds frozen budgets')
     if state.get('status') == 'ready_for_independent_review':
         packet = result.get('review_packet', {})
+        retained = state.get('evidence', {})
+        review_evidence = {k: v for k, v in retained.items()
+            if not (set(v) == {'disposition', 'evidence', 'findings', 'work_units'}
+                and isinstance(v['evidence'], dict)
+                and all(retained.get(ref) == doc for ref, doc in v['evidence'].items()))}
         if (packet.get('method_episode_digest') != digest(state)
                 or packet.get('source_commit') != contract.base_ref
                 or packet.get('proposal') != state.get('proposal')
                 or packet.get('requirements') != contract.requirements
                 or packet.get('dependencies') != contract.dependencies
-                or packet.get('evidence') != state.get('evidence')
+                or packet.get('evidence') not in (retained, review_evidence)
+                or any(digest(v) != k for k, v in retained.items())
                 or not packet.get('evidence')
                 or any(digest(v) != k for k, v in packet['evidence'].items())):
             raise ValueError('Method review packet differs from retained state')

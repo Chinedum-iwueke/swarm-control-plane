@@ -149,6 +149,25 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     assert result['execution_authority'] is False
 
 
+@pytest.mark.parametrize('omit_document', [False, True])
+def test_compact_review_preserves_every_underlying_document(omit_document):
+    task = ready_task()
+    result = task.result['summary']['method_episode']
+    state = result['state']
+    envelope = dict(disposition='ready', findings=[], work_units=1,
+                    evidence=deepcopy(state['evidence']))
+    state['evidence'][service.digest(envelope)] = envelope
+    result['review_packet']['method_episode_digest'] = service.digest(state)
+    if omit_document:
+        result['review_packet']['evidence'].pop(next(iter(envelope['evidence'])))
+    result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    if omit_document:
+        with pytest.raises(ValueError, match='packet differs'):
+            service.verified_method_result(task)
+    else:
+        assert service.verified_method_result(task)['scientific_approval'] is False
+
+
 @pytest.mark.parametrize('change', ['identity', 'scope', 'budget', 'source', 'receipt'])
 def test_rehashed_invalid_method_state_cannot_publish(change):
     task = ready_task()

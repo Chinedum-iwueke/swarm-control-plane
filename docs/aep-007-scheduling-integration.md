@@ -174,7 +174,7 @@ must explicitly bind its intended source and revalidate dependencies; copying ol
 planning receipts into a new source contract is not authorized or valid. No new
 campaign was activated by this increment.
 
-## Pending commissioning records (2026-11-17)
+## Commissioning records (2026-11-17)
 
 The bounded native admission command revalidated only the BTC panel with a 2 GiB
 memory ceiling and one CPU. It finished successfully in 25.9 seconds. Registered
@@ -183,11 +183,11 @@ unchanged panel digest `9a211d8818c5ab8ec82ad5a7d38957e63eb387ea83d4b00541922a0e
 This is data admission, not feature coverage, power or scientific acceptance.
 
 - Mandate `5ab5a83d-aa24-4d7f-82c5-363172b2a54a`,
-  `ALPHA004-AEP007-COMMISSIONING-20261117`, awaits approval of digest
+  `ALPHA004-AEP007-COMMISSIONING-20261117`, received exact approval of digest
   `078aecffa81580c3a1c10eeda238d39fca6c90a72b5a64fccf9230aa2dc1df19`.
   Limits: one cycle, two hypotheses, four total trials, one concurrent campaign.
   Expiry: 2026-11-19 16:54:57 UTC. No capital, orders, shadow or live promotion.
-- Method-only campaign `e17260b6-2d51-4f21-95af-1b96a7d4b8d0` awaits exact activation
+- Method-only campaign `e17260b6-2d51-4f21-95af-1b96a7d4b8d0` received exact activation
   of digest `a5eb727506c26ee77882fd2cf345edeefd9a795bb01eb7aae31e0fc977645291`.
   It retains the historical BTC candidate and original support minima, with two
   author calls/repairs, six diagnostics, a two-hour method episode and one
@@ -197,6 +197,22 @@ This is data admission, not feature coverage, power or scientific acceptance.
   engineering or native market-data trials. Those require separately reviewed
   source-bound planning evidence and an explicitly approved successor handoff.
 
-Both records are pending, not evidence of commissioned behavior. Workers remain
-inactive pending approval. Provisioning repair `85cc7db` is on main; it changes no
-backend runtime code from the verified `2112f09` deployment.
+The first campaign completed without a candidate after native field-shape,
+publication-size and duplicate-context failures. Its two model reservations
+resulted in one actual author invocation; history and counters remain intact.
+Approved R2 (`b7ead273-5c1d-4fe1-aa39-7cb9b72ae4ad`) used one further author
+invocation and safely deferred when justification cited a digest outside its
+contract catalog. Neither campaign produced native scientific acceptance or trials.
+
+Repairs `87be863`, `08d4303` and `9edfdc7` retain bounded evidence, remove duplicated
+diagnostic envelopes and constrain correction fields and citation references in
+the model output schema. Deterministic validation still checks the returned output.
+
+R3 (`6b4e6231-96e8-4f99-9851-ac01b82a3a3d`) was explicitly approved and activated
+at 17:20 UTC on November 17, with digest
+`206d6709d12bf0898b89da83ab29f17a0619addc6690eb44f7754c4d385f7c58`.
+It allows one additional author call and three diagnostics, preserves prior
+counters and the original method deadline of 19:00:37 UTC, and requires fresh
+independent review. The method designer and adjudicator units were started;
+broad discovery remains stopped. No engineering, backtests, orders or promotion
+are authorized. AEP-007 remains unqualified pending observed commissioning results.

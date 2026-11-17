@@ -120,8 +120,15 @@ class AlphaMethodDesignExecutor:
                     'contract_digest': binding['contract_digest'], 'state': state,
                     'scientific_approval': False, 'execution_authority': False}
         if state['status'] == 'ready_for_independent_review':
+            # Diagnostic return envelopes duplicate the catalog. Retain them in
+            # the audit state, but give reviewers each underlying document once.
+            evidence = {k: v for k, v in state['evidence'].items()
+                if not (set(v) == {'disposition', 'evidence', 'findings', 'work_units'}
+                    and isinstance(v['evidence'], dict)
+                    and all(state['evidence'].get(ref) == doc
+                            for ref, doc in v['evidence'].items()))}
             document['review_packet'] = method_review_packet(state,
-                requirements=contract.requirements, evidence=state['evidence'],
+                requirements=contract.requirements, evidence=evidence,
                 dependencies=contract.dependencies)
         document['result_digest'] = digest(document)
         path = workspace.artifacts / 'method-episode-result.json'
