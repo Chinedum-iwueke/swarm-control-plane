@@ -1,6 +1,6 @@
 # AEP-002: structured findings and idempotent recovery
 
-Implementation complete; not deployed or end-to-end certified by this document.
+Implementation complete and deployed; not end-to-end certified by this document.
 Extends existing requirements recovery rather than creating another scheduler.
 
 ## Contracts and ownership
@@ -56,3 +56,18 @@ This is infrastructure correctness evidence, not measured autonomous scientific
 recovery. Diagnosis quality, general method correction and live handoff remain
 AEP-003 through AEP-008. AEP-001 provisional labels are not quietly converted to
 ground truth by these tests.
+
+## Deployment evidence - 2026-11-17
+
+Implementation commit `5b71e99` is on main; deployed source `70aafc4` also retains
+the earlier offline bootstrap pilot. VM2 API/discovery/campaign images match
+`sha256:8f2bb84bf051a34b9d169b20784f0116fda36ff5013dee868731606b97adb9c0`.
+API health passed. Both directors completed reconciliation with zero active
+mandates/campaigns and no failed campaigns. In-container read-only smoke confirmed
+unknown-reason triage and duplicate-obligation normalization.
+
+Initial parity checks during replacement were unsuccessful; only the final
+three-container match is deployment evidence. Director inherited HTTP health
+probes are not director readiness; actual reconciliation logs were checked.
+No candidate was started or mandate renewed. Verification: 398 focused backend
+tests, one disposable PostgreSQL concurrency test and 13 Bible tests passed.
