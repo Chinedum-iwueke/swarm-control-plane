@@ -113,12 +113,54 @@ async def test_known_quota_before_correction_reserves_no_model_calls(tmp_path, m
         assert 'review_packet' not in result.summary['method_episode']
 
 
-@pytest.mark.parametrize('field', ['estimand', 'schema_version', 'scientific_identity'])
+@pytest.mark.parametrize('field', ['estimand', 'schema_version', 'scientific_identity', 'experiment'])
 def test_method_contract_cannot_authorize_identity_repair(field):
     value = contract('f'*40)
     value['policy']['allowed_method_fields'] = [field]
     with pytest.raises(ValueError, match='repair scope'):
         MethodTaskContract.model_validate(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('repairable', [True, False])
+async def test_consistency_findings_repair_in_same_episode_before_review(tmp_path, monkeypatch, repairable):
+    engineering, task, _, workspace = fixture(tmp_path, '1', 1)
+    task.input_contract = contract(workspace.metadata.resolved_base_commit)
+    frozen = {'registered_experiment': 'synthetic fixture; native shape mocked here'}
+    task.input_contract['proposal']['method'].update(experiment=frozen, calibration_design={})
+    task.input_contract['policy']['allowed_method_fields'] = ['calibration_design']
+    workflow = WorkflowLoader(Path(__file__).parents[1]/'workflows').load('alpha-method-design')
+    calls = []
+    async def native(self, **kwargs):
+        calls.append('native')
+        assert kwargs['payload']['experiment'] == frozen
+        repaired = bool(kwargs['payload']['calibration_design'])
+        return {'schema_version': 'native-diagnostic-receipt-v1', 'result': {
+            'status': 'requires_independent_review_and_native_calibration' if repaired else 'requires_method_correction',
+            'consistency': {'status': 'structurally_consistent' if repaired else 'repair_required',
+                'finding_count': 0 if repaired else 1,
+                'findings': [] if repaired else [dict(code='family_mismatch',
+                path='scenarios.null.families', message='Cover every frozen variant jointly',
+                disposition='repair' if repairable else 'requires_new_contract')]}}}
+    def proposer(*_, **__):
+        async def correct(context, operation, remaining):
+            assert repairable, 'invalid frozen experiments must not spend author calls'
+            calls.append('model')
+            assert context['findings'][0]['requirement_ref'] == 'calibration_consistency.family_mismatch'
+            return dict(changes={'calibration_design': {'synthetic_corrected_fixture': True}},
+                        addressed_findings=context['finding_digests'], rationale='Retain the frozen experiment.')
+        return correct
+    async def heartbeat(_): pass
+    monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
+    monkeypatch.setattr('swarm_worker.executors.alpha_method_design.NativeDiagnosticClient.run', native)
+    monkeypatch.setattr('swarm_worker.executors.alpha_method_design.correction_proposer', proposer)
+    executor = AlphaMethodDesignExecutor(engineering, python=Path('/unused'), effective_uid=lambda:1000)
+    for _ in range(2):
+        result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+        state = result.summary['method_episode']['state']
+        assert state['status'] == ('ready_for_independent_review' if repairable else 'deferred')
+        assert result.summary['method_episode']['scientific_approval'] is False
+    assert calls == (['native', 'model', 'native'] if repairable else ['native'])
 
 
 def test_method_role_and_workflow_are_digest_verified():

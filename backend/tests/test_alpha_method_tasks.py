@@ -109,8 +109,10 @@ def test_cached_method_authority_is_checked_again():
         service.require_current_method_authority(db, task)
 
 
-def ready_task():
+def ready_task(*, structured=False, consistency=None):
     raw = fixture()[4]
+    if structured:
+        raw['proposal']['method'].update(experiment={'synthetic': True}, calibration_design={})
     c = MethodTaskContract.model_validate(raw)
     task = SimpleNamespace(id=uuid4(), status='succeeded', input_contract=raw,
                            started_at=datetime.now(timezone.utc))
@@ -123,6 +125,8 @@ def ready_task():
         implementation_digests={'fixture': '0'*64}, evidence_kind='design_diagnostic',
         result={'status': 'requires_independent_review_and_native_calibration',
                 'contract_digest': service.digest(c.proposal['method'])})
+    if consistency is not None:
+        receipt['result']['consistency'] = consistency
     receipt['receipt_digest'] = service.digest(receipt)
     state = dict(binding=dict(task_id=str(task.id), source_commit=c.base_ref,
         mandate_digest=c.mandate_digest, findings_digest=c.findings_digest,
@@ -147,6 +151,16 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     result = service.verified_method_result(task)
     assert result['scientific_approval'] is False
     assert result['execution_authority'] is False
+
+
+def test_structured_method_cannot_use_legacy_or_failed_consistency_receipt():
+    for consistency in (None, {'status': 'unverified_legacy_prose'},
+                        {'status': 'structurally_consistent', 'finding_count': 1, 'findings': []}):
+        with pytest.raises(ValueError, match='consistency readiness'):
+            service.verified_method_result(ready_task(structured=True, consistency=consistency))
+    result = service.verified_method_result(ready_task(structured=True, consistency={
+        'status': 'structurally_consistent', 'finding_count': 0, 'findings': []}))
+    assert result['scientific_approval'] is False
 
 
 @pytest.mark.parametrize('omit_document', [False, True])

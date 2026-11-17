@@ -84,3 +84,22 @@ async def test_cancelled_model_runner_terminates_subprocess(tmp_path):
             args=[sys.executable,'-c','import time; time.sleep(60)'], prompt='offline fixture',
             workspace=workspace, heartbeat=heartbeat, heartbeat_failures=[], timeout_seconds=60), .2)
     assert processes and processes[0].returncode is not None
+
+
+def test_calibration_output_schema_is_closed_and_keeps_experiment_out_of_repairs():
+    from swarm_worker.executors.method_episode import correction_schema
+    schema = correction_schema(['calibration_design'], ['a'*64], ['b'*64])
+    changes = schema['properties']['changes']['properties']
+    assert set(changes) == {'calibration_design'}
+    def check(value):
+        if isinstance(value, dict):
+            assert 'minProperties' not in value and 'maxProperties' not in value
+            if value.get('type') == 'object':
+                assert value['additionalProperties'] is False
+                assert set(value['required']) == set(value['properties'])
+            for child in value.values():
+                check(child)
+        elif isinstance(value, list):
+            for child in value:
+                check(child)
+    check(schema)

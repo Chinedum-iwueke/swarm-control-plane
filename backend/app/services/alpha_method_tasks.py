@@ -221,6 +221,11 @@ def verified_method_result(task):
                        source_commit=contract.base_ref, subject_digest=digest(proposal), payload=proposal['method'])
         verify_diagnostic(receipts[0], request, contract.evidence_catalog, contract.base_ref, digest(proposal))
         assessment = receipts[0]['result']
+        if 'experiment' in proposal['method']:
+            consistency = assessment.get('consistency', {})
+            if (consistency.get('status') != 'structurally_consistent'
+                    or consistency.get('finding_count') != 0 or consistency.get('findings') != []):
+                raise ValueError('Structured method lacks native consistency readiness')
         if (assessment.get('status') != 'requires_independent_review_and_native_calibration'
                 or assessment.get('contract_digest') != digest(proposal['method'])):
             raise ValueError('Native diagnosis does not establish exact design readiness')

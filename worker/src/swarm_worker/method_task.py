@@ -43,10 +43,14 @@ class MethodTaskContract(BaseModel):
             raise ValueError('dependencies must be immutable digests')
         # The estimand belongs to the frozen question, not to method repair.
         allowed = {'estimator_id', 'meaningful_effect', 'dependence_assumptions',
-                   'multiplicity', 'eligibility_policy', 'undefined_replicate_policy', 'calibration'}
+                   'multiplicity', 'eligibility_policy', 'undefined_replicate_policy', 'calibration', 'calibration_design'}
         if not set(self.policy.allowed_method_fields) <= allowed:
             raise ValueError('unsupported design repair scope')
         method = self.proposal['method']
+        if ('experiment' in method) != ('calibration_design' in method):
+            raise ValueError('Structured calibration requires both experiment and calibration_design')
+        if 'calibration_design' in self.policy.allowed_method_fields and 'experiment' not in method:
+            raise ValueError('Calibration design repair requires a frozen experiment')
         if (method.get('schema_version') != 'design-adequacy-contract-v1'
                 or not isinstance(method.get('estimand'), str) or not method['estimand'].strip()):
             raise ValueError('frozen native design identity required')

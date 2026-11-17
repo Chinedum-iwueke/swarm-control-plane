@@ -99,8 +99,25 @@ class AlphaMethodDesignExecutor:
             receipt = await client.run(tool=contract.diagnostic, subject_digest=digest(proposal),
                 payload=proposal['method'], catalog=contract.evidence_catalog,
                 work_limit=work, timeout=remaining)
+            if receipt['result'].get('status') == 'requires_method_correction':
+                findings = receipt['result'].get('consistency', {}).get('findings', [])
+                if not findings:
+                    raise ValueError('Native correction requires concrete consistency findings')
+                if any(f.get('disposition') != 'repair' for f in findings):
+                    return dict(disposition='requires_new_question', work_units=1, findings=[],
+                                evidence={**contract.evidence_catalog, digest(receipt): receipt})
+                return dict(disposition='repair', work_units=1,
+                    evidence={**contract.evidence_catalog, digest(receipt): receipt},
+                    findings=[dict(requirement_ref='calibration_consistency.'+f['code'],
+                        evidence_digest=digest(receipt), message=f['path']+': '+f['message'],
+                        verification='Native experiment-to-calibration consistency check') for f in findings])
             if receipt['result'].get('status') != 'requires_independent_review_and_native_calibration':
                 raise ValueError('Unexpected native design diagnostic status')
+            if 'experiment' in proposal['method']:
+                consistency = receipt['result'].get('consistency', {})
+                if (consistency.get('status') != 'structurally_consistent'
+                        or consistency.get('finding_count') != 0 or consistency.get('findings') != []):
+                    raise ValueError('Structured method lacks native consistency readiness')
             return dict(disposition='ready', findings=[], work_units=1,
                 evidence={**contract.evidence_catalog, digest(receipt): receipt})
 
