@@ -48,6 +48,40 @@ calls were made. The existing commissioning mandate expired at 04:03:24 UTC;
 a fresh exact-digest mandate and correctly bound successor remain necessary
 before the genuine review outcome required for operational closure.
 
+### Genuine review commissioning, November 18, 2026
+
+The founder approved mandate `62e9d4e9-fe97-4733-a6b5-967a49d2101a` and exact
+review-only successor `9b4a28a2-3999-41c9-973c-ddcaa7aa2162`. The successor retains
+the BTC method, adds native plans and a seventh cross-plan consistency criterion,
+permits one diagnostic and zero author corrections, and denies engineering and
+backtests. Method authority ends at 06:26:23 UTC; mandate authority ends at
+12:24:37 UTC. These timestamps are historical authority, not reusable permission.
+
+Method task `c777fd16-72fc-461d-b14c-8ea61519765c` reached readiness with zero model
+calls and one diagnostic. Result publication initially exceeded 256 KiB because
+state and packet duplicated evidence. `ce6b3ce` adds exact packet reconstruction
+from state evidence references; retained-packet parity reduced the summary from
+268,074 to 169,445 bytes. The same checkpoint was operator-resumed without another
+diagnostic. `ebdd615` distinguishes current diagnostics by source, request and
+catalog bindings from historical receipts for the same proposal. Missing or
+ambiguous current receipts still fail closed. Both repairs are deployed.
+
+Strategy-spec review `42a82c25-d587-48b3-a3b6-c8f00fe5289f` succeeded operationally
+and **rejected** scientifically. Its seven criteria have retained evidence coverage.
+Findings identify an under-specified calibration law and inconsistent method/native
+plan dates. This is a genuine file-backed review outcome, not scientific acceptance.
+Causality review `3cf6beaf-8966-438b-a5c7-d1c503864a24` failed publication because
+its outer blockers omitted one of its five detailed findings; the raw result is
+retained. It has not been registered as an accepted or rejected review.
+
+The bounded evidence-access path is genuinely exercised, but complete two-review
+publication and broader autonomous commissioning remain open. Next: lossless
+recovery of the retained causality verdict, followed by authorized correction or
+adjudication of scientific findings. No fresh model call should be needed merely
+to repair redundant blocker serialization. Combined regression checks: 89 passed,
+12 inapplicable combinations skipped. Operator interventions remain part of this
+record and must not be counted as autonomous recovery.
+
 ## Deployed baseline
 
 `200e09f` deployed source-bound method publication. `6631a6d` added separately
