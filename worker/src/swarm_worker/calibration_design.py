@@ -7,6 +7,7 @@ def design_schema():
                 'required': list(properties), 'properties': properties}
 
     text = {'type': 'string'}
+    rule = {'type': 'string', 'minLength': 20, 'maxLength': 4000}
     strings = {'type': 'array', 'items': text}
     family = obj({'id': text, 'variant_ids': strings})
     optional_number = {'anyOf': [{'type': 'number'}, {'type': 'null'}]}
@@ -14,10 +15,10 @@ def design_schema():
                 'event_probability': optional_number, 'expected_events': optional_number,
                 'sampling_rule': text})
     scenario = obj({'id': text, 'families': {'type': 'array', 'items': family},
-        'cells': {'type': 'array', 'items': cell}, 'joint_generation': text,
-        'null_or_effect': text, 'estimator_application': text, 'seed_schedule': text,
-        'outputs': text, 'event_rate_mode': {'type': 'string', 'enum': ['registered', 'sensitivity']},
-        'event_rate_assumption': text})
+        'cells': {'type': 'array', 'items': cell}, 'joint_generation': rule,
+        'null_or_effect': rule, 'estimator_application': rule, 'seed_schedule': rule,
+        'outputs': rule, 'event_rate_mode': {'type': 'string', 'enum': ['registered', 'sensitivity']},
+        'event_rate_assumption': rule})
     return obj({'purpose': {'type': 'string', 'enum': ['scientific', 'diagnostic']},
                 'statistic_id': text, 'scenarios': {'type': 'array', 'items': scenario}})
 

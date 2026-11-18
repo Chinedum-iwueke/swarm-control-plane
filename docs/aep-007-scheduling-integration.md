@@ -60,6 +60,28 @@ raw overflows and reserved references. This establishes transport correctness,
 not that a model read every obligation or produced a valid scientific correction.
 The repair is local and not yet deployed; no historical task was restarted.
 
+### Deployed transport retry and output-bound mismatch
+
+Transport repair `d168d0a` was pushed to main and deployed to the API and method
+worker. The founder separately activated successor
+`f7d2093e-dd92-4018-94bc-435e1a5d1843`, digest
+`9289a643494b1b6cd21296ff6c6b9c1db441a0716f0f7549389c2b4f3fa35222`,
+using only the original remaining one author reservation and three diagnostics.
+Task `2e043061-0bfa-4008-8ab1-5c106fc38fae` passed the file-backed handoff,
+produced a correction and ran native shape validation. It then deferred with
+`repair_or_model_budget_exhausted`: `dependence_assumptions` contained 4,015
+characters, exceeding the native 4,000-character bound. No fresh independent
+review or engineering task followed. This is observed transport recovery, not
+method acceptance or engineering completion.
+
+The next local repair aligns the author output schema and prompt with the
+native statement bounds (1..4,000 characters) and structured calibration rule
+bounds (20..4,000). It does not truncate evidence, change native limits, repair
+the historical proposal in place, or reset counters. Boundary regression tests
+compare statement schema limits with native shape checks; 52 worker tests pass.
+This output-schema repair is not yet deployed. Additional authoring requires
+explicit bounded authority; calibration precision remains unqualified.
+
 ## AEP-007B: bounded calibration and window correction
 
 November 18 commissioning is **complete in bounded method-correction scope**.

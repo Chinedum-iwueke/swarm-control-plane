@@ -46,7 +46,7 @@ SCHEMA = {'type':'object', 'additionalProperties':False,
 
 def correction_schema(allowed_fields, evidence_refs, finding_refs):
     """Constrain model output before deterministic/native semantic validation."""
-    text = {'type': 'string'}
+    text = {'type': 'string', 'minLength': 1, 'maxLength': 4000}
     effect = {'type': 'object', 'additionalProperties': False,
         'required': ['value', 'units', 'justification', 'evidence_digests'],
         'properties': {'value': {'type': 'number'}, 'units': text, 'justification': text,
@@ -111,6 +111,11 @@ def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_co
             'changes object (null means unchanged), or changes_json only for a legacy schema. '
             'Use only the allowed method fields to replace; preserve all '
             'other fields and scientific identity. Cite exact finding digests in addressed_findings. '
+            'Every replacement method statement, effect units and effect justification must '
+            'be nonempty and at most 4000 characters. Preserve all equations and scientific '
+            'requirements; use precise definitions and cross-references to the supplied '
+            'evidence, not truncation. Structured calibration scenario rules must each be '
+            '20 to 4000 characters. Respect these per-field limits as well as the total context bound. '
             'Meaningful-effect evidence_digests must use only the identifiers allowed by the output '
             'schema; diagnostic findings are not scientific justification sources. '
             'Do not access credentials, edit files, or invent tool results. '

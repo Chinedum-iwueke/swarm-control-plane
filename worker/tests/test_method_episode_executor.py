@@ -100,6 +100,27 @@ def test_typed_output_limits_evidence_and_method_fields():
     assert schema['properties']['addressed_findings']['items']['enum'] == ['b'*64]
 
 
+def test_author_statement_limits_match_native_shape():
+    from swarm_worker.native_design_shape import defects
+    from swarm_worker.calibration_design import design_schema
+    fields = ['dependence_assumptions', 'estimator_id', 'multiplicity',
+              'eligibility_policy', 'undefined_replicate_policy', 'meaningful_effect']
+    schema = correction_schema(fields, ['a'*64], ['b'*64])
+    properties = schema['properties']['changes']['properties']
+    for field in fields[:-1]:
+        shape = properties[field]['anyOf'][0]
+        assert shape == {'type': 'string', 'minLength': 1, 'maxLength': 4000}
+        assert field not in defects({field: 'x' * 4000})
+        assert field in defects({field: 'x' * 4001})
+    effect = properties['meaningful_effect']['anyOf'][0]['properties']
+    for field in ('units', 'justification'):
+        assert effect[field]['maxLength'] == 4000
+    rules = design_schema()['properties']['scenarios']['items']['properties']
+    for field in ('joint_generation', 'null_or_effect', 'estimator_application',
+                  'seed_schedule', 'outputs', 'event_rate_assumption'):
+        assert rules[field] == {'type': 'string', 'minLength': 20, 'maxLength': 4000}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('lane', ['subscription', 'api'])
 @pytest.mark.parametrize('typed', [False, True])
