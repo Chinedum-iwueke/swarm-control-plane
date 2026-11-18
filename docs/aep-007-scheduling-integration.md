@@ -103,6 +103,31 @@ paths, free duplicate replay, input-catalog overflow and 18-entry result
 rejection. All 55 focused worker tests pass. This envelope repair is local,
 not deployed; the historical blocked task has not been restarted.
 
+### Envelope retry reached independent review
+
+Envelope repair `8461d97` was pushed and deployed. The founder activated
+campaign `4b948c0e-0642-407b-ad3d-6297ef85079f` under mandate
+`9c45a916-fa1c-46af-9637-c290a25b3f43`. Its task
+`53e92e3c-37e7-45a4-a7c8-d5bdbbbf0283` completed one author correction and
+two diagnostics, reaching independent review with no native findings.
+Packet `bcc275e2a1fd0da238fa1c5cffa6faf52b52d0cef5eacb42d780e918f7ce6cf9`
+was reviewed on route `a2d6bac2-a5aa-40b8-abc9-50eaabadd790`.
+
+Causality approved; specification rejected an optimized `theta_0` with no
+defined role in the retained generative equation. This is a genuine unresolved
+method-specification finding despite native structural readiness. The campaign
+closed without an engineering task or backtest. Local correction guidance now
+requires whole-method parameter/equation/dimension reconciliation and solver
+cost accounting; it is not a new deterministic mathematical verifier.
+All 55 focused worker tests pass. This guidance is not yet deployed.
+
+Mandate `489a42e8-0187-47ec-8654-466d618c9f23`, digest
+`9c1906acd425d11ab4103bb0aa71fd0f84bf72d2cad512dfe87128fefa7fa13c`,
+is prepared and awaiting approval for one additional correction and two
+diagnostics, retaining the original 13:31 UTC mandate expiry. Campaign
+activation and engineering approval remain separate. Historical evidence and
+counters remain unchanged; no calibration or market-data execution is authorized.
+
 ## AEP-007B: bounded calibration and window correction
 
 November 18 commissioning is **complete in bounded method-correction scope**.

@@ -155,6 +155,8 @@ async def test_model_adapter_retains_context_and_parses_proposal(tmp_path, monke
     assert 'rank/uniqueness checks' in calls[0]['prompt']
     assert 'same fitted draws as independent verification' in calls[0]['prompt']
     assert 'must block calibration' in calls[0]['prompt']
+    assert 'every optimized parameter in the generative equation' in calls[0]['prompt']
+    assert 'finite-difference' in calls[0]['prompt']
     assert 'environment_overrides' in calls[0]
 
 
