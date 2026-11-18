@@ -16,6 +16,8 @@ from app.services.alpha_disposition import disposition_for, RequirementsDisposit
     ("scientific_identity_change", {"target": "changed"}, "requires_new_question"),
     ("correction_budget_exhausted", {}, "await_authority_or_capacity"),
     ("provider_capacity_unavailable", {}, "await_authority_or_capacity"),
+    ("method_design_deferred", {"reason": "native_recheck_budget_exhausted"}, "await_authority_or_capacity"),
+    ("method_design_deferred", {"reason": "unknown_budget_story"}, "requirements_conflict"),
 ])
 def test_dispositions(reason, evidence, expected):
     result = RequirementsDisposition.model_validate(disposition_for(reason, evidence))
@@ -37,3 +39,14 @@ def test_unknown_diagnostics_need_triage_and_legacy_documents_still_parse():
 def test_evidence_changes_identity():
     assert disposition_for("scientific_requirements_rejected", {"x": 1}) != disposition_for(
         "scientific_requirements_rejected", {"x": 2})
+
+
+def test_method_diagnostic_budget_exhaustion_never_grants_repair():
+    evidence = {"reason": "native_recheck_budget_exhausted", "task_id": "retained-task"}
+    result = disposition_for("method_design_deferred", evidence)
+    assert result["disposition"] == "await_authority_or_capacity"
+    assert result["owner"] == "research_operations"
+    assert result["owning_stage"] == "authority"
+    assert result["automatic_repair"] is False
+    assert result["execution_authority"] is False
+    assert evidence == {"reason": "native_recheck_budget_exhausted", "task_id": "retained-task"}

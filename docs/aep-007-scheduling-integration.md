@@ -3,6 +3,63 @@
 Status: **in progress; commissioning is not complete**. AEP-005/AEP-006 are not
 the production default. Controlled fixtures are not genuine-candidate receipts.
 
+## AEP-007C: engineering handoff commissioning
+
+November 18: mandate `93d63bf8-8590-472c-849f-83cdf4d92d1b` and campaign
+`0e1a11a4-92da-4c6e-ad2a-70ecc9249789` were separately approved. Campaign digest:
+`cb91a7842496162a5b47340eaebb83a5cff4ad35170ca3171e487dd5df1af6cb`.
+Drafting and the single authorized diagnostic refresh succeeded. Method task
+`838b8a3a-a805-4949-9de9-f0462db97e4a` published packet
+`cd29071a20da3b641d5d7247281a3240e47a1d61a12fdef3e1834f3224f736d2`.
+
+Fresh route `9acbfab7-1c00-430a-8c77-0f1052ceb7fc` split: causality approved;
+specification rejected the unspecified induced-estimand coefficient solve.
+The rejection requests an exact functional, numerical approximation, solver,
+convergence/rank checks and verification tolerances. Earlier acceptance remains
+historical evidence, not permission to ignore this new finding. The campaign
+closed `completed_no_candidate` with zero trials after
+`native_recheck_budget_exhausted`. No engineering task was materialized.
+
+Local follow-up changes classify this exhaustion as `await_authority_or_capacity`
+rather than an unknown requirements conflict, without enabling automatic repair.
+Correction guidance now requires reproducible solver definitions, separate
+verification, compute accounting and explicit failure behavior for any such
+method, not only BTC. These changes are not yet deployed.
+
+Replacement mandate `248dd01b-6b67-42a8-83e1-1ba258e992a7`, digest
+`b1b773c7b508d67932909fde28ec7c81a55cba791a7fe96d9e870480a4b90589`,
+was explicitly approved and activated. It retains the original
+13:31 UTC expiry and source; correction campaign activation and engineering
+approval remain separate. No scientific calibration, market-data execution,
+orders or promotion is authorized. The three-outer-draw precision limitation
+remains unresolved.
+
+### Correction campaign preparation failure and local repair
+
+The founder separately activated campaign `fd78f596-39f3-4509-a401-3a371d804acd`,
+digest `b9834d48697839e743ce3d015352bb0a6bb478f742b3ce5288497af1db88f9eb`.
+Task `bd53dc47-88a5-4427-b466-f050cc53ef60` published a blocked method outcome:
+`invalid_stage_result` at `propose`. Task-level `succeeded` means publication
+succeeded, not scientific correction. One author reservation and one diagnostic
+were recorded; no model output directory was produced. Do not refund historical
+reservations or infer paid inference solely from that counter.
+
+An offline replay of the exact retained context reproduced the cause: 154,319
+bytes exceeded the 128,000-byte prompt bound even after lossless subtree
+deduplication. The local adapter repair permits a `method-correction-file-v1`
+fallback only for this specific post-deduplication size error. Raw input bounds,
+reserved-reference checks and all original requirements remain enforced. The
+full canonical evidence is exclusively created as a read-only artifact with an
+exact digest and byte count; the prompt instructs read-only inspection of that
+file. Its integrity is checked again before accepting the model output.
+
+The real-context replay produced a 446-byte index retaining all 154,319 evidence
+bytes, verified the digest, and made zero model calls. Worker regression tests
+cover ordinary inline/DAG contexts, complete file-backed evidence, tampering,
+raw overflows and reserved references. This establishes transport correctness,
+not that a model read every obligation or produced a valid scientific correction.
+The repair is local and not yet deployed; no historical task was restarted.
+
 ## AEP-007B: bounded calibration and window correction
 
 November 18 commissioning is **complete in bounded method-correction scope**.

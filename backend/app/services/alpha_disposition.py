@@ -50,7 +50,8 @@ def disposition_for(reason_code, evidence):
         if recorded in ROUTES and recorded != 'repair':
             kind = recorded
         elif recorded in {'capacity', 'authority', 'deadline_exhausted',
-                          'repair_or_model_budget_exhausted', 'tool_budget_exhausted'}:
+                          'repair_or_model_budget_exhausted', 'tool_budget_exhausted',
+                          'native_recheck_budget_exhausted'}:
             kind = 'await_authority_or_capacity'
     if reason_code == "produce_admitted_predictor_coverage":
         kind = "await_data"
