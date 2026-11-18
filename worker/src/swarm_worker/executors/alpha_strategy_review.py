@@ -61,7 +61,8 @@ class AlphaStrategyReviewExecutor:
         coverage = None
         if context.get("schema_version") == "review-context-file-v1":
             evidence_path = prepare_evidence(workspace.artifacts, contract.model_dump(mode="json"), context)
-        recovery = (getattr(task, 'failure', None) or {}).get('operator_retry_context', {}).get('review_publication_recovery')
+        prior_failure = getattr(task, 'prior_failure', None) or getattr(task, 'failure', None) or {}
+        recovery = prior_failure.get('operator_retry_context', {}).get('review_publication_recovery')
         if recovery:
             await heartbeat({'phase': 'independent_method_review', 'stage': 'retained_publication_recovery'})
             from swarm_worker.review_recovery import retained_review

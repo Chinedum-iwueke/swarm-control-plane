@@ -87,6 +87,8 @@ async def test_executor_recovery_checks_lease_and_never_calls_model(tmp_path):
     task.input_contract=contract.model_dump(mode='json')
     task.assigned_agent_id=contract.evaluator_agent_id
     task.failure['operator_retry_context']={'review_publication_recovery':request}
+    task.prior_failure=task.failure
+    task.failure={}
     workspace.plan.resolved_base_commit=contract.base_ref
     workflow=SimpleNamespace(name=contract.workflow,steps=[])
     class Runner:
