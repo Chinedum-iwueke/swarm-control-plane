@@ -31,6 +31,23 @@ will detect every contradiction. **Deployment and a genuine candidate review
 outcome remain required for AEP-007A operational closure.** No new mandate,
 engineering execution or backtest is authorized by this change.
 
+### Rollout verification, November 18, 2026
+
+`d8353d8` was pushed to main and deployed to the VM2 API; both VM1 independent
+reviewer services were restarted. The API reports healthy and `/health` returns
+200. Focused validation: 32 worker tests and 12 backend tests passed (12 worker
+parameter combinations intentionally skipped because they do not use file
+transport).
+
+A read-only probe joined retained method task
+`2eb5b85a-9f1f-4aef-ad21-85d57bc8534c` with custody-verified native plans from
+`da3c4409-b48c-44d4-b5f8-e3c70f8f645d`. The 158,539-byte evidence contract produced
+a 2,837-byte file index, retaining six criteria and 14 evidence objects. This
+was a transport probe, not a new review or an authorized successor. Zero model
+calls were made. The existing commissioning mandate expired at 04:03:24 UTC;
+a fresh exact-digest mandate and correctly bound successor remain necessary
+before the genuine review outcome required for operational closure.
+
 ## Deployed baseline
 
 `200e09f` deployed source-bound method publication. `6631a6d` added separately
