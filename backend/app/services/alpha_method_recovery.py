@@ -17,6 +17,23 @@ class RecoveryDeferred(ValueError):
     pass
 
 
+def compact_historical_catalog(catalog, *, protected=()):
+    """Pack only historical commissioning metadata; retain every document hash."""
+    if len(catalog) <= 16:
+        return catalog
+    if any(digest(value) != key for key, value in catalog.items()):
+        raise ValueError('Historical catalog digest mismatch')
+    historical = {'method-explicit-commissioning-successor-v1',
+                  'method-commissioning-scope-v1'}
+    documents = {key: value for key, value in catalog.items()
+                 if key not in protected and value.get('schema_version') in historical}
+    if len(documents) < 2:
+        return catalog  # Scientific evidence cannot be dropped to fit a limit.
+    archive = dict(schema_version='method-historical-commissioning-archive-v1',
+                   documents=documents, scientific_approval=False, execution_authority=False)
+    return {key: value for key, value in catalog.items() if key not in documents} | {digest(archive): archive}
+
+
 def require_recovery_capacity(parent, result, *, now):
     """Do not pay for adjudication when even an unchanged recheck is impossible."""
     contract = MethodTaskContract.model_validate(parent.input_contract)
@@ -87,6 +104,9 @@ def correction_contract(parent, result, reviews, *, now, adjudication=None):
             and v.get('subject_digest') == digest(state['proposal']))}
         catalog[digest(adjudication)] = deepcopy(adjudication)
     catalog[digest(report)] = report
+    protected = set(contract.dependencies.values()) | set(
+        state['proposal']['method'].get('meaningful_effect', {}).get('evidence_digests', []))
+    catalog = compact_historical_catalog(catalog, protected=protected)
     raw = contract.model_dump(mode='json') | dict(
         proposal=deepcopy(state['proposal']), policy=policy, findings_digest=digest(report),
         evidence_catalog=catalog, valid_until=datetime.fromtimestamp(deadline, timezone.utc).isoformat())

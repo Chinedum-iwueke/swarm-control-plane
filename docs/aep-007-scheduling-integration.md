@@ -31,9 +31,38 @@ Calibration guidance requires complete joint laws, shared outcomes, induced
 estimands, work-unit accounting and prospective precision criteria, rather than
 asserting unexecuted calibration is qualified.
 
-Focused validation: 52 worker and 48 backend tests passed. This is infrastructure
+Focused validation: 52 worker and 55 backend tests passed. This is infrastructure
 evidence only; AEP-007B closure still requires observed correction and acceptance
 by both independent reviewers.
+
+### First correction and remaining allowance
+
+Release `ae67239` is on main and deployed to the API and campaign director; the
+VM1 method worker uses the same checkout. Task
+`cb0d46a1-36d8-4f93-ad6a-c7d116ac23cf` completed one author correction and two
+diagnostics. Audit reconstruction now distinguishes the bounded transport from
+expanded history, whose repeated catalog snapshots are bounded by the approved
+tool-call count. The exact retained result verified without another author call.
+
+Both fresh reviewers rejected. One found the DGP's exogenous controls/events did
+not implement the registered causal OHLCV feature construction. The other cited
+old primary dates as current support-minima text; that text is absent from the
+current proposal's rationale, so historical versus current evidence needs explicit
+resolution, not automatic acceptance of the assertion.
+
+Automatic correction then deferred with `context_requires_compaction`: adding
+review lineage exceeded the native 16-entry catalog limit. Campaign history is
+closed and unchanged. `compact_historical_catalog` packs only historical
+commissioning metadata, preserving original document hashes and protecting
+dependency/justification references; it does not drop scientific evidence or
+increase the native limit. Thirteen recovery tests pass.
+
+Prepared R2 `0e11b4ba-541f-49ce-9aa4-8b7c6c1b2627`, digest
+`7d6a9c8e0b722d2b8140115fa99c4ba5048e66c7aa422063155623f704e3b4b1`,
+requires separate activation. It carries only the original unspent one author
+call/two diagnostics and the original 07:03 UTC deadline. Its 14-entry catalog
+and 123,380-byte lossless prospective context pass preflight. This is not a
+scientifically accepted method or permission to execute calibration.
 
 ## AEP-007A: evidence-access handoff (local implementation)
 

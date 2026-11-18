@@ -12,6 +12,28 @@ from app.services.graph import digest_document as digest
 from .test_alpha_method_tasks import ready_task
 
 
+def test_historical_catalog_compaction_preserves_science_and_exact_history():
+    docs = [dict(schema_version='scientific-evidence-v1', ordinal=i) for i in range(14)]
+    docs += [dict(schema_version='method-explicit-commissioning-successor-v1', ordinal=i)
+             for i in range(3)]
+    catalog = {digest(doc): doc for doc in docs}
+    before = deepcopy(catalog)
+    packed = recovery.compact_historical_catalog(catalog)
+    assert len(packed) == 15
+    assert catalog == before
+    archive = next(v for v in packed.values() if v.get('documents'))
+    assert not archive['execution_authority'] and not archive['scientific_approval']
+    restored = {k:v for k,v in packed.items() if v is not archive} | archive['documents']
+    assert restored == catalog
+    assert all(digest(v) == k for k,v in restored.items())
+    assert recovery.compact_historical_catalog(packed) == packed
+    protected = {digest(doc) for doc in docs[-3:]}
+    assert recovery.compact_historical_catalog(catalog, protected=protected) == catalog
+    corrupt = dict(catalog); corrupt[next(iter(corrupt))] = {'modified': True}
+    with pytest.raises(ValueError, match='digest'):
+        recovery.compact_historical_catalog(corrupt)
+
+
 def rejected():
     task = ready_task()
     now = datetime.now(timezone.utc)
