@@ -5,7 +5,9 @@ the production default. Controlled fixtures are not genuine-candidate receipts.
 
 ## AEP-007B: bounded calibration and window correction
 
-November 18 commissioning is **in progress, not accepted**. The founder approved
+November 18 commissioning is **complete in bounded method-correction scope**.
+Both independent reviewers accepted R2; engineering and execution remain gated.
+The founder approved
 mandate `98799db695cc75014b938bef861df864c1a0c135c62ba640d02a6d95abbc6983`
 and campaign `8c98415f3d990bc28990cc72cb9309535fe5dcf81dcf6fdb293b6b87503773cc`
 (`5d1bba1e-f4af-4a97-8b04-4955d9729ea9`). The latter permits two author
@@ -32,8 +34,8 @@ estimands, work-unit accounting and prospective precision criteria, rather than
 asserting unexecuted calibration is qualified.
 
 Focused validation: 52 worker and 55 backend tests passed. This is infrastructure
-evidence only; AEP-007B closure still requires observed correction and acceptance
-by both independent reviewers.
+evidence only; the observed correction and reviews needed for closure are recorded
+in the closeout below.
 
 ### First correction and remaining allowance
 
@@ -57,12 +59,41 @@ commissioning metadata, preserving original document hashes and protecting
 dependency/justification references; it does not drop scientific evidence or
 increase the native limit. Thirteen recovery tests pass.
 
-Prepared R2 `0e11b4ba-541f-49ce-9aa4-8b7c6c1b2627`, digest
+R2 `0e11b4ba-541f-49ce-9aa4-8b7c6c1b2627`, digest
 `7d6a9c8e0b722d2b8140115fa99c4ba5048e66c7aa422063155623f704e3b4b1`,
-requires separate activation. It carries only the original unspent one author
+received separate founder activation. It carries only the original unspent one author
 call/two diagnostics and the original 07:03 UTC deadline. Its 14-entry catalog
-and 123,380-byte lossless prospective context pass preflight. This is not a
-scientifically accepted method or permission to execute calibration.
+and 123,380-byte lossless prospective context passed preflight. Preflight alone
+was not method acceptance or permission to execute calibration.
+
+### Observed AEP-007B closeout
+
+R2 task `527b6835-2a6f-486b-8006-ee86082c74d2` completed its correction and
+diagnostics. Both assignments on route `e36dbf24-9d1a-4b21-8845-6c09ef09ea20`
+completed with **approve** and no blockers:
+
+- Strategy specification: `238ac75b0a8806d07c72fa20f12c5096ef8f3a53cfd4757e86f114e6f0d1830d`.
+- Causality/leakage: `7a4108b1fb649190b03db484a5244389f27978057d3415cd00158e01c0f15188`.
+- Accepted packet: `6108291de24f4b8dbb18dcba0095b0db40210ce98b42a66173918fcfa4a7ae53`.
+- Verified result: `ba0afd6d5bd5e68d44968214309cfaabd97b798e92551197c158e788e07965cb`.
+
+The correction derives registered features and the common target from a shared
+OHLCV history and adopts the approved native windows. Across the original and R2
+campaigns, two author calls and four diagnostic steps were used; no old counters
+were reset. The controller now reports `materialize_accepted_method_handoff`.
+
+This is acceptance of a prospective method specification, not successful
+calibration: the declared three outer draws remain insufficient for the stated
+Monte Carlo precision criterion. No calibration was executed or qualified, and
+no engineering/backtest authority was granted. AEP-007C must preserve this
+limitation when binding implementation work; scientific execution cannot treat
+this review as evidence of attained precision or power.
+
+General transport, explicit-authority and catalog repairs required operator
+deployment and separately approved successor activation. This does not certify
+unattended recovery or the complete research-to-BT-009 loop. Code is on main at
+`ae124d9`, deployed to the API/director and VM1 method worker; 68 backend and 52
+worker focused tests pass. Broad discovery remained stopped.
 
 ## AEP-007A: evidence-access handoff (local implementation)
 
