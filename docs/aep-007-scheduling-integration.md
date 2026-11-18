@@ -82,6 +82,37 @@ to repair redundant blocker serialization. Combined regression checks: 89 passed
 12 inapplicable combinations skipped. Operator interventions remain part of this
 record and must not be counted as autonomous recovery.
 
+### AEP-007A closure: bounded handoff proof
+
+Both assignments on route `8b39bb9d-c155-4bc6-ba7b-583489e3dad5` are now completed.
+The strategy-spec receipt digest is
+`afad54743cd27e986a013e46ec771718f5ce2092f0fff438a704814ca9e0ca74`;
+the causality receipt digest is
+`761d343467e1282624de045eeac472234e34e9febd4de6adea0da92e82f4765e`.
+Both verdicts reject. Campaign `9b4a28a2-3999-41c9-973c-ddcaa7aa2162` is
+`completed_no_candidate`, awaiting founder closeout. AEP-007A is complete only
+for its evidence-access/review-outcome scope, not scientific acceptance or
+autonomous engineering certification.
+
+`47a5917` adds monotonic completion of redundant rejection summaries: every
+existing blocker must exactly match a detailed finding; no finding is dropped,
+reworded or converted into acceptance. Unknown blockers fail closed. Explicit
+same-task recovery verifies the retained artifact digest, complete contract,
+source, evaluator, workspace metadata, evidence coverage and current lease.
+Raw output is preserved separately from the projected canonical verdict.
+
+The first recovery attempt incorrectly read `failure` instead of lease-carried
+`prior_failure`; it entered ordinary review and was stopped. This additional
+interrupted model attempt must not be hidden or counted as free recovery.
+`b3f58dc` fixes that handoff and tests it. The final publication-only attempt used
+zero model calls and retained all five causality findings. Recovery was explicitly
+operator-assisted. The method episode still used zero author calls and one native
+diagnostic; no engineering, calibration execution or backtest was run.
+
+Next is AEP-007B: assess the retained scientific findings and prepare an explicitly
+authorized correction/successor. The zero-correction commissioning campaign does
+not authorize that work. The handoff proof does not make either reviewer infallible.
+
 ## Deployed baseline
 
 `200e09f` deployed source-bound method publication. `6631a6d` added separately
