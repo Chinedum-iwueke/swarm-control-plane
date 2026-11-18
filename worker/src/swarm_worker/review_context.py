@@ -54,5 +54,21 @@ def review_context(value):
               "original_digest": hashlib.sha256(raw.encode()).hexdigest(),
               "root": root, "objects": objects}
     if len(canonical(result).encode()) > CONTEXT_LIMIT:
-        raise ValueError("Review context exceeds the bounded contract after lossless deduplication")
+        packet = value.get("qualification", {}).get("artifact_bundle", {}).get("method_review_packet", {})
+        requirements, evidence = packet.get("requirements"), packet.get("evidence")
+        if not requirements or not evidence or len(requirements) > 64:
+            raise ValueError("Review context exceeds the bounded contract after lossless deduplication")
+        if any(hashlib.sha256(canonical(item).encode()).hexdigest() != key
+               for key, item in evidence.items()):
+            raise ValueError("Review evidence digest mismatch")
+        result = {"schema_version": "review-context-file-v1",
+                  "original_digest": hashlib.sha256(raw.encode()).hexdigest(),
+                  "byte_count": len(raw.encode()),
+                  "file": "review-evidence.json",
+                  "subject": value["subject"],
+                  "packet_digest": hashlib.sha256(canonical(packet).encode()).hexdigest(),
+                  "requirements": requirements, "evidence_digests": sorted(evidence),
+                  "sections": sorted(value)}
+        if len(canonical(result).encode()) > CONTEXT_LIMIT:
+            raise ValueError("Review evidence index exceeds the bounded contract")
     return result

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.services import alpha_campaign
 
 
-@pytest.mark.parametrize('repeated', [True, False])
+@pytest.mark.parametrize('repeated', [True, False, 'file'])
 def test_review_context_admitted_before_task_publication(monkeypatch, repeated):
     db = MagicMock()
     assignment = SimpleNamespace(id=uuid4(), evaluator_profile_id=uuid4(), review_kind='strategy_spec')
@@ -21,6 +21,13 @@ def test_review_context_admitted_before_task_publication(monkeypatch, repeated):
     evidence = {'text': 'evidence' * 6000}
     qualification = {'card': evidence, 'artifact_bundle': {'packet': evidence}} if repeated else {
         'card': {}, 'artifact_bundle': {'text': 'x' * 101000}}
+    if repeated == 'file':
+        import hashlib
+        from app.services.review_context import canonical
+        key = hashlib.sha256(canonical(evidence).encode()).hexdigest()
+        qualification = {'card': {}, 'artifact_bundle': {'method_review_packet': {
+            'requirements': {'target': 'Check exact target'}, 'evidence': {key: evidence},
+            'native_plan': {'details': 'x' * 101000}}}}
     saved = MagicMock()
     monkeypatch.setattr(alpha_campaign, 'persist_new_task', saved)
     if repeated:

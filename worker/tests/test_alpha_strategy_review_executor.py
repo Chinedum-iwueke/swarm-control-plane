@@ -73,13 +73,21 @@ def test_review_cannot_approve_unresolved_findings():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("verdict", ["approve", "reject"])
-@pytest.mark.parametrize("scope", [None, "scientific_requirements", "method_design"])
-async def test_read_only_reviewer_retains_real_verdict_without_execution_authority(tmp_path, verdict, scope):
+@pytest.mark.parametrize("scope", [None, "scientific_requirements", "method_design", "large_method"])
+@pytest.mark.parametrize("evidence_fault", [None, "missing_coverage", "tampered"])
+async def test_read_only_reviewer_retains_real_verdict_without_execution_authority(tmp_path, verdict, scope, evidence_fault):
     payload = contract()
     packet = None
+    large = scope == "large_method"
+    if evidence_fault and not large:
+        pytest.skip("File transport fault applies only to large method packets")
+    if large:
+        scope = "method_design"
     if scope == "method_design":
         evidence = {"kind": "synthetic evidence"}
         packet = {"requirements": {"target": "Exact target"}, "evidence": {review_digest(evidence): evidence}}
+        if large:
+            packet["native_plan"] = {"details": "unique plan evidence" * 6000}
         payload["qualification"]["artifact_bundle"] = {"method_review_packet": packet}
         payload["subject"]["artifact_bundle_digest"] = review_digest(payload["qualification"]["artifact_bundle"])
     if scope:
@@ -98,7 +106,12 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
             assert args[args.index("--sandbox") + 1] == "read-only"
             assert "--ephemeral" in args
             prompt = kwargs["stdin"].read().decode()
-            assert "review_only_no_execution" in prompt
+            if not large:
+                assert "review_only_no_execution" in prompt
+            else:
+                retained = json.loads((workspace.artifacts / "review-evidence.json").read_text())
+                assert retained["qualification"]["artifact_bundle"]["method_review_packet"] == packet
+                assert "evidence_coverage" in prompt
             if scope == "method_design":
                 assert "every requirement key checked exactly once" in prompt
                 assert "Inspect the pinned native implementation" not in prompt
@@ -121,6 +134,14 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
                         evidence_digests=list(packet["evidence"]), violation="missing timing",
                         verification="Inspect timing against exact evidence.")],
                     rationale="Exact method evidence was checked.")
+            if large:
+                output["evidence_coverage"] = {"target": list(packet["evidence"])}
+                if evidence_fault == "missing_coverage":
+                    del output["evidence_coverage"]
+                if evidence_fault == "tampered":
+                    path = workspace.artifacts / "review-evidence.json"
+                    path.chmod(0o600)
+                    path.write_text('{}')
             (workspace.artifacts / "strategy-review.json").write_text(json.dumps(output))
             return SimpleNamespace(process=process)
 
@@ -129,12 +150,20 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
     task = SimpleNamespace(input_contract=payload, assigned_agent_id=UUID(payload["evaluator_agent_id"]), attempt_count=1)
     async def heartbeat(_metadata):
         pass
-    result = await executor.execute(task=task, workflow=SimpleNamespace(name=payload["workflow"], steps=[], timeout_seconds=60),
-                                    workspace=workspace, heartbeat=heartbeat)
+    async def execute():
+        return await executor.execute(task=task, workflow=SimpleNamespace(name=payload["workflow"], steps=[], timeout_seconds=60),
+                                      workspace=workspace, heartbeat=heartbeat)
+    if evidence_fault:
+        with pytest.raises(ValueError, match="coverage|integrity"):
+            await execute()
+        return
+    result = await execute()
     assert result.success
     assert result.summary["alpha_strategy_review"]["verdict"] == verdict
     assert result.summary["review_digest"] == review_digest(result.summary["alpha_strategy_review"])
     assert "authority" not in result.summary
+    if large:
+        assert result.summary["review_evidence_access"]["coverage"] == {"target": list(packet["evidence"])}
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,9 @@ from swarm_worker.models import StepExecutionResult, Task, WorkflowExecutionResu
 from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.model_lane import model_call_allowed, provider_key
 from swarm_worker.review_context import review_context, canonical
+from swarm_worker.review_evidence import (
+    prepare_evidence, verify_evidence, coverage_schema, validate_coverage,
+)
 from swarm_worker.strategy_review_contract import (
     AlphaStrategyReviewContract,
     StrategyReviewVerdict,
@@ -53,8 +56,16 @@ class AlphaStrategyReviewExecutor:
         adjudication_scope = contract.subject.get('review_scope') == 'method_adjudication'
         method_scope = contract.subject.get("review_scope") in {"method_design", "method_adjudication"}
         verdict_type = MethodAdjudicationReview if adjudication_scope else MethodStrategyReview if method_scope else StrategyReviewVerdict
+        context = review_context(contract.model_dump(mode="json"))
+        evidence_path = None
+        coverage = None
+        if context.get("schema_version") == "review-context-file-v1":
+            evidence_path = prepare_evidence(workspace.artifacts, contract.model_dump(mode="json"), context)
         document = verdict_type.model_json_schema()
         document["required"] = list(document["properties"])
+        if evidence_path:
+            document["properties"]["evidence_coverage"] = coverage_schema(context)
+            document["required"].append("evidence_coverage")
         document["properties"]["subject_digest"]["enum"] = [contract.subject_digest]
         if adjudication_scope:
             bundle = contract.qualification['artifact_bundle']
@@ -132,7 +143,17 @@ class AlphaStrategyReviewExecutor:
               "Each $review_ref refers to an exact value in objects keyed by its canonical SHA256. "
               "Resolve these references recursively when reading; all evidence remains present. "
               "Use the original subject and packet digests, not the context encoding digest.\n"
-            + canonical(review_context(contract.model_dump(mode="json"))), encoding="utf-8",
+            + ("The complete unmodified contract is in " + str(evidence_path) + ". "
+               "Read it using read-only file tools, selecting JSON sections in bounded chunks. "
+               "Do not rely on this index alone. Inspect qualification.artifact_bundle and the "
+               "method_review_packet, including all native plans and original/successor bindings. "
+               "Compare target equations, clocks, feature history, smoke/scientific windows and "
+               "calibration assumptions across sections. Return evidence_coverage mapping EVERY "
+               "requirement to the retained evidence digests you evaluated. This mapping reports "
+               "coverage, not proof of correctness. Missing or contradictory evidence must be "
+               "reported in findings; never infer acceptance from matching digests.\n"
+               if evidence_path else "")
+            + canonical(context), encoding="utf-8",
         )
         for path in (schema, prompt):
             path.chmod(0o600)
@@ -146,6 +167,8 @@ class AlphaStrategyReviewExecutor:
         running = None
         attempts = 1 if method_scope else 3
         for capacity_attempt in range(attempts):
+            if evidence_path:
+                verify_evidence(evidence_path, context)
             if method_scope:
                 await heartbeat({"phase": "independent_method_review",
                                  "route_id": str(contract.route_id), "review_kind": contract.review_kind})
@@ -226,9 +249,14 @@ class AlphaStrategyReviewExecutor:
         assert running is not None
         result = None
         if not timed_out and running.process.returncode == 0 and output.is_file():
-            if output.is_symlink() or output.stat().st_size > 15_000:
+            if output.is_symlink() or output.stat().st_size > (100_000 if evidence_path else 15_000):
                 raise ValueError("Invalid review output file")
-            result = verdict_type.model_validate_json(output.read_text(encoding="utf-8"))
+            raw_result = json.loads(output.read_text(encoding="utf-8"))
+            if evidence_path:
+                verify_evidence(evidence_path, context)
+                coverage = raw_result.pop("evidence_coverage", None)
+                validate_coverage(coverage, context)
+            result = verdict_type.model_validate(raw_result)
             if adjudication_scope:
                 from swarm_worker.method_adjudication_contract import validate_adjudication
                 validate_adjudication(result, contract.qualification['artifact_bundle'], review_digest)
@@ -256,10 +284,13 @@ class AlphaStrategyReviewExecutor:
             steps=[step], success=success,
             termination_reason=(None if success else "provider_capacity" if provider_capacity
                                 else "strategy_review_failed"),
-            worker_version=__version__, artifacts=["artifacts/strategy-review.json"] if output.is_file() else [],
+            worker_version=__version__, artifacts=(["artifacts/strategy-review.json"] if output.is_file() else [])
+                + (["artifacts/review-evidence.json"] if evidence_path else []),
             retryable=not success and provider_capacity is None,
             summary=({"alpha_strategy_review": result.model_dump(mode="json"),
-                      "review_digest": review_digest(result.model_dump(mode="json"))}
+                      "review_digest": review_digest(result.model_dump(mode="json")),
+                      **({"review_evidence_access": {"manifest": context, "coverage": coverage}}
+                         if evidence_path else {})}
                      if result else {"provider_capacity": provider_capacity}
                      if provider_capacity else {}),
         )

@@ -3,6 +3,34 @@
 Status: **in progress; commissioning is not complete**. AEP-005/AEP-006 are not
 the production default. Controlled fixtures are not genuine-candidate receipts.
 
+## AEP-007A: evidence-access handoff (local implementation)
+
+Large method/design-adjudication packets retain the existing 262,144-byte raw
+contract ceiling. Inline and lossless-DAG contexts remain unchanged. When DAG
+deduplication cannot meet the 100,000-byte prompt limit, matching API/worker
+`review_context` implementations produce a `review-context-file-v1` index.
+This requires a real method packet with digest-valid evidence and at most 64
+criteria. It does not admit arbitrary oversized legacy reviews.
+
+The worker retains the complete canonical contract in task-local
+`artifacts/review-evidence.json`, makes it read-only, and checks its exact digest
+and length before inference and before accepting output. Repeated preparation
+reuses only identical evidence; missing, substituted or symlinked evidence fails
+closed. The reviewer is instructed to read bounded JSON sections, compare the
+method and native plans, and report every criterion's retained evidence digests.
+Missing coverage or unknown digests cannot yield a successful worker result.
+The index and coverage are retained in the execution summary; full evidence and
+the raw verdict are artifacts. Canonical verdict serialization is unchanged.
+
+Coverage is a reviewer assertion, not a filesystem access audit or proof of
+scientific correctness. The two independent reviews and exact requirement checks
+remain mandatory. Tests cover transport, admission, restart preparation,
+missing/tampered evidence, coverage rejection and mocked accept/reject outcomes.
+They preserve cross-section contradictions; they do not demonstrate that an LLM
+will detect every contradiction. **Deployment and a genuine candidate review
+outcome remain required for AEP-007A operational closure.** No new mandate,
+engineering execution or backtest is authorized by this change.
+
 ## Deployed baseline
 
 `200e09f` deployed source-bound method publication. `6631a6d` added separately
