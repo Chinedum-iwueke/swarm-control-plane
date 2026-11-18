@@ -61,6 +61,20 @@ class AlphaStrategyReviewExecutor:
         coverage = None
         if context.get("schema_version") == "review-context-file-v1":
             evidence_path = prepare_evidence(workspace.artifacts, contract.model_dump(mode="json"), context)
+        recovery = (getattr(task, 'failure', None) or {}).get('operator_retry_context', {}).get('review_publication_recovery')
+        if recovery:
+            await heartbeat({'phase': 'independent_method_review', 'stage': 'retained_publication_recovery'})
+            from swarm_worker.review_recovery import retained_review
+            recovered, coverage = retained_review(task, workspace, contract, context, recovery)
+            verdict = recovered.model_dump(mode='json')
+            return WorkflowExecutionResult(workflow=workflow.name, repository=contract.repository,
+                base_commit=contract.base_ref, task_attempt=task.attempt_count,
+                total_duration_seconds=0, steps=[], success=True, retryable=False,
+                worker_version=__version__, artifacts=['artifacts/retained-strategy-review.json', 'artifacts/review-evidence.json'],
+                summary={'alpha_strategy_review': verdict, 'review_digest': review_digest(verdict),
+                    'review_evidence_access': {'manifest': context, 'coverage': coverage},
+                    'publication_recovery': {**recovery, 'model_calls': 0,
+                        'projection': 'complete_rejection_summary', 'operator_assisted': True}})
         document = verdict_type.model_json_schema()
         document["required"] = list(document["properties"])
         if evidence_path:
@@ -261,7 +275,8 @@ class AlphaStrategyReviewExecutor:
                 from swarm_worker.method_adjudication_contract import validate_adjudication
                 validate_adjudication(result, contract.qualification['artifact_bundle'], review_digest)
             elif method_scope:
-                from swarm_worker.method_verdict_contract import validate_method_review
+                from swarm_worker.method_verdict_contract import validate_method_review, complete_rejection_summary
+                result = complete_rejection_summary(result)
                 validate_method_review(result, contract.qualification["artifact_bundle"]["method_review_packet"], review_digest)
             if result.subject_digest != contract.subject_digest:
                 raise ValueError("Reviewer returned a different subject")

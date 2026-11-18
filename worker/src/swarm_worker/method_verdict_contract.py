@@ -44,3 +44,15 @@ def validate_method_review(review, packet, digest):
         if finding.criterion not in packet["requirements"] or any(key not in evidence for key in finding.evidence_digests):
             raise ValueError("Method finding must identify a recorded criterion and evidence")
 
+
+def complete_rejection_summary(review):
+    """Only add verbatim detailed findings; never erase a blocker or change a verdict."""
+    findings = [finding.violation for finding in review.method_verdict.findings]
+    if review.blockers == findings:
+        return review
+    if (review.verdict != 'reject' or review.method_verdict.verdict != 'reject'
+            or len(findings) > 30 or len(set(review.blockers)) != len(review.blockers)
+            or any(blocker not in findings for blocker in review.blockers)):
+        raise ValueError('Review summary cannot be completed without changing meaning')
+    return type(review).model_validate(review.model_dump() | {'blockers': findings})
+
