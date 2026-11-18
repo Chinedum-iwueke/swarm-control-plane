@@ -223,13 +223,16 @@ def verified_method_result(task):
                 or any(digest(v) != k for k, v in packet['evidence'].items())):
             raise ValueError('Method review packet differs from retained state')
         from app.services.native_diagnostics import verify_diagnostic
-        receipts = [v for v in packet['evidence'].values()
-                    if v.get('schema_version') == 'native-diagnostic-receipt-v1'
-                    and v.get('subject_digest') == digest(proposal)]
-        if len(receipts) != 1:
-            raise ValueError('Ready method requires exact current native diagnosis')
         request = dict(schema_version='native-diagnostic-request-v1', tool=contract.diagnostic,
                        source_commit=contract.base_ref, subject_digest=digest(proposal), payload=proposal['method'])
+        receipts = [v for v in packet['evidence'].values()
+                    if v.get('schema_version') == 'native-diagnostic-receipt-v1'
+                    and v.get('subject_digest') == digest(proposal)
+                    and v.get('source_commit') == contract.base_ref
+                    and v.get('request_digest') == digest(request)
+                    and v.get('evidence_catalog_digest') == digest(contract.evidence_catalog)]
+        if len(receipts) != 1:
+            raise ValueError('Ready method requires exact current native diagnosis')
         verify_diagnostic(receipts[0], request, contract.evidence_catalog, contract.base_ref, digest(proposal))
         assessment = receipts[0]['result']
         if 'experiment' in proposal['method']:

@@ -153,6 +153,30 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     assert result['execution_authority'] is False
 
 
+@pytest.mark.parametrize('mode', ['historical', 'missing_current', 'ambiguous_current'])
+def test_current_diagnosis_selected_by_complete_bindings(mode):
+    task = ready_task()
+    result = task.result['summary']['method_episode']
+    state = result['state']
+    receipt = deepcopy(next(iter(state['evidence'].values())))
+    if mode != 'ambiguous_current':
+        receipt['evidence_catalog_digest'] = 'f' * 64
+    else:
+        receipt['implementation_digests'] = {'different': '1' * 64}
+    receipt['receipt_digest'] = service.digest({k: v for k, v in receipt.items() if k != 'receipt_digest'})
+    if mode == 'missing_current':
+        state['evidence'].clear()
+    state['evidence'][service.digest(receipt)] = receipt
+    result['review_packet']['evidence'] = deepcopy(state['evidence'])
+    result['review_packet']['method_episode_digest'] = service.digest(state)
+    result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    if mode == 'historical':
+        assert service.verified_method_result(task)['scientific_approval'] is False
+    else:
+        with pytest.raises(ValueError, match='exact current native diagnosis'):
+            service.verified_method_result(task)
+
+
 def test_structured_method_cannot_use_legacy_or_failed_consistency_receipt():
     for consistency in (None, {'status': 'unverified_legacy_prose'},
                         {'status': 'structurally_consistent', 'finding_count': 1, 'findings': []}):
