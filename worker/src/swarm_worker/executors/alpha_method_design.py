@@ -37,6 +37,11 @@ def compact_method_result(document):
             key: value | {'evidence': sorted(value['evidence'])}
             for key, value in envelopes.items()}
         state['evidence'] = {key: value for key, value in evidence.items() if key not in envelopes}
+        packet = result.get('review_packet')
+        if packet and all(state['evidence'].get(key) == value
+                          for key, value in packet['evidence'].items()):
+            result['review_packet_digest'] = digest(packet)
+            result['review_evidence_refs'] = sorted(packet.pop('evidence'))
     return result
 
 

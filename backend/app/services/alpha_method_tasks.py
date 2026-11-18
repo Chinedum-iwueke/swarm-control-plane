@@ -152,6 +152,17 @@ def verified_method_result(task):
         import json
         result = deepcopy(result)
         evidence = result['state']['evidence']
+        if 'review_evidence_refs' in result:
+            refs = result['review_evidence_refs']
+            packet = result.get('review_packet')
+            if (not isinstance(refs, list) or not 1 <= len(refs) <= 256
+                    or any(not isinstance(ref, str) or ref not in evidence for ref in refs)
+                    or len(set(refs)) != len(refs)
+                    or not isinstance(packet, dict) or 'evidence' in packet):
+                raise ValueError('Invalid method review evidence references')
+            packet['evidence'] = {ref: evidence[ref] for ref in refs}
+            if digest(packet) != result.get('review_packet_digest'):
+                raise ValueError('Method review packet digest mismatch')
         envelopes = result.get('state_evidence_envelopes', {})
         if not isinstance(envelopes, dict) or not 1 <= len(envelopes) <= 64:
             raise ValueError('Invalid method evidence envelope table')

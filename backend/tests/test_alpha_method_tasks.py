@@ -182,7 +182,7 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
         assert service.verified_method_result(task)['scientific_approval'] is False
 
 
-@pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle'])
+@pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest'])
 def test_v2_transport_reconstructs_exact_audit_state(tamper):
     task = ready_task()
     result = task.result['summary']['method_episode']
@@ -196,6 +196,8 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper):
                   audit_state_digest=service.digest(full),
                   state_evidence_envelopes={key: envelope | {'evidence': sorted(envelope['evidence'])}})
     result['review_packet']['method_episode_digest'] = service.digest(full)
+    result['review_packet_digest'] = service.digest(result['review_packet'])
+    result['review_evidence_refs'] = sorted(result['review_packet'].pop('evidence'))
     if tamper == 'reference':
         result['state_evidence_envelopes'][key]['evidence'] = ['f'*64]
     elif tamper == 'envelope':
@@ -204,6 +206,10 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper):
         result['audit_state_digest'] = 'f'*64
     elif tamper == 'cycle':
         result['state_evidence_envelopes'][key]['evidence'] = [key]
+    elif tamper == 'packet_ref':
+        result['review_evidence_refs'] = ['f'*64]
+    elif tamper == 'packet_digest':
+        result['review_packet_digest'] = 'f'*64
     result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
     before = deepcopy(task.result)
     if tamper:
