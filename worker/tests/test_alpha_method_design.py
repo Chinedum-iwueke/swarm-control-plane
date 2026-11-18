@@ -34,9 +34,13 @@ def contract(source):
 
 
 @pytest.mark.asyncio
-async def test_fixed_executor_retains_native_packet_and_duplicate_is_free(tmp_path, monkeypatch):
+@pytest.mark.parametrize('catalog_size', [1, 16])
+async def test_fixed_executor_retains_native_packet_and_duplicate_is_free(tmp_path, monkeypatch, catalog_size):
     engineering, task, _, workspace = fixture(tmp_path, '1', 1)
     task.input_contract = contract(workspace.metadata.resolved_base_commit)
+    for index in range(catalog_size - 1):
+        document = {'kind': 'synthetic_catalog_fixture', 'index': index}
+        task.input_contract['evidence_catalog'][digest(document)] = document
     task.task_type = 'alpha_method_design'
     workflow = WorkflowLoader(Path(__file__).parents[1]/'workflows').load('alpha-method-design')
     calls, progress = [], []
@@ -91,9 +95,13 @@ async def test_expired_method_authority_never_calls_native(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_known_quota_before_correction_reserves_no_model_calls(tmp_path, monkeypatch):
+@pytest.mark.parametrize('catalog_size', [1, 16])
+async def test_known_quota_before_correction_reserves_no_model_calls(tmp_path, monkeypatch, catalog_size):
     engineering, task, _, workspace = fixture(tmp_path, '1', 1)
     task.input_contract = contract(workspace.metadata.resolved_base_commit)
+    for index in range(catalog_size - 1):
+        document = {'kind': 'synthetic_catalog_fixture', 'index': index}
+        task.input_contract['evidence_catalog'][digest(document)] = document
     del task.input_contract['proposal']['method']['dependence_assumptions']
     workflow = WorkflowLoader(Path(__file__).parents[1]/'workflows').load('alpha-method-design')
     async def permit():

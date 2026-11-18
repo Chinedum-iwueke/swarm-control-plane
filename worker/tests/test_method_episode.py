@@ -10,6 +10,21 @@ from swarm_worker.method_episode import MethodEpisode, MethodEpisodePolicy, Meth
 BINDING = dict(task_id='task-1', source_commit='a'*40, mandate_digest='b'*64, findings_digest='c'*64)
 
 
+def test_diagnostic_evidence_allows_catalog_plus_one_receipt_only():
+    from swarm_worker.method_episode import Diagnosis
+    from swarm_worker.method_task import MethodTaskContract
+    from test_alpha_method_design import contract
+    evidence = {canonical_digest({'fixture': i}): {'fixture': i} for i in range(17)}
+    assert len(Diagnosis(disposition='ready', findings=[], evidence=evidence, work_units=1).evidence) == 17
+    source = contract('a' * 40)
+    source['evidence_catalog'] = evidence
+    with pytest.raises(ValueError):
+        MethodTaskContract.model_validate(source)
+    evidence[canonical_digest({'fixture': 17})] = {'fixture': 17}
+    with pytest.raises(ValueError):
+        Diagnosis(disposition='ready', findings=[], evidence=evidence, work_units=1)
+
+
 def diagnosis(proposal, disposition=None):
     evidence = {'source_commit': BINDING['source_commit'], 'proposal_digest': canonical_digest(proposal),
                 'observed': proposal['method'].get('lag', 0)}

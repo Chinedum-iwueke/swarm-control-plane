@@ -82,6 +82,27 @@ compare statement schema limits with native shape checks; 52 worker tests pass.
 This output-schema repair is not yet deployed. Additional authoring requires
 explicit bounded authority; calibration precision remains unqualified.
 
+### Diagnostic envelope boundary repair
+
+Output-schema repair `da552d6` was pushed and deployed. The founder approved
+mandate `76ec4c00-f8c8-4ace-8eef-ca33713ea6bf` and activated campaign
+`621a8fa9-8350-4b6d-92ed-336898ee6587`, digest
+`76777f7005d269b3adba349b08a00ab5e4fd8501a63dfec773ba9a03068fc1cb`.
+Its task `d56c0830-889f-4236-9bfe-bee2fcf9e6fa` blocked during deterministic
+diagnosis with zero model calls: the approved 16-entry catalog plus a generated
+preflight receipt exceeded the diagnostic result's separate 16-entry limit.
+
+The local fix permits 17 entries in `Diagnosis.evidence`: 16 approved input
+documents plus one generated receipt. `MethodTaskContract.evidence_catalog`
+remains limited to 16; this does not expand scientific input authority or alter
+byte bounds, digest verification, findings custody, budgets or approval gates.
+The exact retained 17-entry diagnostic now validates offline with all hashes
+verified and no checkpoint modifications. Its disposition remains `repair`,
+not acceptance. Tests cover full catalogs on native-readiness and preflight
+paths, free duplicate replay, input-catalog overflow and 18-entry result
+rejection. All 55 focused worker tests pass. This envelope repair is local,
+not deployed; the historical blocked task has not been restarted.
+
 ## AEP-007B: bounded calibration and window correction
 
 November 18 commissioning is **complete in bounded method-correction scope**.

@@ -48,7 +48,9 @@ class Diagnosis(BaseModel):
                          "requirements_conflict", "requires_new_question",
                          "await_authority_or_capacity"]
     findings: list[MethodFinding] = Field(max_length=32)
-    evidence: dict[str, dict] = Field(min_length=1, max_length=16)
+    # A diagnosis retains the approved catalog (at most 16) plus its own receipt.
+    # This is a result envelope, not an expansion of input evidence authority.
+    evidence: dict[str, dict] = Field(min_length=1, max_length=17)
     work_units: int = Field(ge=0, strict=True)
     scientific_approval: Literal[False] = False
     execution_authority: Literal[False] = False
