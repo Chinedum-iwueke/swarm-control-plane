@@ -128,6 +128,17 @@ class AlphaMethodDesignExecutor:
 
         async def propose(context, operation, remaining):
             await check_lease('method_correction')
+            # The server validates active mandate and exact campaign activation
+            # on the lease heartbeat. Expose that scope, not a stale draft flag.
+            context = {**context, 'current_authority': {
+                'status': 'active_method_only_lease',
+                'campaign_digest': task.approval_policy.get('campaign_digest'),
+                'mandate_digest': contract.mandate_digest,
+                'contract_digest': binding['contract_digest'],
+                'valid_until': contract.valid_until.isoformat(),
+                'approved_dependencies': contract.dependencies,
+                'engineering_authority': False, 'calibration_execution_authority': False,
+                'backtest_authority': False, 'scientific_approval': False}}
             return await adapter(context, operation, remaining)
 
         async def model_permitted():
@@ -140,7 +151,7 @@ class AlphaMethodDesignExecutor:
             model_permitted=model_permitted)
         adapter = correction_proposer(self.engineering, workspace, heartbeat,
             read_evidence=episode.read_evidence, max_context_bytes=contract.policy.max_context_bytes,
-            context_evidence=contract.evidence_catalog)
+            context_evidence=contract.evidence_catalog, requirements=contract.requirements)
         permit = await model_capacity_permit()
         async def run_with_lease():
             pending = asyncio.create_task(episode.run(recovery_token=(permit.get('recovery_token')

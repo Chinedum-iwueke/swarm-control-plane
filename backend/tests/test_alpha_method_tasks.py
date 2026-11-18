@@ -207,10 +207,15 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
 
 
 @pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest'])
-def test_v2_transport_reconstructs_exact_audit_state(tamper):
+@pytest.mark.parametrize('large_history', [False, True])
+def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history):
     task = ready_task()
     result = task.result['summary']['method_episode']
     state = result['state']
+    if large_history:
+        retained = {'synthetic_history': 'x' * 140000}
+        state['evidence'][service.digest(retained)] = retained
+        result['review_packet']['evidence'][service.digest(retained)] = retained
     envelope = dict(disposition='ready', findings=[], work_units=1,
                     evidence=deepcopy(state['evidence']))
     key = service.digest(envelope)

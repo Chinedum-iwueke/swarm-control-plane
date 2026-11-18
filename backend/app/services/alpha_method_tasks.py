@@ -151,6 +151,11 @@ def verified_method_result(task):
         from copy import deepcopy
         import json
         result = deepcopy(result)
+        # Transport and individual documents stay bounded. Expanded history
+        # repeats the same immutable catalog once per authorized tool call.
+        audit_limit = 262144 * (1 + contract.policy.max_tool_calls)
+        if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 262144:
+            raise ValueError('Compact method state exceeds bound')
         evidence = result['state']['evidence']
         if 'review_evidence_refs' in result:
             refs = result['review_evidence_refs']
@@ -164,7 +169,8 @@ def verified_method_result(task):
             if digest(packet) != result.get('review_packet_digest'):
                 raise ValueError('Method review packet digest mismatch')
         envelopes = result.get('state_evidence_envelopes', {})
-        if not isinstance(envelopes, dict) or not 1 <= len(envelopes) <= 64:
+        if (not isinstance(envelopes, dict)
+                or not 1 <= len(envelopes) <= contract.policy.max_tool_calls):
             raise ValueError('Invalid method evidence envelope table')
         leaves = dict(evidence)
         for key, envelope in envelopes.items():
@@ -179,7 +185,7 @@ def verified_method_result(task):
             if digest(restored) != key:
                 raise ValueError('Method evidence envelope digest mismatch')
             evidence[key] = restored
-            if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 262144:
+            if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > audit_limit:
                 raise ValueError('Reconstructed method state exceeds bound')
         if digest(result['state']) != result.get('audit_state_digest'):
             raise ValueError('Method audit state digest mismatch')

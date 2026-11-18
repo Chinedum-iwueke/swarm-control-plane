@@ -3,6 +3,38 @@
 Status: **in progress; commissioning is not complete**. AEP-005/AEP-006 are not
 the production default. Controlled fixtures are not genuine-candidate receipts.
 
+## AEP-007B: bounded calibration and window correction
+
+November 18 commissioning is **in progress, not accepted**. The founder approved
+mandate `98799db695cc75014b938bef861df864c1a0c135c62ba640d02a6d95abbc6983`
+and campaign `8c98415f3d990bc28990cc72cb9309535fe5dcf81dcf6fdb293b6b87503773cc`
+(`5d1bba1e-f4af-4a97-8b04-4955d9729ea9`). The latter permits two author
+corrections and four diagnostics until 07:03 UTC, then fresh independent reviews.
+It grants no engineering, calibration execution, backtest, order or promotion
+authority. Prior proposals, reviews and counters remain immutable.
+
+`method_window_binding.prepare_window_binding` prepares explicit successor
+evidence from custody-verified native plans; it is not an execution authorization
+or an automatic campaign activator. It checks source/digests, coverage references,
+research-clock alignment, envelope, partition capacity, warmup, split gaps and
+target-only tail. It preserves the parent proposal and records separate calendar
+capacities and unobserved eligible support. The approved successor uses the native
+scientific year beginning May 18, 2025, not the historical card's August dates.
+Historical card evidence remains available; only its dates are superseded.
+
+The correction adapter now receives explicit review requirements as well as
+findings and evidence. Oversized contexts use lossless subtree references within
+the approved context budget, without summarizing or dropping obligations. A
+prospective real-context probe retained all seven findings: 140,839 bytes became
+113,793 bytes before episode bookkeeping, within the 128,000-byte bound.
+Calibration guidance requires complete joint laws, shared outcomes, induced
+estimands, work-unit accounting and prospective precision criteria, rather than
+asserting unexecuted calibration is qualified.
+
+Focused validation: 52 worker and 48 backend tests passed. This is infrastructure
+evidence only; AEP-007B closure still requires observed correction and acceptance
+by both independent reviewers.
+
 ## AEP-007A: evidence-access handoff (local implementation)
 
 Large method/design-adjudication packets retain the existing 262,144-byte raw

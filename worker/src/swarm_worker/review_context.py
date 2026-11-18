@@ -12,14 +12,16 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def review_context(value):
+def review_context(value, *, context_limit=CONTEXT_LIMIT):
     """Bound original evidence, then replace exact repeated subtrees with hash refs."""
+    if type(context_limit) is not int or not 1024 <= context_limit <= 128000:
+        raise ValueError("Invalid context transport bound")
     raw = canonical(value)
     method = value.get("subject", {}).get("review_scope") in {
         "method_design", "method_adjudication"}
     if len(raw.encode()) > (RAW_LIMIT if method else CONTEXT_LIMIT):
         raise ValueError("Review evidence exceeds the bounded contract")
-    if len(raw.encode()) <= CONTEXT_LIMIT:
+    if len(raw.encode()) <= context_limit:
         return value
     counts = Counter()
 
@@ -53,7 +55,7 @@ def review_context(value):
     result = {"schema_version": "review-context-dag-v1",
               "original_digest": hashlib.sha256(raw.encode()).hexdigest(),
               "root": root, "objects": objects}
-    if len(canonical(result).encode()) > CONTEXT_LIMIT:
+    if len(canonical(result).encode()) > context_limit:
         packet = value.get("qualification", {}).get("artifact_bundle", {}).get("method_review_packet", {})
         requirements, evidence = packet.get("requirements"), packet.get("evidence")
         if not requirements or not evidence or len(requirements) > 64:
@@ -69,6 +71,6 @@ def review_context(value):
                   "packet_digest": hashlib.sha256(canonical(packet).encode()).hexdigest(),
                   "requirements": requirements, "evidence_digests": sorted(evidence),
                   "sections": sorted(value)}
-        if len(canonical(result).encode()) > CONTEXT_LIMIT:
+        if len(canonical(result).encode()) > context_limit:
             raise ValueError("Review evidence index exceeds the bounded contract")
     return result

@@ -126,6 +126,7 @@ def test_method_contract_cannot_authorize_identity_repair(field):
 @pytest.mark.parametrize('repairable', [True, False])
 async def test_consistency_findings_repair_in_same_episode_before_review(tmp_path, monkeypatch, repairable):
     engineering, task, _, workspace = fixture(tmp_path, '1', 1)
+    task.approval_policy = {'campaign_digest': 'f'*64}
     task.input_contract = contract(workspace.metadata.resolved_base_commit)
     frozen = {'registered_experiment': 'synthetic fixture; native shape mocked here'}
     task.input_contract['proposal']['method'].update(experiment=frozen, calibration_design={})
@@ -146,6 +147,12 @@ async def test_consistency_findings_repair_in_same_episode_before_review(tmp_pat
     def proposer(*_, **__):
         async def correct(context, operation, remaining):
             assert repairable, 'invalid frozen experiments must not spend author calls'
+            scope = context['current_authority']
+            assert scope['status'] == 'active_method_only_lease'
+            assert scope['mandate_digest'] == task.input_contract['mandate_digest']
+            assert scope['approved_dependencies'] == task.input_contract['dependencies']
+            assert not scope['scientific_approval']
+            assert not scope['calibration_execution_authority']
             calls.append('model')
             assert context['findings'][0]['requirement_ref'] == 'calibration_consistency.family_mismatch'
             return dict(changes={'calibration_design': {'synthetic_corrected_fixture': True}},
@@ -176,6 +183,7 @@ def test_method_role_and_workflow_are_digest_verified():
 @pytest.mark.asyncio
 async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path, monkeypatch):
     engineering, task, _, workspace = fixture(tmp_path, '1', 1)
+    task.approval_policy = {'campaign_digest': 'f'*64}
     task.input_contract = contract(workspace.metadata.resolved_base_commit)
     report = dict(schema_version='method-review-correction-v1',
         proposal_digest=digest(task.input_contract['proposal']), reviews=[{'method_verdict': {
