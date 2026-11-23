@@ -223,7 +223,8 @@ def test_method_role_and_workflow_are_digest_verified():
 
 
 @pytest.mark.asyncio
-async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path, monkeypatch):
+@pytest.mark.parametrize('amendment', [False, True])
+async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path, monkeypatch, amendment):
     engineering, task, _, workspace = fixture(tmp_path, '1', 1)
     task.approval_policy = {'campaign_digest': 'f'*64}
     task.input_contract = contract(workspace.metadata.resolved_base_commit)
@@ -231,6 +232,17 @@ async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path
         proposal_digest=digest(task.input_contract['proposal']), reviews=[{'method_verdict': {
             'findings': [dict(criterion='design', violation='State dependence precisely',
                              verification='Check the assumption against the design')]} }])
+    if amendment:
+        method = task.input_contract['proposal']['method']
+        method.update(schema_version='design-adequacy-contract-v2', experiment={}, calibration_design={},
+                      assurance={'required_outputs':['target'], 'workload':{'caps':{'statistic_evaluation':100000}}})
+        budget = dict(schema_version='method-budget-amendment-v1',
+                      mandate_digest=task.input_contract['mandate_digest'], parent_proposal_digest='a'*64,
+                      prospective_caps={'statistic_evaluation':100000}, execution_authority=False)
+        task.input_contract['evidence_catalog'][digest(budget)] = budget
+        task.input_contract['dependencies']['prospective_budget_amendment'] = digest(budget)
+        report = dict(schema_version='method-amendment-consistency-v1', amendment_digest=digest(budget),
+                      proposal_digest=digest(task.input_contract['proposal']), instruction='State dependence precisely')
     task.input_contract['findings_digest'] = digest(report)
     task.input_contract['evidence_catalog'][digest(report)] = report
     workflow = WorkflowLoader(Path(__file__).parents[1]/'workflows').load('alpha-method-design')
@@ -246,7 +258,8 @@ async def test_review_successor_repairs_once_then_requires_fresh_review(tmp_path
         calls.append('native')
         assert kwargs['payload']['dependence_assumptions'] == 'Explicit synthetic IID assumption'
         return {'schema_version': 'native-diagnostic-receipt-v1',
-                'result': {'status': 'requires_independent_review_and_native_calibration'}}
+                'result': {'status': 'requires_independent_review_and_native_calibration',
+                           'consistency': {'status':'structurally_consistent','finding_count':0,'findings':[]}}}
     async def heartbeat(_):
         pass
     monkeypatch.setattr('swarm_worker.executors.alpha_method_design.correction_proposer', proposer)

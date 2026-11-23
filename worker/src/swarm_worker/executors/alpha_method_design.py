@@ -78,6 +78,17 @@ class AlphaMethodDesignExecutor:
         async def diagnose(proposal, operation, work, remaining):
             await check_lease('native_diagnosis')
             retained = contract.evidence_catalog.get(contract.findings_digest, {})
+            if (retained.get('schema_version') == 'method-amendment-consistency-v1'
+                    and retained.get('proposal_digest') == digest(proposal)):
+                amendment_digest = contract.dependencies.get('prospective_budget_amendment')
+                if retained.get('amendment_digest') != amendment_digest or amendment_digest not in contract.evidence_catalog:
+                    raise ValueError('Consistency correction lacks its bound budget amendment')
+                return dict(disposition='repair', work_units=1,
+                    evidence=contract.evidence_catalog,
+                    findings=[dict(requirement_ref='amendment_consistency',
+                        evidence_digest=contract.findings_digest,
+                        message=retained['instruction'],
+                        verification='Reconcile every invalidated definition with the exact frozen prospective caps, then native diagnosis and independent review.')])
             if (retained.get('schema_version') == 'method-review-correction-v1'
                     and retained.get('proposal_digest') == digest(proposal)):
                 findings = [dict(requirement_ref=finding['criterion'], evidence_digest=contract.findings_digest,

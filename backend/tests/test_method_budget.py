@@ -33,6 +33,11 @@ def test_amendment_freezes_only_explicit_caps_preserving_parent_and_science(monk
     evidence = successor['evidence_catalog'][successor['dependencies']['prospective_budget_amendment']]
     assert evidence['parent_proposal_digest'] == canonical_digest(original['proposal'])
     assert evidence['execution_authority'] is False
+    invalidation = successor['evidence_catalog'][successor['findings_digest']]
+    assert invalidation['schema_version'] == 'method-amendment-consistency-v1'
+    assert invalidation['proposal_digest'] == canonical_digest(successor['proposal'])
+    assert invalidation['amendment_digest'] == successor['dependencies']['prospective_budget_amendment']
+    assert invalidation['scientific_approval'] is False
     for model in (WorkerContract, MethodTaskContract):
         stale = deepcopy(successor)
         stale['proposal'] = before['proposal']
