@@ -174,6 +174,39 @@ async def test_real_subprocess_checks_drive_repair_and_bundle(tmp_path, expressi
 
 
 @pytest.mark.asyncio
+async def test_empty_review_checks_route_retained_findings_to_author(tmp_path):
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    authors, reviews = [], []
+
+    async def author(**kwargs):
+        authors.append(kwargs['prompt'])
+        (workspace.repository / 'signal_logic.py').write_text(
+            'def signal():\n    return 1\n' + '# revised\n' * len(authors))
+        return step('coding-agent', kwargs['workspace'])
+
+    async def reviewer(**kwargs):
+        assert kwargs['name'] == 'independent-review', 'Unrefuted findings must not spend adjudication'
+        reviews.append(kwargs['prompt'])
+        accepted = len(reviews) == 2
+        (kwargs['workspace'].artifacts / 'decision.json').write_text(json.dumps({
+            'approved': accepted, 'summary': 'fixture review',
+            'findings': [] if accepted else [{'severity':'high','message':'missing native terminal coverage'}]}))
+        return step('independent-review', kwargs['workspace'])
+
+    async def heartbeat(_):
+        pass
+
+    executor._run_author, executor._run_codex = author, reviewer
+    result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    assert result.success, result.model_dump()
+    assert len(authors) == len(reviews) == 2
+    assert 'missing native terminal coverage' in authors[1]
+    assert result.summary['engineering_episode']['repairs'] == 1
+    again = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    assert again.success and len(authors) == 2
+
+
+@pytest.mark.asyncio
 async def test_new_attempt_restores_partial_workspace_without_resetting_call_budget(tmp_path):
     executor, task, workflow, workspace = fixture(tmp_path, "1", 1)
 

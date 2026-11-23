@@ -98,6 +98,32 @@ async def test_review_counterexample_reenters_same_author_without_new_approval(t
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("repairs", [0, 1])
+async def test_unchecked_review_rejection_repairs_or_exhausts_without_adjudication(tmp_path, repairs):
+    calls = []
+
+    async def perform(stage, state, *_):
+        calls.append(stage)
+        if stage == 'review' and state['repairs'] == 0:
+            return {'status': 'rejected', 'decision': {'findings': ['missing native terminal tests']}}
+        if stage == 'review_checks':
+            return {'status': 'repair_required', 'evidence': 'No approved counterchecks'}
+        return {'status': 'pass'}
+
+    state = await EngineeringEpisode(store(tmp_path), policy(max_repairs=repairs), lambda: 'code', perform).run()
+    assert 'adjudicate' not in calls
+    assert state['adjudications'] == 0
+    if repairs:
+        assert state['status'] == 'completed'
+        assert calls.count('review') == 2
+        assert state['repairs'] == 1
+    else:
+        assert state['status'] == 'blocked'
+        assert state['reason'] == 'repair_budget_exhausted'
+        assert 'validation' not in calls
+
+
+@pytest.mark.asyncio
 async def test_crash_charges_call_and_retains_workspace_on_resume(tmp_path):
     calls = []
 

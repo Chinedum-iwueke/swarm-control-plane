@@ -196,7 +196,9 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
                         return {**result, "status": "policy_violation"}
                 selectors = policy.focused_tests if stage == "focused" else policy.review_tests
                 if not selectors:
-                    return {"status": "pass", "evidence": "No additional approved review tests; this does not disprove a finding."}
+                    return {"status": "repair_required", "evidence":
+                        "No approved review counterchecks exist. The independent rejection remains "
+                        "unrefuted; repair its recorded findings, then run focused tests and fresh review."}
                 step = await executor._run_bounded_command(name=stage,
                     args=["python", "-m", "pytest", "-q", "-x", *selectors], workspace=view,
                     heartbeat=heartbeat, heartbeat_failures=heartbeat_failures, timeout_seconds=remaining)

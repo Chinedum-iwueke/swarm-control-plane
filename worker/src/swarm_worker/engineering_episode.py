@@ -215,7 +215,8 @@ class EngineeringEpisode:
                         state["adjudications"] += 1
                         state["recheck_digest"] = after
                         state["stage"] = "review"
-                elif stage in {"focused", "review_checks", "validation"} and status == "fail":
+                elif (stage in {"focused", "review_checks", "validation"} and status == "fail"
+                      or stage == "review_checks" and status == "repair_required"):
                     if state["repairs"] >= self.policy.max_repairs:
                         self._finish(state, "repair_budget_exhausted")
                     else:
