@@ -12,7 +12,7 @@ SHAPE = {
         'evidence_digests': '1..16 SHA-256 digests of retained evidence'},
     'calibration': {'seed': 'integer 0..4294967295',
         'outer_replicates': 'integer 1..10000', 'inner_replicates': 'integer 1..10000',
-        'max_work_units': 'integer 1..10000000',
+        'max_work_units': 'prospective integer 1..1000000000000000; not execution authority',
         'dgp_ids': '1..16 unique identifiers matching [a-z0-9_-]{1,80}'},
     'work_rule': 'len(dgp_ids) * outer_replicates * inner_replicates <= max_work_units',
     'statements': 'Other method fields except schema_version are nonempty strings <=4000 characters',
@@ -42,7 +42,7 @@ def defects(method):
         if valid:
             valid = all(type(calibration[k]) is int and lo <= calibration[k] <= hi for k, lo, hi in (
                 ('seed', 0, 2**32-1), ('outer_replicates', 1, 10000),
-                ('inner_replicates', 1, 10000), ('max_work_units', 1, 10000000)))
+                ('inner_replicates', 1, 10000), ('max_work_units', 1, 10**15)))
             dgps = calibration['dgp_ids']
             valid = (valid and isinstance(dgps, list) and 1 <= len(dgps) <= 16
                 and all(isinstance(v, str) and re.fullmatch('[a-z0-9_-]{1,80}', v) for v in dgps))

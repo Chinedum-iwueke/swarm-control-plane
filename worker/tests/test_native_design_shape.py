@@ -27,3 +27,22 @@ def test_method_results_have_bounded_evidence_capacity_without_relaxing_other_wo
         WorkflowExecutionResult(workflow='alpha-method-design', summary={'evidence': 'x'*262144}, **common)
     with pytest.raises(ValidationError, match='16 KiB'):
         WorkflowExecutionResult(workflow='engineering-mission', summary={'evidence': 'x'*20000}, **common)
+
+
+@pytest.mark.parametrize('budget,valid', [(266240000, True), (10**15, True),
+                                        (10**15 + 1, False), (True, False)])
+def test_prospective_budget_has_distinct_bounds_and_matching_api_shape(budget, valid):
+    import runpy
+    from pathlib import Path
+    api = runpy.run_path(str(Path(__file__).resolve().parents[2]
+                            / 'backend/app/contracts/native_design_shape.py'))
+    method = deepcopy(contract('a'*40)['proposal']['method'])
+    method['calibration']['max_work_units'] = budget
+    assert ('calibration' not in defects(method)) is valid
+    assert api['defects'](method) == defects(method)
+
+
+def test_execution_reservation_is_not_a_prospective_design_budget():
+    from swarm_worker.method_episode import MethodEpisodePolicy
+    with pytest.raises(ValidationError, match='max_work_units'):
+        MethodEpisodePolicy(max_work_units=266240000, allowed_method_fields=['calibration'])
