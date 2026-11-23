@@ -105,3 +105,35 @@ and worker shape parity, no random generation or bootstrap calls on an
 over-budget execution request, and refusal to route structured designs into the
 legacy marginal probe. This repair is local and uncommissioned; it does not
 change the source pinned by existing mandates.
+
+## Commissioning outcome and budget-binding repair
+
+Mandate `a65b4880-1596-431d-a354-a85f8fa772d6` and campaign
+`9665c675-6eab-4cf1-b007-452037a0f690` received separate founder approvals.
+The first task `ef64fe54-44c8-4f32-b1db-f30d997aaba7` passed structural diagnosis
+without authoring because the operator-prepared findings envelope used the wrong
+schema. Both reviewers rejected the unchanged three-draw design. The controller
+automatically created correction task `8c6a5b71-b260-4284-85c8-4cc84ca64ba9`,
+preserving remaining calls and the original deadline.
+
+That task reserved one author call and one diagnostic, then stopped with
+`invalid_stage_result`: the initial proposal still froze the old caps, conflicting
+with the newly authorized cap instructions. The episode correctly refused a
+model-originated cap change. The campaign closed with zero trials; task-level
+success here means publication of the blocked episode, not method acceptance.
+
+The local repair adds a prospective-budget amendment constructor and matching
+API/worker checks. A new successor must bind approved caps into its initial
+proposal, retain the parent proposal digest and old caps, and receive separate
+exact-digest activation. Runtime cap immutability remains unchanged. Existing
+contracts gain no fields or changed serialization. 107 backend tests and 48
+worker tests passed; this amendment repair is not yet deployed.
+
+The retained correction document
+`2a32ed349d3f3ba53392155378fbe89da3b3f49550ad09cab5c991b14cc7d4e2`
+contains the revised 104-draw method. A read-only prospective replay, changing
+only its two authorized caps, returned no native structural findings, with
+65,936 histories, 308 functionals, 20,445,568 OLS fits and 266,240,000 statistics.
+No original artifact was rewritten. This supports preparing a no-new-author-call
+successor for fresh independent review; it does not establish scientific
+acceptance, executed calibration, engineering or backtesting.

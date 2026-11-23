@@ -99,6 +99,18 @@ class MethodTaskContract(BaseModel):
                 raise ValueError('Invalid frozen assurance outputs or resource caps')
         elif 'assurance' in method or 'assurance' in self.policy.allowed_method_fields:
             raise ValueError('Assurance requires an explicitly approved V2 successor')
+        amendment_digest = self.dependencies.get('prospective_budget_amendment')
+        if amendment_digest is not None:
+            amendment = self.evidence_catalog.get(amendment_digest, {})
+            if (method.get('schema_version') != 'design-adequacy-contract-v2'
+                    or amendment.get('schema_version') != 'method-budget-amendment-v1'
+                    or amendment.get('mandate_digest') != self.mandate_digest
+                    or amendment.get('execution_authority') is not False
+                    or amendment.get('prospective_caps') != method['assurance']['workload']['caps']):
+                raise ValueError('Budget amendment must bind the exact initial frozen caps and mandate')
+            parent_digest = amendment.get('parent_proposal_digest')
+            if not isinstance(parent_digest, str) or not re.fullmatch('[a-f0-9]{64}', parent_digest):
+                raise ValueError('Budget amendment requires immutable parent proposal provenance')
         bounded(self.proposal)
         for document in self.evidence_catalog.values():
             bounded(document)
