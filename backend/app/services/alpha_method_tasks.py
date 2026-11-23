@@ -155,7 +155,7 @@ def verified_method_result(task):
         result = deepcopy(result)
         # Transport and individual documents stay bounded. Expanded history
         # repeats the same immutable catalog once per authorized tool call.
-        audit_limit = 262144 * (1 + contract.policy.max_tool_calls)
+        audit_limit = 524288 * (1 + contract.policy.max_tool_calls)
         if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 524288:
             raise ValueError('Compact method state exceeds bound')
         evidence = result['state']['evidence']
@@ -191,6 +191,8 @@ def verified_method_result(task):
                     or len(set(envelope['evidence'])) != len(envelope['evidence'])):
                 raise ValueError('Invalid method evidence envelope references')
             restored = envelope | {'evidence': {ref: leaves[ref] for ref in envelope['evidence']}}
+            if len(json.dumps(restored, sort_keys=True, separators=(',', ':')).encode()) > 524288:
+                raise ValueError('Reconstructed method diagnostic envelope exceeds bound')
             if digest(restored) != key:
                 raise ValueError('Method evidence envelope digest mismatch')
             evidence[key] = restored

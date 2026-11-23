@@ -140,8 +140,9 @@ def test_cached_method_authority_is_checked_again():
         service.require_current_method_authority(db, task)
 
 
-def ready_task(*, structured=False, consistency=None, projected=False):
+def ready_task(*, structured=False, consistency=None, projected=False, max_tool_calls=4):
     raw = fixture()[4]
+    raw['policy']['max_tool_calls'] = max_tool_calls
     if structured:
         raw['proposal']['method'].update(experiment={'synthetic': True}, calibration_design={})
     c = MethodTaskContract.model_validate(raw)
@@ -257,8 +258,9 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
 @pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest', 'proposal_ref', 'duplicate_proposal'])
 @pytest.mark.parametrize('large_history', [False, True, 'over_wire'])
 @pytest.mark.parametrize('proposal_reference', [False, True])
-def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, proposal_reference):
-    task = ready_task()
+@pytest.mark.parametrize('max_tool_calls', [1, 4])
+def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, proposal_reference, max_tool_calls):
+    task = ready_task(max_tool_calls=max_tool_calls)
     result = task.result['summary']['method_episode']
     state = result['state']
     if large_history:
