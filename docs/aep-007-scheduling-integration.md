@@ -83,6 +83,16 @@ made zero additional author/diagnostic calls. The campaign advanced to fresh
 independent method review, not scientific acceptance or engineering. Validation:
 64 worker and 83 backend tests passed; deployed API health is healthy.
 
+At 19:05 UTC, both review tasks completed successfully as executions, but their
+verdicts differed: one accepted the pre-authoring definition; the other rejected
+the conflicting latent and derived meanings of `g_t`. The controller recorded
+`method_correction_created` and automatically started successor
+`f28e6be3-1707-4dd8-9136-030c46bd2660`, preserving the original deadline and only
+the remaining two author calls/four diagnostics. No operator edited the proposal
+or created that successor. This demonstrates bounded review-to-correction
+recovery, not completed method acceptance or engineering. Solver-capacity and
+Monte Carlo-precision limitations remain explicit.
+
 Broad discovery is contained by a stopped discovery director and agent-level
 pauses on intelligence, senior research, representation and strategy engineering.
 The workflow drain was lifted only for this isolated commissioning queue.
