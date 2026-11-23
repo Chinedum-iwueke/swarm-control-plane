@@ -120,6 +120,30 @@ def large_handoff():
 
 
 @pytest.mark.parametrize("codec", [backend, worker])
+def test_high_entropy_handoff_has_bounded_lossless_wire_budget(codec):
+    import random
+    document = large_handoff()
+    document['accepted_method_handoff']['packet']['evidence']['history'] = base64.b64encode(
+        random.Random(42).randbytes(70_000)).decode()
+    encoded = codec.encode_engineering_evidence(document)
+    assert codec.WIRE_LIMIT < len(encoded.encode()) <= codec.HANDOFF_WIRE_LIMIT
+    for decoder in (backend, worker):
+        assert decoder.decode_engineering_evidence(encoded) == document
+        assert len(decoder.prompt_engineering_evidence(encoded).encode()) <= decoder.EXPANDED_LIMIT
+    document['accepted_method_handoff']['packet']['evidence']['history'] = base64.b64encode(
+        random.Random(42).randbytes(150_000)).decode()
+    with pytest.raises(ValueError, match='wire'):
+        codec.encode_engineering_evidence(document)
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
+def test_plain_evidence_cannot_borrow_handoff_wire_allowance(codec):
+    raw = codec.canonical({'text': 'x' * 49_000})
+    with pytest.raises(ValueError, match='48000'):
+        codec.decode_engineering_evidence(raw)
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
 def test_large_handoff_preserves_full_evidence_and_bounds_model_view(codec):
     document = large_handoff()
     before = deepcopy(document)

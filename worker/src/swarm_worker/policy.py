@@ -86,7 +86,7 @@ class EngineeringMissionContract(BaseModel):
     objective: str = Field(min_length=10, max_length=4000)
     allowed_paths: list[str] = Field(min_length=1, max_length=50)
     context_paths: list[str] = Field(default_factory=list, max_length=50)
-    evidence_context: str = Field(default="{}", max_length=48000)
+    evidence_context: str = Field(default="{}", max_length=131072)
     acceptance_criteria: list[str] = Field(min_length=1, max_length=50)
     stop_conditions: list[str] = Field(min_length=1, max_length=20)
     max_files_changed: int = Field(ge=1, le=100)

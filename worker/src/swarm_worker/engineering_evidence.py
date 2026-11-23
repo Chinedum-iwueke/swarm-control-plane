@@ -10,6 +10,7 @@ import lzma
 import zlib
 
 WIRE_LIMIT = 48_000
+HANDOFF_WIRE_LIMIT = 131_072
 EXPANDED_LIMIT = 96_000
 HANDOFF_LIMIT = 524_288
 FORMAT = "engineering-evidence-zlib-v1"
@@ -21,6 +22,10 @@ def document_limit(document):
     if isinstance(handoff, dict) and handoff.get("schema_version") == "accepted-method-engineering-handoff-v1":
         return HANDOFF_LIMIT
     return EXPANDED_LIMIT
+
+
+def wire_limit(document):
+    return HANDOFF_WIRE_LIMIT if document_limit(document) == HANDOFF_LIMIT else WIRE_LIMIT
 
 
 def canonical(value):
@@ -57,8 +62,8 @@ def _loads(raw):
 
 
 def decode_engineering_evidence(value):
-    if not isinstance(value, str) or len(value.encode()) > WIRE_LIMIT:
-        raise ValueError("engineering evidence exceeds 48000 wire bytes")
+    if not isinstance(value, str) or len(value.encode()) > HANDOFF_WIRE_LIMIT:
+        raise ValueError("engineering evidence exceeds bounded handoff wire bytes")
     document = _loads(value)
     if isinstance(document, dict) and "_evidence_transport" in document:
         if (set(document) != {"_evidence_transport", "sha256", "expanded_bytes", "payload"}
@@ -82,6 +87,8 @@ def decode_engineering_evidence(value):
         if isinstance(document, dict) and "_evidence_transport" in document:
             raise ValueError("nested engineering evidence transport is forbidden")
     validate_document(document)
+    if len(value.encode()) > wire_limit(document):
+        raise ValueError("engineering evidence exceeds 48000 wire bytes")
     if len(canonical(document).encode()) > document_limit(document):
         raise ValueError("engineering evidence expansion bound failed")
     prompt_document(document)
@@ -105,8 +112,8 @@ def encode_engineering_evidence(document):
         "expanded_bytes": len(raw),
         "payload": base64.b64encode(lzma.compress(raw, preset=3) if extended else zlib.compress(raw)).decode("ascii"),
     })
-    if len(envelope.encode()) > WIRE_LIMIT:
-        raise ValueError("engineering evidence exceeds 48000 wire bytes")
+    if len(envelope.encode()) > wire_limit(document):
+        raise ValueError("engineering evidence exceeds bounded wire bytes")
     return envelope
 
 

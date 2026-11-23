@@ -93,7 +93,7 @@ Do not spend another author call merely retrying the unchanged eight-million cap
 
 ## Local repair verification
 
-The prospective declaration bound is now aligned locally with the assurance
+The prospective declaration bound is aligned with the assurance
 ledger's existing finite integer bound of 10^15 in Bulletproof, the API and
 worker shape checks. This is a serialization/validation bound, not an approved
 experiment budget. The legacy native execution ceiling and worker episode
@@ -103,8 +103,9 @@ The structured experiment still requires its own executor.
 Regression tests cover rejection of invalid declaration types and bounds, API
 and worker shape parity, no random generation or bootstrap calls on an
 over-budget execution request, and refusal to route structured designs into the
-legacy marginal probe. This repair is local and uncommissioned; it does not
-change the source pinned by existing mandates.
+legacy marginal probe. Bulletproof source `6f3df74` now carries this repair in
+the separately approved commissioning lineage. Existing mandates retain their
+original source bindings.
 
 ## Commissioning outcome and budget-binding repair
 
@@ -127,7 +128,9 @@ API/worker checks. A new successor must bind approved caps into its initial
 proposal, retain the parent proposal digest and old caps, and receive separate
 exact-digest activation. Runtime cap immutability remains unchanged. Existing
 contracts gain no fields or changed serialization. 107 backend tests and 48
-worker tests passed; this amendment repair is not yet deployed.
+worker tests passed. The amendment repair was subsequently deployed as
+`7167881`; audit transport alignment followed in `1a79885`, and explicit
+operative-definition invalidation in `fb26f74`.
 
 The retained correction document
 `2a32ed349d3f3ba53392155378fbe89da3b3f49550ad09cab5c991b14cc7d4e2`
@@ -137,3 +140,64 @@ only its two authorized caps, returned no native structural findings, with
 No original artifact was rewritten. This supports preparing a no-new-author-call
 successor for fresh independent review; it does not establish scientific
 acceptance, executed calibration, engineering or backtesting.
+
+## Accepted amendment-consistency method (2026-11-23)
+
+Campaign `8799a2ef-4239-4079-89e4-58f1318ba8dc`, separately activated under
+mandate `202f4582-0e57-4648-ac09-65e901d3f936`, completed correction task
+`8f5784b9-21b7-45f8-b9ed-8b2c0fcb0f0d`. Its verified method packet is
+`b84147a349a10e7c0d30e005d19bb83d82799983f935e460c9e426bfc738f9d2`.
+Both independent review tasks accepted this exact packet with no findings:
+
+- `624176c9-c731-4acd-9b61-062dfd8ce800`
+- `4c022029-a23c-4a5d-a4a6-5ca70f71034c`
+
+The live campaign next action is `materialize_accepted_method_handoff`.
+Acceptance establishes pre-execution specification adequacy only. Neither
+review establishes empirical calibration, numerical feasibility, sufficient
+observed support, power, scientific qualification or profitability.
+
+The campaign remains method-only: engineering and backtests have not started.
+The next handoff requires a successful governed native planning task at
+`6f3df74`, not just the retained read-only planning replay. The older planning
+task `cae83a9d-314b-4c46-a5f7-dff06a6f3d20` belongs to the previous source.
+`alpha_method_engineering.verified_plan_evidence` checks task success, source,
+candidate identity, receipt custody, exact reviewed report and engineering
+template agreement before materialization.
+
+Mandate `6d530aac-bb03-4fa7-9f8c-7f60888edb13` subsequently received exact-digest
+founder approval. It permits current-source plan revalidation and separately
+approved synthetic-test engineering; it does not authorize real-data calibration
+or market-data backtests.
+
+The first planning task `1a8f7699-721a-4730-8213-2c2d5940d73c` failed closed:
+replacing the admission binding without rebuilding its bound coverage package
+caused `coverage receipt identity or digest mismatch`. No model call occurred.
+The historical failure remains intact. Governed single-panel re-attestation
+`b4752d0e-ca1a-44a9-a030-7eb4c5baf147` then succeeded. Its planning successor
+`ed1312dc-1395-4351-a146-f77340de334f` produced a custody-verified ready report
+`3ed4c16ee285696ece75d8dc9c6c39568ed77f9e79c332da419f4e4c572ac886`
+with no rejection reasons and unchanged smoke/scientific partitions.
+
+Successor campaign `7263fc0e-f885-43b3-8e98-1eeb99081812`, digest
+`8197a450b6f79211882de89c5a0e3191108259a8450b5605af90b3eb62fa2038`,
+received separate activation approval. It binds the new planning receipt,
+one static refresh, fresh independent handoff reviews and separately approved
+synthetic-test engineering. Engineering has not started. The 55 focused
+method-engineering and requirements-handoff tests pass.
+
+The static refresh task `f257936f-7141-4052-bacc-1cfe99ac9f23` completed;
+review tasks `585b087e-e798-4ec7-a87e-0a57a2cbafa7` and
+`37eb51da-c2ed-4a04-853b-fdb10ec486b1` accepted packet
+`41a8b737b53247fcc7ccdbcf6e5cb23eacf12fd414798d80f0e01b64d3b2483b`
+without findings. Materialization then failed on the 48,000-byte wire limit.
+The repair allows 131,072 wire bytes only for accepted-method handoffs, retaining
+the 524,288-byte expansion bound, ordinary evidence bounds, integrity checks and
+file-backed model context. API and worker validators agree. The live retained
+packet passed offline lossless transport replay at 79,669 wire / 405,609 expanded
+bytes; that replay used no authority and created no task. The expanded regression
+suite passed 187 tests. Deployment and actual engineering completion remain
+separate evidence requirements.
+
+Do not infer end-to-end autonomy from method acceptance: operator-prepared
+successors, coverage-package recovery and transport repairs were still needed.
