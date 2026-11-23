@@ -117,6 +117,8 @@ class EngineeringEpisode:
     async def run(self, *, recovery_token=None, review_recovery=None):
         with self.store.locked():
             state = self.store.load()
+            # Retry restoration may relocate the workspace, not the approved checkpoint.
+            retained_checkpoint = deepcopy(state)
             if self.restore:
                 self.restore(state)
             if review_recovery is not None:
@@ -126,7 +128,7 @@ class EngineeringEpisode:
                     if (not isinstance(review_recovery, dict)
                             or set(review_recovery) != {'schema_version', 'checkpoint_digest'}
                             or review_recovery['schema_version'] != 'engineering-unrefuted-review-recovery-v1'
-                            or review_recovery['checkpoint_digest'] != canonical_digest(state)
+                            or review_recovery['checkpoint_digest'] != canonical_digest(retained_checkpoint)
                             or state['status'] != 'blocked' or state.get('reason') != 'review_disputed'
                             or state['stage'] != 'adjudicate' or self.policy.review_tests
                             or state.get('pending') is not None
@@ -140,7 +142,7 @@ class EngineeringEpisode:
                         permit = await self.before_stage('review_recovery', state)
                         if permit.get('allowed') is not True:
                             return state
-                    prior = deepcopy(state)
+                    prior = retained_checkpoint
                     state['events'].append({'stage': 'review_recovery',
                         'review_recovery_digest': request_digest,
                         'checkpoint_digest': canonical_digest(prior), 'prior_state': prior,

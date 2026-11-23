@@ -228,3 +228,12 @@ already abandoned lease or grant additional authority.
 At this checkpoint, bounded recovery still requires a live retry after lease
 expiry. No independent code approval, full validation, real-data calibration,
 market-data backtest or BT-009 outcome has been demonstrated by this episode.
+
+The expired lease was subsequently fenced and the unchanged task reapproved.
+Its retry failed closed before a model call: restoration relocated the workspace
+before the recovery guard hashed the checkpoint. The controller now binds the
+request to the original stored checkpoint and retains that exact prior state,
+while still checking restored code, original deadline and remaining budgets.
+Regression cases cover relocated retries and rejection of altered digests,
+code, deadlines, counters and terminal reasons. This is a retry-lifecycle fix,
+not a change to the scientific method or permission to bypass code review.

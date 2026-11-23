@@ -126,7 +126,8 @@ async def test_unchecked_review_rejection_repairs_or_exhausts_without_adjudicati
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('mutation', [None, 'digest', 'code', 'deadline', 'repairs', 'calls', 'reason'])
-async def test_explicit_unspent_review_recovery_is_bound_and_preserves_history(tmp_path, mutation):
+@pytest.mark.parametrize('relocate', [False, True])
+async def test_explicit_unspent_review_recovery_is_bound_and_preserves_history(tmp_path, mutation, relocate):
     import time
     retained = store(tmp_path)
     state = retained.load()
@@ -147,7 +148,11 @@ async def test_explicit_unspent_review_recovery_is_bound_and_preserves_history(t
         calls.append(stage)
         return {'status':'pass'}
 
-    episode = EngineeringEpisode(retained, policy(), lambda: 'changed' if mutation == 'code' else 'code', perform)
+    def restore(checkpoint):
+        if relocate:
+            checkpoint['workspace'] = str(tmp_path / 'retry' / 'repository')
+
+    episode = EngineeringEpisode(retained, policy(), lambda: 'changed' if mutation == 'code' else 'code', perform, restore)
     if mutation:
         with pytest.raises(EpisodeIntegrityError, match='checkpoint'):
             await episode.run(review_recovery=request)
@@ -158,6 +163,9 @@ async def test_explicit_unspent_review_recovery_is_bound_and_preserves_history(t
     assert result['repairs'] == 2 and result['model_calls'] == 6
     assert result['deadline'] == state['deadline']
     assert result['events'][1]['prior_state'] == state
+    assert result['events'][1]['checkpoint_digest'] == request['checkpoint_digest']
+    if relocate:
+        assert result['workspace'] == str(tmp_path / 'retry' / 'repository')
     assert calls == ['author','focused','review','validation','bundle']
     count = len(calls)
     again = await episode.run(review_recovery=request)
