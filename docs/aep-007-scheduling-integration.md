@@ -93,6 +93,23 @@ or created that successor. This demonstrates bounded review-to-correction
 recovery, not completed method acceptance or engineering. Solver-capacity and
 Monte Carlo-precision limitations remain explicit.
 
+The automatic successor subsequently completed and published without operator
+recovery. Both fresh review tasks (`30bfeb61-7be6-4a3e-8272-9666e80f16d2` and
+`2f2af80f-a783-4f11-823b-95d57c8ae33a`) accepted packet
+`a91a4325bae0d05a8cfcf4902a0537c045498947dde15bc486ae6b91de515cc7`.
+Total usage across the two tasks: two author calls, four diagnostics and two
+repairs. The correction uniquely names the latent wick driver and derived range
+control. This is pre-authoring method acceptance with retained solver-capacity
+and precision limitations, not calibration success or scientific qualification.
+The campaign reached `materialize_accepted_method_handoff`.
+
+The founder approved mandate `41abb4b9-84ff-4050-a6eb-b332f03ccccd`, digest
+`68382243f1f1695b0ba15cdf2353bc5097249b809829d1c087675f777d696c42`, for
+current-source native plan revalidation, fresh review handoff and separately
+approved engineering/synthetic tests. Campaign activation and engineering task
+approval remain separate. No market-data backtests or real-data calibration are
+authorized; discovery remains disabled.
+
 Broad discovery is contained by a stopped discovery director and agent-level
 pauses on intelligence, senior research, representation and strategy engineering.
 The workflow drain was lifted only for this isolated commissioning queue.
