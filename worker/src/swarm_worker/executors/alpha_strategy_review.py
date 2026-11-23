@@ -82,6 +82,14 @@ class AlphaStrategyReviewExecutor:
             document["properties"]["evidence_coverage"] = coverage_schema(context)
             document["required"].append("evidence_coverage")
         document["properties"]["subject_digest"]["enum"] = [contract.subject_digest]
+        if method_scope and not adjudication_scope:
+            packet = contract.qualification['artifact_bundle']['method_review_packet']
+            keys = sorted(packet['requirements'])
+            document['$defs']['MethodVerdict']['properties']['checks'] = {
+                'type': 'array', 'minItems': len(keys), 'maxItems': len(keys),
+                'items': {'type': 'string', 'enum': keys},
+                'description': 'Exact requirement keys only; put explanations in rationale or findings.',
+            }
         if adjudication_scope:
             bundle = contract.qualification['artifact_bundle']
             packet, reviews = bundle['method_review_packet'], bundle['rejected_reviews']
@@ -112,6 +120,8 @@ class AlphaStrategyReviewExecutor:
              if adjudication_scope else
              "Review the exact method_review_packet, NOT a finished strategy or observed result. "
              "Return method_verdict with the packet digest and every requirement key checked exactly once. "
+             "method_verdict.checks contains only exact keys, without explanations or suffixes; "
+             "put explanations in rationale or findings. "
              "Every rejection finding must cite a requirement key, retained evidence digests, the violation "
              "and a verification procedure. Outer blockers must exactly equal finding violations; outer "
              "approve corresponds to method accept. Do not invent evidence or require post-execution "

@@ -5,6 +5,26 @@ the production default. Controlled fixtures are not genuine-candidate receipts.
 
 ## November 23: retained-evidence audit and V2 assurance
 
+### Latest handoff status
+
+The founder activated `1c7609b0-a62c-4917-bbf3-503f672aabb2`, digest
+`8c5b60d71d408a611e3b6e676c124deda2b82d020fe59198c4665f5c27a7aa42`,
+under mandate `41abb4b9-84ff-4050-a6eb-b332f03ccccd`. Current-source coverage
+and native planning succeeded; the refreshed method also published successfully.
+The API deployment through `6b86fbc` is healthy. The handoff transport preserves
+the full accepted-method file when its inline prompt exceeds the prompt limit.
+
+Fresh specification review `e5f0886a-40a0-4ba2-9359-e14f2caaaef8` rejected
+the retained solver-capacity and precision limitations. The causality reviewer
+`2334a294-548c-466c-845e-48a710f180f6` returned an acceptance with explanations
+appended to all 13 requirement keys, so exact-key validation rejected publication.
+Its artifact is retained, not a published acceptance. The output schema now
+constrains method check entries to the frozen requirement keys and exact count;
+the independent runtime uniqueness/completeness validator remains unchanged.
+This format repair cannot overturn the specification rejection. No engineering,
+calibration or market-data backtest has started for this handoff. The current
+campaign authorizes no further method correction or dispute adjudication.
+
 The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
 definition and workload-accounting defects, not missing reviewer transport.
 Both review tasks received the same packet and its 18 evidence documents. The

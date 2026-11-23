@@ -115,6 +115,10 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
             if scope == "method_design":
                 assert "every requirement key checked exactly once" in prompt
                 assert "Inspect the pinned native implementation" not in prompt
+                schema = json.loads((workspace.artifacts / 'strategy-review-schema.json').read_text())
+                checks = schema['$defs']['MethodVerdict']['properties']['checks']
+                assert checks['items']['enum'] == sorted(packet['requirements'])
+                assert checks['minItems'] == checks['maxItems'] == len(packet['requirements'])
             elif scope:
                 assert "Do not reject solely because correctly specified post-construction checks" in prompt
                 assert "Precision arithmetic does not establish adequate power" in prompt
