@@ -237,3 +237,26 @@ while still checking restored code, original deadline and remaining budgets.
 Regression cases cover relocated retries and rejection of altered digests,
 code, deadlines, counters and terminal reasons. This is a retry-lifecycle fix,
 not a change to the scientific method or permission to bypass code review.
+
+Live recovery then reached author dispatch but stopped before Codex execution:
+the retained author session was bound to the previous attempt's workspace. Its
+reservation remains charged (five model reservations, two repairs); no charge
+was silently refunded. The controller remains drain-paused pending reapproval
+of an exact-checkpoint continuation within the existing authority.
+
+Session relocation now requires the adapter to verify that the original session
+workspace, retained checkpoint and restored workspace have identical source/code
+inside the same task custody. Only the workspace component may change; model,
+provider, billing home, source, contract and exact session ID remain bound.
+Codex receives an explicit working root, and the relocation is retained in episode
+state. Cross-attempt tests interrupt after durable author completion, restore
+into a new worktree, repair, independently review and bundle; tampered code is
+rejected before authoring. This is fixture evidence, not genuine strategy review
+acceptance. A fresh live correction has not yet been authorized or completed.
+
+The narrow pre-launch session-binding recovery requires an exact checkpoint,
+unchanged code, a retained session and enough unspent calls for author/reviewer.
+It continues the already-reserved repair without resetting its count, refunding
+the failed call reservation or extending the deadline. Other policy violations
+remain blocked. Complete latest rejection findings are supplied separately from
+truncated event logs, so transport recovery cannot hide the defects to repair.

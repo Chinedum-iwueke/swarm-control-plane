@@ -328,3 +328,47 @@ async def test_completed_receipt_does_not_authorize_changed_code(tmp_path):
     assert (await engine.run())["status"] == "completed"
     code[0] = "changed"
     assert (await engine.run())["reason"] == "completed_workspace_changed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mutation', [None, 'digest', 'code', 'deadline', 'calls', 'reason', 'session'])
+async def test_session_binding_recovery_keeps_reserved_repair_and_charges(tmp_path, mutation):
+    import time
+    retained = store(tmp_path)
+    state = retained.load()
+    state.update(status='blocked', reason='policy_violation', stage='author', code_digest='code',
+                 model_calls=5, repairs=2, author_session={'session_id': 'retained'},
+                 events=[{'stage': 'author', 'result': {'status': 'policy_violation',
+                         'reason': 'session source/model/workspace/billing binding changed'}}])
+    if mutation == 'deadline': state['deadline'] = time.time()-1
+    if mutation == 'calls': state['model_calls'] = 7
+    if mutation == 'reason': state['events'][-1]['result']['reason'] = 'scope violation'
+    if mutation == 'session': state.pop('author_session')
+    retained.root.mkdir()
+    retained.save(state)
+    request = {'schema_version': 'engineering-session-binding-recovery-v1',
+               'checkpoint_digest': canonical_digest(state) if mutation != 'digest' else 'wrong'}
+    calls = []
+
+    async def perform(stage, *_):
+        calls.append(stage)
+        return {'status': 'pass'}
+
+    def restore(checkpoint):
+        checkpoint['workspace'] = str(tmp_path/'retry'/'repository')
+
+    episode = EngineeringEpisode(retained, policy(), lambda: 'changed' if mutation == 'code' else 'code',
+                                 perform, restore)
+    if mutation:
+        with pytest.raises(EpisodeIntegrityError, match='checkpoint'):
+            await episode.run(session_recovery=request)
+        assert not calls and retained.load() == state
+        return
+    result = await episode.run(session_recovery=request)
+    assert result['status'] == 'completed'
+    assert result['repairs'] == 2 and result['model_calls'] == 7
+    assert result['deadline'] == state['deadline']
+    assert result['events'][1]['prior_state'] == state
+    assert calls == ['author', 'focused', 'review', 'validation', 'bundle']
+    assert await episode.run(session_recovery=request) == result
+    assert len(calls) == 5

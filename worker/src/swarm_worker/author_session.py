@@ -8,7 +8,7 @@ from swarm_worker.model_lane import model_call_allowed, provider_key
 
 
 async def session_author(executor, *, state, binding, prompt, workspace, heartbeat,
-                         heartbeat_failures, remaining):
+                         heartbeat_failures, remaining, verified_relocation=None):
     from swarm_worker.method_episode import MethodCapacityUnavailable
     if not await model_call_allowed():
         state['session_capacity_before_launch']=True
@@ -23,11 +23,21 @@ async def session_author(executor, *, state, binding, prompt, workspace, heartbe
         home=home,provider=lane)
     retained=state.get('author_session')
     if retained and retained['binding']!=identity:
-        raise EpisodeIntegrityError('session source/model/workspace/billing binding changed')
+        previous = retained['binding']
+        expected = dict(previous, workspace=identity['workspace'])
+        relocation = {'from': previous['workspace'], 'to': identity['workspace'],
+                      'code_digest': state.get('code_digest')}
+        if expected != identity or verified_relocation != relocation:
+            raise EpisodeIntegrityError('session source/model/workspace/billing binding changed')
+        state.setdefault('author_session_relocations', []).append(relocation)
+        retained['binding'] = identity
+        prompt = ('The controller verified identical source and code in a new attempt workspace. '
+                  'Use only the current working root; historical absolute workspace paths are stale.\n'
+                  + prompt)
     if not retained and state['model_calls']>1 and not state.pop('session_capacity_before_launch',False):
         raise EpisodeIntegrityError('interrupted session identity unavailable; explicit successor required')
     # AsyncProcessRunner owns billing routing; do not route the same call twice.
-    args=['codex','exec','--sandbox','workspace-write']
+    args=['codex','exec','--sandbox','workspace-write','--cd',str(workspace.repository)]
     if retained:
         session=str(UUID(retained['session_id']))
         args+=['resume',session]

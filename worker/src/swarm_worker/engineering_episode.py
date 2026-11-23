@@ -114,13 +114,45 @@ class EngineeringEpisode:
         self.restore = restore
         self.before_stage = before_stage
 
-    async def run(self, *, recovery_token=None, review_recovery=None):
+    async def run(self, *, recovery_token=None, review_recovery=None, session_recovery=None):
         with self.store.locked():
             state = self.store.load()
             # Retry restoration may relocate the workspace, not the approved checkpoint.
             retained_checkpoint = deepcopy(state)
             if self.restore:
                 self.restore(state)
+            if session_recovery is not None:
+                request_digest = canonical_digest(session_recovery)
+                consumed = any(e.get('session_recovery_digest') == request_digest for e in state['events'])
+                if not consumed:
+                    last = state['events'][-1] if state['events'] else {}
+                    if (not isinstance(session_recovery, dict)
+                            or set(session_recovery) != {'schema_version', 'checkpoint_digest'}
+                            or session_recovery['schema_version'] != 'engineering-session-binding-recovery-v1'
+                            or session_recovery['checkpoint_digest'] != canonical_digest(retained_checkpoint)
+                            or state['status'] != 'blocked' or state.get('reason') != 'policy_violation'
+                            or state['stage'] != 'author' or state.get('pending') is not None
+                            or not state.get('author_session')
+                            or last.get('stage') != 'author'
+                            or last.get('result') != {'status': 'policy_violation',
+                                'reason': 'session source/model/workspace/billing binding changed'}
+                            or self.fingerprint() != state['code_digest']
+                            or state['model_calls'] + 2 > self.policy.max_model_calls
+                            or time.time() >= state['deadline']):
+                        raise EpisodeIntegrityError('Session recovery does not match eligible retained checkpoint')
+                    if self.before_stage:
+                        permit = await self.before_stage('session_recovery', state)
+                        if permit.get('allowed') is not True:
+                            return state
+                    state['events'].append({'stage': 'session_recovery',
+                        'session_recovery_digest': request_digest,
+                        'checkpoint_digest': canonical_digest(retained_checkpoint),
+                        'prior_state': retained_checkpoint, 'code_digest': state['code_digest'],
+                        'result': {'status': 'continue_reserved_repair',
+                                   'evidence': 'Reapproved pre-launch binding recovery; all charges and deadline retained'}})
+                    state.update(status='running', stage='author')
+                    state.pop('reason', None)
+                    self.store.save(state)
             if review_recovery is not None:
                 request_digest = canonical_digest(review_recovery)
                 consumed = any(e.get('review_recovery_digest') == request_digest for e in state['events'])

@@ -190,7 +190,8 @@ async def test_empty_review_checks_route_retained_findings_to_author(tmp_path):
         accepted = len(reviews) == 2
         (kwargs['workspace'].artifacts / 'decision.json').write_text(json.dumps({
             'approved': accepted, 'summary': 'fixture review',
-            'findings': [] if accepted else [{'severity':'high','message':'missing native terminal coverage'}]}))
+            'findings': [] if accepted else [{'severity':'high',
+                'message':'missing native terminal coverage ' + 'retained detail ' * 300 + 'END_OF_FINDING'}]}))
         return step('independent-review', kwargs['workspace'])
 
     async def heartbeat(_):
@@ -201,6 +202,7 @@ async def test_empty_review_checks_route_retained_findings_to_author(tmp_path):
     assert result.success, result.model_dump()
     assert len(authors) == len(reviews) == 2
     assert 'missing native terminal coverage' in authors[1]
+    assert 'END_OF_FINDING' in authors[1]
     assert result.summary['engineering_episode']['repairs'] == 1
     again = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
     assert again.success and len(authors) == 2
@@ -244,3 +246,69 @@ async def test_new_attempt_restores_partial_workspace_without_resetting_call_bud
     result = await executor.execute(task=task, workflow=workflow, workspace=retry, heartbeat=heartbeat)
     assert result.success, result.model_dump()
     assert result.summary["engineering_episode"]["model_calls"] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('tamper', [False, True])
+async def test_session_retry_relocates_only_verified_code_and_completes_review(tmp_path, monkeypatch, tamper):
+    from swarm_worker.engineering_episode import EpisodeIntegrityError
+    monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
+    monkeypatch.setenv('SWARM_OPENAI_BILLING_LANE', 'subscription')
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    task.input_contract['evidence_context'] = json.dumps({'author_continuity': 'session'})
+    authors = []
+
+    async def codex(**kwargs):
+        ws = kwargs['workspace']
+        if kwargs['name'] == 'coding-agent':
+            authors.append(kwargs)
+            value = 'None' if len(authors) == 1 else '1'
+            (ws.repository/'signal_logic.py').write_text(f'def signal():\n    return {value}\n# retained\n')
+            result = step('coding-agent', ws)
+            (ws.logs/'coding-agent.stdout.log').write_text(json.dumps({
+                'type': 'thread.started', 'thread_id': '11111111-1111-4111-8111-111111111111'}))
+            return result
+        (ws.artifacts/'decision.json').write_text(json.dumps({
+            'approved': True, 'summary': 'independent fixture review', 'findings': []}))
+        return step('independent-review', ws)
+
+    async def heartbeat(_):
+        pass
+
+    bounded = executor._run_bounded_command
+
+    async def interrupt(**kwargs):
+        raise RuntimeError('worker interrupted after durable author completion')
+
+    executor._run_codex = codex
+    executor._run_bounded_command = interrupt
+    with pytest.raises(RuntimeError, match='worker interrupted'):
+        await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    retry_dir = workspace.plan.attempt_directory.parent/'attempt-2'
+    retry_repo = retry_dir/'repository'
+    retry_dir.mkdir()
+    subprocess.run(['git', 'worktree', 'add', '--detach', str(retry_repo), workspace.metadata.resolved_base_commit],
+                   cwd=workspace.repository, check=True, capture_output=True)
+    (retry_dir/'logs').mkdir()
+    (retry_dir/'artifacts').mkdir()
+    retry = TaskWorkspace(replace(workspace.plan, attempt_number=2, attempt_directory=retry_dir,
+        workspace_repository=retry_repo, logs_directory=retry_dir/'logs', artifacts_directory=retry_dir/'artifacts'),
+        workspace.metadata.model_copy(update={'attempt_number': 2, 'workspace_repository': retry_repo}))
+    executor._run_bounded_command = bounded
+    task.attempt_count = 2
+    if tamper:
+        (workspace.repository/'signal_logic.py').write_text('def signal():\n    return 999\n')
+        with pytest.raises(EpisodeIntegrityError, match='differs from checkpoint'):
+            await executor.execute(task=task, workflow=workflow, workspace=retry, heartbeat=heartbeat)
+        assert len(authors) == 1
+        return
+    result = await executor.execute(task=task, workflow=workflow, workspace=retry, heartbeat=heartbeat)
+    assert result.success, result.model_dump()
+    assert len(authors) == 2
+    assert authors[1]['workspace'].repository == retry_repo
+    assert 'resume' in authors[1]['args']
+    assert authors[1]['args'][authors[1]['args'].index('--cd')+1] == str(retry_repo)
+    state = json.loads((retry_dir.parent/'engineering-episode/state.json').read_text())['state']
+    assert state['model_calls'] == 3 and state['repairs'] == 1
+    assert state['author_session']['binding']['workspace'] == str(retry_repo)
+    assert len(state['author_session_relocations']) == 1
