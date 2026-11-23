@@ -54,6 +54,26 @@ R2 retains only two unspent author calls, four diagnostics and the original
 21:35 UTC deadline, with no repeat adjudication. This is an operator-assisted
 transport recovery; uninterrupted end-to-end autonomy remains unproved.
 
+R2 task `2387c92d-4631-4fda-b374-eb19a37e77e2` corrected the history accounting
+with one author call and two diagnostics. Specification review accepted;
+causality review rejected an implicit generation cycle and an undefined final
+Newton iterate. Its automatic successor again exceeded the input envelope.
+Repair `be6cf89` aligns API/worker aggregate inputs at 512 KiB/64 documents,
+retains 256 KiB individual-document and existing prompt limits, and sends native
+design diagnostics the transitive referenced evidence subset. Validation:
+113 backend and 114 worker tests, plus a real source-bound native diagnostic.
+
+The founder activated R3 `a6faf166-04d1-47fa-99fc-b8ab5fd1efff`, digest
+`9063efdcaf3dfb70cd78dcbeec88430369088d38c00bca40a6a08deaefcca409`, using
+only the final unspent author call and two diagnostics with the same deadline.
+Task `2a91240b-19b5-45ec-b4c8-1a7c364e10b5` published a ready packet, but API
+custody still expected the complete diagnostic catalog. Repair `d404a47`
+reconstructs the exact projected catalog before verification, also preserving
+legacy full-catalog receipts. The unchanged real result verified in a read-only
+replay with one model call/two diagnostics; 114 backend tests passed. This
+consumer omission required operator repair and must not be counted as autonomous
+completion. Fresh independent review and engineering remain outstanding.
+
 The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
 definition and workload-accounting defects, not missing reviewer transport.
 Both review tasks received the same packet and its 18 evidence documents. The
