@@ -64,11 +64,24 @@ is preserved; independent acceptance and engineering are not demonstrated.
 Fresh exact-digest approvals commissioned mandate
 `c87c2a79-ad1b-49ce-a9b9-6c49d5e25f1c` and campaign
 `51daa205-4083-4a71-8081-34e12e0f6484`. Task
-`bc71c743-2c17-4350-b4a9-7ad5b256b419` is running with both rejection receipts,
+`bc71c743-2c17-4350-b4a9-7ad5b256b419` ran with both rejection receipts,
 three author calls and six diagnostics available across bounded review-driven
 correction. Method authority ends at 20:52 UTC November 23. Scientific identity,
 experiment, minima and resource caps remain unchanged; no engineering or
 execution is authorized.
+
+At 19:02 UTC, that task succeeded on attempt 2 with one author call, two
+diagnostics and one repair, after a publication-only recovery. The completed
+checkpoint initially exceeded the 256 KiB aggregate review/result bound.
+Transport repair `b40f0cd` retains individual document limits, bounds aggregate
+method evidence at 512 KiB, and uses a hash-verified, lossless compressed envelope
+only when the result exceeds the 256 KiB wire budget. Decompression has an
+explicit output bound and rejects corruption, trailing input and binding changes.
+The actual result is 282,016 bytes expanded (JSON with spaces), 86,567 bytes on
+the wire; API replay verified the exact audit state and review packet. Recovery
+made zero additional author/diagnostic calls. The campaign advanced to fresh
+independent method review, not scientific acceptance or engineering. Validation:
+64 worker and 83 backend tests passed; deployed API health is healthy.
 
 Broad discovery is contained by a stopped discovery director and agent-level
 pauses on intelligence, senior research, representation and strategy engineering.
