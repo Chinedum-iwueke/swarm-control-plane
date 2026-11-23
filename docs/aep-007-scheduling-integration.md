@@ -54,18 +54,33 @@ the canonical proposal in the packet and replaces only the duplicate card with
 an explicit digest/location reference for large packets (65 API tests passed).
 That repair is deployed; reconciliation advanced to independent method review.
 Review tasks `722bf6a5-0395-45f9-9c0a-fd96172b3085` (causality) and
-`f0a3918d-dd3a-4726-841e-8af40ed97b1f` (specification) are running against the
-retained packet. Independent acceptance and engineering are not demonstrated.
+`f0a3918d-dd3a-4726-841e-8af40ed97b1f` (specification) both rejected the retained
+packet: incompatible primitive/derived variable definitions and omitted solver
+work remain. Causality publication exceeded the generic 16 KiB summary ceiling;
+`97cd059` aligns the bounded review envelope and permits verified same-task
+artifact replay. Recovery succeeded with zero model calls. Scientific rejection
+is preserved; independent acceptance and engineering are not demonstrated.
+
+Fresh exact-digest approvals commissioned mandate
+`c87c2a79-ad1b-49ce-a9b9-6c49d5e25f1c` and campaign
+`51daa205-4083-4a71-8081-34e12e0f6484`. Task
+`bc71c743-2c17-4350-b4a9-7ad5b256b419` is running with both rejection receipts,
+three author calls and six diagnostics available across bounded review-driven
+correction. Method authority ends at 20:52 UTC November 23. Scientific identity,
+experiment, minima and resource caps remain unchanged; no engineering or
+execution is authorized.
 
 Broad discovery is contained by a stopped discovery director and agent-level
 pauses on intelligence, senior research, representation and strategy engineering.
 The workflow drain was lifted only for this isolated commissioning queue.
 An unstarted discovery allocation `A4-b77dffd1-001-I` was cancelled through the
 audited cancellation service with zero attempts; historical counters remain
-charged. **Remaining general guard gap:** method-only intent is expressed in
-mandate prose, not a scheduler-enforced typed scope. Introduce explicit scope
-before unattended commissioning; do not rely on an objective string to prevent
-discovery allocation. Preserve existing mandates as immutable records.
+charged. Repair `394cb95` adds immutable `discovery_enabled` permission (legacy
+default true), checked by idea execution intake, direct cycle creation and
+reconciliation. The fresh successor explicitly sets it false. Live reconciliation
+returned active with zero cycles; 148 discovery tests passed. Existing approved
+mandates are not rewritten. This disables discovery only; it does not grant or
+replace campaign, engineering or execution authority.
 
 ## AEP-007C: engineering handoff commissioning
 
