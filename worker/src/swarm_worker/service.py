@@ -475,7 +475,13 @@ class WorkerService:
                         message="Restricted worker started task execution.",
                     ),
                 )
-            except (AuthenticationError, ConflictError) as exc:
+            except ConflictError as exc:
+                return await self._release_or_lease_lost(
+                    api=api, task_id=task.id, task_number=task.task_number,
+                    lease_token=lease_token, category="start_conflict", phase="start",
+                    detail=str(exc),
+                )
+            except AuthenticationError as exc:
                 return self._lease_lost(task, "start", workspace, str(exc))
             started = True
 

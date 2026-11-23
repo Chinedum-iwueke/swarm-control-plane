@@ -861,14 +861,34 @@ async def test_task_start_conflict_is_lease_lost_without_fail(
     tmp_path: Path,
 ) -> None:
     events: list[str] = []
-    api = FakeAPI(events, start_error=ConflictError("expired"))
+    api = FakeAPI(
+        events,
+        start_error=ConflictError("expired"),
+        release_error=ConflictError("expired"),
+    )
 
     outcome = await make_service(tmp_path, api, events).run_once()
 
     assert isinstance(outcome, LeaseLostOutcome)
     assert outcome.phase == "start"
-    assert outcome.detail == "expired"
-    assert events[-1] == "start"
+    assert events[-1] == "release"
+    assert not api.requests["fail"]
+    assert not api.requests["complete"]
+
+
+@pytest.mark.asyncio
+async def test_start_authority_conflict_releases_owned_unstarted_lease(
+    tmp_path: Path,
+) -> None:
+    events: list[str] = []
+    api = FakeAPI(
+        events,
+        start_error=ConflictError("Method campaign authority is no longer current."),
+    )
+    outcome = await make_service(tmp_path, api, events).run_once()
+    assert isinstance(outcome, ReleasedOutcome)
+    assert outcome.reason_category == "start_conflict"
+    assert events[-2:] == ["start", "release"]
     assert not api.requests["fail"]
     assert not api.requests["complete"]
 

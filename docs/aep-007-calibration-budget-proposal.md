@@ -201,3 +201,30 @@ separate evidence requirements.
 
 Do not infer end-to-end autonomy from method acceptance: operator-prepared
 successors, coverage-package recovery and transport repairs were still needed.
+
+## Engineering commissioning and bounded recovery (2026-11-23)
+
+After deployment, task `ea2a7ea4-dd89-441a-b567-57d0f12b87cb` entered its
+separately approved engineering episode. An automatic same-session repair fixed
+the focused-test filename; nine focused tests passed. Independent code review
+then rejected missing causal-input checks, a stub calibration terminal path,
+insufficient native-runner integration and insufficient unmocked scientific
+tests. Passing focused tests is not independent acceptance or completion.
+
+Releases `43c4782` and `55a7304` route unrefuted reviews without executable
+checks back to bounded author repair, and permit explicitly requested recovery
+bound to the exact retained checkpoint. Recovery preserves the old terminal
+state, model-call charges and original deadline. It cannot reset the episode
+budget or bypass independent review.
+
+The campaign was resumed through its audited API after task reapproval. An
+unstarted lease had already encountered an authority conflict; its worker
+abandoned the lease without releasing it. The worker now attempts authenticated
+release on start conflicts. Expired or invalid leases remain fenced; an owned,
+unstarted lease is released using the existing API and does not consume an
+execution attempt. Regression tests cover both cases. This does not reclaim an
+already abandoned lease or grant additional authority.
+
+At this checkpoint, bounded recovery still requires a live retry after lease
+expiry. No independent code approval, full validation, real-data calibration,
+market-data backtest or BT-009 outcome has been demonstrated by this episode.
