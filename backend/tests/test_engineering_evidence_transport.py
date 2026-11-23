@@ -137,13 +137,18 @@ def test_large_handoff_preserves_full_evidence_and_bounds_model_view(codec):
 
 
 @pytest.mark.parametrize("codec", [backend, worker])
-def test_large_active_science_and_excessive_history_still_fail(codec):
+def test_large_active_science_uses_exact_file_index_and_excessive_history_fails(codec):
     document = large_handoff()
     document['accepted_method_handoff']['packet']['proposal']['method'] = 'm' * 96_000
-    with pytest.raises(ValueError, match='active engineering context'):
-        codec.encode_engineering_evidence(document)
+    encoded = codec.encode_engineering_evidence(document)
+    assert codec.decode_engineering_evidence(encoded) == document
+    index = json.loads(codec.prompt_engineering_evidence(encoded))['accepted_method_context']
+    assert index['schema_version'] == 'accepted-method-file-context-v1'
+    assert index['full_evidence_sha256'] == hashlib.sha256(codec.canonical(document).encode()).hexdigest()
+    assert index['full_evidence_bytes'] == len(codec.canonical(document).encode())
+    assert index['proposal_digest'] == hashlib.sha256(codec.canonical(document['accepted_method_handoff']['packet']['proposal']).encode()).hexdigest()
     document = large_handoff()
-    document['accepted_method_handoff']['packet']['evidence']['history'] = 'x' * 262_144
+    document['accepted_method_handoff']['packet']['evidence']['history'] = 'x' * codec.HANDOFF_LIMIT
     with pytest.raises(ValueError, match='expanded'):
         codec.encode_engineering_evidence(document)
 
