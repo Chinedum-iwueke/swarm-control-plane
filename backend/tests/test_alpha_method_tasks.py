@@ -273,6 +273,21 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, prop
     assert task.result == before
 
 
+def test_large_method_handoff_keeps_proposal_once_and_hash_bound():
+    import json
+    proposal = {'synthetic': 'p' * 45000}
+    packet = {'proposal': proposal, 'evidence': {'synthetic': 'e' * 180000}}
+    before = deepcopy(packet)
+    qualification = service.method_review_qualification(packet)
+    assert qualification['card']['proposal_digest'] == service.digest(proposal)
+    assert qualification['card']['proposal_location'] == 'qualification.artifact_bundle.method_review_packet.proposal'
+    assert qualification['artifact_bundle']['method_review_packet'] == before
+    assert packet == before
+    assert len(json.dumps(qualification).encode()) < 250000
+    small = {'proposal': {'small': True}}
+    assert service.method_review_qualification(small)['card'] == small['proposal']
+
+
 @pytest.mark.parametrize('change', ['identity', 'scope', 'budget', 'source', 'receipt'])
 def test_rehashed_invalid_method_state_cannot_publish(change):
     task = ready_task()

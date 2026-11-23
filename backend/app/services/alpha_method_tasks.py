@@ -391,6 +391,20 @@ def advance_method_task(db, campaign, source, parent, request):
     return None
 
 
+def method_review_qualification(packet):
+    import json
+    qualification = {'card': packet['proposal'],
+                     'artifact_bundle': {'method_review_packet': packet}}
+    if len(json.dumps(qualification, sort_keys=True, separators=(',', ':')).encode()) > 250000:
+        qualification['card'] = {
+            'schema_version': 'method-review-proposal-reference-v1',
+            'proposal_digest': digest(packet['proposal']),
+            'proposal_location': 'qualification.artifact_bundle.method_review_packet.proposal',
+            'scientific_approval': False, 'execution_authority': False,
+        }
+    return qualification
+
+
 def route_method_review(db, campaign, task, packet, identity):
     """Publish a separate review route without converting readiness to authority."""
     from app.models.evaluator_routing import EvaluationRoute
@@ -400,8 +414,7 @@ def route_method_review(db, campaign, task, packet, identity):
     from app.services.alpha_campaign import _append_event, _materialize_strategy_review_tasks
 
     require_current_method_authority(db, task)
-    qualification = {'card': packet['proposal'],
-                     'artifact_bundle': {'method_review_packet': packet}}
+    qualification = method_review_qualification(packet)
     excluded = []
     handoff_request = (campaign.specification.get('method_engineering_requests') or {}).get(
         str(task.input_contract['candidate_id']))
