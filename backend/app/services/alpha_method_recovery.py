@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 import math
+import re
 
 from sqlalchemy import select
 
@@ -15,6 +16,61 @@ from app.services.tasks import build_task, persist_new_task
 
 class RecoveryDeferred(ValueError):
     pass
+
+
+def accepted_handoff_catalog(parent, result):
+    """Index unreferenced correction history; never replace active evidence.
+
+    Only for a new accepted-method handoff, not a rejection correction: the
+    immutable parent result remains the lossless source of prior author outputs.
+    The caller separately verifies independent acceptance and new authority.
+    """
+    packet = result['review_packet']
+    catalog = deepcopy(packet['evidence'])
+    protected = set(parent.input_contract['dependencies'].values())
+    def references(value):
+        if isinstance(value, str):
+            protected.update(ref for ref in re.findall(r'(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])', value)
+                             if ref in catalog)
+        elif isinstance(value, dict):
+            for child in value.values():
+                references(child)
+        elif isinstance(value, list):
+            for child in value:
+                references(child)
+    references(packet['proposal'])
+    references(packet['requirements'])
+    corrections = {key: value for key, value in catalog.items()
+                   if set(value) == {'addressed_findings', 'changes', 'rationale'}}
+    historical_schemas = {'method-historical-commissioning-archive-v1',
+                          'method-review-correction-v1', 'native-diagnostic-receipt-v1',
+                          'method-prior-corrections-index-v1'}
+    # Scientific evidence may itself refer to a correction document.
+    for key, value in catalog.items():
+        if key not in corrections and value.get('schema_version') not in historical_schemas:
+            references(value)
+    pending = set(protected)
+    visited = set()
+    while pending:
+        key = pending.pop()
+        visited.add(key)
+        if key in catalog:
+            references(catalog[key])
+        pending.update(protected - visited)
+    historical = {key: value for key, value in corrections.items() if key not in protected}
+    if not historical:
+        return catalog
+    retained = result['state']['evidence']
+    if any(digest(value) != key or retained.get(key) != value for key, value in historical.items()):
+        raise ValueError('Historical correction custody mismatch')
+    index = dict(schema_version='method-prior-corrections-index-v1',
+        parent_task_id=str(parent.id), parent_result_digest=result['result_digest'],
+        parent_packet_digest=digest(packet),
+        documents=[{'digest':key, 'location':'review_packet/evidence/' + key}
+                   for key in sorted(historical)],
+        purpose='Historical author outputs only; current accepted proposal and scientific evidence remain inline. Resolve against the verified immutable parent method result.',
+        scientific_approval=False, execution_authority=False)
+    return {key:value for key,value in catalog.items() if key not in historical} | {digest(index):index}
 
 
 def compact_historical_catalog(catalog, *, protected=()):

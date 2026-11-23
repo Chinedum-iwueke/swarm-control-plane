@@ -12,6 +12,31 @@ from app.services.graph import digest_document as digest
 from .test_alpha_method_tasks import ready_task
 
 
+def test_accepted_handoff_indexes_only_unreferenced_correction_history():
+    task = ready_task()
+    result = task.result['summary']['method_episode']
+    correction = dict(changes={'estimator_id':'historical'}, addressed_findings=['old'], rationale='old proposal')
+    key = digest(correction)
+    result['review_packet']['evidence'][key] = deepcopy(correction)
+    result['state']['evidence'][key] = deepcopy(correction)
+    before = deepcopy(result)
+    catalog = recovery.accepted_handoff_catalog(task, result)
+    assert result == before and key not in catalog
+    index = next(v for v in catalog.values() if v.get('schema_version') == 'method-prior-corrections-index-v1')
+    assert index['parent_task_id'] == str(task.id)
+    assert index['parent_result_digest'] == result['result_digest']
+    assert index['documents'] == [{'digest':key, 'location':'review_packet/evidence/' + key}]
+    assert catalog.keys() - {digest(index)} == result['review_packet']['evidence'].keys() - {key}
+    assert not index['scientific_approval'] and not index['execution_authority']
+    result['review_packet']['requirements']['reference'] = 'Retain scientific definition ' + key
+    assert key in recovery.accepted_handoff_catalog(task, result)
+    result['review_packet']['requirements'].pop('reference')
+    result['state']['evidence'] = deepcopy(result['state']['evidence'])
+    result['state']['evidence'][key] = {'tampered':True}
+    with pytest.raises(ValueError, match='custody'):
+        recovery.accepted_handoff_catalog(task, result)
+
+
 def test_historical_catalog_compaction_preserves_science_and_exact_history():
     docs = [dict(schema_version='scientific-evidence-v1', ordinal=i) for i in range(14)]
     docs += [dict(schema_version='method-explicit-commissioning-successor-v1', ordinal=i)
