@@ -74,6 +74,38 @@ replay with one model call/two diagnostics; 114 backend tests passed. This
 consumer omission required operator repair and must not be counted as autonomous
 completion. Fresh independent review and engineering remain outstanding.
 
+### R3 terminal review and precision constraint
+
+R3 specification review `11640223-9621-4a04-b38c-6a0d6732efe8` accepted;
+causality review `72022000-4c48-4f62-bf60-22c302818837` rejected the remaining
+calibration precision procedure. The campaign closed as `completed_no_candidate`
+with zero trials and `native_recheck_budget_exhausted`; its last authorized
+author call and two diagnostics remain charged. Neither review nor this closeout
+is evidence of engineering or a backtest.
+
+A read-only SciPy beta-quantile calculation at the approved native environment
+quantified the frozen procedure's conflict. For each binomial count `k` among
+`n` independent outer draws, use the exact two-sided 95% Clopper-Pearson interval:
+`lower = beta.ppf(.025, k, n-k+1)` (zero for `k=0`) and
+`upper = beta.ppf(.975, k+1, n-k)` (one for `k=n`). Requiring
+`max_k((upper-lower)/2) <= .10` first holds at `n=104`:
+worst half-width 0.0996610746; at 103 it is 0.1001499913.
+At three draws the worst half-width is 0.4486484586.
+
+The retained schedule costs `4*2*4*2*4*10000 = 2,560,000` statistic evaluations
+per outer draw across all scenarios. Thus 104 draws require 266,240,000 such
+evaluations, whereas the 8,000,000 cap permits only three draws. This is a
+prospective pointwise interval/work calculation, not a power guarantee,
+simultaneous-coverage result, observed calibration or claim that every alternative
+uncertainty procedure is impossible. It assumes the required independent valid
+draws are available; support failures cannot improve the count.
+
+The next design decision requires fresh explicit scope: separately review a
+calibration-budget redesign with resource bounds, or retain the cap and justify
+an alternative uncertainty procedure. Do not rerun the unchanged incompatible
+procedure or silently weaken the experimental requirements. No revised budget
+or calibration execution is authorized by this calculation.
+
 The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
 definition and workload-accounting defects, not missing reviewer transport.
 Both review tasks received the same packet and its 18 evidence documents. The
