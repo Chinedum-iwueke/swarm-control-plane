@@ -10,11 +10,16 @@ from swarm_worker.method_verdict_contract import complete_rejection_summary, val
 
 def retained_review(task, workspace, contract, manifest, request):
     failure = getattr(task, 'prior_failure', None) or task.failure or {}
+    summary_overflow = (
+        failure.get('error_category') == 'executor_ValidationError'
+        and str(failure.get('detail', '')).startswith(
+            '1 validation error for WorkflowExecutionResult\n  Value error, execution summary exceeds 16 KiB')
+    )
     if (contract.subject.get('review_scope') != 'method_design'
             or manifest.get('schema_version') != 'review-context-file-v1'
             or request.get('contract_digest') != review_digest(contract.model_dump(mode='json'))
             or not (failure.get('detail') == 'Method blockers differ from retained findings'
-                    or failure.get('reason') == 'lease_released')):
+                    or failure.get('reason') == 'lease_released' or summary_overflow)):
         raise ValueError('Review recovery requires the exact retained publication failure')
     attempt = request.get('source_attempt', '')
     match = re.fullmatch(r'attempt-(\d+)(?:-execution-[a-f0-9]{64})?', attempt)

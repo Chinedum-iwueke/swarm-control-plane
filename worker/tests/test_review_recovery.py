@@ -45,8 +45,12 @@ def fixture(tmp_path):
     return task, workspace, contract, manifest, request, raw
 
 
-def test_retained_rejection_is_completed_without_changing_findings(tmp_path):
+@pytest.mark.parametrize('overflow', [False, True])
+def test_retained_rejection_is_completed_without_changing_findings(tmp_path, overflow):
     args=fixture(tmp_path)
+    if overflow:
+        args[0].failure = {'error_category': 'executor_ValidationError',
+            'detail': '1 validation error for WorkflowExecutionResult\n  Value error, execution summary exceeds 16 KiB [type=value_error]'}
     raw=args[-1]
     review,coverage=retained_review(*args[:-1])
     assert review.blockers==['first defect','second defect']
@@ -54,6 +58,18 @@ def test_retained_rejection_is_completed_without_changing_findings(tmp_path):
     assert review.verdict=='reject'
     assert coverage==raw['evidence_coverage']
     assert retained_review(*args[:-1])[0]==review
+
+
+def test_evidence_review_summary_has_a_bounded_transport_allowance():
+    from swarm_worker.models import WorkflowExecutionResult
+    fields = dict(workflow='alpha-strategy-review', repository='bulletproof_bt',
+        base_commit='a'*40, task_attempt=1, total_duration_seconds=0,
+        steps=[], success=True, summary={'synthetic': 'x'*20000})
+    assert WorkflowExecutionResult(**fields).success
+    with pytest.raises(ValueError, match='16 KiB'):
+        WorkflowExecutionResult(**(fields | {'workflow':'ordinary'}))
+    with pytest.raises(ValueError, match='256 KiB'):
+        WorkflowExecutionResult(**(fields | {'summary': {'synthetic': 'x'*262144}}))
 
 
 @pytest.mark.parametrize('fault',['digest','contract','path','metadata','symlink','evidence','unrelated_failure'])
