@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from swarm_worker.engineering_episode import (
     EngineeringEpisode, EngineeringEpisodePolicy, EpisodeIntegrityError, EpisodeStore,
+    canonical_digest,
 )
 
 
@@ -121,6 +122,46 @@ async def test_unchecked_review_rejection_repairs_or_exhausts_without_adjudicati
         assert state['status'] == 'blocked'
         assert state['reason'] == 'repair_budget_exhausted'
         assert 'validation' not in calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mutation', [None, 'digest', 'code', 'deadline', 'repairs', 'calls', 'reason'])
+async def test_explicit_unspent_review_recovery_is_bound_and_preserves_history(tmp_path, mutation):
+    import time
+    retained = store(tmp_path)
+    state = retained.load()
+    state.update(status='blocked', reason='review_disputed', stage='adjudicate',
+                 code_digest='code', model_calls=4, repairs=1,
+                 events=[{'stage':'adjudicate', 'result':{'status':'disputed'}}])
+    if mutation == 'deadline': state['deadline'] = time.time() - 1
+    if mutation == 'repairs': state['repairs'] = 2
+    if mutation == 'calls': state['model_calls'] = 7
+    if mutation == 'reason': state['reason'] = 'policy_violation'
+    retained.root.mkdir()
+    retained.save(state)
+    request = {'schema_version':'engineering-unrefuted-review-recovery-v1',
+               'checkpoint_digest':canonical_digest(state) if mutation != 'digest' else 'wrong'}
+    calls = []
+
+    async def perform(stage, *_):
+        calls.append(stage)
+        return {'status':'pass'}
+
+    episode = EngineeringEpisode(retained, policy(), lambda: 'changed' if mutation == 'code' else 'code', perform)
+    if mutation:
+        with pytest.raises(EpisodeIntegrityError, match='checkpoint'):
+            await episode.run(review_recovery=request)
+        assert retained.load() == state and not calls
+        return
+    result = await episode.run(review_recovery=request)
+    assert result['status'] == 'completed'
+    assert result['repairs'] == 2 and result['model_calls'] == 6
+    assert result['deadline'] == state['deadline']
+    assert result['events'][1]['prior_state'] == state
+    assert calls == ['author','focused','review','validation','bundle']
+    count = len(calls)
+    again = await episode.run(review_recovery=request)
+    assert again == result and len(calls) == count
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 import time
+from copy import deepcopy
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -113,11 +114,41 @@ class EngineeringEpisode:
         self.restore = restore
         self.before_stage = before_stage
 
-    async def run(self, *, recovery_token=None):
+    async def run(self, *, recovery_token=None, review_recovery=None):
         with self.store.locked():
             state = self.store.load()
             if self.restore:
                 self.restore(state)
+            if review_recovery is not None:
+                request_digest = canonical_digest(review_recovery)
+                consumed = any(e.get('review_recovery_digest') == request_digest for e in state['events'])
+                if not consumed:
+                    if (not isinstance(review_recovery, dict)
+                            or set(review_recovery) != {'schema_version', 'checkpoint_digest'}
+                            or review_recovery['schema_version'] != 'engineering-unrefuted-review-recovery-v1'
+                            or review_recovery['checkpoint_digest'] != canonical_digest(state)
+                            or state['status'] != 'blocked' or state.get('reason') != 'review_disputed'
+                            or state['stage'] != 'adjudicate' or self.policy.review_tests
+                            or state.get('pending') is not None
+                            or self.fingerprint() != state['code_digest']
+                            or not state['events'] or state['events'][-1].get('result', {}).get('status') != 'disputed'
+                            or state['repairs'] >= self.policy.max_repairs
+                            or state['model_calls'] + 2 > self.policy.max_model_calls
+                            or time.time() >= state['deadline']):
+                        raise EpisodeIntegrityError('Unrefuted review recovery does not match eligible retained checkpoint')
+                    if self.before_stage:
+                        permit = await self.before_stage('review_recovery', state)
+                        if permit.get('allowed') is not True:
+                            return state
+                    prior = deepcopy(state)
+                    state['events'].append({'stage': 'review_recovery',
+                        'review_recovery_digest': request_digest,
+                        'checkpoint_digest': canonical_digest(prior), 'prior_state': prior,
+                        'code_digest': state['code_digest'],
+                        'result': {'status': 'repair_required', 'evidence': 'Explicit reapproved continuation; prior charges and deadline preserved'}})
+                    state.update(status='running', stage='author', repairs=state['repairs'] + 1)
+                    state.pop('reason', None)
+                    self.store.save(state)
             if state["status"] not in {"running", "deferred"}:
                 if state["status"] == "completed" and self.fingerprint() != state["code_digest"]:
                     self._finish(state, "completed_workspace_changed")

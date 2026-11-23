@@ -290,7 +290,9 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
     recovery = (permit.get('recovery_token') if permit.get('allowed') is True
                 and retained.get('reason') in {None, 'capacity'} else None)
     episode = EngineeringEpisode(store, policy, fingerprint, perform, restore, before_stage)
-    state = await episode.run(recovery_token=recovery)
+    retry_context = (task.prior_failure or {}).get('operator_retry_context', {})
+    review_recovery = retry_context.get('engineering_review_recovery') if isinstance(retry_context, dict) else None
+    state = await episode.run(recovery_token=recovery, review_recovery=review_recovery)
     await heartbeat(progress(state))
     if state['status'] == 'completed' and accepted_method is not None:
         handoff = bundle_binding(accepted_method, state, contract=contract,
