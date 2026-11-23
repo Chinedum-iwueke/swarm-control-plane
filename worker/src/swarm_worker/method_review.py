@@ -73,7 +73,7 @@ def method_review_packet(method_state, *, requirements, evidence, dependencies, 
         source_commit=method_state['binding']['source_commit'],
         proposal=deepcopy(method_state['proposal']), requirements=deepcopy(requirements),
         evidence=deepcopy(evidence), dependencies=deepcopy(dependencies),
-        prior_requirements=deepcopy(prior_requirements or {})))
+        prior_requirements=deepcopy(prior_requirements or {})), 524288)
 
 
 class MethodReviewEpisode:

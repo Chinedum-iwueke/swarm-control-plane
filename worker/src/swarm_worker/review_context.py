@@ -19,7 +19,7 @@ def review_context(value, *, context_limit=CONTEXT_LIMIT):
     raw = canonical(value)
     method = value.get("subject", {}).get("review_scope") in {
         "method_design", "method_adjudication"}
-    if len(raw.encode()) > (RAW_LIMIT if method else CONTEXT_LIMIT):
+    if len(raw.encode()) > (2 * RAW_LIMIT if method else CONTEXT_LIMIT):
         raise ValueError("Review evidence exceeds the bounded contract")
     if len(raw.encode()) <= context_limit:
         return value

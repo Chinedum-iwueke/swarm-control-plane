@@ -53,7 +53,7 @@ def test_rejects_unique_oversize_and_unbounded_raw():
     with pytest.raises(ValueError, match='after lossless'):
         review_context({'subject': {'review_scope': 'method_design'}, 'text': 'x' * 101000})
     with pytest.raises(ValueError, match='evidence exceeds'):
-        review_context({'subject': {'review_scope': 'method_design'}, 'text': 'x' * 263000})
+        review_context({'subject': {'review_scope': 'method_design'}, 'text': 'x' * 525000})
     value = payload()
     value['subject']['review_scope'] = 'scientific_requirements'
     with pytest.raises(ValueError, match='evidence exceeds'):

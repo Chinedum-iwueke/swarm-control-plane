@@ -222,14 +222,14 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
 
 
 @pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest', 'proposal_ref', 'duplicate_proposal'])
-@pytest.mark.parametrize('large_history', [False, True])
+@pytest.mark.parametrize('large_history', [False, True, 'over_wire'])
 @pytest.mark.parametrize('proposal_reference', [False, True])
 def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, proposal_reference):
     task = ready_task()
     result = task.result['summary']['method_episode']
     state = result['state']
     if large_history:
-        retained = {'synthetic_history': 'x' * 140000}
+        retained = {'synthetic_history': 'x' * (300000 if large_history == 'over_wire' else 140000)}
         state['evidence'][service.digest(retained)] = retained
         result['review_packet']['evidence'][service.digest(retained)] = retained
     envelope = dict(disposition='ready', findings=[], work_units=1,
@@ -262,6 +262,9 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, prop
     elif tamper == 'duplicate_proposal':
         result['review_packet']['proposal'] = deepcopy(state['proposal'])
     result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    if large_history == 'over_wire':
+        from app.contracts.method_result_transport import encode
+        task.result['summary']['method_episode'] = encode(result)
     before = deepcopy(task.result)
     if tamper:
         with pytest.raises(ValueError):

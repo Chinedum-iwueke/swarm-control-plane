@@ -195,6 +195,8 @@ class AlphaMethodDesignExecutor:
                 dependencies=contract.dependencies)
         document = compact_method_result(document)
         document['result_digest'] = digest(document)
+        from swarm_worker.method_result_transport import encode
+        document = encode(document)
         path = workspace.artifacts / 'method-episode-result.json'
         path.write_text(json.dumps(document, sort_keys=True))
         path.chmod(0o600)

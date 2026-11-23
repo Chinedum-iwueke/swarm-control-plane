@@ -142,6 +142,8 @@ def verified_method_result(task):
     """Validate readiness custody, not the method's scientific correctness."""
     contract = MethodTaskContract.model_validate(task.input_contract)
     result = (task.result or {}).get('summary', {}).get('method_episode', {})
+    from app.contracts.method_result_transport import decode
+    result = decode(result)
     if (task.status != 'succeeded' or result.get('schema_version') not in {'method-task-result-v1', 'method-task-result-v2'}
             or result.get('contract_digest') != digest(contract.model_dump(mode='json'))
             or result.get('result_digest') != digest({k: v for k, v in result.items() if k != 'result_digest'})
@@ -154,7 +156,7 @@ def verified_method_result(task):
         # Transport and individual documents stay bounded. Expanded history
         # repeats the same immutable catalog once per authorized tool call.
         audit_limit = 262144 * (1 + contract.policy.max_tool_calls)
-        if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 262144:
+        if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 524288:
             raise ValueError('Compact method state exceeds bound')
         evidence = result['state']['evidence']
         if 'review_proposal_digest' in result:
