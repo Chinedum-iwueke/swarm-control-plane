@@ -46,8 +46,16 @@ structural validation after three diagnostics. Publication failed because the
 summary duplicated its current proposal and exceeded 256 KiB. The completed
 checkpoint remains intact. A lossless proposal-reference transport repair reduces
 the actual retained summary to 250,770 bytes while preserving its original review
-packet digest. Deployment and checkpoint republication remain to be verified;
-independent acceptance and engineering are not demonstrated.
+packet digest. Repair `44d930c` was deployed and checkpoint republication succeeded
+on attempt 2 with the same two model calls and three diagnostics; API verification
+reconstructed the exact retained state. A subsequent reviewer handoff also
+duplicated the proposal as a card and exceeded its bound. Repair `ec11bc1` keeps
+the canonical proposal in the packet and replaces only the duplicate card with
+an explicit digest/location reference for large packets (65 API tests passed).
+That repair is deployed; reconciliation advanced to independent method review.
+Review tasks `722bf6a5-0395-45f9-9c0a-fd96172b3085` (causality) and
+`f0a3918d-dd3a-4726-841e-8af40ed97b1f` (specification) are running against the
+retained packet. Independent acceptance and engineering are not demonstrated.
 
 Broad discovery is contained by a stopped discovery director and agent-level
 pauses on intelligence, senior research, representation and strategy engineering.
