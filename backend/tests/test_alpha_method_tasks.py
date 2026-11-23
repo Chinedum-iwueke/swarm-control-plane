@@ -140,7 +140,7 @@ def test_cached_method_authority_is_checked_again():
         service.require_current_method_authority(db, task)
 
 
-def ready_task(*, structured=False, consistency=None):
+def ready_task(*, structured=False, consistency=None, projected=False):
     raw = fixture()[4]
     if structured:
         raw['proposal']['method'].update(experiment={'synthetic': True}, calibration_design={})
@@ -158,6 +158,9 @@ def ready_task(*, structured=False, consistency=None):
                 'contract_digest': service.digest(c.proposal['method'])})
     if consistency is not None:
         receipt['result']['consistency'] = consistency
+    if projected:
+        from app.contracts.diagnostic_evidence import referenced_catalog
+        receipt['evidence_catalog_digest'] = service.digest(referenced_catalog(c.proposal['method'], c.evidence_catalog, service.digest))
     receipt['receipt_digest'] = service.digest(receipt)
     state = dict(binding=dict(task_id=str(task.id), source_commit=c.base_ref,
         mandate_digest=c.mandate_digest, findings_digest=c.findings_digest,
@@ -182,6 +185,20 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     result = service.verified_method_result(task)
     assert result['scientific_approval'] is False
     assert result['execution_authority'] is False
+
+
+def test_projected_native_receipt_is_reconstructed_and_verified(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / 'worker/src'))
+    from swarm_worker.native_diagnostic_client import referenced_catalog as worker_projection
+    from app.contracts.diagnostic_evidence import referenced_catalog
+    leaf = {'equation': 'x[t-1]'}
+    parent = {'reference': service.digest(leaf)}
+    catalog = {service.digest(v):v for v in [leaf, parent, {'historical':True}]}
+    payload = {'reference': service.digest(parent)}
+    assert referenced_catalog(payload, catalog, service.digest) == worker_projection(payload, catalog)
+    assert len(referenced_catalog(payload, catalog, service.digest)) == 2
+    task = ready_task(projected=True)
+    assert service.verified_method_result(task)['scientific_approval'] is False
 
 
 @pytest.mark.parametrize('mode', ['historical', 'missing_current', 'ambiguous_current'])

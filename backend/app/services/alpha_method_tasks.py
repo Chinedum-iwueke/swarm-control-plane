@@ -251,15 +251,19 @@ def verified_method_result(task):
         from app.services.native_diagnostics import verify_diagnostic
         request = dict(schema_version='native-diagnostic-request-v1', tool=contract.diagnostic,
                        source_commit=contract.base_ref, subject_digest=digest(proposal), payload=proposal['method'])
+        from app.contracts.diagnostic_evidence import referenced_catalog
+        catalogs = {digest(contract.evidence_catalog): contract.evidence_catalog}
+        projected = referenced_catalog(proposal['method'], contract.evidence_catalog, digest)
+        catalogs[digest(projected)] = projected
         receipts = [v for v in packet['evidence'].values()
                     if v.get('schema_version') == 'native-diagnostic-receipt-v1'
                     and v.get('subject_digest') == digest(proposal)
                     and v.get('source_commit') == contract.base_ref
                     and v.get('request_digest') == digest(request)
-                    and v.get('evidence_catalog_digest') == digest(contract.evidence_catalog)]
+                    and v.get('evidence_catalog_digest') in catalogs]
         if len(receipts) != 1:
             raise ValueError('Ready method requires exact current native diagnosis')
-        verify_diagnostic(receipts[0], request, contract.evidence_catalog, contract.base_ref, digest(proposal))
+        verify_diagnostic(receipts[0], request, catalogs[receipts[0]['evidence_catalog_digest']], contract.base_ref, digest(proposal))
         assessment = receipts[0]['result']
         if 'experiment' in proposal['method']:
             consistency = assessment.get('consistency', {})
