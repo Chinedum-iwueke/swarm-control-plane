@@ -22,8 +22,42 @@ Validation before rollout: all 231 native governance tests, 105 worker tests,
 The latter include a real clean-source diagnostic subprocess at `e092458`, strict
 author-output schema validation, synthetic repair/publication/API replay, and
 capacity deferral without model calls. No genuine author or reviewer was invoked.
-Broad discovery remains paused. Source-bound commissioning requires fresh mandate
-and campaign approvals; the prior November 18 authority is expired.
+That test suite made no genuine author or reviewer calls. Subsequently,
+control-plane `29938b8` was pushed and deployed; the API is healthy at migration
+`d0a2b5f83c71`. BTC admission was freshly produced at `e092458` with unchanged
+dataset bytes and receipt `a2ff837443e0b4d6dc998941394189465e634f638824284d75dd6de635a439e4`.
+
+At 18:31 UTC on November 23, separate founder approvals authorized mandate
+`b77dffd1-69bd-4c6e-9e0a-cbdc4a21ab2b` (digest
+`3a98686584ad5a6a1e0975636e90688fafbe9e35217935f145962d3f6bdb9461`)
+and campaign `5a9d3403-c058-4455-84b9-8d2746daf1b7` (digest
+`df585fd5b83b14ef3bd4152e30a6c2d42405407f8e0ef4650247c4319c04f107`).
+This is method-only authority: two author corrections, four diagnostics and
+fresh reviews, with a method deadline of 20:29 UTC. No engineering, calibration
+execution, market-data backtests, orders or promotion are authorized.
+The deterministic draft succeeded. Method task
+`e4c14e74-1949-46f2-9008-3e9441e19303` started its first attempt; no scientific
+acceptance or engineering completion is inferred from that start.
+The first live author correction then reached native recheck. It produced three
+structural findings (two unresolved definition references and one invalid
+primitive/dependency declaration). The episode automatically used its second
+authorized author call without operator edits to the method, then passed native
+structural validation after three diagnostics. Publication failed because the
+summary duplicated its current proposal and exceeded 256 KiB. The completed
+checkpoint remains intact. A lossless proposal-reference transport repair reduces
+the actual retained summary to 250,770 bytes while preserving its original review
+packet digest. Deployment and checkpoint republication remain to be verified;
+independent acceptance and engineering are not demonstrated.
+
+Broad discovery is contained by a stopped discovery director and agent-level
+pauses on intelligence, senior research, representation and strategy engineering.
+The workflow drain was lifted only for this isolated commissioning queue.
+An unstarted discovery allocation `A4-b77dffd1-001-I` was cancelled through the
+audited cancellation service with zero attempts; historical counters remain
+charged. **Remaining general guard gap:** method-only intent is expressed in
+mandate prose, not a scheduler-enforced typed scope. Introduce explicit scope
+before unattended commissioning; do not rely on an objective string to prevent
+discovery allocation. Preserve existing mandates as immutable records.
 
 ## AEP-007C: engineering handoff commissioning
 

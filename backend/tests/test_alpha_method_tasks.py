@@ -221,9 +221,10 @@ def test_compact_review_preserves_every_underlying_document(omit_document):
         assert service.verified_method_result(task)['scientific_approval'] is False
 
 
-@pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest'])
+@pytest.mark.parametrize('tamper', [None, 'reference', 'envelope', 'audit', 'cycle', 'packet_ref', 'packet_digest', 'proposal_ref', 'duplicate_proposal'])
 @pytest.mark.parametrize('large_history', [False, True])
-def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history):
+@pytest.mark.parametrize('proposal_reference', [False, True])
+def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history, proposal_reference):
     task = ready_task()
     result = task.result['summary']['method_episode']
     state = result['state']
@@ -242,6 +243,8 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history):
     result['review_packet']['method_episode_digest'] = service.digest(full)
     result['review_packet_digest'] = service.digest(result['review_packet'])
     result['review_evidence_refs'] = sorted(result['review_packet'].pop('evidence'))
+    if proposal_reference or tamper in {'proposal_ref', 'duplicate_proposal'}:
+        result['review_proposal_digest'] = service.digest(result['review_packet'].pop('proposal'))
     if tamper == 'reference':
         result['state_evidence_envelopes'][key]['evidence'] = ['f'*64]
     elif tamper == 'envelope':
@@ -254,6 +257,10 @@ def test_v2_transport_reconstructs_exact_audit_state(tamper, large_history):
         result['review_evidence_refs'] = ['f'*64]
     elif tamper == 'packet_digest':
         result['review_packet_digest'] = 'f'*64
+    elif tamper == 'proposal_ref':
+        result['review_proposal_digest'] = 'f'*64
+    elif tamper == 'duplicate_proposal':
+        result['review_packet']['proposal'] = deepcopy(state['proposal'])
     result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
     before = deepcopy(task.result)
     if tamper:

@@ -157,6 +157,13 @@ def verified_method_result(task):
         if len(json.dumps(result['state'], sort_keys=True, separators=(',', ':')).encode()) > 262144:
             raise ValueError('Compact method state exceeds bound')
         evidence = result['state']['evidence']
+        if 'review_proposal_digest' in result:
+            packet = result.get('review_packet')
+            if (not isinstance(packet, dict) or 'proposal' in packet
+                    or 'review_evidence_refs' not in result
+                    or digest(result['state'].get('proposal')) != result['review_proposal_digest']):
+                raise ValueError('Invalid method review proposal reference')
+            packet['proposal'] = deepcopy(result['state']['proposal'])
         if 'review_evidence_refs' in result:
             refs = result['review_evidence_refs']
             packet = result.get('review_packet')

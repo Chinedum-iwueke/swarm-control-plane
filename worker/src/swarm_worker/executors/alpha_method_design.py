@@ -42,6 +42,9 @@ def compact_method_result(document):
                           for key, value in packet['evidence'].items()):
             result['review_packet_digest'] = digest(packet)
             result['review_evidence_refs'] = sorted(packet.pop('evidence'))
+            if (len(json.dumps(result, sort_keys=True).encode()) > 250000
+                    and packet.get('proposal') == state.get('proposal')):
+                result['review_proposal_digest'] = digest(packet.pop('proposal'))
     return result
 
 

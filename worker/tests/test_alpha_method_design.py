@@ -12,6 +12,25 @@ from swarm_worker.workflows import WorkflowLoader
 from test_engineering_episode_executor import fixture
 
 
+def test_large_result_reuses_exact_proposal_without_mutating_audit():
+    from copy import deepcopy
+    from swarm_worker.executors.alpha_method_design import compact_method_result
+    proposal = {'synthetic': 'p' * 45000}
+    leaf = {'synthetic': 'e' * 180000}
+    envelope = dict(disposition='ready', evidence={digest(leaf): leaf}, findings=[], work_units=1)
+    state = {'proposal': proposal, 'evidence': {digest(leaf): leaf, digest(envelope): envelope}}
+    packet = {'proposal': deepcopy(proposal), 'evidence': {digest(leaf): leaf}}
+    document = {'schema_version': 'method-task-result-v1', 'state': state, 'review_packet': packet}
+    before = deepcopy(document)
+    compact = compact_method_result(document)
+    assert len(json.dumps(compact).encode()) < 256 * 1024
+    assert compact['review_proposal_digest'] == digest(proposal)
+    restored = compact['review_packet'] | {'proposal': compact['state']['proposal'],
+        'evidence': {key: compact['state']['evidence'][key] for key in compact['review_evidence_refs']}}
+    assert restored == packet and digest(restored) == compact['review_packet_digest']
+    assert document == before
+
+
 def contract(source):
     evidence = {'kind': 'synthetic_test_assumption', 'not_market_evidence': True}
     return dict(repository='bulletproof_bt', workflow='alpha-method-design', base_ref=source,
