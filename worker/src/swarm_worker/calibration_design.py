@@ -1,6 +1,32 @@
 """Strict author-output shape; native tools own semantic consistency checks."""
 
 
+def assurance_schema(template, evidence_refs):
+    """Freeze authority while permitting new definitions and conservative work factors."""
+    def obj(properties):
+        return {'type': 'object', 'additionalProperties': False,
+                'required': list(properties), 'properties': properties}
+
+    text = {'type': 'string', 'minLength': 1, 'maxLength': 4000}
+    nullable = lambda schema: {'anyOf': [schema, {'type': 'null'}]}
+    caps = template['workload']['caps']
+    node = obj({'id': text, 'kind': {'type': 'string', 'enum': ['primitive', 'derived']},
+        'dependencies': {'type': 'array', 'items': text}, 'statement': nullable(text),
+        'evidence_digest': nullable({'type': 'string', 'enum': sorted(evidence_refs)}), 'pointer': nullable(text)})
+    factors = obj({name: {'type': 'integer', 'minimum': 1, 'maximum': 10**9}
+        for name in ['scenarios', 'starts', 'iterations', 'jacobian_evaluations', 'histories',
+                     'outer_draws', 'partitions', 'variants', 'statistics', 'block_analyses', 'replicates', 'calls']})
+    counted = obj({'id': text, 'phase': {'type': 'string', 'enum': ['generation', 'fit', 'solve', 'verification', 'bootstrap']},
+        'unit': {'type': 'string', 'enum': sorted(caps)}, 'factors': factors,
+        'not_applicable_reason': {'type': 'null'}})
+    exempt = obj({'id': text, 'phase': counted['properties']['phase'], 'unit': {'type': 'null'},
+        'factors': obj({}), 'not_applicable_reason': text})
+    return obj({'required_outputs': {'type': 'array', 'items': {'type': 'string', 'enum': template['required_outputs']}},
+        'definitions': {'type': 'array', 'items': node, 'minItems': 1, 'maxItems': 128},
+        'workload': obj({'caps': obj({unit: {'type': 'integer', 'enum': [cap]} for unit, cap in caps.items()}),
+            'stages': {'type': 'array', 'items': {'anyOf': [counted, exempt]}, 'minItems': 1, 'maxItems': 128}})})
+
+
 def design_schema():
     def obj(properties):
         return {'type': 'object', 'additionalProperties': False,
@@ -24,6 +50,13 @@ def design_schema():
 
 
 CORRECTION_GUIDANCE = (
+    'For V2 assurance preserve required_outputs and workload caps exactly. Each definition '
+    'must be inline or resolve by exact evidence digest and JSON pointer. Declare primitive '
+    'inputs and derived dependencies, unrolling prior state through initialized inputs. '
+    'Do not label independently sampled controls as OHLCV-derived without a defining mapping. '
+    'Work factors are conservative upper bounds; use 1 for inapplicable multiplicative factors, '
+    'or explicitly justify an absent phase. Include solver/Jacobian and verification work. '
+    'Missing capacity is a limitation, not permission to increase caps. '
     'Treat method.experiment, when present, as the immutable experiment definition. '
     'Construct calibration_design for its exact variants, families, partitions and procedure, '
     'not a convenient single-variant substitute. Define joint generation across all family '

@@ -41,6 +41,21 @@ def fixture():
     return db, campaign, source, parent, request, mandate, activation
 
 
+def test_assurance_requires_explicit_v2_authority_and_frozen_obligations():
+    request = fixture()[4]
+    request['policy']['allowed_method_fields'] = ['assurance']
+    with pytest.raises(ValueError, match='V2 successor'):
+        MethodTaskContract.model_validate(request)
+    method = request['proposal']['method']
+    method.update(schema_version='design-adequacy-contract-v2', experiment={}, calibration_design={},
+        calibration={'max_work_units': 100},
+        assurance={'required_outputs': ['target'], 'workload': {'caps': {'statistic_evaluation': 100}}})
+    assert MethodTaskContract.model_validate(request).proposal['method'] == method
+    method['assurance']['required_outputs'] = []
+    with pytest.raises(ValueError, match='frozen output obligations'):
+        MethodTaskContract.model_validate(request)
+
+
 def test_method_task_materialization_reuses_exact_task_and_preserves_budget(monkeypatch):
     db, campaign, source, parent, request, _, activation = fixture()
     saved = MagicMock()

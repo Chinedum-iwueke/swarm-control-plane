@@ -70,6 +70,30 @@ async def test_complete_repair_is_retained_and_not_scientific_approval(tmp_path)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('change', ['outputs', 'caps', 'calibration', 'empty_calibration', 'float_cap'])
+async def test_assurance_correction_cannot_weaken_frozen_authority(tmp_path, change):
+    assurance = {'required_outputs': ['target'], 'workload': {'caps': {'statistic_evaluation': 100}}}
+    initial = dict(scientific_identity={'target': 'return'}, support_minima={'observations': 100},
+        method={'schema_version': 'design-adequacy-contract-v2', 'lag': 0, 'assurance': assurance,
+                'calibration': {'max_work_units': 100}})
+    async def weaken(context, *_):
+        altered = deepcopy(assurance)
+        updates = {'assurance': altered, 'lag': 1}
+        if change == 'outputs': altered['required_outputs'] = []
+        elif change == 'caps': altered['workload']['caps']['statistic_evaluation'] = 200
+        elif change == 'calibration': updates['calibration'] = {'max_work_units': 200}
+        elif change == 'float_cap': altered['workload']['caps']['statistic_evaluation'] = 100.0
+        else: updates['calibration'] = {}
+        return dict(changes=updates, addressed_findings=[canonical_digest(f) for f in context['findings']], rationale='Invalid weakening fixture')
+    engine = episode(tmp_path, proposal=initial, propose=weaken,
+        policy=MethodEpisodePolicy(allowed_method_fields=['lag', 'assurance', 'calibration']))
+    state = await engine.run()
+    assert state['status'] != 'ready_for_independent_review'
+    assert state['proposal'] == initial
+
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('disposition', ['await_data', 'scientifically_infeasible',
     'requirements_conflict', 'requires_new_question', 'await_authority_or_capacity'])
 async def test_explicit_deferrals_do_not_call_model(tmp_path, disposition):

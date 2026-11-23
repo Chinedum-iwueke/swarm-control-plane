@@ -108,7 +108,11 @@ class AlphaMethodDesignExecutor:
                 findings = receipt['result'].get('consistency', {}).get('findings', [])
                 if not findings:
                     raise ValueError('Native correction requires concrete consistency findings')
-                if any(f.get('disposition') != 'repair' for f in findings):
+                dispositions = {f.get('disposition') for f in findings}
+                if dispositions == {'await_authority_or_capacity'}:
+                    return dict(disposition='await_authority_or_capacity', work_units=1, findings=[],
+                                evidence={**contract.evidence_catalog, digest(receipt): receipt})
+                if not dispositions <= {'repair', 'await_authority_or_capacity'}:
                     return dict(disposition='requires_new_question', work_units=1, findings=[],
                                 evidence={**contract.evidence_catalog, digest(receipt): receipt})
                 return dict(disposition='repair', work_units=1,

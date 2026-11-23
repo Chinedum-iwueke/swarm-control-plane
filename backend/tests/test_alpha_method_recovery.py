@@ -67,6 +67,29 @@ def test_review_correction_conserves_budget_identity_deadline_and_citations():
     assert report['scientific_approval'] is False
 
 
+@pytest.mark.parametrize('schema', ['method-review-correction-v1', 'method-explicit-commissioning-successor-v1'])
+def test_v2_successor_preserves_referenced_definition_documents(schema):
+    task, result, reviews, now = rejected()
+    definition = {'schema_version': schema, 'definition': 'Synthetic retained definition for regression testing.'}
+    reference = digest(definition)
+    method = task.input_contract['proposal']['method']
+    method.update(schema_version='design-adequacy-contract-v2', experiment={}, calibration_design={},
+        calibration={'max_work_units': 100}, assurance={'required_outputs': ['target'],
+            'definitions': [{'id': 'target', 'evidence_digest': reference, 'pointer': '/definition'}],
+            'workload': {'caps': {'statistic_evaluation': 100}}})
+    result['state']['proposal']['method'] = deepcopy(method)
+    packet = result['review_packet']
+    packet['proposal'] = deepcopy(result['state']['proposal'])
+    packet['evidence'][reference] = definition
+    for index in range(15):
+        historical = {'schema_version': 'method-explicit-commissioning-successor-v1', 'ordinal': index}
+        packet['evidence'][digest(historical)] = historical
+    reviews[0].method_verdict.packet_digest = digest(packet)
+    corrected = recovery.correction_contract(task, result, reviews, now=now)
+    assert corrected['evidence_catalog'][reference] == definition
+    assert len(corrected['evidence_catalog']) <= 16
+
+
 def test_diagnostic_successor_retains_spend_and_does_not_recover_unknown_failures():
     task, result, _, now = rejected()
     from app.contracts.native_design_shape import defects

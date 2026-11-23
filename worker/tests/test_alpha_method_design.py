@@ -33,6 +33,21 @@ def contract(source):
         diagnostic='design_adequacy_v1', authority='method_design_no_execution')
 
 
+def test_assurance_requires_explicit_v2_authority_and_frozen_obligations():
+    request = contract('a'*40)
+    request['policy']['allowed_method_fields'] = ['assurance']
+    with pytest.raises(ValueError, match='V2 successor'):
+        MethodTaskContract.model_validate(request)
+    method = request['proposal']['method']
+    method.update(schema_version='design-adequacy-contract-v2', experiment={}, calibration_design={},
+        calibration={'max_work_units': 100},
+        assurance={'required_outputs': ['target'], 'workload': {'caps': {'statistic_evaluation': 100}}})
+    assert MethodTaskContract.model_validate(request).proposal['method'] == method
+    method['assurance']['required_outputs'] = []
+    with pytest.raises(ValueError, match='frozen output obligations'):
+        MethodTaskContract.model_validate(request)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('catalog_size', [1, 16])
 async def test_fixed_executor_retains_native_packet_and_duplicate_is_free(tmp_path, monkeypatch, catalog_size):

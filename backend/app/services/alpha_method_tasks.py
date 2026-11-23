@@ -202,6 +202,17 @@ def verified_method_result(task):
             or proposal.get('support_minima') != contract.proposal['support_minima']):
         raise ValueError('Method result changed frozen scientific identity')
     allowed = set(contract.policy.allowed_method_fields)
+    initial_method = contract.proposal['method']
+    if initial_method.get('schema_version') == 'design-adequacy-contract-v2':
+        old = initial_method['assurance']
+        new = proposal.get('method', {}).get('assurance')
+        if (not isinstance(new, dict) or new.get('required_outputs') != old['required_outputs']
+                or not isinstance(new.get('workload'), dict)
+                or digest(new['workload'].get('caps')) != digest(old['workload']['caps'])
+                or not isinstance(proposal['method'].get('calibration'), dict)
+                or type(proposal['method']['calibration'].get('max_work_units')) is not int
+                or proposal['method']['calibration'].get('max_work_units') != initial_method['calibration']['max_work_units']):
+            raise ValueError('Method result changed frozen assurance outputs or resource caps')
     if ({k: v for k, v in proposal.get('method', {}).items() if k not in allowed}
             != {k: v for k, v in contract.proposal['method'].items() if k not in allowed}):
         raise ValueError('Method result changed fields outside repair scope')

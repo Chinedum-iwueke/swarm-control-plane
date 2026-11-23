@@ -3,6 +3,28 @@
 Status: **in progress; commissioning is not complete**. AEP-005/AEP-006 are not
 the production default. Controlled fixtures are not genuine-candidate receipts.
 
+## November 23: retained-evidence audit and V2 assurance
+
+The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
+definition and workload-accounting defects, not missing reviewer transport.
+Both review tasks received the same packet and its 18 evidence documents. The
+latest campaign remains closed without engineering or backtests.
+
+Bulletproof source `e092458` introduces `design-adequacy-contract-v2`: explicit
+inline or content-addressed definitions, dependency closure/cycle checks and a
+dimensioned workload ledger. Matching API/worker changes freeze output obligations
+and approved caps, retain referenced evidence during recovery compaction, and
+defer capacity-only findings without an author call. This is structural assurance,
+not semantic/scientific proof or actual runtime cost measurement.
+
+Validation before rollout: all 231 native governance tests, 105 worker tests,
+65 focused backend tests, and four explicit cross-repository replay tests passed.
+The latter include a real clean-source diagnostic subprocess at `e092458`, strict
+author-output schema validation, synthetic repair/publication/API replay, and
+capacity deferral without model calls. No genuine author or reviewer was invoked.
+Broad discovery remains paused. Source-bound commissioning requires fresh mandate
+and campaign approvals; the prior November 18 authority is expired.
+
 ## AEP-007C: engineering handoff commissioning
 
 November 18: mandate `93d63bf8-8590-472c-849f-83cdf4d92d1b` and campaign

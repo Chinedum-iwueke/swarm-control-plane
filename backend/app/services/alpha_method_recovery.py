@@ -94,18 +94,22 @@ def correction_contract(parent, result, reviews, *, now, adjudication=None):
     report = dict(schema_version='method-review-recheck-v1' if recheck else 'method-review-correction-v1', parent_task_id=str(parent.id),
                   packet_digest=digest(packet), proposal_digest=digest(state['proposal']),
                   reviews=rejected, scientific_approval=False, execution_authority=False)
+    protected = set(contract.dependencies.values()) | set(
+        state['proposal']['method'].get('meaningful_effect', {}).get('evidence_digests', []))
+    if state['proposal']['method'].get('schema_version') == 'design-adequacy-contract-v2':
+        protected.update(node['evidence_digest'] for node in
+            state['proposal']['method']['assurance'].get('definitions', [])
+            if isinstance(node, dict) and isinstance(node.get('evidence_digest'), str))
     catalog = {key: value for key, value in (contract.evidence_catalog | packet['evidence']).items()
-               if value.get('schema_version') != 'method-review-correction-v1'}
+               if key in protected or value.get('schema_version') != 'method-review-correction-v1'}
     if adjudication is not None:
         # The prior packet remains in the adjudication receipt, not as a second
         # current native diagnosis of the same proposal in a recheck packet.
-        catalog = {k: v for k, v in catalog.items() if not (
+        catalog = {k: v for k, v in catalog.items() if k in protected or not (
             v.get('schema_version') == 'native-diagnostic-receipt-v1'
             and v.get('subject_digest') == digest(state['proposal']))}
         catalog[digest(adjudication)] = deepcopy(adjudication)
     catalog[digest(report)] = report
-    protected = set(contract.dependencies.values()) | set(
-        state['proposal']['method'].get('meaningful_effect', {}).get('evidence_digests', []))
     catalog = compact_historical_catalog(catalog, protected=protected)
     raw = contract.model_dump(mode='json') | dict(
         proposal=deepcopy(state['proposal']), policy=policy, findings_digest=digest(report),

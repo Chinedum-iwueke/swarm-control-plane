@@ -10,7 +10,7 @@ from swarm_worker.method_episode import MethodCapacityUnavailable, bounded
 from swarm_worker.model_lane import model_call_allowed, provider_key
 from swarm_worker.provider_capacity import detect_provider_capacity
 from swarm_worker.workspace import TaskWorkspace
-from swarm_worker.calibration_design import design_schema, CORRECTION_GUIDANCE
+from swarm_worker.calibration_design import design_schema, assurance_schema, CORRECTION_GUIDANCE
 from swarm_worker.review_context import canonical, review_context
 
 
@@ -44,7 +44,7 @@ SCHEMA = {'type':'object', 'additionalProperties':False,
         'rationale':{'type':'string'}}}
 
 
-def correction_schema(allowed_fields, evidence_refs, finding_refs):
+def correction_schema(allowed_fields, evidence_refs, finding_refs, assurance_template=None):
     """Constrain model output before deterministic/native semantic validation."""
     text = {'type': 'string', 'minLength': 1, 'maxLength': 4000}
     effect = {'type': 'object', 'additionalProperties': False,
@@ -58,6 +58,7 @@ def correction_schema(allowed_fields, evidence_refs, finding_refs):
             'dgp_ids': {'type': 'array', 'items': text}}}
     fields = {field: {'anyOf': [effect if field == 'meaningful_effect' else
         calibration if field == 'calibration' else design_schema() if field == 'calibration_design'
+        else assurance_schema(assurance_template, evidence_refs) if field == 'assurance'
         else text, {'type': 'null'}]} for field in allowed_fields}
     return {'type': 'object', 'additionalProperties': False,
         'required': ['changes', 'addressed_findings', 'rationale'], 'properties': {
@@ -105,7 +106,9 @@ def correction_proposer(executor, workspace, heartbeat, *, read_evidence, max_co
         schema, output = artifacts/'schema.json', artifacts/'correction.json'
         typed = bool(context.get('allowed_method_fields') and context_evidence)
         schema.write_text(json.dumps(correction_schema(context['allowed_method_fields'],
-            context_evidence, context['finding_digests']) if typed else SCHEMA))
+            context_evidence, context['finding_digests'],
+            context['proposal']['method']['assurance'] if 'assurance' in context['allowed_method_fields']
+            else None) if typed else SCHEMA))
         prompt = ('Propose a bounded scientific-method correction, not strategy code or approval. '
             'Read the complete retained obligations and current evidence. Return the schema-defined '
             'changes object (null means unchanged), or changes_json only for a legacy schema. '

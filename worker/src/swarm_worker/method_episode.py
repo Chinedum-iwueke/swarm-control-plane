@@ -208,6 +208,17 @@ class MethodEpisode:
                             raise EpisodeIntegrityError("correction outside declared scope or findings")
                         successor = deepcopy(state["proposal"])
                         successor["method"].update(correction.changes)
+                        original_method = state['proposal']['method']
+                        if original_method.get('schema_version') == 'design-adequacy-contract-v2':
+                            old = original_method['assurance']
+                            new = successor['method'].get('assurance')
+                            if (not isinstance(new, dict) or new.get('required_outputs') != old['required_outputs']
+                                    or not isinstance(new.get('workload'), dict)
+                                    or canonical_digest(new['workload'].get('caps')) != canonical_digest(old['workload']['caps'])
+                                    or not isinstance(successor['method'].get('calibration'), dict)
+                                    or type(successor['method']['calibration'].get('max_work_units')) is not int
+                                    or successor['method']['calibration'].get('max_work_units') != original_method['calibration']['max_work_units']):
+                                raise EpisodeIntegrityError('correction changed frozen assurance outputs or resource caps')
                         bounded(successor)
                         digest = canonical_digest(successor)
                         if digest in state["seen_proposals"]:

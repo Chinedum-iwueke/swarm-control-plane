@@ -7,6 +7,14 @@ import pytest
 from swarm_worker.engineering_episode import canonical_digest
 from swarm_worker.executors.method_episode import correction_proposer
 from swarm_worker.executors.method_episode import correction_schema
+
+
+def test_assurance_schema_freezes_caps_and_binds_evidence():
+    template = {'required_outputs': ['target'], 'workload': {'caps': {'statistic_evaluation': 100}}}
+    schema = correction_schema(['assurance'], ['a'*64], ['b'*64], template)
+    assurance = schema['properties']['changes']['properties']['assurance']['anyOf'][0]['properties']
+    assert assurance['workload']['properties']['caps']['properties']['statistic_evaluation']['enum'] == [100]
+    assert assurance['definitions']['items']['properties']['evidence_digest']['anyOf'][0]['enum'] == ['a'*64]
 from swarm_worker.method_episode import MethodCapacityUnavailable
 from test_engineering_episode_executor import fixture, step
 
