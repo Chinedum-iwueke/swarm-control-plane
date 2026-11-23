@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import re
 
 from swarm_worker.engineering_episode import EpisodeIntegrityError, canonical_digest
 from swarm_worker.method_episode import bounded
@@ -11,6 +12,27 @@ from swarm_worker.method_episode import bounded
 
 TOOLS = frozenset({'design_adequacy_v1', 'event_support_v1',
                    'requirements_feasibility_v1', 'residual_calibration_v1'})
+
+
+def referenced_catalog(payload, catalog):
+    """Keep the transitive hash-reference closure; full history stays in the episode."""
+    if any(canonical_digest(value) != key for key, value in catalog.items()):
+        raise EpisodeIntegrityError('diagnostic catalog custody mismatch')
+    selected = {}
+    pending = [payload]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            pending.extend(value.values())
+            pending.extend(value.keys())
+        elif isinstance(value, list):
+            pending.extend(value)
+        elif isinstance(value, str):
+            for key in re.findall(r'(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])', value):
+                if key in catalog and key not in selected:
+                    selected[key] = catalog[key]
+                    pending.append(catalog[key])
+    return selected
 
 
 class NativeDiagnosticClient:
@@ -28,6 +50,8 @@ class NativeDiagnosticClient:
                 raise EpisodeIntegrityError('calibration exceeds episode reservation')
         request = dict(schema_version='native-diagnostic-request-v1', tool=tool,
             source_commit=self.source, subject_digest=subject_digest, payload=payload)
+        if tool == 'design_adequacy_v1':
+            catalog = referenced_catalog(payload, catalog)
         envelope = bounded(dict(request=request, evidence_catalog=catalog))
         # No shell, model-provided command, network tool or inherited auth variables.
         process = await asyncio.create_subprocess_exec(str(self.python),
@@ -47,7 +71,7 @@ class NativeDiagnosticClient:
             return b''.join(chunks)
 
         async def exchange():
-            process.stdin.write(json.dumps(envelope, allow_nan=False).encode())
+            process.stdin.write(json.dumps(envelope, sort_keys=True, separators=(',', ':'), allow_nan=False).encode())
             await process.stdin.drain()
             process.stdin.close()
             stdout, stderr = await asyncio.gather(read(process.stdout), read(process.stderr))

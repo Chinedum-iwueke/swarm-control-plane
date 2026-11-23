@@ -48,7 +48,7 @@ def test_uncompactable_correction_fails_before_model_call():
 
 
 @pytest.mark.parametrize('context', [
-    {'unique': 'x' * 270000},
+    {'unique': 'x' * 530000},
     {'unique': 'x' * 150000, '$review_ref': 'untrusted'},
 ])
 def test_file_fallback_preserves_raw_and_reference_guards(context):

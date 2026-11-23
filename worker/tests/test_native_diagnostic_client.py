@@ -4,7 +4,20 @@ from pathlib import Path
 import pytest
 
 from swarm_worker.engineering_episode import EpisodeIntegrityError, canonical_digest
-from swarm_worker.native_diagnostic_client import NativeDiagnosticClient
+from swarm_worker.native_diagnostic_client import NativeDiagnosticClient, referenced_catalog
+
+
+def test_diagnostic_projection_retains_transitive_references_and_validates_custody():
+    leaf = {'equation': 'x[t-1]'}
+    leaf_key = canonical_digest(leaf)
+    parent = {'definition': 'Use ' + leaf_key}
+    parent_key = canonical_digest(parent)
+    history = {'historical': 'not referenced'}
+    catalog = {canonical_digest(v):v for v in [leaf, parent, history]}
+    assert referenced_catalog({'reference':parent_key}, catalog) == {parent_key:parent, leaf_key:leaf}
+    assert len(catalog) == 3
+    with pytest.raises(EpisodeIntegrityError, match='custody'):
+        referenced_catalog({}, catalog | {'0'*64:history})
 
 
 def client(tmp_path, text):

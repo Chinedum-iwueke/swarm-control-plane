@@ -48,9 +48,9 @@ class Diagnosis(BaseModel):
                          "requirements_conflict", "requires_new_question",
                          "await_authority_or_capacity"]
     findings: list[MethodFinding] = Field(max_length=32)
-    # A diagnosis retains the approved catalog (at most 16) plus its own receipt.
+    # A diagnosis retains the approved catalog (at most 64) plus its own receipt.
     # This is a result envelope, not an expansion of input evidence authority.
-    evidence: dict[str, dict] = Field(min_length=1, max_length=17)
+    evidence: dict[str, dict] = Field(min_length=1, max_length=65)
     work_units: int = Field(ge=0, strict=True)
     scientific_approval: Literal[False] = False
     execution_authority: Literal[False] = False
@@ -104,8 +104,8 @@ class MethodEpisode:
         self.diagnose, self.propose, self.authorized = diagnose, propose, authorized
         self.model_permitted = model_permitted
 
-    def _retain(self, state, value):
-        bounded(value)
+    def _retain(self, state, value, maximum=262144):
+        bounded(value, maximum)
         digest = canonical_digest(value)
         bounded({**state["evidence"], digest: value}, 3000000)
         state["evidence"][digest] = deepcopy(value)
@@ -199,7 +199,7 @@ class MethodEpisode:
                     else:
                         raw = await asyncio.wait_for(self.diagnose(deepcopy(context), operation,
                             self.policy.tool_work_limit, remaining), timeout=remaining)
-                    reference = self._retain(state, raw)
+                    reference = self._retain(state, raw, 524288 if stage == 'diagnose' else 262144)
                     if stage == "propose":
                         correction = Correction.model_validate(raw)
                         valid_findings = {canonical_digest(f) for f in state["findings"]}

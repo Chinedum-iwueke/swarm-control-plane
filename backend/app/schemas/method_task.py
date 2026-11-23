@@ -10,8 +10,8 @@ from pydantic import field_validator
 import json
 
 
-def bounded(value):
-    if len(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()) > 262144:
+def bounded(value, maximum=262144):
+    if len(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()) > maximum:
         raise ValueError('method contract exceeds bound')
 
 
@@ -47,7 +47,7 @@ class MethodTaskContract(BaseModel):
     valid_until: datetime
     proposal: dict
     requirements: dict[str, str] = Field(min_length=1, max_length=64)
-    evidence_catalog: dict[str, dict] = Field(min_length=1, max_length=16)
+    evidence_catalog: dict[str, dict] = Field(min_length=1, max_length=64)
     dependencies: dict[str, str] = Field(min_length=1, max_length=32)
     findings_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
     policy: MethodEpisodePolicy
@@ -99,5 +99,8 @@ class MethodTaskContract(BaseModel):
                 raise ValueError('Invalid frozen assurance outputs or resource caps')
         elif 'assurance' in method or 'assurance' in self.policy.allowed_method_fields:
             raise ValueError('Assurance requires an explicitly approved V2 successor')
-        bounded(self.model_dump(mode='json'))
+        bounded(self.proposal)
+        for document in self.evidence_catalog.values():
+            bounded(document)
+        bounded(self.model_dump(mode='json'), 524288)
         return self

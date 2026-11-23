@@ -14,15 +14,26 @@ def test_diagnostic_evidence_allows_catalog_plus_one_receipt_only():
     from swarm_worker.method_episode import Diagnosis
     from swarm_worker.method_task import MethodTaskContract
     from test_alpha_method_design import contract
-    evidence = {canonical_digest({'fixture': i}): {'fixture': i} for i in range(17)}
-    assert len(Diagnosis(disposition='ready', findings=[], evidence=evidence, work_units=1).evidence) == 17
+    evidence = {canonical_digest({'fixture': i}): {'fixture': i} for i in range(65)}
+    assert len(Diagnosis(disposition='ready', findings=[], evidence=evidence, work_units=1).evidence) == 65
     source = contract('a' * 40)
     source['evidence_catalog'] = evidence
     with pytest.raises(ValueError):
         MethodTaskContract.model_validate(source)
-    evidence[canonical_digest({'fixture': 17})] = {'fixture': 17}
+    evidence[canonical_digest({'fixture': 65})] = {'fixture': 65}
     with pytest.raises(ValueError):
         Diagnosis(disposition='ready', findings=[], evidence=evidence, work_units=1)
+
+
+@pytest.mark.asyncio
+async def test_large_diagnostic_envelope_keeps_individual_document_bounds(tmp_path):
+    docs = [{'ordinal':i, 'evidence':'x'*9000} for i in range(32)]
+    catalog = {canonical_digest(v):v for v in docs}
+    async def large(*_):
+        return dict(disposition='ready', findings=[], evidence=catalog, work_units=1)
+    state = await episode(tmp_path, diagnose=large).run()
+    assert state['status'] == 'ready_for_independent_review'
+    assert all(state['evidence'][k] == v for k,v in catalog.items())
 
 
 def diagnosis(proposal, disposition=None):

@@ -41,6 +41,22 @@ def fixture():
     return db, campaign, source, parent, request, mandate, activation
 
 
+def test_method_input_aggregate_bounds_match_worker_without_expanding_documents(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / 'worker/src'))
+    from swarm_worker.method_task import MethodTaskContract as WorkerContract
+    from swarm_worker.engineering_episode import EpisodeIntegrityError
+    request = fixture()[4]
+    documents = [{'ordinal':i, 'text':'x'*9000} for i in range(32)]
+    request['evidence_catalog'] = {service.digest(v):v for v in documents}
+    assert MethodTaskContract.model_validate(request).model_dump(mode='json') == WorkerContract.model_validate(request).model_dump(mode='json')
+    for count, width in [(65, 1), (1, 270000), (64, 9000)]:
+        documents = [{'ordinal':i, 'text':'x'*width} for i in range(count)]
+        request['evidence_catalog'] = {service.digest(v):v for v in documents}
+        for model in (MethodTaskContract, WorkerContract):
+            with pytest.raises((ValueError, EpisodeIntegrityError)):
+                model.model_validate(request)
+
+
 def test_assurance_requires_explicit_v2_authority_and_frozen_obligations():
     request = fixture()[4]
     request['policy']['allowed_method_fields'] = ['assurance']
