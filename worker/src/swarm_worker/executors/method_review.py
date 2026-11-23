@@ -32,7 +32,15 @@ def review_callbacks(runtimes, workspace, heartbeat):
         view=TaskWorkspace(replace(workspace.plan,logs_directory=logs,artifacts_directory=artifacts),workspace.metadata)
         model=Adjudication if adjudication else MethodVerdict
         schema, output=artifacts/'schema.json',artifacts/'verdict.json'
-        schema.write_text(json.dumps(model.model_json_schema()))
+        document = model.model_json_schema()
+        if not adjudication:
+            keys = sorted(context['packet']['requirements'])
+            document['properties']['checks'] = {
+                'type': 'array', 'minItems': len(keys), 'maxItems': len(keys),
+                'items': {'type': 'string', 'enum': keys},
+                'description': 'Exact requirement keys only; explanations belong in rationale or findings.',
+            }
+        schema.write_text(json.dumps(document))
         prompt=(
             'Adjudicate only the recorded findings against the frozen criteria and verified '
             'counterevidence. You cannot approve, correct a method or waive a criterion. '

@@ -24,6 +24,10 @@ async def test_exact_runtime_schema_and_ephemeral_review_context(tmp_path, monke
         calls.append(kw)
         assert 'model_provider="invariance_api"' not in kw['args']
         assert '--ephemeral' in kw['args'] and 'read-only' in kw['args']
+        schema = json.loads((kw['workspace'].artifacts/'schema.json').read_text())
+        checks = schema['properties']['checks']
+        assert checks['items']['enum'] == sorted(context['packet']['requirements'])
+        assert checks['minItems'] == checks['maxItems'] == len(context['packet']['requirements'])
         (kw['workspace'].artifacts/'verdict.json').write_text(json.dumps(verdict(context)))
         return step('method-review',kw['workspace'])
     executor._run_codex=model
