@@ -59,6 +59,21 @@ def test_historical_catalog_compaction_preserves_science_and_exact_history():
         recovery.compact_historical_catalog(corrupt)
 
 
+def test_compaction_can_pack_existing_archive_without_losing_nested_custody():
+    nested = {'schema_version': 'method-historical-commissioning-archive-v1',
+              'documents': {'retained-location': {'old': 'metadata'}}}
+    scope = {'schema_version': 'method-commissioning-scope-v1', 'parent': 'old'}
+    science = [{'schema_version': 'scientific-evidence-v1', 'ordinal': i} for i in range(15)]
+    catalog = {digest(v):v for v in [*science, nested, scope]}
+    packed = recovery.compact_historical_catalog(catalog)
+    assert len(packed) == 16
+    archive = next(v for v in packed.values() if 'documents' in v)
+    assert archive['documents'][digest(nested)] == nested
+    assert archive['documents'][digest(scope)] == scope
+    assert {k:v for k,v in packed.items() if v is not archive} | archive['documents'] == catalog
+    assert recovery.compact_historical_catalog(catalog, protected={digest(nested)}) == catalog
+
+
 def rejected():
     task = ready_task()
     now = datetime.now(timezone.utc)

@@ -80,7 +80,8 @@ def compact_historical_catalog(catalog, *, protected=()):
     if any(digest(value) != key for key, value in catalog.items()):
         raise ValueError('Historical catalog digest mismatch')
     historical = {'method-explicit-commissioning-successor-v1',
-                  'method-commissioning-scope-v1'}
+                  'method-commissioning-scope-v1',
+                  'method-historical-commissioning-archive-v1'}
     documents = {key: value for key, value in catalog.items()
                  if key not in protected and value.get('schema_version') in historical}
     if len(documents) < 2:
@@ -164,7 +165,19 @@ def correction_contract(parent, result, reviews, *, now, adjudication=None):
         catalog = {k: v for k, v in catalog.items() if k in protected or not (
             v.get('schema_version') == 'native-diagnostic-receipt-v1'
             and v.get('subject_digest') == digest(state['proposal']))}
-        catalog[digest(adjudication)] = deepcopy(adjudication)
+        retained = deepcopy(adjudication)
+        if 'prior_packet' in retained:
+            if retained['prior_packet'] != packet:
+                raise ValueError('Adjudication prior packet custody mismatch')
+            retained.pop('prior_packet')
+            retained['prior_packet_reference'] = {
+                'parent_task_id': str(parent.id),
+                'parent_result_digest': result['result_digest'],
+                'packet_digest': digest(packet),
+                'location': 'review_packet',
+                'receipt_digest': digest(adjudication),
+            }
+        catalog[digest(retained)] = retained
     catalog[digest(report)] = report
     catalog = compact_historical_catalog(catalog, protected=protected)
     raw = contract.model_dump(mode='json') | dict(

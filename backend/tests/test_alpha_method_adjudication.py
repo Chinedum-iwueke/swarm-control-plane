@@ -80,11 +80,26 @@ def test_recheck_preserves_method_budgets_and_requires_new_native_packet():
     assert raw['policy']['max_model_calls'] == task.input_contract['policy']['max_model_calls']
     assert raw['policy']['max_tool_calls'] == task.input_contract['policy']['max_tool_calls'] - 1
     assert raw['evidence_catalog'][raw['findings_digest']]['schema_version'] == 'method-review-recheck-v1'
-    assert receipt in raw['evidence_catalog'].values()
+    retained = next(v for v in raw['evidence_catalog'].values()
+                    if v.get('schema_version') == 'method-adjudication-receipt-v1')
+    reference = retained['prior_packet_reference']
+    assert reference['parent_task_id'] == str(task.id)
+    assert reference['parent_result_digest'] == result['result_digest']
+    assert reference['packet_digest'] == digest(result['review_packet'])
+    restored = {k:v for k,v in retained.items() if k != 'prior_packet_reference'}
+    restored['prior_packet'] = result['review_packet']
+    assert restored == receipt and digest(restored) == reference['receipt_digest']
     assert not any(v.get('schema_version') == 'native-diagnostic-receipt-v1' for v in raw['evidence_catalog'].values())
     assert result == before
     receipt['review']['method_adjudication']['decision'] = 'disputed'
     with pytest.raises(RecoveryDeferred, match='dispute_unresolved'):
+        correction_contract(task, result, reviews, now=now, adjudication=receipt)
+
+
+def test_adjudication_packet_reference_rejects_substituted_parent():
+    task, result, reviews, now, _, _, receipt = decision_fixture()
+    receipt['prior_packet'] = {'different': 'packet'}
+    with pytest.raises(ValueError, match='prior packet custody'):
         correction_contract(task, result, reviews, now=now, adjudication=receipt)
 
 

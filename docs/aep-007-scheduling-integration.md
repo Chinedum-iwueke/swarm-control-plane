@@ -25,6 +25,22 @@ This format repair cannot overturn the specification rejection. No engineering,
 calibration or market-data backtest has started for this handoff. The current
 campaign authorizes no further method correction or dispute adjudication.
 
+The founder subsequently approved mandate
+`ced6e5ef-b332-402c-b50d-bf025bc6654d` and activated method-only successor
+`14866b1e-72ea-47a6-a20b-d7c6c4824634` (digest
+`ce66f6d14a2b306290a103e6b3ec670d786e038a6b8e0d3d61e99b9b44578d70`).
+It permits three author corrections, six diagnostics and one independent
+adjudication per lineage until November 23 at 21:35 UTC. It cannot authorize
+engineering, calibration execution, backtests or promotion.
+Task `a68ae064-c75d-4476-b7c4-3b35bec29217` published a corrected method after
+one author call and two diagnostics. Causality review
+`3fcf262b-f6de-4003-ac9d-e11b96497639` accepted it with a valid exact-key output.
+Specification review `07907c0b-915b-4339-8b43-35c0b5e6278f` rejected an omitted
+12 outer-history generations: 65,548 required versus the unchanged 65,536 cap.
+The controller automatically routed adjudication
+`bd26536a-40d6-4fd4-b21f-cb1ebbd86873`; acceptance and correction remain unproved
+at this checkpoint. The old handoff is not retrospectively certified.
+
 The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
 definition and workload-accounting defects, not missing reviewer transport.
 Both review tasks received the same packet and its 18 evidence documents. The
