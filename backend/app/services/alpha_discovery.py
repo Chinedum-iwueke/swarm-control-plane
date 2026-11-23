@@ -1653,6 +1653,8 @@ def recover_data_admission(
 def queue_founder_idea(
     db: Session, mandate: AlphaResearchMandate, payload: AlphaFounderResearchIdeaCreate
 ) -> AlphaFounderResearchIdea:
+    if getattr(mandate, 'specification', {}).get('discovery_enabled', True) is not True:
+        raise HTTPException(409, 'This mandate does not authorize discovery; retain the idea outside execution until separately authorized.')
     if mandate.status not in {"active", "awaiting_approval"} or not (
         mandate.valid_from <= now() < mandate.valid_until
     ):
@@ -1752,6 +1754,8 @@ def _new_cycle(
     *,
     prepared_context: dict | None = None,
 ) -> AlphaDiscoveryCycle | None:
+    if getattr(mandate, 'specification', {}).get('discovery_enabled', True) is not True:
+        return None
     ordinal = mandate.cycle_count + 1
     context = (
         prepared_context
@@ -3223,6 +3227,8 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
         return
     reconciled_cycles = _reconcile_campaign_cycles(db, mandate, moment)
     if mandate.status != "active":
+        return
+    if getattr(mandate, 'specification', {}).get('discovery_enabled', True) is not True:
         return
     cycle = db.scalar(
         select(AlphaDiscoveryCycle)

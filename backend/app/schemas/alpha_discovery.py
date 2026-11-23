@@ -136,6 +136,7 @@ class AlphaResearchMandateCreate(StrictModel):
     mandate_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
     objective: str = Field(min_length=20, max_length=4000)
+    discovery_enabled: bool = Field(default=True, strict=True)
     valid_from: datetime
     valid_until: datetime
     bulletproof_source_commit: str = Field(pattern=_COMMIT)

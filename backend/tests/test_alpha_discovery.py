@@ -60,6 +60,35 @@ DIGEST = "a" * 64
 COMMIT = "b" * 40
 
 
+def test_commissioning_mandate_does_not_allocate_discovery(monkeypatch):
+    from app.services import alpha_discovery as service
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(status='active', valid_until=moment+timedelta(hours=1),
+                              specification={'discovery_enabled': False})
+    db = MagicMock()
+    monkeypatch.setattr(service, '_recover_premature_cycle_completion', lambda *_: None)
+    reconcile = MagicMock(return_value=set())
+    monkeypatch.setattr(service, '_reconcile_campaign_cycles', reconcile)
+    service.reconcile_mandate(db, mandate)
+    reconcile.assert_called_once()
+    db.scalar.assert_not_called()
+    assert service._new_cycle(db, mandate, prepared_context={'untrusted': True}) is None
+    db.add.assert_not_called()
+    with pytest.raises(HTTPException, match='does not authorize discovery'):
+        service.queue_founder_idea(db, mandate, None)
+
+
+def test_discovery_scope_is_strict_and_defaults_to_legacy_behavior():
+    from pydantic import TypeAdapter
+    field = AlphaResearchMandateCreate.model_fields['discovery_enabled']
+    assert field.default is True
+    adapter = TypeAdapter(field.rebuild_annotation())
+    assert adapter.validate_python(False) is False
+    for invalid in ['false', 0, None]:
+        with pytest.raises(ValidationError):
+            adapter.validate_python(invalid)
+
+
 def test_active_parallel_instrument_sets_are_normalized() -> None:
     db = MagicMock()
     db.scalars.return_value.all.return_value = [
