@@ -41,6 +41,19 @@ The controller automatically routed adjudication
 `bd26536a-40d6-4fd4-b21f-cb1ebbd86873`; acceptance and correction remain unproved
 at this checkpoint. The old handoff is not retrospectively certified.
 
+Adjudication completed with `repair`, substantiating the twelve omitted outer
+histories. Automatic correction then deferred as `context_requires_compaction`:
+the receipt duplicated its prior packet and the catalog exceeded 16 entries.
+Repair `eb52f8f` retains a hash-bound immutable-parent packet reference and packs
+historical commissioning archives without removing scientific evidence. Exact
+live-evidence replay validates the successor at 258,477 bytes; 117 focused
+backend tests passed. The API deployment is healthy. The founder approved R2
+`f48cd108-2c8b-48f8-a85d-74c51b71e0dd`, digest
+`179e09d9d8478438ea2c1743a1f23cb09752f99fdd45a5345f29e9abed63b458`.
+R2 retains only two unspent author calls, four diagnostics and the original
+21:35 UTC deadline, with no repeat adjudication. This is an operator-assisted
+transport recovery; uninterrupted end-to-end autonomy remains unproved.
+
 The [retained-evidence audit](aep-007c-retained-evidence-audit.md) found genuine
 definition and workload-accounting defects, not missing reviewer transport.
 Both review tasks received the same packet and its 18 evidence documents. The
