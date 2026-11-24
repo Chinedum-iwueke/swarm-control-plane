@@ -615,6 +615,23 @@ async def test_provider_capacity_defers_without_failing_task(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('current_step', [False, True])
+async def test_episode_failure_uses_terminal_step_not_repaired_history(tmp_path, current_step):
+    events = []
+    api = FakeAPI(events)
+    result = make_execution_result(success=False)
+    result.termination_reason = 'engineering_episode_repair_budget_exhausted'
+    result.summary = {'engineering_episode': {
+        'terminal_step': result.steps[0].model_dump(mode='json') if current_step else None,
+        'terminal_receipt_id': 'terminal-review-checks'}}
+    outcome = await make_service(tmp_path, api, events, execution_result=result).run_once()
+    assert isinstance(outcome, FailedOutcome)
+    assert outcome.failure['error_category'] == 'engineering_episode_repair_budget_exhausted'
+    assert outcome.failure['failed_step'] == ('run-tests' if current_step else None)
+    assert outcome.failure['stderr_log'] == ('logs/run-tests.stderr.log' if current_step else None)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("step_name", [
     "independent-review", "independent-strategy-review", "alpha-intelligence",
     "alpha-hypothesis", "alpha-representation",

@@ -43,6 +43,7 @@ from swarm_worker.models import (
     TaskMutationResponse,
     TaskReleaseRequest,
     TaskStartRequest,
+    StepExecutionResult,
     WorkflowExecutionResult,
 )
 from swarm_worker.policy import (
@@ -599,6 +600,10 @@ class WorkerService:
                     ),
                     None,
                 )
+                episode = execution_result.summary.get('engineering_episode', {})
+                if isinstance(episode, dict) and 'terminal_step' in episode:
+                    failed_step = (StepExecutionResult.model_validate(episode['terminal_step'])
+                                   if episode['terminal_step'] is not None else None)
                 category = execution_result.termination_reason or "step_failed"
                 return await self._fail_or_lease_lost(
                     api=api,

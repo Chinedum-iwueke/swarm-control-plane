@@ -329,11 +329,18 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
     reason = None if state["status"] == "completed" else f"engineering_episode_{state.get('reason', state['status'])}"
     result = executor._result(task, workflow, workspace, started, steps, state["status"] == "completed",
                               reason, heartbeat_failures=heartbeat_failures)
+    terminal_event = state['events'][-1] if state['events'] else {}
+    terminal_steps = terminal_event.get('result', {}).get('steps', [])
+    terminal_step = next((step for step in reversed(terminal_steps) if not step['success']), None)
+    if terminal_step is None:
+        result.summary.pop('failure_diagnostic', None)
     result.artifacts = sorted(set(result.artifacts + ["artifacts/engineering-episode.json"] +
         [str(p.relative_to(workspace.plan.attempt_directory)) for p in workspace.artifacts.glob("episode-*/*") if p.is_file()]))
     result.summary["engineering_episode"] = {key: state[key] for key in ("status", "stage", "repairs", "model_calls", "adjudications", "metrics")}
     result.summary['engineering_episode']['author_continuity'] = continuity
     result.summary['engineering_episode']['progress'] = progress(state)
+    result.summary['engineering_episode']['terminal_step'] = terminal_step
+    result.summary['engineering_episode']['terminal_receipt_id'] = terminal_event.get('receipt_id')
     if state['status'] == 'completed' and accepted_method is not None:
         result.artifacts = sorted(set(result.artifacts + ['artifacts/accepted-method-native-handoff.json']))
         result.summary['accepted_method_native_handoff'] = handoff

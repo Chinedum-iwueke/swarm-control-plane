@@ -249,6 +249,38 @@ async def test_new_attempt_restores_partial_workspace_without_resetting_call_bud
 
 
 @pytest.mark.asyncio
+async def test_repaired_test_failure_is_not_reported_as_terminal_review_failure(tmp_path):
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    task.input_contract['engineering_episode']['max_repairs'] = 1
+    authors = []
+
+    async def author(**kwargs):
+        authors.append(kwargs['prompt'])
+        value = 'None' if len(authors) == 1 else '1'
+        (workspace.repository/'signal_logic.py').write_text(f'def signal():\n    return {value}\n# changed\n')
+        return step('coding-agent', kwargs['workspace'])
+
+    async def reviewer(**kwargs):
+        (kwargs['workspace'].artifacts/'decision.json').write_text(json.dumps({
+            'approved': False, 'summary': 'Real runner proof missing',
+            'findings': [{'severity': 'high', 'message': 'Missing actual-runner coverage'}]}))
+        return step('independent-review', kwargs['workspace'])
+
+    async def heartbeat(_):
+        pass
+
+    executor._run_author, executor._run_codex = author, reviewer
+    result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
+    assert not result.success
+    assert result.termination_reason == 'engineering_episode_repair_budget_exhausted'
+    assert any(not step.success for step in result.steps), 'Historical evidence must remain'
+    assert 'failure_diagnostic' not in result.summary
+    assert result.summary['engineering_episode']['terminal_step'] is None
+    assert result.summary['engineering_episode']['terminal_receipt_id']
+    assert result.summary['independent_review']['approved'] is False
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('tamper', [False, True])
 async def test_session_retry_relocates_only_verified_code_and_completes_review(tmp_path, monkeypatch, tamper):
     from swarm_worker.engineering_episode import EpisodeIntegrityError

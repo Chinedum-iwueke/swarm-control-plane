@@ -260,3 +260,24 @@ It continues the already-reserved repair without resetting its count, refunding
 the failed call reservation or extending the deadline. Other policy violations
 remain blocked. Complete latest rejection findings are supplied separately from
 truncated event logs, so transport recovery cannot hide the defects to repair.
+
+## November 24 continuation audit
+
+Release `30d546c` passed 106 focused tests and was deployed. The real task resumed
+its exact Codex session in the verified attempt-5 workspace, repaired a synthetic
+terminal-path test within the session and passed focused checks. Fresh independent
+code review rejected scientific separation, native integration, artifact and
+provenance gaps. At November 23 23:55 UTC the task closed with
+`engineering_episode_repair_budget_exhausted`, seven charged model reservations
+and two repairs. The goal pause did not cancel the already-running drain task.
+
+Read-only inspection confirms test evaluation precedes variant selection and
+future-bar eligibility includes the decision-bar liquidity floor. These are
+implementation defects, not evidence-transport omissions. No real-data execution
+or BT-009 receipt followed. Expired authority requires a fresh bounded successor.
+
+Failure reporting now identifies the terminal event's failed step, if any, rather
+than selecting an earlier repaired test failure from the complete episode history.
+Historical steps remain available; a review/budget stop does not falsely report
+the original missing-test error. Regression coverage includes failed focused
+tests, successful repair and subsequent independent-review budget exhaustion.
