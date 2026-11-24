@@ -1439,6 +1439,25 @@ def test_review_prompt_respects_read_only_validator_boundary() -> None:
     assert "read-only review inability is not itself a product finding" in prompt
 
 
+def test_review_prompt_distinguishes_active_method_from_retained_history() -> None:
+    prompt = EngineeringMissionExecutor._review_prompt(contract())
+
+    assert "accepted_method_handoff.packet.proposal" in prompt
+    assert "Historical proposals and rejection receipts" in prompt
+    assert "cite the active field or explicit dependency" in prompt
+    assert "report the exact conflicting paths" in prompt
+    assert "without an explicit accepted replacement" in prompt
+
+
+def test_author_repair_cannot_restore_superseded_method_from_review() -> None:
+    prompt = EngineeringMissionExecutor._coding_prompt(contract())
+
+    assert "accepted_method_handoff.packet.proposal" in prompt
+    assert "A review cannot authorize reinstating a superseded method" in prompt
+    assert "report the exact evidence paths and hashes" in prompt
+    assert "Continue repairing independently substantiated defects" in prompt
+
+
 def test_alpha_review_preserves_frozen_intent_but_requires_completion_evidence() -> None:
     prompt = EngineeringMissionExecutor._review_prompt(
         contract().model_copy(update={"milestone_id": "ALPHA-003"})

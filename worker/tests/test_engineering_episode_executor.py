@@ -150,6 +150,10 @@ async def test_real_subprocess_checks_drive_repair_and_bundle(tmp_path, expressi
         return step("coding-agent", kwargs["workspace"])
 
     async def reviewer(**kwargs):
+        assert "review precedes the governed full validation" in kwargs["prompt"]
+        assert "pending downstream obligations" in kwargs["prompt"]
+        assert "Still reject missing required test coverage" in kwargs["prompt"]
+        assert "downstream validator and bundle gates remain mandatory" in kwargs["prompt"]
         output = kwargs["workspace"].artifacts / "decision.json"
         output.write_text(json.dumps({"approved": True, "summary": "fixture review", "findings": []}))
         return step("independent-review", kwargs["workspace"])
