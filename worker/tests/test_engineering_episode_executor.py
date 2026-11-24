@@ -209,6 +209,11 @@ async def test_real_subprocess_checks_drive_repair_and_bundle(tmp_path, expressi
     result = await executor.execute(task=task, workflow=workflow, workspace=workspace, heartbeat=heartbeat)
     assert result.success, result.model_dump()
     assert len(authors) == 2
+    for prompt in authors:
+        assert 'Episode focused-test contract: ["tests/test_signal.py"]' in prompt
+        assert "run the entire approved focused selector set" in prompt
+        assert "distinct from the downstream full-repository suite" in prompt
+        assert "Do not delegate to helper agents" in prompt
     assert "Continue the retained implementation" in authors[1]
     assert result.summary["engineering_episode"]["repairs"] == 1
     assert (workspace.artifacts / "changes.patch").exists()

@@ -212,6 +212,19 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
                 return {"status": "pass"}
             if stage == "author":
                 prompt = executor._coding_prompt(contract, task.prior_failure)
+                prompt += (
+                    "\nEpisode focused-test contract: " + json.dumps(policy.focused_tests)
+                    + "\nAfter your final code and test edits, run the entire approved focused "
+                    "selector set above with python -m pytest, not only newly added or targeted "
+                    "tests. Repair regressions within this session and unchanged authority; "
+                    "do not weaken assertions or replace canonical interfaces to obtain a pass. "
+                    "A change to variant ordering or identity must remain compatible with every "
+                    "caller and persisted-artifact contract. If blocked, report the exact failing "
+                    "test and reason rather than claiming completion. These focused tests are "
+                    "distinct from the downstream full-repository suite. The controller will "
+                    "rerun them independently. Do not delegate to helper agents or invoke other "
+                    "models: independent review is allocated separately by the controller."
+                )
                 if manifest.exists():
                     prompt += executor._strategy_scaffold_author_context(workspace)
                 if state["repairs"] or any(e.get("status") == "interrupted" for e in state["events"]):
