@@ -1526,6 +1526,50 @@ def test_codex_subprocess_uses_fixed_jitless_environment(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("command", [
+    ["codex", "exec", "-c", "features.multi_agent=true", "-"],
+    ["codex", "exec", "resume", "retained-session", "-"],
+    ["/usr/local/bin/codex", "exec", "--json", "-"],
+])
+async def test_codex_subprocess_disables_unbudgeted_delegation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: list[str],
+) -> None:
+    for name in ("repository", "artifacts", "logs", "codex-home"):
+        (tmp_path / name).mkdir()
+    workspace = SimpleNamespace(**{
+        name: tmp_path / name for name in ("repository", "artifacts", "logs")
+    })
+    executor = EngineeringMissionExecutor(
+        codex_home=tmp_path / "codex-home", codex_model="test",
+        timeout_seconds=10, heartbeat_interval_seconds=1,
+        effective_uid=lambda: 1000,
+    )
+    original_start = executor._runner.start
+    captured = []
+
+    async def start(args, **kwargs):
+        captured.append(args)
+        return await original_start(["bash", "-c", "true"], **kwargs)
+
+    async def heartbeat(_progress):
+        pass
+
+    monkeypatch.setattr(executor._runner, "start", start)
+    unchanged = list(command)
+    result = await executor._run_codex(
+        name="coding-agent", args=command, prompt="bounded test",
+        workspace=workspace, heartbeat=heartbeat, heartbeat_failures=[],
+        timeout_seconds=1,
+    )
+    assert result.success
+    assert command == unchanged
+    assert captured[0][-5:] == [
+        "-c", "features.multi_agent=false",
+        "-c", "features.multi_agent_v2=false", "-",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_codex_subprocess_survives_temporary_heartbeat_outage(
     tmp_path: Path,
 ) -> None:

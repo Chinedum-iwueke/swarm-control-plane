@@ -1344,6 +1344,14 @@ class EngineeringMissionExecutor:
         timeout_seconds: float,
         environment_overrides: dict[str, str] | None = None,
     ) -> StepExecutionResult:
+        if Path(args[0]).name == "codex":
+            # Only the episode controller may allocate additional model calls.
+            args = list(args)
+            position = len(args) - 1 if args[-1] == "-" else len(args)
+            args[position:position] = [
+                "-c", "features.multi_agent=false",
+                "-c", "features.multi_agent_v2=false",
+            ]
         stdout_path = workspace.logs / f"{name}.stdout.log"
         stderr_path = workspace.logs / f"{name}.stderr.log"
         prompt_path = workspace.artifacts / f"{name}.prompt.txt"
