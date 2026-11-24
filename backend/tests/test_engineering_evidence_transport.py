@@ -120,6 +120,28 @@ def large_handoff():
 
 
 @pytest.mark.parametrize("codec", [backend, worker])
+def test_handoff_depth_accounts_only_for_two_transport_wrappers(codec):
+    packet = 0
+    for _ in range(codec.DOCUMENT_DEPTH):
+        packet = {"retained": packet}
+    codec.validate_document(packet)
+    document = {"accepted_method_handoff": {
+        "schema_version": "accepted-method-engineering-handoff-v1", "packet": packet}}
+    before = deepcopy(document)
+    encoded = codec.encode_engineering_evidence(document)
+    for decoder in (backend, worker):
+        assert decoder.decode_engineering_evidence(encoded) == before
+    assert document == before
+    document['accepted_method_handoff']['packet'] = {'extra': packet}
+    with pytest.raises(ValueError, match='nesting'):
+        codec.encode_engineering_evidence(document)
+    with pytest.raises(ValueError, match='nesting'):
+        codec.decode_engineering_evidence(codec.canonical(document))
+    with pytest.raises(ValueError, match='nesting'):
+        codec.encode_engineering_evidence({'extra': packet})
+
+
+@pytest.mark.parametrize("codec", [backend, worker])
 def test_high_entropy_handoff_has_bounded_lossless_wire_budget(codec):
     import random
     document = large_handoff()

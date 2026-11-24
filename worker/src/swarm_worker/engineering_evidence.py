@@ -13,6 +13,8 @@ WIRE_LIMIT = 48_000
 HANDOFF_WIRE_LIMIT = 131_072
 EXPANDED_LIMIT = 96_000
 HANDOFF_LIMIT = 524_288
+DOCUMENT_DEPTH = 32
+HANDOFF_DEPTH = DOCUMENT_DEPTH + 2  # accepted_method_handoff.packet wrappers
 FORMAT = "engineering-evidence-zlib-v1"
 HANDOFF_FORMAT = "engineering-evidence-xz-v1"
 
@@ -38,9 +40,10 @@ def validate_document(value):
     if "accepted_method_context" in value:
         raise ValueError("reserved engineering prompt context key")
     pending = [(value, 0)]
+    maximum_depth = HANDOFF_DEPTH if document_limit(value) == HANDOFF_LIMIT else DOCUMENT_DEPTH
     while pending:
         node, depth = pending.pop()
-        if depth > 32:
+        if depth > maximum_depth:
             raise ValueError("engineering evidence nesting exceeds safe limits")
         children = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
         pending.extend((child, depth + 1) for child in children)

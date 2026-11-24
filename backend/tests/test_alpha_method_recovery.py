@@ -37,6 +37,32 @@ def test_accepted_handoff_indexes_only_unreferenced_correction_history():
         recovery.accepted_handoff_catalog(task, result)
 
 
+def test_accepted_handoff_indexes_nested_history_without_rewriting_custody():
+    task = ready_task()
+    result = task.result['summary']['method_episode']
+    archive = {'schema_version': 'method-review-correction-v1', 'reviews': []}
+    for _ in range(12):
+        archive = {'schema_version': 'method-historical-commissioning-archive-v1',
+                   'documents': {digest(archive): archive}}
+    key = digest(archive)
+    result['review_packet']['evidence'][key] = deepcopy(archive)
+    result['state']['evidence'][key] = deepcopy(archive)
+    before = deepcopy(result)
+    catalog = recovery.accepted_handoff_catalog(task, result)
+    assert result == before and key not in catalog
+    index = next(v for v in catalog.values()
+                 if v.get('schema_version') == 'method-prior-corrections-index-v1')
+    assert {'digest': key, 'location': 'review_packet/evidence/' + key} in index['documents']
+    assert result['review_packet']['evidence'][key] == archive
+    result['review_packet']['requirements']['history_dependency'] = key
+    assert recovery.accepted_handoff_catalog(task, result)[key] == archive
+    result['review_packet']['requirements'].pop('history_dependency')
+    result['state']['evidence'] = deepcopy(result['state']['evidence'])
+    result['state']['evidence'][key] = {'changed': True}
+    with pytest.raises(ValueError, match='custody'):
+        recovery.accepted_handoff_catalog(task, result)
+
+
 def test_historical_catalog_compaction_preserves_science_and_exact_history():
     docs = [dict(schema_version='scientific-evidence-v1', ordinal=i) for i in range(14)]
     docs += [dict(schema_version='method-explicit-commissioning-successor-v1', ordinal=i)

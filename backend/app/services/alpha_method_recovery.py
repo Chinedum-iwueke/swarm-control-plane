@@ -57,7 +57,11 @@ def accepted_handoff_catalog(parent, result):
         if key in catalog:
             references(catalog[key])
         pending.update(protected - visited)
-    historical = {key: value for key, value in corrections.items() if key not in protected}
+    historical = {key: value for key, value in catalog.items()
+                  if key not in protected and (key in corrections
+                      or value.get('schema_version') in {
+                          'method-historical-commissioning-archive-v1',
+                          'method-prior-corrections-index-v1'})}
     if not historical:
         return catalog
     retained = result['state']['evidence']
