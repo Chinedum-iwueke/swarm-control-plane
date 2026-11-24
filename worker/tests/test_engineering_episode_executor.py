@@ -65,6 +65,49 @@ def fixture(tmp_path, expression, expected):
     return executor, task, workflow, workspace
 
 
+def test_episode_artifact_overflow_is_lossless_deterministic_and_bounded(tmp_path):
+    import hashlib
+    import zipfile
+    from swarm_worker.executors.engineering_episode import bounded_episode_artifacts
+    _, _, _, workspace = fixture(tmp_path, '1', 1)
+    paths = []
+    for index in range(35):
+        relative = f'artifacts/episode-{index:03d}/decision.json'
+        path = workspace.plan.attempt_directory / relative
+        path.parent.mkdir()
+        path.write_text(json.dumps({'receipt': index}))
+        paths.append(relative)
+    summary = workspace.artifacts / 'engineering-episode.json'
+    summary.write_text('{"status":"blocked","reason":"repair_budget_exhausted"}')
+    paths.append('artifacts/engineering-episode.json')
+    result = bounded_episode_artifacts(workspace, paths)
+    assert len(result) <= 20
+    assert 'artifacts/engineering-episode.json' in result
+    manifest_path = workspace.artifacts / 'engineering-episode-artifacts.json'
+    first_manifest = manifest_path.read_bytes()
+    manifest = json.loads(first_manifest)
+    archive = workspace.plan.attempt_directory / manifest['archive']
+    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['archive_sha256']
+    with zipfile.ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) == set(paths)
+        for entry in manifest['artifacts']:
+            content = bundle.read(entry['path'])
+            assert content == (workspace.plan.attempt_directory / entry['path']).read_bytes()
+            assert hashlib.sha256(content).hexdigest() == entry['sha256']
+            assert len(content) == entry['size_bytes']
+    assert bounded_episode_artifacts(workspace, paths) == result
+    assert manifest_path.read_bytes() == first_manifest
+
+
+def test_episode_artifact_overflow_rejects_escape(tmp_path):
+    from swarm_worker.executors.engineering_episode import bounded_episode_artifacts
+    from swarm_worker.engineering_episode import EpisodeIntegrityError
+    _, _, _, workspace = fixture(tmp_path, '1', 1)
+    paths = ['../outside'] + [f'artifacts/episode-{index}/file' for index in range(20)]
+    with pytest.raises(EpisodeIntegrityError, match='escapes workspace'):
+        bounded_episode_artifacts(workspace, paths)
+
+
 @pytest.mark.asyncio
 async def test_handoff_artifact_is_retained_before_model_call_and_retry_checks_integrity(tmp_path, monkeypatch):
     from swarm_worker.executors.engineering_episode import execute_episode
@@ -256,6 +299,10 @@ async def test_new_attempt_restores_partial_workspace_without_resetting_call_bud
 async def test_repaired_test_failure_is_not_reported_as_terminal_review_failure(tmp_path):
     executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
     task.input_contract['engineering_episode']['max_repairs'] = 1
+    retained = workspace.artifacts / 'episode-retained'
+    retained.mkdir()
+    for index in range(23):
+        (retained / f'{index}.json').write_text(json.dumps({'receipt': index}))
     authors = []
 
     async def author(**kwargs):
@@ -282,6 +329,10 @@ async def test_repaired_test_failure_is_not_reported_as_terminal_review_failure(
     assert result.summary['engineering_episode']['terminal_step'] is None
     assert result.summary['engineering_episode']['terminal_receipt_id']
     assert result.summary['independent_review']['approved'] is False
+    assert len(result.artifacts) <= 20
+    assert 'artifacts/engineering-episode-artifacts.zip' in result.artifacts
+    from swarm_worker.models import WorkflowExecutionResult
+    assert WorkflowExecutionResult.model_validate(result.model_dump()).termination_reason == result.termination_reason
 
 
 @pytest.mark.asyncio

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import shutil
 import time
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -17,6 +19,38 @@ from swarm_worker.engineering_evidence import decode_engineering_evidence, expan
 from swarm_worker.accepted_method_handoff import verify_handoff, bundle_binding
 from swarm_worker.method_episode import MethodCapacityUnavailable
 from swarm_worker.model_lane import model_capacity_permit, provider_key
+
+
+def bounded_episode_artifacts(workspace, paths):
+    """Keep the result bounded without dropping repeated-stage evidence."""
+    paths = sorted(set(paths))
+    if len(paths) <= 20:
+        return paths
+    root = workspace.plan.attempt_directory.resolve()
+    archive = workspace.artifacts / 'engineering-episode-artifacts.zip'
+    manifest = workspace.artifacts / 'engineering-episode-artifacts.json'
+    entries = []
+    with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
+        for relative in paths:
+            path = root / relative
+            if (Path(relative).is_absolute() or '..' in Path(relative).parts
+                    or path.is_symlink() or not path.resolve().is_relative_to(root)):
+                raise EpisodeIntegrityError('episode artifact escapes workspace')
+            content = path.read_bytes()
+            info = zipfile.ZipInfo(relative)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            bundle.writestr(info, content)
+            entries.append({'path': relative, 'size_bytes': len(content),
+                            'sha256': hashlib.sha256(content).hexdigest()})
+    archive.chmod(0o600)
+    manifest.write_text(json.dumps({'schema_version': 'engineering-episode-artifact-index-v1',
+        'archive': archive.relative_to(root).as_posix(),
+        'archive_sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
+        'artifacts': entries}, sort_keys=True))
+    manifest.chmod(0o600)
+    primary = [path for path in paths if not path.startswith('artifacts/episode-')]
+    return primary[:18] + [manifest.relative_to(root).as_posix(), archive.relative_to(root).as_posix()]
 
 
 REVIEW_SCHEMA = {"type": "object", "additionalProperties": False,
@@ -345,16 +379,18 @@ async def execute_episode(executor, task, contract, workflow, workspace, heartbe
     terminal_step = next((step for step in reversed(terminal_steps) if not step['success']), None)
     if terminal_step is None:
         result.summary.pop('failure_diagnostic', None)
-    result.artifacts = sorted(set(result.artifacts + ["artifacts/engineering-episode.json"] +
-        [str(p.relative_to(workspace.plan.attempt_directory)) for p in workspace.artifacts.glob("episode-*/*") if p.is_file()]))
+    artifact_paths = result.artifacts + ["artifacts/engineering-episode.json"] + [
+        str(p.relative_to(workspace.plan.attempt_directory))
+        for p in workspace.artifacts.glob("episode-*/*") if p.is_file()]
     result.summary["engineering_episode"] = {key: state[key] for key in ("status", "stage", "repairs", "model_calls", "adjudications", "metrics")}
     result.summary['engineering_episode']['author_continuity'] = continuity
     result.summary['engineering_episode']['progress'] = progress(state)
     result.summary['engineering_episode']['terminal_step'] = terminal_step
     result.summary['engineering_episode']['terminal_receipt_id'] = terminal_event.get('receipt_id')
     if state['status'] == 'completed' and accepted_method is not None:
-        result.artifacts = sorted(set(result.artifacts + ['artifacts/accepted-method-native-handoff.json']))
+        artifact_paths.append('artifacts/accepted-method-native-handoff.json')
         result.summary['accepted_method_native_handoff'] = handoff
+    result.artifacts = bounded_episode_artifacts(workspace, artifact_paths)
     if state['status'] == 'deferred' and state.get('reason') == 'capacity':
         result.termination_reason = 'provider_capacity'
         result.summary['provider_capacity'] = {
