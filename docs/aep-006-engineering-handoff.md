@@ -291,3 +291,20 @@ payloads and leaves small legacy objects unchanged. A read-only replay of the
 actual failed output produced a 13,776-byte envelope and passed exact backend
 preparation verification without rerunning native work. This transport check is
 not a successful production retry; the failed attempt remains historical evidence.
+
+The controlled retry succeeded, exact card confirmation completed, and native
+compilation task `ac83c111-6860-454b-8a27-dd8b5bd63a58` succeeded. Execution review
+then exposed absent lease-time producer snapshots. Repair `975dd8e` records
+profiles prospectively for preparation/compilation and accepted-method engineering,
+and exposes `restore_execution_producer_identity` rather than an HTTP 500.
+
+Historical recovery is deliberately narrower than using current registrations:
+only one hash-valid profile for the recorded agent/package, valid at the exact
+lease time, can supply a derived identity. Its evidence is bound into the review
+subject as `historical_producer_resolutions`; no original event is changed.
+Malformed existing snapshots are not eligible for fallback. Preparation and
+compilation have candidate historical profiles; the engineering producer does
+not. Its retained episode contains a task/source/contract-bound author session,
+model and provider, but recovering that identity still requires a separately
+validated evidence-backed attestation. Independent execution review and smoke
+remain unproven. Historical-profile and routing regressions passed 99 tests.

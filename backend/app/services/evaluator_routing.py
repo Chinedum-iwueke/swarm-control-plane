@@ -219,6 +219,49 @@ def native_admission_identity_for_lease(agent: Agent, package_digests: list[str]
     return identity | {"profile_digest": digest(identity)}
 
 
+def historical_profile_producer_identity(db: Session, task: Task) -> tuple[dict, dict] | None:
+    """Resolve a missing snapshot only from a unique, hash-valid profile at lease time.
+
+    This never repairs a corrupt snapshot or substitutes today's registration.
+    The returned proof must accompany the derived identity in the review subject.
+    """
+    event = db.scalar(select(TaskEvent).where(
+        TaskEvent.task_id == task.id, TaskEvent.event_type == 'task_leased',
+        TaskEvent.attempt_number == task.attempt_count,
+    ).order_by(TaskEvent.id.desc()).limit(1))
+    if (event is None or event.agent_id is None
+            or any(key in event.payload for key in ('producer_identity', 'producer_identity_digest'))):
+        return None
+    packages = {item.get('package_digest') for item in event.payload.get('effective_authority', [])}
+    if len(packages) != 1 or None in packages:
+        return None
+    profiles = db.scalars(select(EvaluatorProfile).where(
+        EvaluatorProfile.agent_id == event.agent_id,
+        EvaluatorProfile.package_digest.in_(packages),
+        EvaluatorProfile.created_at <= event.created_at,
+    )).all()
+    profiles = [p for p in profiles if p.created_at <= event.created_at
+                and (p.retired_at is None or p.retired_at > event.created_at)
+                and p.agent_id == event.agent_id and p.package_digest in packages]
+    if len(profiles) != 1:
+        return None
+    profile = profiles[0]
+    document = {key: getattr(profile, key) for key in (
+        'profile_version', 'review_kinds', 'capabilities', 'provider', 'model_family',
+        'context_group', 'registered_by', 'machine', 'runtime', 'package_digest')}
+    document.update(agent_id=str(profile.agent_id), package_id=str(profile.package_id))
+    if digest(document) != profile.profile_digest:
+        return None
+    identity = _profile_identity(profile)
+    proof = dict(schema_version='historical-profile-producer-resolution-v1',
+        task_id=str(task.id), task_attempt=task.attempt_count,
+        contract_digest=digest(task.input_contract), lease_event_id=event.id,
+        lease_payload_digest=digest(event.payload), profile_id=str(profile.id),
+        profile_digest=profile.profile_digest, identity_digest=digest(identity),
+        claim_boundary='Registry-declared profile valid at lease time; not a contemporaneous lease snapshot or proof of model inference.')
+    return identity, proof
+
+
 def _hard_conflicts(first: dict, second: dict) -> list[str]:
     conflicts = []
     for field in ("agent_id", "package_digest", "context_group"):

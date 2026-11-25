@@ -115,8 +115,15 @@ def route_execution_review(db,campaign,method_task,preparation,task,prepared,req
     producers=[method_task,task,db.get(Task,UUID(request['engineering_task_id'])),
                db.get(Task,UUID(request['feasibility_task_id'])),preparation]
     identities=[]
+    identity_resolutions=[]
     for producer in producers:
         identity=task_producer_identity(db,producer) if producer is not None else None
+        if identity is None and producer is not None:
+            from app.services.evaluator_routing import historical_profile_producer_identity
+            resolved = historical_profile_producer_identity(db, producer)
+            if resolved is not None:
+                identity, proof = resolved
+                identity_resolutions.append(proof)
         if identity is None:
             campaign.phase='independent_strategy_review'
             campaign.next_action='restore_execution_producer_identity'
@@ -135,6 +142,8 @@ def route_execution_review(db,campaign,method_task,preparation,task,prepared,req
         card_digest=digest(qualification['card']),artifact_bundle_digest=digest(qualification['artifact_bundle']),
         producer_agent_ids=sorted({item['agent_id'] for item in identities}),producer_identities=identities,
         qualifier_identity=identities[1])
+    if identity_resolutions:
+        subject['historical_producer_resolutions'] = identity_resolutions
     subject_digest=digest(subject)
     route=db.scalar(select(EvaluationRoute).where(EvaluationRoute.subject_type=='alpha_strategy_qualification',
         EvaluationRoute.subject_id==str(task.id),EvaluationRoute.subject_digest==subject_digest)
