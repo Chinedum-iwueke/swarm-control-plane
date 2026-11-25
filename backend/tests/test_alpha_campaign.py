@@ -1297,6 +1297,21 @@ def test_alpha003_stage_contract_binds_data_window_and_research_context(monkeypa
     assert contract["dataset_bindings"][0]["producer_receipt_digest"] == "3" * 64
     assert contract["dataset_bindings"][0]["lake_governance_digest"] == "4" * 64
     assert contract["dataset_bindings"][0]["partition_digest"] == DIGEST
+    # Legacy payloads remain unchanged; source-bound preparation/execution retain
+    # every admission field instead of projecting away planner identities.
+    binding = record.specification["dataset_bindings"][0]
+    binding.update(rows=12345, output_columns=["ts", "close"], builder_commit="a" * 40,
+                   admission_source_commit="b" * 40)
+    source = record.specification["research_queue"][0]
+    legacy = service._stage_contract(MagicMock(), record, source, stage="draft")
+    assert "output_columns" not in legacy["dataset_bindings"][0]
+    for stage, qualification in (
+        ("prepare_execution", None),
+        ("execute", {"artifact_bundle": {"released_execution_binding": {"execution_authority": False}}}),
+    ):
+        prepared = service._stage_contract(MagicMock(), record, source, stage=stage, qualification=qualification)
+        for key, value in binding.items():
+            assert prepared["dataset_bindings"][0][key] == value
 
 
 def test_stage_contract_canonicalizes_legacy_resampling_policy(monkeypatch):
@@ -1741,7 +1756,9 @@ def test_routed_review_tasks_preserve_subject_profile_and_source_without_executi
     db.scalars.return_value.all.return_value = [assignment]
     db.get.return_value = profile
     db.scalar.return_value = None
-    build = MagicMock(return_value=SimpleNamespace(id=uuid4()))
+    build = MagicMock(side_effect=lambda payload: SimpleNamespace(
+        id=uuid4(), input_contract=payload.input_contract
+    ))
     persist = MagicMock()
     monkeypatch.setattr(service, "build_task", build)
     monkeypatch.setattr(service, "persist_new_task", persist)

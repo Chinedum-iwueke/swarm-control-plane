@@ -224,6 +224,39 @@ class AlphaResearchDatasetBinding(BaseModel):
         return self
 
 
+class AlphaResearchNativeDatasetBinding(AlphaResearchDatasetBinding):
+    """Full admitted identity for source-bound native plans, not inferred metadata."""
+
+    rows: int = Field(ge=0)
+    instruments: list[str] = Field(min_length=1, max_length=1)
+    catalog_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    producer_receipt_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    lake_governance_snapshot_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    builder_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    admission_source_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    output_columns: list[str] = Field(min_length=1, max_length=10000)
+    partition_digests: list[str] = Field(min_length=1, max_length=10000)
+    evidence_class: Literal["live_exchange_history"]
+    research_principal: Literal["alpha-research-runner"]
+
+    @model_validator(mode="after")
+    def complete_trusted_evidence(self):
+        if not all((self.catalog_digest, self.manifest_digest, self.producer_receipt_digest,
+                    self.lake_governance_digest)):
+            raise ValueError("native binding requires complete admission evidence")
+        return self
+
+    @model_validator(mode="after")
+    def native_identity(self):
+        if self.instruments != [self.instrument]:
+            raise ValueError("native binding instrument aliases disagree")
+        if (len(set(self.partition_digests)) != len(self.partition_digests)
+                or any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in self.partition_digests)
+                or (self.partition_digest is not None and self.partition_digests != [self.partition_digest])):
+            raise ValueError("native binding partition identities disagree")
+        return self
+
+
 def _admitted_alpha_panel_path(value: str) -> str:
     path = Path(value).resolve(strict=False)
     root = Path("/home/omenka/Projects/bulletproof_bt/research_data").resolve(
@@ -236,6 +269,31 @@ def _admitted_alpha_panel_path(value: str) -> str:
     except ValueError as exc:
         raise ValueError("dataset_path is outside the read-only Bulletproof lake") from exc
     return str(path)
+
+
+class ReleasedExecutionPreparation(BaseModel):
+    """Lossless preparation inputs; custody and review remain controller duties."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["released-execution-preparation-v1"]
+    expected_template_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_method_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    engineering_bundle_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    accepted_representation: dict[str, Any]
+    representation_transition: dict[str, Any]
+    native_dataset_bindings: list[dict[str, Any]] = Field(min_length=1, max_length=128)
+    validation_requirements: dict[str, Any]
+    approved_window: dict[str, str]
+    expected_plans: dict[str, dict[str, Any]]
+
+    @model_validator(mode="after")
+    def complete_plans(self):
+        if set(self.expected_plans) != {"smoke", "scientific"}:
+            raise ValueError("released preparation requires both native plans")
+        if set(self.approved_window) != {"start", "end"}:
+            raise ValueError("released preparation requires an exact approved window")
+        return self
 
 
 class AlphaResearchExecutionContract(BaseModel):
@@ -259,7 +317,7 @@ class AlphaResearchExecutionContract(BaseModel):
     ]
     bundle_root: Literal["/home/omenka/.local/share/invariance-swarm/alpha002-bundles"]
     dataset_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=150)
-    dataset_bindings: list[AlphaResearchDatasetBinding] = Field(
+    dataset_bindings: list[AlphaResearchNativeDatasetBinding | AlphaResearchDatasetBinding] = Field(
         default_factory=list, max_length=20
     )
     instrument: str = Field(pattern=r"^[A-Z0-9_-]+$", max_length=50)
@@ -275,13 +333,15 @@ class AlphaResearchExecutionContract(BaseModel):
     max_variants: int = Field(ge=1, le=256)
     research_context: dict[str, Any]
     authority: Literal["no_capital"]
-    stage: Literal["draft", "qualify", "execute"] = "execute"
+    stage: Literal["draft", "qualify", "prepare_execution", "execute"] = "execute"
+    released_execution_preparation: ReleasedExecutionPreparation | None = None
     venue: Literal["bybit", "binance"] | None = None
     window_start: str | None = None
     window_end: str | None = None
     hypothesis_card: dict[str, Any] | None = None
     card_approval: dict[str, Any] | None = None
     qualification: dict[str, Any] | None = None
+    validation_plan: dict[str, Any] | None = None
     execution_class: Literal["qualification", "commissioning"] = "qualification"
 
     @field_validator("resampling_policy", mode="before")
@@ -291,6 +351,34 @@ class AlphaResearchExecutionContract(BaseModel):
 
     @model_validator(mode="after")
     def stage_contract(self):
+        preparation = self.released_execution_preparation
+        if self.stage == "prepare_execution":
+            if preparation is None or self.reusable_strategy is None or not self.dataset_bindings:
+                raise ValueError("released preparation requires template, evidence and admitted bindings")
+            if self.qualification is not None:
+                raise ValueError("released preparation cannot consume an execution qualification")
+            if preparation.accepted_representation != self.representation_plan:
+                raise ValueError("released preparation must retain the accepted representation")
+            if any(plan.get("source_commit") != self.base_ref
+                   for plan in preparation.expected_plans.values()):
+                raise ValueError("released preparation plans must bind the task source")
+            native = preparation.native_dataset_bindings
+            if len(native) != len(self.dataset_bindings):
+                raise ValueError("released preparation dataset cardinality mismatch")
+            for full, transport in zip(native, self.dataset_bindings, strict=True):
+                if (full.get("dataset_build_id") != transport.dataset_build_id
+                        or full.get("dataset_digest") != transport.dataset_digest
+                        or full.get("dataset_key") != transport.dataset_key
+                        or full.get("venue") != transport.venue
+                        or full.get("instruments", [full.get("instrument")]) != [transport.instrument]):
+                    raise ValueError("released preparation dataset identity mismatch")
+                for key in ("catalog_digest", "manifest_digest", "producer_receipt_digest", "lake_governance_digest"):
+                    if full.get(key) != getattr(transport, key):
+                        raise ValueError("released preparation admission identity mismatch")
+                if transport.partition_digest is not None and full.get("partition_digests") != [transport.partition_digest]:
+                    raise ValueError("released preparation partition identity mismatch")
+        elif preparation is not None:
+            raise ValueError("released preparation evidence is only valid for prepare_execution")
         if self.representation_plan is not None:
             plan = self.representation_plan
             required = {
@@ -347,7 +435,7 @@ class AlphaResearchExecutionContract(BaseModel):
                 self.instruments or [self.instrument]
             ) != 1:
                 raise ValueError("single-instrument strategy cannot consume a basket")
-        if (self.stage in {"draft", "qualify"} or self.qualification is not None) and (
+        if (self.stage in {"draft", "qualify", "prepare_execution"} or self.qualification is not None) and (
             self.window_start is None or self.window_end is None or self.venue is None
         ):
             raise ValueError(
@@ -393,6 +481,13 @@ class AlphaResearchExecutionContract(BaseModel):
                 )
             if self.max_variants > 8:
                 raise ValueError("commissioning permits at most eight variants")
+        released = ((self.qualification or {}).get('artifact_bundle') or {}).get('released_execution_binding')
+        if self.stage == 'execute' and released is not None:
+            native = self.qualification['artifact_bundle']['engine_hypothesis_yaml']['immutable_contract']
+            mode = 'smoke' if self.execution_class == 'commissioning' else 'scientific'
+            if (self.validation_plan is None or self.validation_plan != native['validation_plans'][mode]
+                    or self.validation_plan.get('source_commit') != self.base_ref):
+                raise ValueError('released execution requires its exact source-bound native validation plan')
         if self.dataset_bindings:
             primary = self.dataset_bindings[0]
             if any(

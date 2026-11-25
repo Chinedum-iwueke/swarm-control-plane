@@ -1,5 +1,6 @@
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from swarm_worker.executors.alpha_research import (
     AlphaResearchExecutor,
     _publication_handoff,
     _qualification_handoff,
+    _execution_preparation_handoff,
 )
 
 
@@ -102,6 +104,111 @@ def test_alpha_contract_and_fixed_workflow_are_narrow() -> None:
     )
     assert workflow.steps == []
     assert workflow.allowed_repositories == ["bulletproof_bt"]
+
+
+def test_prepare_execution_stage_cannot_fall_back_to_execute():
+    with pytest.raises(ValidationError, match="requires template"):
+        AlphaResearchExecutionContract.model_validate(contract(stage="prepare_execution"))
+    with pytest.raises(ValidationError):
+        AlphaResearchExecutionContract.model_validate(contract(stage="unknown"))
+
+
+def preparation_contract():
+    base = contract()
+    binding = {key:base[key] for key in ('dataset_build_id','dataset_digest','dataset_path','dataset_key','instrument')}
+    binding['venue'] = 'bybit'
+    plan = dict(schema_version='adaptive-representation-plan-v1.0.0', candidate_key='prospective',
+        instruments=['BTCUSDT'], basket_members=[dict(instrument='BTCUSDT',role='primary',legacy_groups=[],selection_rationale='Primary asset.')],
+        source_timeframe='1m', research_timeframe='1m', resampling_policy='left_closed_left_labeled_complete_bars',
+        transformations=[dict(operation='log_return',input_fields=['BTCUSDT__close'],output_field='return',parameters={'periods':1},fit_policy='stateless',rationale='Causal return.')],
+        transformation_rationale='Completed observations only.', rejected_alternatives=['Future observations.'],
+        selection_data_boundary='metadata_predictors_only_no_targets',outcome_data_consulted=False)
+    window = dict(start='2026-04-01T00:00:00Z',end='2026-05-01T00:00:00Z')
+    return contract(stage='prepare_execution', venue='bybit', window_start=window['start'],window_end=window['end'],
+        dataset_bindings=[binding], instruments=['BTCUSDT'],representation_plan=plan,
+        reusable_strategy=dict(hypothesis_id='example',strategy='registered',input_mode='single_instrument',
+            maximum_instruments=1,contract_path='research/hypotheses/example.yaml',contract_digest='a'*64,
+            variant_count=1,bounded_weekly_reuse_eligible=True),
+        released_execution_preparation=dict(schema_version='released-execution-preparation-v1',
+            expected_template_digest='a'*64,expected_method_digest='b'*64,engineering_bundle_digest='c'*64,
+            accepted_representation=deepcopy(plan),representation_transition={},
+            native_dataset_bindings=[deepcopy(binding)],validation_requirements={},approved_window=window,
+            expected_plans={mode:{'source_commit':base['base_ref']} for mode in ('smoke','scientific')}))
+
+
+def test_preparation_contract_preserves_native_metadata_losslessly():
+    payload = preparation_contract()
+    payload['released_execution_preparation']['native_dataset_bindings'][0]['rows'] = 12345
+    value = AlphaResearchExecutionContract.model_validate(payload)
+    assert value.released_execution_preparation.model_dump() == payload['released_execution_preparation']
+
+
+def full_native_binding():
+    binding = deepcopy(preparation_contract()['dataset_bindings'][0])
+    binding.update(rows=12345, instruments=['BTCUSDT'],
+        catalog_id='11111111-1111-4111-8111-111111111111',
+        producer_receipt_id='22222222-2222-4222-8222-222222222222',
+        lake_governance_snapshot_id='33333333-3333-4333-8333-333333333333',
+        builder_commit='a'*40, admission_source_commit='b'*40,
+        output_columns=['ts','close','quote_volume'], partition_digests=['f'*64],partition_digest='f'*64,
+        catalog_digest='1'*64,manifest_digest='2'*64,producer_receipt_digest='3'*64,lake_governance_digest='4'*64,
+        evidence_class='live_exchange_history',research_principal='alpha-research-runner')
+    return binding
+
+
+def test_native_binding_survives_worker_contract_roundtrip():
+    binding = full_native_binding()
+    value = AlphaResearchExecutionContract.model_validate(contract(dataset_bindings=[binding],instruments=['BTCUSDT']))
+    assert value.model_dump()['dataset_bindings'] == [binding]
+    assert AlphaResearchExecutionContract.model_validate(value.model_dump()).model_dump() == value.model_dump()
+
+
+def test_native_multi_partition_binding_has_no_false_singular_identity():
+    binding = full_native_binding()
+    binding['partition_digests'].append('e'*64)
+    binding['partition_digest'] = None
+    value = AlphaResearchExecutionContract.model_validate(contract(dataset_bindings=[binding],instruments=['BTCUSDT']))
+    assert value.dataset_bindings[0].partition_digests == binding['partition_digests']
+
+
+@pytest.mark.parametrize('failure', ['partial','extra','instrument','partition','duplicate','admission'])
+def test_native_binding_rejects_partial_or_inconsistent_evidence(failure):
+    binding = full_native_binding()
+    if failure == 'partial': del binding['catalog_id']
+    elif failure == 'extra': binding['unreviewed_override'] = True
+    elif failure == 'instrument': binding['instruments'] = ['ETHUSDT']
+    elif failure == 'partition': binding['partition_digest'] = 'e'*64
+    elif failure == 'duplicate': binding['partition_digests'].append('f'*64)
+    else: binding['producer_receipt_digest'] = None
+    with pytest.raises(ValidationError):
+        AlphaResearchExecutionContract.model_validate(contract(dataset_bindings=[binding],instruments=['BTCUSDT']))
+
+
+@pytest.mark.parametrize('failure', ['data','source','representation','execute','commissioning','qualification'])
+def test_preparation_rejects_changed_identity_or_execution_authority(failure):
+    payload = preparation_contract()
+    prep = payload['released_execution_preparation']
+    if failure == 'data': prep['native_dataset_bindings'][0]['dataset_digest'] = 'f'*64
+    elif failure == 'source': prep['expected_plans']['smoke']['source_commit'] = 'f'*40
+    elif failure == 'representation': prep['accepted_representation']['candidate_key'] = 'changed'
+    elif failure == 'execute': payload['stage'] = 'execute'
+    elif failure == 'commissioning': payload['execution_class'] = 'commissioning'
+    else: payload['qualification'] = {'qualified':True}
+    with pytest.raises(ValidationError):
+        AlphaResearchExecutionContract.model_validate(payload)
+
+
+def test_prepared_card_handoff_retains_full_prospective_evidence():
+    card = {"status": "draft", "claim": "A prospective claim"}
+    document = dict(hypothesis_card=card,
+        card_digest=hashlib.sha256(json.dumps(card, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        prepared_binding={"contract": {"science": "retained"}, "lineage": {"parent": "unchanged"}},
+        representation_transition={"narrative_changes": [{"before": "x", "after": "y"}]},
+        execution_authority=False)
+    assert _execution_preparation_handoff(document) == document
+    document["hypothesis_card"]["claim"] = "changed"
+    with pytest.raises(AlphaResearchExecutionError, match="digest mismatch"):
+        _execution_preparation_handoff(document)
 
 
 def test_alpha003_qualification_requires_card_and_founder_receipt() -> None:
@@ -395,6 +502,57 @@ def test_qualification_handoff_fails_closed_without_execution_artifact() -> None
                 "artifact_bundle": {"engine_hypothesis_yaml": {}},
             }
         )
+
+
+def released_qualification():
+    def signed(document, key):
+        return {**document, key: hashlib.sha256(json.dumps(
+            document, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()).hexdigest()}
+    contract = {"immutable_contract": {"source_commit": "a" * 40}}
+    binding = signed({
+        "schema_version": "released-execution-contract-binding-v1",
+        "source_commit": "a" * 40,
+        "prepared_contract_digest": hashlib.sha256(json.dumps(
+            contract, sort_keys=True, separators=(",", ":")
+        ).encode()).hexdigest(),
+        "requires_independent_execution_review": True, "execution_authority": False,
+    }, "binding_digest")
+    transition = signed({
+        "schema_version": "released-representation-transition-v1",
+        "release_source_commit": "a" * 40, "execution_authority": False,
+        "historical_documents_mutated": False,
+        "narrative_changes": [{"path": "/transformation_rationale", "accepted": "before", "released": "after"}],
+    }, "evidence_digest")
+    return {"qualification_scope": "released_execution_compilation_only", "qualified": False,
+            "artifact_bundle": {"engine_hypothesis_yaml": contract, "strategy_spec": {},
+                "hypothesis_spec": {"hypothesis_id": "h1", "source_card_hash": "c" * 64},
+                "released_execution_binding": binding, "representation_transition": transition}}
+
+
+def test_released_handoff_preserves_review_evidence_without_granting_authority():
+    qualification = released_qualification()
+    retained = _qualification_handoff(qualification)
+    assert retained["qualified"] is False
+    assert retained["qualification_scope"] == qualification["qualification_scope"]
+    for key in ("released_execution_binding", "representation_transition"):
+        assert retained["artifact_bundle"][key] == qualification["artifact_bundle"][key]
+
+
+@pytest.mark.parametrize("corruption", ["missing_transition", "modified_transition", "modified_contract", "modified_binding"])
+def test_released_handoff_rejects_lost_or_modified_evidence(corruption):
+    qualification = released_qualification()
+    bundle = qualification["artifact_bundle"]
+    if corruption == "missing_transition":
+        del bundle["representation_transition"]
+    elif corruption == "modified_transition":
+        bundle["representation_transition"]["narrative_changes"] = []
+    elif corruption == "modified_contract":
+        bundle["engine_hypothesis_yaml"]["immutable_contract"]["source_commit"] = "b" * 40
+    else:
+        bundle["released_execution_binding"]["execution_authority"] = True
+    with pytest.raises(AlphaResearchExecutionError, match="Released execution evidence"):
+        _qualification_handoff(qualification)
 
 
 def test_qualification_handoff_rejects_mutated_overlap_receipt() -> None:

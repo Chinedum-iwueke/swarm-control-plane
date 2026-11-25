@@ -53,12 +53,48 @@ def _qualification_handoff(qualification: dict) -> dict:
             "variant_count",
             "window",
             "authority",
+            "qualification_scope",
         )
         if key in qualification
     }
     retained["artifact_bundle"] = {
         name: artifact_bundle[name] for name in required_artifacts
     }
+    release_keys = ("released_execution_binding", "representation_transition")
+    if any(key in artifact_bundle for key in release_keys):
+        if not all(isinstance(artifact_bundle.get(key), dict) for key in release_keys):
+            raise AlphaResearchExecutionError("Released execution evidence must be complete.")
+
+        def digest(value):
+            return hashlib.sha256(json.dumps(
+                value, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()).hexdigest()
+
+        binding, transition = (artifact_bundle[key] for key in release_keys)
+        contract = artifact_bundle["engine_hypothesis_yaml"]
+        try:
+            valid = (
+                binding.get("schema_version") == "released-execution-contract-binding-v1"
+                and transition.get("schema_version") == "released-representation-transition-v1"
+                and binding.get("binding_digest") == digest({
+                    k: v for k, v in binding.items() if k != "binding_digest"
+                })
+                and transition.get("evidence_digest") == digest({
+                    k: v for k, v in transition.items() if k != "evidence_digest"
+                })
+                and binding.get("prepared_contract_digest") == digest(contract)
+                and binding.get("source_commit") == contract["immutable_contract"]["source_commit"]
+                and transition.get("release_source_commit") == binding.get("source_commit")
+                and binding.get("requires_independent_execution_review") is True
+                and binding.get("execution_authority") is False
+                and transition.get("execution_authority") is False
+                and transition.get("historical_documents_mutated") is False
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AlphaResearchExecutionError("Released execution evidence is invalid.") from exc
+        if not valid:
+            raise AlphaResearchExecutionError("Released execution evidence is invalid.")
+        retained["artifact_bundle"].update({key: artifact_bundle[key] for key in release_keys})
     encoded_hypothesis = json.dumps(
         hypothesis_spec, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -94,6 +130,21 @@ def _qualification_handoff(qualification: dict) -> dict:
             )
         retained["overlap_admission_receipt"] = overlap_receipt
     return retained
+
+
+def _execution_preparation_handoff(document: dict) -> dict:
+    keys = ("hypothesis_card", "card_digest", "prepared_binding", "representation_transition", "execution_authority")
+    if (any(key not in document for key in keys)
+            or document.get("execution_authority") is not False
+            or not isinstance(document.get("prepared_binding"), dict)
+            or not isinstance(document.get("hypothesis_card"), dict)):
+        raise AlphaResearchExecutionError("Released card preparation is incomplete.")
+    card_digest = hashlib.sha256(json.dumps(
+        document["hypothesis_card"], sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()).hexdigest()
+    if document["card_digest"] != card_digest:
+        raise AlphaResearchExecutionError("Released card preparation digest mismatch.")
+    return {key: document[key] for key in keys}
 
 
 def _publication_handoff(publication_envelope: dict) -> dict:
@@ -426,6 +477,12 @@ class AlphaResearchExecutor:
             else None
         )
         downstream_handoff = {
+            **(
+                {"execution_preparation": _execution_preparation_handoff(document)}
+                if contract.stage == "prepare_execution"
+                and document["disposition"] == "released_execution_card_prepared"
+                else {}
+            ),
             **(
                 {"publication_envelope": publication_envelope}
                 if publication_envelope is not None

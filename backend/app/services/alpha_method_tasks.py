@@ -13,6 +13,57 @@ from app.services.tasks import build_task, persist_new_task
 
 
 def require_current_method_authority(db, task):
+    if (task.task_type == 'alpha_research_execution'
+            and (task.approval_policy or {}).get('kind') in {
+                'accepted_method_execution_preparation', 'accepted_method_execution_card_confirmation',
+                'accepted_method_smoke_execution'}):
+        from uuid import UUID
+        from fastapi import HTTPException
+        try:
+            parent = db.get(Task, UUID(task.approval_policy['method_task_id']))
+            if parent is None or parent.task_type != 'alpha_method_design':
+                raise ValueError('missing method parent')
+            require_current_method_authority(db, parent)
+            packet = verified_method_result(parent)['review_packet']
+            campaign = db.scalar(select(AlphaCampaign).where(
+                AlphaCampaign.campaign_digest == task.approval_policy['campaign_digest']))
+            request = campaign.specification['method_execution_preparation_requests'][parent.input_contract['candidate_id']]
+            expected_stage = ('draft' if task.approval_policy['kind']=='accepted_method_execution_card_confirmation'
+                              else 'execute' if task.approval_policy['kind']=='accepted_method_smoke_execution'
+                              else 'prepare_execution')
+            if (task.input_contract['stage'] != expected_stage
+                    or task.input_contract['base_ref'] != packet['source_commit']
+                    or digest(request) != task.approval_policy['request_digest']):
+                raise ValueError('preparation authority changed')
+            from app.services.evaluator_routing import task_producer_identity
+            identity = task_producer_identity(db, parent)
+            if identity is None:
+                raise ValueError('method producer missing')
+            _, reviews = route_method_review(db, campaign, parent, packet, identity)
+            if reviews is None or any(review.verdict != 'approve' for review in reviews):
+                raise ValueError('method no longer accepted')
+            if expected_stage=='execute':
+                from app.models.evaluator_routing import EvaluationRoute
+                from app.services.evaluator_routing import require_independence, alpha_strategy_reviews_approved
+                qualification=task.input_contract['qualification']
+                governed=qualification['governed_review']
+                subject=governed['subject']
+                route=db.get(EvaluationRoute,UUID(governed['route_id']))
+                if (request.get('allow_smoke_execution') is not True
+                        or task.input_contract.get('execution_class')!='commissioning'
+                        or route is None or route.subject_digest!=digest(subject)
+                        or subject['source_commit']!=task.input_contract['base_ref']
+                        or subject['card_digest']!=digest(qualification['card'])
+                        or subject['artifact_bundle_digest']!=digest(qualification['artifact_bundle'])
+                        or require_independence(db,route).receipt_digest!=governed['receipt_digest']
+                        or not alpha_strategy_reviews_approved(db,route,subject_digest=digest(subject),
+                            producer_agent_id=UUID(subject['qualifier_identity']['agent_id']),
+                            excluded_agent_ids=[UUID(item) for item in subject['producer_agent_ids']],
+                            excluded_identities=subject['producer_identities'],qualifier_identity=subject['qualifier_identity'])):
+                    raise ValueError('Current independently reviewed smoke authority required')
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(409, 'Execution preparation authority is no longer current.') from exc
+        return
     if (task.task_type == 'engineering_mission'
             and (task.approval_policy or {}).get('kind') == 'accepted_method_engineering'):
         from uuid import UUID
@@ -378,6 +429,35 @@ def advance_method_task(db, campaign, source, parent, request):
             campaign.phase = 'method_design'
             campaign.next_action = 'await_bounded_method_correction'
             return correction
+        preparation_request = (campaign.specification.get('method_execution_preparation_requests') or {}).get(
+            str(task.input_contract['candidate_id']))
+        if preparation_request is not None:
+            from app.services.alpha_execution_preparation import materialize_execution_preparation
+            preparation = materialize_execution_preparation(
+                db, campaign, source, task, packet, identity, route, preparation_request)
+            campaign.phase = 'execution_preparation'
+            campaign.next_action = {
+                'pending_approval': 'approve_execution_preparation',
+                'succeeded': 'approve_prepared_execution_card',
+                'failed': 'execution_preparation_failed',
+                'cancelled': 'execution_preparation_cancelled',
+            }.get(preparation.status, 'await_execution_preparation')
+            if preparation.status == 'succeeded':
+                from app.services.alpha_execution_preparation import publish_execution_preparation, advance_prepared_card
+                prepared = publish_execution_preparation(db, campaign, preparation, preparation_request['released_template'])
+                compiled = advance_prepared_card(db, campaign, task, preparation, prepared)
+                if compiled.status == 'succeeded':
+                    from app.services.alpha_execution_preparation import route_execution_review, materialize_reviewed_smoke
+                    reviewed=route_execution_review(db,campaign,task,preparation,compiled,prepared,preparation_request)
+                    if reviewed is not None:
+                        smoke=materialize_reviewed_smoke(db,campaign,compiled,reviewed,preparation_request)
+                        if smoke is not None:
+                            if smoke.status=='succeeded':
+                                from app.services.alpha_execution_preparation import consume_reviewed_smoke
+                                consume_reviewed_smoke(db,campaign,smoke)
+                            return smoke
+                return compiled
+            return preparation
         if all(review.verdict == 'approve' for review in reviews) and engineering_request is not None:
             from app.services.alpha_method_engineering import materialize_method_engineering
             engineering = materialize_method_engineering(

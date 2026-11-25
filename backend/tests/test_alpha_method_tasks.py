@@ -383,6 +383,37 @@ def test_ready_packet_publication_is_idempotent_and_stops_before_engineering(mon
     assert published[0]['execution_authority'] is False
 
 
+@pytest.mark.parametrize('authorized', [False, True])
+def test_accepted_method_prepares_execution_only_with_explicit_request(monkeypatch, authorized):
+    from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_execution_preparation
+    db, campaign, source, parent, request, _, _ = fixture()
+    task = ready_task()
+    task.plan_digest = '1'*64
+    preparation = SimpleNamespace(status='pending_approval')
+    if authorized:
+        campaign.specification['method_execution_preparation_requests'] = {task.input_contract['candidate_id']:{'frozen':'request'}}
+    monkeypatch.setattr(alpha_method_recovery,'recorded_successor',lambda *_:None)
+    monkeypatch.setattr(service,'materialize_method_task',lambda *_:task)
+    monkeypatch.setattr(evaluator_routing,'task_producer_identity',lambda *_:{'agent_id':'producer'})
+    monkeypatch.setattr(service,'route_method_review',lambda *_:(SimpleNamespace(status='completed'),
+        [SimpleNamespace(verdict='approve'),SimpleNamespace(verdict='approve')]))
+    monkeypatch.setattr(alpha_campaign,'_append_event',lambda *_:None)
+    dispatch=MagicMock(return_value=preparation)
+    monkeypatch.setattr(alpha_execution_preparation,'materialize_execution_preparation',dispatch)
+    db.scalar.side_effect=None
+    db.scalar.return_value=None
+    result=service.advance_method_task(db,campaign,source,parent,request)
+    if authorized:
+        assert result is preparation
+        assert campaign.phase=='execution_preparation'
+        assert campaign.next_action=='approve_execution_preparation'
+        dispatch.assert_called_once()
+    else:
+        assert result is None
+        assert campaign.next_action=='materialize_accepted_method_handoff'
+        dispatch.assert_not_called()
+
+
 def test_review_route_reuses_exact_publication_and_materializes_separate_tasks(monkeypatch):
     from app.services import alpha_campaign, evaluator_routing
     db, campaign, _, _, _, _, _ = fixture()

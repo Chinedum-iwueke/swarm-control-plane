@@ -30,6 +30,16 @@ class MethodEngineeringRequest(StrictModel):
         return self
 
 
+class MethodExecutionPreparationRequest(StrictModel):
+    feasibility_task_id: uuid.UUID
+    plan_evidence_digest: str = Field(pattern=_DIGEST)
+    engineering_task_id: uuid.UUID
+    engineering_receipt_digest: str = Field(pattern=_DIGEST)
+    contract_path: str = Field(pattern=r"^research/hypotheses/[A-Za-z0-9_.-]+\.yaml$")
+    released_template: dict[str, Any]
+    allow_smoke_execution: bool = False
+
+
 class AlphaCampaignBudget(StrictModel):
     max_hypotheses: int = Field(ge=1, le=100)
     max_total_trials: int = Field(ge=1, le=10_000)
@@ -86,9 +96,13 @@ class AlphaCampaignCreate(StrictModel):
     method_design_requests: dict[str, MethodTaskContract] | None = Field(default=None, max_length=100)
     method_dispute_policy: Literal['independent_once'] | None = None
     method_engineering_requests: dict[str, MethodEngineeringRequest] | None = Field(default=None, max_length=100)
+    method_execution_preparation_requests: dict[str, MethodExecutionPreparationRequest] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def unique_scope(self):
+        for key in self.method_execution_preparation_requests or {}:
+            if key not in (self.method_design_requests or {}) or key in (self.method_engineering_requests or {}):
+                raise ValueError('Execution preparation requires a method request without new engineering authority')
         if self.method_dispute_policy and not self.method_design_requests:
             raise ValueError('Method dispute policy requires explicit method requests')
         for key, request in (self.method_engineering_requests or {}).items():

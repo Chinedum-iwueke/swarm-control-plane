@@ -652,8 +652,12 @@ def _stage_contract(
     hypothesis_card: dict | None = None,
     card_approval: dict | None = None,
     qualification: dict | None = None,
+    research_context: dict | None = None,
 ) -> dict:
     bindings = _source_bindings(campaign, source)
+    full_native_bindings = stage == "prepare_execution" or isinstance(
+        ((qualification or {}).get("artifact_bundle") or {}).get("released_execution_binding"), dict
+    )
     binding = bindings[0]
     binding_instruments = [
         item.get(
@@ -686,6 +690,7 @@ def _stage_contract(
         "dataset_key": binding["dataset_key"],
         "dataset_bindings": [
             {
+                **(item if full_native_bindings else {}),
                 "dataset_build_id": item["dataset_build_id"],
                 "dataset_digest": item["dataset_digest"],
                 "dataset_path": _dataset_path(db, campaign, item),
@@ -729,7 +734,7 @@ def _stage_contract(
         "reusable_strategy": source.get("reusable_strategy"),
         "tier": "Tier2B",
         "max_variants": campaign.budget["max_variants_per_hypothesis"],
-        "research_context": _research_context(db, question),
+        "research_context": deepcopy(research_context) if research_context is not None else _research_context(db, question),
         "authority": "no_capital",
         "stage": stage,
         "venue": binding["venue"],
@@ -3326,6 +3331,11 @@ def record_attempt(
 
 
 def reconcile_campaign(db: Session, campaign: AlphaCampaign) -> None:
+    # Receipt collection does not grant fresh execution authority. BT-009 still
+    # verifies the consumed approval of the completed task before publication.
+    from app.services.alpha_execution_preparation import reconcile_completed_smoke
+    if reconcile_completed_smoke(db, campaign):
+        return
     if campaign.status == "needs_attention" and campaign.next_action == "scientific_requirements_rejected":
         from app.services.alpha_requirements_handoff import hydrate_retained_rejection
         if hydrate_retained_rejection(db, campaign, verify_current=True):
