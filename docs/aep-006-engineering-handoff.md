@@ -320,3 +320,33 @@ count as shared correlation, never evidence of independence. This is
 worker-reported provenance, not a provider attestation. The actual retained
 engineering artifact passed read-only validation; 120 focused recovery, routing,
 preparation and lease tests passed. Production review and smoke are still pending.
+
+Production import and routing then succeeded on deployed `b638504`. Route
+`b258011b-0025-4158-a12c-c1061dc6b9e0` ran both reviewers against `b9b19c2`:
+specification task `3d2a47ac-efaa-47e2-9e46-ab6dede1aafa` and causality task
+`a080c433-54ee-4720-8586-4d7b4f627771` completed with **rejection**, not approval.
+The campaign now requests `repair_prepared_execution_artifact`; no smoke task
+or market-data backtest was started.
+
+The native trace confirms a production/synthetic parity gap: the synthetic
+registered-runner fixture injects membership evidence and its contract digest,
+whereas the production assignment must supply actual admitted evidence. The
+catalog's BTC membership records are optional metadata explicitly marked
+`execution_eligible=false`, not a usable receipt for the full experiment window.
+Do not synthesize or retroactively assert that eligibility. A source-bound
+correction must also distinguish runner-owned split/tail guarantees from
+strategy responsibilities and resolve terminal-record schema requirements.
+The shared resampler's count/endpoints test admitted interior off-grid
+timestamps; an unreleased general fix now requires unique minute-aligned
+constituents, with 5m/15m/30m/2h regression cases. An unreleased native preflight
+also stops missing/rejected membership evidence before loading market panels
+or evaluating variants. These repairs do not grant new source or execution
+authority. The currently approved campaign permits zero new author calls.
+
+Correction mandate `ALPHA004-AEP007C-EXECUTION-READINESS-20261125` is proposed,
+not approved, at digest
+`e40836d5d25ed53601b91b5329913d6b80eb16b0790c04eea4175fc33b5202dd`.
+It retains `b9b19c2` and existing scientific/data constraints, allows a separately
+activated four-call/one-repair engineering episode, and grants neither source
+release nor market-data execution. The unreleased general native repairs passed
+167 targeted tests plus 28 retained method tests; no new paid authoring ran.
