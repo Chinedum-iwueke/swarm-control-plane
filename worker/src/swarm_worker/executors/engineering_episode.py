@@ -83,9 +83,20 @@ def verify_retained_implementation(document):
     reference = document.get('retained_engineering_implementation')
     if reference is None:
         return
-    if not isinstance(reference, dict) or not isinstance(reference.get('document'), dict):
+    if not isinstance(reference, dict):
+        raise EpisodeIntegrityError('invalid retained implementation reference')
+    portable = reference.get('document')
+    if 'document_evidence_digest' in reference:
+        if portable is not None:
+            raise EpisodeIntegrityError('ambiguous retained implementation document location')
+        key = reference['document_evidence_digest']
+        catalog = document.get('accepted_method_handoff', {}).get('packet', {}).get('evidence', {})
+        portable = catalog.get(key) if isinstance(key, str) else None
+        if not isinstance(portable, dict) or canonical_digest(portable) != key:
+            raise EpisodeIntegrityError('retained implementation catalog reference mismatch')
+    if not isinstance(portable, dict):
         raise EpisodeIntegrityError('retained implementation requires an inline document; host references are not portable')
-    retained = dict(reference['document'])
+    retained = dict(portable)
     if 'patch_zlib_base64' in retained:
         if 'patch' in retained:
             raise EpisodeIntegrityError('ambiguous retained implementation patch encoding')

@@ -69,6 +69,11 @@ author workspace. Before any model call, the worker now requires
 The document contains the retained patch and provenance, with its canonical
 digest in the outer `evidence_digest`. Task, source, code and patch identities
 must match the reference. This does not make inherited code accepted science.
+Instead of duplicating the document in a pre-handoff template, a
+`document_evidence_digest` may locate it in the accepted handoff packet's
+canonical evidence catalog. The worker verifies that catalog key as well as the
+expanded document and patch identities. Missing entries and ambiguous inline
+plus catalog locations fail closed; neither form permits a host-path read.
 
 For large patches, `document.patch_zlib_base64` replaces `document.patch`.
 The worker bounds decompression to 524,288 bytes, rejects trailing/incomplete

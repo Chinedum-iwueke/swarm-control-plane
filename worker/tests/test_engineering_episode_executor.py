@@ -199,6 +199,17 @@ def test_portable_patch_compression_is_lossless_and_bounded(mutation):
             verify_retained_implementation(evidence)
     else:
         verify_retained_implementation(evidence)
+        key = canonical_digest(reference.pop('document'))
+        reference['document_evidence_digest'] = key
+        evidence['accepted_method_handoff'] = {'packet': {'evidence': {key: portable}}}
+        verify_retained_implementation(evidence)
+        reference['document'] = portable
+        with pytest.raises(EpisodeIntegrityError, match='ambiguous'):
+            verify_retained_implementation(evidence)
+        reference.pop('document')
+        evidence['accepted_method_handoff']['packet']['evidence'][key] = {}
+        with pytest.raises(EpisodeIntegrityError, match='catalog reference'):
+            verify_retained_implementation(evidence)
 
 
 @pytest.mark.asyncio

@@ -1869,6 +1869,8 @@ class EngineeringMissionExecutor:
             f"Scientific evidence: {prompt_engineering_evidence(contract.evidence_context)}\n"
             "If retained_engineering_implementation is present, its hash-verified "
             "document.patch is in .invariance-accepted-method-evidence.json. "
+            "A document_evidence_digest instead locates that portable document in "
+            "accepted_method_handoff.packet.evidence by its exact digest. "
             "If the document instead contains patch_zlib_base64, base64-decode then "
             "zlib-decompress that field to recover the exact UTF-8 patch; the worker "
             "has verified its expanded hash before authoring. Read this "
