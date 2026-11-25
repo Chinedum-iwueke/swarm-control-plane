@@ -401,3 +401,25 @@ was drain-paused again immediately after lease acquisition, allowing this task
 to finish without admitting unrelated work. Its bounds remain four model calls
 and one repair, synthetic tests and independent code review. Real membership
 evidence remains absent; no source release or market-data execution is granted.
+
+The task subsequently failed at independent review after consuming its four
+model calls and one repair. The first worker-run focused suite passed 154 tests,
+but review rejected incomplete genuine receipt admission and replacement of
+scientific outcome-path tests with `await_data` assertions. The episode
+automatically invoked its bounded repair, without an operator code patch. Its
+second worker-run focused suite also passed 154 tests. Fresh review confirmed
+restored scientific paths but rejected self-attested production eligibility:
+caller booleans and an unkeyed hash over public source/producer identifiers do
+not establish trusted listing or membership evidence. It also identified stale
+test names and provenance claims. No full-suite acceptance, release or backtest
+followed. The engineering agent remains drain-paused.
+
+Proposed mandate `ALPHA004-AEP007C-TRUSTED-ELIGIBILITY-20261125`, digest
+`4ef61b32fd6fa8afc4be39d563eb99434d88681cb722fd0a58bfa1565829604d`,
+is awaiting founder approval. It retains the original November 26 02:21 UTC
+expiry and science/source/data limits, and would allow a separately activated
+four-call/one-repair successor requiring an independently trusted receipt
+binding, forged-receipt rejection and separate synthetic outcome-path coverage.
+Missing actual eligibility remains `await_data`; historical charges remain
+intact. Automatic bounded recovery is observed here, but successful autonomous
+engineering and discovery-to-results certification remain unproven.
