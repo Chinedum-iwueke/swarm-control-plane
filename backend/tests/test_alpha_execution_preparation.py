@@ -379,6 +379,21 @@ def reviewed_smoke():
     return compilation,qualification
 
 
+def test_missing_producer_identity_is_explicit_blocker_not_server_error(monkeypatch):
+    preparation, prepared, task, _ = compiled_preparation()
+    method = SimpleNamespace(id=uuid4())
+    campaign = SimpleNamespace(id=uuid4(), status='running')
+    db = MagicMock()
+    monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *args:None)
+    create = MagicMock();monkeypatch.setattr(evaluator_routing, 'create_route', create)
+    result = service.route_execution_review(db,campaign,method,preparation,task,prepared,
+        {'engineering_task_id':str(uuid4()),'feasibility_task_id':str(uuid4())})
+    assert result is None
+    assert campaign.next_action == 'restore_execution_producer_identity'
+    assert campaign.terminal_reason['producer_task_id'] == str(method.id)
+    create.assert_not_called()
+
+
 def test_smoke_contract_uses_reviewed_partition_and_tail_without_changing_qualification():
     compilation,qualification=reviewed_smoke();before=deepcopy(qualification)
     result=service.smoke_contract(compilation,qualification)

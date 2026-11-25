@@ -118,7 +118,16 @@ def route_execution_review(db,campaign,method_task,preparation,task,prepared,req
     for producer in producers:
         identity=task_producer_identity(db,producer) if producer is not None else None
         if identity is None:
-            raise ValueError('Execution review producer provenance missing')
+            campaign.phase='independent_strategy_review'
+            campaign.next_action='restore_execution_producer_identity'
+            campaign.terminal_reason={
+                'category':'execution_review_producer_identity_missing',
+                'producer_task_id':str(producer.id) if producer is not None else None,
+                'qualification_task_id':str(task.id),
+                'owner':'producer_identity_registry',
+                'recovery_condition':'Verified historical producer attestation or a newly authorized producer replay; never infer from current profiles.',
+            }
+            return None
         if len(identities)<2 or identity not in identities:
             identities.append(identity)
     subject=dict(campaign_digest=campaign.campaign_digest,question_digest=task.input_contract['question_digest'],

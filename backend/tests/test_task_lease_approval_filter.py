@@ -10,6 +10,37 @@ from app.services.tasks import lease_next_task
 from sqlalchemy.dialects import postgresql
 
 
+@pytest.mark.parametrize('kind', ['preparation', 'engineering'])
+@pytest.mark.parametrize('has_profile', [False, True])
+def test_reviewed_producers_require_and_snapshot_profile_before_lease(kind, has_profile):
+    agent = Agent(id='11111111-1111-4111-8111-111111111111', slug='producer',
+        display_name='Producer', role='research', machine='vm1-developer',
+        hermes_profile='test', capabilities=['research-audit'], risk_ceiling=1)
+    task = SimpleNamespace(id='task', task_type='alpha_research_execution' if kind=='preparation' else 'engineering_mission',
+        input_contract={'stage':'prepare_execution'},
+        approval_policy={'kind':'accepted_method_engineering'},
+        required_capabilities=['research-audit'], approval_required=False,
+        status='queued', attempt_count=0, failure={})
+    db = MagicMock()
+    db.scalars.side_effect = [SimpleNamespace(all=lambda:[]), SimpleNamespace(all=lambda:[]),
+                             SimpleNamespace(all=lambda:[task])]
+    identity = {'agent_id':str(agent.id),'profile_digest':'a'*64} if has_profile else None
+    snapshot = dict(allowed=True, package_digest='b'*64, snapshot_digest='c'*64,
+        charter_digest='d'*64, grant_digest='e'*64, accountable_owner='research')
+    with (patch('app.services.tasks.resolve_task_authority', return_value=[snapshot]),
+          patch('app.services.tasks.producer_identity_for_lease', return_value=identity),
+          patch('app.services.tasks.consume_task_approval') as consume,
+          patch('app.services.tasks.create_task_lease_token', return_value=SimpleNamespace(token='x',prefix='x',digest='x')),
+          patch('app.services.tasks.append_task_event') as append):
+        leased, _, _, _ = lease_next_task(db,agent,300)
+    if has_profile:
+        assert leased is task
+        assert append.call_args.kwargs['payload']['producer_identity'] == identity
+    else:
+        assert leased is None and task.status == 'queued' and task.attempt_count == 0
+        consume.assert_not_called()
+
+
 def test_lease_query_filters_invalid_approval_before_selection() -> None:
     db = MagicMock()
     agent = Agent(

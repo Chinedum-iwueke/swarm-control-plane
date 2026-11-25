@@ -386,6 +386,14 @@ def lease_next_task(
             continue
         authority_snapshots = resolve_task_authority(db, candidate, agent, now)
         if authority_snapshots and all(item["allowed"] for item in authority_snapshots):
+            if ((candidate.task_type == 'alpha_research_execution'
+                    and candidate.input_contract.get('stage') == 'prepare_execution')
+                    or (candidate.task_type == 'engineering_mission'
+                        and (candidate.approval_policy or {}).get('kind') == 'accepted_method_engineering')):
+                method_identity = producer_identity_for_lease(
+                    db, agent, [item['package_digest'] for item in authority_snapshots])
+                if method_identity is None:
+                    continue
             if candidate.task_type == 'alpha_method_design':
                 from app.services.alpha_method_tasks import require_current_method_authority
                 try:
@@ -449,7 +457,7 @@ def lease_next_task(
     task.failure = {}
 
     producer_identity = admission_identity if task.task_type == "alpha_data_admission" else None
-    if task.task_type == 'alpha_method_design':
+    if method_identity is not None:
         producer_identity = method_identity
     if task.task_type == "alpha_strategy_review" or (
         task.task_type == "alpha_research_execution"
