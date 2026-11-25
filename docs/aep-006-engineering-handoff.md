@@ -363,3 +363,17 @@ review must trace that ownership, rather than infer absence from one module.
 General reviewer guidance now requires this production-path trace and explicitly
 distinguishes synthetic overrides, smoke/scientific mode and terminal records.
 Worker prompt regressions passed 22 tests (12 existing cases skipped).
+
+The founder subsequently approved correction mandate digest `e40836d5...b5202dd`;
+its live state is active until November 26 at 02:21 UTC. Inactive campaign
+`b3d062fb-7d33-4a17-af71-e8f04a98990d`, exact digest
+`8e5e3e17ad87c9f3460dceb3359dac39c3dd3b083a51e41736213ff2cbd15d89`,
+retains both rejected execution reviews and awaits separate activation. It allows
+one static refresh, fresh method reviews and separately approved four-call,
+one-repair engineering, not source release or market-data execution.
+
+Prospective engineering producer profile `8286323e-4936-4589-9da2-9c3236c9a85b`
+was registered against the currently deployed package and heartbeat runtime.
+Its `engineering_producer_only` review kind cannot satisfy independent review
+assignments. A live read-only lease-identity check passed. This registration is
+not retroactive evidence for the historical engineering task.
