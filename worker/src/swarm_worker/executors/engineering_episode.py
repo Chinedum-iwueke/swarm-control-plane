@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import base64
 import hashlib
 import re
 import shutil
 import time
 import zipfile
+import zlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -76,10 +78,46 @@ def _compact_evidence(events):
             for event in events]
 
 
+def verify_retained_implementation(document):
+    """Require portable, hash-bound repair evidence, never arbitrary host reads."""
+    reference = document.get('retained_engineering_implementation')
+    if reference is None:
+        return
+    if not isinstance(reference, dict) or not isinstance(reference.get('document'), dict):
+        raise EpisodeIntegrityError('retained implementation requires an inline document; host references are not portable')
+    retained = dict(reference['document'])
+    if 'patch_zlib_base64' in retained:
+        if 'patch' in retained:
+            raise EpisodeIntegrityError('ambiguous retained implementation patch encoding')
+        try:
+            encoded = retained.pop('patch_zlib_base64')
+            inflater = zlib.decompressobj()
+            raw = inflater.decompress(base64.b64decode(encoded, validate=True), 524_289)
+            if (len(raw) > 524_288 or not inflater.eof or inflater.unused_data
+                    or inflater.unconsumed_tail):
+                raise ValueError('patch expansion bound')
+            retained['patch'] = raw.decode('utf-8')
+        except (ValueError, TypeError, zlib.error, UnicodeError) as exc:
+            raise EpisodeIntegrityError('invalid retained implementation patch encoding') from exc
+    if canonical_digest(retained) != reference.get('evidence_digest'):
+        raise EpisodeIntegrityError('retained implementation document digest mismatch')
+    patch = retained.get('patch')
+    if (not isinstance(patch, str) or not patch.strip()
+            or hashlib.sha256(patch.encode('utf-8')).hexdigest() != retained.get('patch_sha256')):
+        raise EpisodeIntegrityError('retained implementation patch integrity failed')
+    for key in ('task_id', 'source_commit', 'code_digest', 'patch_sha256'):
+        if not retained.get(key) or retained[key] != reference.get(key):
+            raise EpisodeIntegrityError('retained implementation identity mismatch: ' + key)
+
+
 async def execute_episode(executor, task, contract, workflow, workspace, heartbeat):
     started = time.monotonic()
     policy = contract.engineering_episode
     accepted_method = verify_handoff(contract, workspace.metadata.resolved_base_commit)
+    document = decode_engineering_evidence(contract.evidence_context)
+    verify_retained_implementation(document)
+    if document.get('retained_engineering_implementation') and accepted_method is None:
+        raise EpisodeIntegrityError('retained implementation requires a materialized accepted-method handoff')
     if accepted_method is not None:
         evidence_path = workspace.artifacts / "accepted-method-evidence.json"
         evidence_text = expanded_engineering_evidence(contract.evidence_context)

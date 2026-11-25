@@ -42,15 +42,16 @@ remain explicit platform blockers. No context is silently truncated.
 ### Accepted-method artifact extension
 
 An accepted-method packet can retain a substantial immutable review history.
-The `engineering-evidence-xz-v1` envelope supports up to 262,144 expanded bytes
-only for the accepted-method handoff shape, still within the 48,000-byte wire
-limit. XZ decoding has a 32 MiB memory bound and bounded output; shape does not
+The `engineering-evidence-xz-v1` envelope supports up to 524,288 expanded bytes
+only for the accepted-method handoff shape, within its 131,072-byte wire
+limit. Ordinary packets retain their smaller limits. XZ decoding has a 32 MiB memory bound and bounded output; shape does not
 confer authority. The worker independently verifies source, plans, both reviews
 and the contract binding before writing the evidence artifact.
 
 For oversized handoffs, the prompt retains the current proposal, requirements,
 native plan report and all other top-level engineering evidence. This active
-view must fit 96,000 bytes. Full history, dependencies and review records remain
+view must fit 96,000 bytes; otherwise a hash-bound file index replaces the inline
+view without dropping the full document. Full history, dependencies and review records remain
 in the private `artifacts/accepted-method-evidence.json`, with its canonical
 SHA-256 in the prompt. A mode-0400 copy at the repository root,
 `.invariance-accepted-method-evidence.json`, makes it readable without widening
@@ -59,6 +60,31 @@ tracked-path collisions and tampering fail closed. Both copies are checked befor
 every episode stage and on retry. The private copy is mode 0600. Native scaffold
 inputs still receive the complete document.
 This enables tool-mediated reading; it does not prove a model read every item.
+
+### Portable retained implementations (November 25 repair)
+
+An external `evidence_path` alone is not a usable repair input in an isolated
+author workspace. Before any model call, the worker now requires
+`retained_engineering_implementation.document` when that reference is present.
+The document contains the retained patch and provenance, with its canonical
+digest in the outer `evidence_digest`. Task, source, code and patch identities
+must match the reference. This does not make inherited code accepted science.
+
+For large patches, `document.patch_zlib_base64` replaces `document.patch`.
+The worker bounds decompression to 524,288 bytes, rejects trailing/incomplete
+streams and ambiguous dual encodings, reconstructs the original document, and
+verifies both its canonical digest and the patch SHA-256. The author reads the
+portable document from the existing protected evidence file and can decode the
+patch there; no arbitrary host-file reader or wider sandbox is introduced.
+Existing context/wire bounds still apply. A missing portable document fails
+before capacity admission or authoring rather than prompting reconstruction.
+
+The real retained implementation round-tripped with 428,385 context bytes and
+124,337 wire bytes, including unchanged review history and patch hashes. This
+was read-only validation, not modification of the running campaign. An already
+approved host-reference-only contract needs an authorized successor; deployment
+must not rewrite it or restart an in-flight episode. Live commissioning of this
+repair remains pending.
 
 A read-only sizing probe using the real accepted BTC packet and new ready native
 plans measured 174,410 original bytes, 33,237 wire bytes and 88,137 prompt bytes.

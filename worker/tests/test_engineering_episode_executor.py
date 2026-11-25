@@ -109,6 +109,99 @@ def test_episode_artifact_overflow_rejects_escape(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('portable', [False, True])
+async def test_retained_patch_is_readable_before_capacity_or_model_call(tmp_path, monkeypatch, portable):
+    import hashlib
+    from swarm_worker.engineering_episode import EpisodeIntegrityError, canonical_digest
+    from swarm_worker.executors.engineering_episode import execute_episode
+    executor, task, workflow, workspace = fixture(tmp_path, '1', 1)
+    patch = 'diff --git a/signal_logic.py b/signal_logic.py\n'
+    retained = dict(task_id=str(uuid4()), source_commit='a' * 40,
+                    code_digest='b' * 64, patch=patch,
+                    patch_sha256=hashlib.sha256(patch.encode()).hexdigest())
+    reference = {k: v for k, v in retained.items() if k != 'patch'}
+    reference.update(evidence_digest=canonical_digest(retained), evidence_path='/unavailable/private/host.json')
+    if portable:
+        reference['document'] = retained
+    evidence = {'retained_engineering_implementation': reference}
+    contract = EngineeringMissionContract.model_validate(task.input_contract).model_copy(
+        update={'evidence_context': json.dumps(evidence)})
+    monkeypatch.setattr('swarm_worker.executors.engineering_episode.verify_handoff', lambda *_: {'fixture': True})
+    calls = []
+
+    async def permit():
+        calls.append(True)
+        readable = json.loads((workspace.repository / '.invariance-accepted-method-evidence.json').read_text())
+        assert readable['retained_engineering_implementation']['document']['patch'] == patch
+        assert executor._changed_paths(workspace) == []
+        return {'allowed': False, 'recovery_token': 'fixture-open'}
+
+    async def heartbeat(_):
+        pass
+
+    monkeypatch.setattr('swarm_worker.executors.engineering_episode.model_capacity_permit', permit)
+    if not portable:
+        with pytest.raises(EpisodeIntegrityError, match='inline document'):
+            await execute_episode(executor, task, contract, workflow, workspace, heartbeat)
+        assert not calls
+    else:
+        for _ in range(2):
+            result = await execute_episode(executor, task, contract, workflow, workspace, heartbeat)
+            assert result.termination_reason == 'provider_capacity'
+        assert len(calls) >= 2  # Recovery may probe capacity before entering the stage.
+
+
+@pytest.mark.parametrize('mutation', ['document', 'patch', 'identity'])
+def test_retained_patch_rejects_corrupt_or_misbound_payload(mutation):
+    import hashlib
+    from swarm_worker.engineering_episode import EpisodeIntegrityError, canonical_digest
+    from swarm_worker.executors.engineering_episode import verify_retained_implementation
+    retained = dict(task_id='parent', source_commit='a' * 40, code_digest='b' * 64,
+                    patch='patch', patch_sha256=hashlib.sha256(b'patch').hexdigest())
+    reference = {k: v for k, v in retained.items() if k != 'patch'}
+    reference.update(document=retained, evidence_digest=canonical_digest(retained))
+    if mutation == 'document':
+        reference['evidence_digest'] = 'c' * 64
+    elif mutation == 'patch':
+        retained['patch'] = 'corrupt'
+        reference['evidence_digest'] = canonical_digest(retained)
+    else:
+        reference['task_id'] = 'another-task'
+    with pytest.raises(EpisodeIntegrityError):
+        verify_retained_implementation({'retained_engineering_implementation': reference})
+
+
+@pytest.mark.parametrize('mutation', [None, 'trailing', 'bomb', 'ambiguous'])
+def test_portable_patch_compression_is_lossless_and_bounded(mutation):
+    import base64
+    import hashlib
+    import zlib
+    from swarm_worker.engineering_episode import EpisodeIntegrityError, canonical_digest
+    from swarm_worker.executors.engineering_episode import verify_retained_implementation
+    patch = 'diff example\n' * 2000
+    retained = dict(task_id='parent', source_commit='a' * 40, code_digest='b' * 64,
+                    patch=patch, patch_sha256=hashlib.sha256(patch.encode()).hexdigest())
+    reference = {k: v for k, v in retained.items() if k != 'patch'}
+    reference['evidence_digest'] = canonical_digest(retained)
+    portable = dict(retained)
+    compressed = zlib.compress(portable.pop('patch').encode())
+    if mutation == 'trailing':
+        compressed += b'junk'
+    elif mutation == 'bomb':
+        compressed = zlib.compress(b'x' * 524_289)
+    elif mutation == 'ambiguous':
+        portable['patch'] = patch
+    portable['patch_zlib_base64'] = base64.b64encode(compressed).decode()
+    reference['document'] = portable
+    evidence = {'retained_engineering_implementation': reference}
+    if mutation:
+        with pytest.raises(EpisodeIntegrityError):
+            verify_retained_implementation(evidence)
+    else:
+        verify_retained_implementation(evidence)
+
+
+@pytest.mark.asyncio
 async def test_handoff_artifact_is_retained_before_model_call_and_retry_checks_integrity(tmp_path, monkeypatch):
     from swarm_worker.executors.engineering_episode import execute_episode
     from swarm_worker.engineering_episode import EpisodeIntegrityError
