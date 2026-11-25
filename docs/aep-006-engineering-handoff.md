@@ -258,3 +258,21 @@ focused preparation/publication tests including the expiry-collection regression
 not a production smoke receipt. The live review-only campaign remains at
 `materialize_accepted_method_handoff`; deployment and exact-source successor
 authority are still required before execution.
+
+## Released Preparation Rollout (2026-11-25)
+
+Control-plane `b376146` and Bulletproof `b9b19c2` are pushed to `main`.
+VM2 API was rebuilt and verified healthy, with Alembic at `d0a2b5f83c71`;
+both VM1 capacity executor slots were restarted after confirming no active
+Bulletproof tasks. Final regression coverage: 318 backend, 66 worker and
+177 native tests passed. No migration or historical evidence rewrite occurred.
+
+The founder approved mandate
+`ALPHA004-AEP007C-RELEASED-PREPARATION-SMOKE-20261125`, exact digest
+`6846ad9f5d5f0b23d511a81b484111c5345b8a40ded304044ef7f0d6c965785d`.
+It is active until November 26 at 01:39 UTC, bound to `b9b19c2`, with discovery
+disabled and separate campaign/task approvals still required. Unchanged BTC
+data was re-attested as receipt `2bf717d6-7337-4112-be6d-0b402ba43794`.
+Governed coverage task `c1a51f2f-e37d-4f9d-b1af-6a7632fb2ce2` succeeded;
+native planning task `72cababc-a078-4017-b480-d093b22aaa90` was queued.
+This proves deployment and coverage, not smoke execution or full certification.
