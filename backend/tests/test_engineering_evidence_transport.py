@@ -119,6 +119,35 @@ def large_handoff():
                                         "history": "retained provenance " * 6000}}}}
 
 
+@pytest.mark.parametrize('codec', [backend, worker])
+def test_extended_compression_fallback_preserves_evidence_and_decoder_bound(codec, monkeypatch):
+    document = large_handoff()
+    original = lzma.compress
+    calls = []
+    def compress(raw, *, preset):
+        calls.append(preset)
+        if preset == 3:
+            return b'x' * codec.HANDOFF_WIRE_LIMIT
+        return original(raw, preset=preset)
+    monkeypatch.setattr(lzma, 'compress', compress)
+    encoded = codec.encode_engineering_evidence(document)
+    assert calls == [3, 6]
+    assert len(encoded.encode()) <= codec.HANDOFF_WIRE_LIMIT
+    for decoder in (backend, worker):
+        assert decoder.decode_engineering_evidence(encoded) == document
+
+
+def test_small_handoff_does_not_pay_for_compression_fallback(monkeypatch):
+    original = lzma.compress
+    calls = []
+    def compress(raw, *, preset):
+        calls.append(preset)
+        return original(raw, preset=preset)
+    monkeypatch.setattr(lzma, 'compress', compress)
+    backend.encode_engineering_evidence(large_handoff())
+    assert calls == [3]
+
+
 @pytest.mark.parametrize("codec", [backend, worker])
 def test_handoff_depth_accounts_only_for_two_transport_wrappers(codec):
     packet = 0

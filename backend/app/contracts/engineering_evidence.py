@@ -115,6 +115,12 @@ def encode_engineering_evidence(document):
         "expanded_bytes": len(raw),
         "payload": base64.b64encode(lzma.compress(raw, preset=3) if extended else zlib.compress(raw)).decode("ascii"),
     })
+    if extended and len(envelope.encode()) > wire_limit(document):
+        # Retry compression, not evidence selection. Preset 6's 8 MiB dictionary
+        # remains within the decoder's existing 32 MiB memory allowance.
+        fallback = json.loads(envelope)
+        fallback["payload"] = base64.b64encode(lzma.compress(raw, preset=6)).decode("ascii")
+        envelope = canonical(fallback)
     if len(envelope.encode()) > wire_limit(document):
         raise ValueError("engineering evidence exceeds bounded wire bytes")
     return envelope
