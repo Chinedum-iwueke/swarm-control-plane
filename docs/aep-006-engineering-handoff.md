@@ -350,3 +350,16 @@ It retains `b9b19c2` and existing scientific/data constraints, allows a separate
 activated four-call/one-repair engineering episode, and grants neither source
 release nor market-data execution. The unreleased general native repairs passed
 167 targeted tests plus 28 retained method tests; no new paid authoring ran.
+
+Offline adjudication evidence narrows the logging finding: the existing
+`required_observation_logging_evaluation` explicitly accepts a distinct
+`terminal_no_observation` schema without measured signal fields. Three real
+native-terminal regressions pass for negative/invalid/failed outcomes; a fourth
+regression proves the shipped immutable contract lacks the production membership
+binding without fixture injection or mutation. These tests do not overturn the
+independent rejection or supply absent membership evidence. The runner already
+replays validation plans and provides bounded splits to the evaluator; the next
+review must trace that ownership, rather than infer absence from one module.
+General reviewer guidance now requires this production-path trace and explicitly
+distinguishes synthetic overrides, smoke/scientific mode and terminal records.
+Worker prompt regressions passed 22 tests (12 existing cases skipped).

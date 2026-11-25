@@ -126,6 +126,9 @@ async def test_read_only_reviewer_retains_real_verdict_without_execution_authori
                 assert "Inspect the pinned native implementation" not in prompt
             else:
                 assert "Inspect the pinned native implementation" in prompt
+                assert "Trace the production entry point through shared validators" in prompt
+                assert "Synthetic fixture-injected receipts" in prompt
+                assert "no-observation terminal records" in prompt
             output = {
                 "subject_digest": payload["subject_digest"], "verdict": verdict,
                 "rationale": "Reviewed the exact frozen card and pinned source.",
