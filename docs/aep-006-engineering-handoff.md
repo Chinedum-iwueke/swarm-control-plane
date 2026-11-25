@@ -276,3 +276,18 @@ data was re-attested as receipt `2bf717d6-7337-4112-be6d-0b402ba43794`.
 Governed coverage task `c1a51f2f-e37d-4f9d-b1af-6a7632fb2ce2` succeeded;
 native planning task `72cababc-a078-4017-b480-d093b22aaa90` was queued.
 This proves deployment and coverage, not smoke execution or full certification.
+
+The successor campaign `1ce946cf-ae1b-447f-abe7-5448f85e717c` was explicitly
+activated at digest `8cc362dac39dfb5908f268503fe0ca11b67959cacd668b6c8543bf4c94ceacd6`.
+Native planning, draft and method refresh succeeded; both independent method
+reviews approved. The first preparation task failed only when constructing the
+worker result: its 40,448-byte handoff exceeded the shared 32 KiB wire limit.
+The retained native preparation artifact remains on disk, not in Git.
+
+A mirrored, bounded, digest-checked research handoff codec now supports lossless
+transport for preparation, qualification and publication. It preserves the 32 KiB
+wire limit, caps expansion at 512 KiB, rejects corrupt/trailing/compression-bomb
+payloads and leaves small legacy objects unchanged. A read-only replay of the
+actual failed output produced a 13,776-byte envelope and passed exact backend
+preparation verification without rerunning native work. This transport check is
+not a successful production retry; the failed attempt remains historical evidence.

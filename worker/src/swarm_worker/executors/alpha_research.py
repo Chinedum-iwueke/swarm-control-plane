@@ -494,6 +494,8 @@ class AlphaResearchExecutor:
                 else {}
             ),
         }
+        from swarm_worker.research_handoff import encode as encode_handoff
+        downstream_handoff = encode_handoff(downstream_handoff)
         return WorkflowExecutionResult(
             workflow=workflow.name,
             repository=contract.repository,

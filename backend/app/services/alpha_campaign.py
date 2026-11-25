@@ -2842,8 +2842,9 @@ def _ensure_execution_task(db: Session, campaign: AlphaCampaign) -> Task | None:
 
 
 def _publication_envelope_from_result(result: dict) -> dict | None:
+    from app.contracts.research_handoff import decode as decode_handoff
     summary = result.get("summary", {})
-    handoff = result.get("downstream_handoff", {})
+    handoff = decode_handoff(result.get("downstream_handoff", {}) or {})
     publication_envelope = (
         handoff.get("publication_envelope") if isinstance(handoff, dict) else None
     )
@@ -2853,8 +2854,9 @@ def _publication_envelope_from_result(result: dict) -> dict | None:
 
 
 def _qualification_from_result(result: dict) -> dict | None:
+    from app.contracts.research_handoff import decode as decode_handoff
     summary = result.get("summary", {})
-    handoff = result.get("downstream_handoff", {})
+    handoff = decode_handoff(result.get("downstream_handoff", {}) or {})
     qualification = handoff.get("qualification") if isinstance(handoff, dict) else None
     if qualification is None and isinstance(summary, dict):
         qualification = summary.get("qualification")

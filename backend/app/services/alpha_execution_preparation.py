@@ -17,7 +17,8 @@ def verified_preparation_result(task, template):
     result = task.result or {}
     contract = task.input_contract
     request = contract['released_execution_preparation']
-    prepared = (result.get('downstream_handoff') or {}).get('execution_preparation')
+    from app.contracts.research_handoff import decode as decode_handoff
+    prepared = decode_handoff(result.get('downstream_handoff') or {}).get('execution_preparation')
     if (task.status != 'succeeded' or result.get('success') is not True
             or result.get('base_commit') != contract['base_ref']
             or result.get('workflow') != 'alpha-research-execution'
