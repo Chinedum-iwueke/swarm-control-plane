@@ -377,3 +377,27 @@ was registered against the currently deployed package and heartbeat runtime.
 Its `engineering_producer_only` review kind cannot satisfy independent review
 assignments. A live read-only lease-identity check passed. This registration is
 not retroactive evidence for the historical engineering task.
+
+### November 25: bounded corrective engineering dispatched
+
+The founder activated campaign `b3d062fb-7d33-4a17-af71-e8f04a98990d`
+at the exact `8e5e3e17...bd15d89` digest above. Fresh independent method reviews
+`ffc5ef2f-d502-443b-b5b7-f910e6943791` and
+`26208b42-6b6e-4c50-a31a-ff5830319bac` both approved. This accepts the method
+specification, not observed eligibility, calibration adequacy or a backtest.
+
+Engineering materialization then exposed a transport limit: the lossless
+470,917-byte evidence document fit the expanded bound but preset-3 XZ exceeded
+the wire bound. Control-plane repair `0e3b86b` retries preset-6 compression only
+when necessary; neither evidence nor bounds change. API/worker decoder parity,
+memory bounds and handoff tests passed (67 tests), and the deployed API then
+materialized the real contract successfully.
+
+Task `5a03ff8e-0454-42c1-8329-92c2914f5807`, plan digest
+`9ea9ee96b165ab2f3834c5e4549f4b4b2e4be96f6775eb3b5967eee4ad9a6765`,
+was approved through the unexpired bounded task delegation and observed running.
+Only this engineering task was queued during dispatch. The engineering agent
+was drain-paused again immediately after lease acquisition, allowing this task
+to finish without admitting unrelated work. Its bounds remain four model calls
+and one repair, synthetic tests and independent code review. Real membership
+evidence remains absent; no source release or market-data execution is granted.
