@@ -274,7 +274,9 @@ def _correlation(first: dict, second: dict) -> dict:
     shared = [
         field
         for field in CORRELATION_DIMENSIONS
-        if first.get(field) == second.get(field)
+        if (first.get(field) == second.get(field)
+            or first.get(field) == 'unverified-historical-runtime'
+            or second.get(field) == 'unverified-historical-runtime')
     ]
     return {
         "shared_dimensions": shared,

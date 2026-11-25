@@ -124,6 +124,12 @@ def route_execution_review(db,campaign,method_task,preparation,task,prepared,req
             if resolved is not None:
                 identity, proof = resolved
                 identity_resolutions.append(proof)
+        if identity is None and producer is not None:
+            from app.services.engineering_producer_recovery import recovered_episode_identity
+            resolved = recovered_episode_identity(db, producer)
+            if resolved is not None:
+                identity, proof = resolved
+                identity_resolutions.append(proof)
         if identity is None:
             campaign.phase='independent_strategy_review'
             campaign.next_action='restore_execution_producer_identity'

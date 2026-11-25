@@ -29,6 +29,13 @@ class ProducerIdentity(BaseModel):
     package_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class EngineeringProducerEvidenceImport(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    artifact_id: uuid.UUID
+    artifact_text: str = Field(min_length=2, max_length=262144)
+    actor: str = Field(min_length=1, max_length=150)
+
+
 class EvaluationRouteCreate(BaseModel):
     subject_type: str = Field(pattern=r"^[a-z][a-z0-9_.-]{0,59}$")
     subject_id: str = Field(min_length=1, max_length=150)

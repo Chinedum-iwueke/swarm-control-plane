@@ -386,6 +386,8 @@ def test_missing_producer_identity_is_explicit_blocker_not_server_error(monkeypa
     db = MagicMock()
     monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *args:None)
     monkeypatch.setattr(evaluator_routing, 'historical_profile_producer_identity', lambda *args:None)
+    from app.services import engineering_producer_recovery
+    monkeypatch.setattr(engineering_producer_recovery, 'recovered_episode_identity', lambda *args:None)
     create = MagicMock();monkeypatch.setattr(evaluator_routing, 'create_route', create)
     result = service.route_execution_review(db,campaign,method,preparation,task,prepared,
         {'engineering_task_id':str(uuid4()),'feasibility_task_id':str(uuid4())})

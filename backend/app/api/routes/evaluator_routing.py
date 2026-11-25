@@ -14,6 +14,7 @@ from app.models.evaluator_routing import (
     EvaluatorProfile,
 )
 from app.schemas.evaluator_routing import (
+    EngineeringProducerEvidenceImport,
     EvaluationRouteCreate,
     EvaluationRouteResponse,
     EvaluatorAssignmentComplete,
@@ -34,6 +35,22 @@ router = APIRouter(
     tags=["independent-evaluator-routing"],
     dependencies=[Depends(require_orchestrator)],
 )
+
+
+@router.post('/engineering-producers/{task_id}/evidence')
+def import_engineering_producer(
+    task_id: uuid.UUID,
+    payload: EngineeringProducerEvidenceImport,
+    db: Annotated[Session, Depends(get_db)],
+):
+    from app.services.engineering_producer_recovery import import_episode
+    try:
+        proof = import_episode(db, task_id, payload.artifact_id, payload.artifact_text, payload.actor)
+        db.commit()
+        return proof
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        db.rollback()
+        raise HTTPException(409, 'Published engineering producer evidence did not validate.') from exc
 
 
 @router.post(

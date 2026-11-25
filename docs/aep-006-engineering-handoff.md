@@ -308,3 +308,15 @@ not. Its retained episode contains a task/source/contract-bound author session,
 model and provider, but recovering that identity still requires a separately
 validated evidence-backed attestation. Independent execution review and smoke
 remain unproven. Historical-profile and routing regressions passed 99 tests.
+
+The engineering fallback now accepts only the bytes of an already registered
+`engineering-episode.json`, matching its hash, size, agent, attempt, source and
+publication interval. It cross-checks the episode against the immutable lease
+and completion, including the author session, contract and terminal bundle
+receipt. An orchestrator-only import appends a separate task event; it does not
+rewrite the old lease or register a retroactive profile. Routing revalidates the
+evidence on every use. Historical machine/runtime remain explicitly unknown and
+count as shared correlation, never evidence of independence. This is
+worker-reported provenance, not a provider attestation. The actual retained
+engineering artifact passed read-only validation; 120 focused recovery, routing,
+preparation and lease tests passed. Production review and smoke are still pending.
