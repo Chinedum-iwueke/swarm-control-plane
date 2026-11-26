@@ -23,7 +23,7 @@ class RequirementsDisposition(BaseModel):
 
 ROUTES = {
     "repair": ("scientific_requirements_producer", "Publish a changed method successor; pass deterministic checks and fresh independent review."),
-    "await_data": ("data_admission", "Obtain verified candidate-specific coverage or an authorized coverage successor."),
+    "await_data": ("data_admission", "Obtain verified candidate-specific coverage, availability and required eligibility evidence, or an authorized data successor."),
     "scientifically_infeasible": ("senior_researcher", "Revise the design under independent review or propose a new question; do not weaken support to fit history."),
     "requirements_conflict": ("research_intelligence_director", "Resolve conflicting immutable constraints through a reviewed successor; do not override them."),
     "requires_new_question": ("senior_researcher", "Submit a separately admitted question; retain the original scientific identity."),
@@ -53,7 +53,7 @@ def disposition_for(reason_code, evidence):
                           'repair_or_model_budget_exhausted', 'tool_budget_exhausted',
                           'native_recheck_budget_exhausted'}:
             kind = 'await_authority_or_capacity'
-    if reason_code == "produce_admitted_predictor_coverage":
+    if reason_code in {"produce_admitted_predictor_coverage", "produce_admitted_method_data"}:
         kind = "await_data"
     elif reason_code in {"mandate_inactive", "mandate_expired", "mandate_budget_exhausted",
                          "autonomy_paused", "provider_capacity_unavailable", "correction_budget_exhausted",

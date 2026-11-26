@@ -5,6 +5,8 @@ from app.services.alpha_disposition import disposition_for, RequirementsDisposit
 @pytest.mark.parametrize("reason,evidence,expected", [
     ("scientific_requirements_rejected", {"blockers": ["impossible, lacks data"]}, "repair"),
     ("produce_admitted_predictor_coverage", {}, "await_data"),
+    ("produce_admitted_method_data", {"reason": "membership unavailable"}, "await_data"),
+    ("assess_method_data_prerequisites", {}, "requirements_conflict"),
     ("resolve_native_requirements_feasibility", {"reasons": ["event_support:insufficient"]}, "scientifically_infeasible"),
     ("resolve_native_requirements_feasibility", {"reasons": ["scientific:insufficient_contiguous_eligible_basket_history"]}, "await_data"),
     ("resolve_native_requirements_feasibility", {"reasons": ["warmup_wrong"]}, "requirements_conflict"),

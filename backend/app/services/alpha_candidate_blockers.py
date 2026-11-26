@@ -1,11 +1,21 @@
 """Read-only candidate dispositions, independent of the campaign's current cursor."""
 
 from sqlalchemy import String, cast, func, literal, select, union_all
+from pydantic import ValidationError
 
 from app.models.alpha_campaign import AlphaCampaign, AlphaCampaignAttempt, AlphaCampaignEvent
+from app.services.alpha_disposition import RequirementsDisposition
 
 
 BLOCKERS = {
+    "produce_admitted_method_data": (
+        "Native data admission", "Trusted data checkpoint evidence",
+        "Obtain verified candidate/source-bound data prerequisites before reconsideration.",
+    ),
+    "assess_method_data_prerequisites": (
+        "Requirements planning", "Reviewed structured data prerequisites",
+        "Publish a reviewed candidate/source-bound data prerequisite contract.",
+    ),
     "propose_scientific_specification": (
         "Representation producer", "Complete target, estimator, thresholds, uncertainty and falsification specification",
         "Publish a complete immutable method successor; independent scientific review remains required.",
@@ -55,6 +65,17 @@ def project(campaign, attempt=None, event=None):
     owner, missing, retry = BLOCKERS.get(classification, (
         "Not recorded", "Not recorded", "Review the retained blocker and evidence before reconsideration."
     ))
+    owner_basis = "blocker classification" if classification in BLOCKERS else "not recorded"
+    recorded = None
+    if payload.get("disposition") is not None:
+        try:
+            recorded = RequirementsDisposition.model_validate(payload["disposition"])
+        except ValidationError:
+            pass  # Legacy or malformed metadata must not invent a disposition.
+    if recorded is not None:
+        owner = recorded.owner
+        retry = recorded.recovery_condition
+        owner_basis = "recorded disposition"
     return {
         "id": str(attempt.id if attempt else campaign.id),
         "status": "deferred" if attempt else "blocked",
@@ -65,8 +86,8 @@ def project(campaign, attempt=None, event=None):
         "detail": payload.get("detail", {}) if attempt else campaign.terminal_reason,
         "missing_evidence": missing,
         "responsible_component": owner,
-        "owner_basis": "blocker classification" if classification in BLOCKERS else "not recorded",
-        "retry_condition": payload.get("retry_condition") or (gates[1] if len(gates) > 1 else retry),
+        "owner_basis": owner_basis,
+        "retry_condition": retry if recorded is not None else payload.get("retry_condition") or (gates[1] if len(gates) > 1 else retry),
         "evidence_digests": attempt.evidence_digests if attempt else [],
         "trial_count": attempt.trial_count if attempt else 0,
         "scientific_result": False,

@@ -47,6 +47,8 @@ def verified_plan_evidence(db, request, packet, method_task):
     for key in ('discovery_candidate', 'dataset_bindings', 'representation_plan', 'window'):
         if key not in evidence or template_evidence.get(key) != evidence[key]:
             raise MethodPlanUnavailable('Engineering template differs from native planning inputs: ' + key)
+    from app.services.alpha_data_prerequisites import require_data_prerequisites
+    require_data_prerequisites(db, packet, method_task.input_contract['candidate_digest'], evidence['dataset_bindings'])
     return report
 
 

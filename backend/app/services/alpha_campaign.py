@@ -2096,9 +2096,16 @@ def _retain_strategy_review_rejection(
 
 def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | None:
     from app.services.alpha_requirements_handoff import RequirementsPending
+    from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
 
     try:
         return _advance_governed_pipeline_ready(db, campaign)
+    except DataPrerequisiteUnavailable as exc:
+        campaign.status = "needs_attention"
+        campaign.next_action = exc.reason_code
+        campaign.terminal_reason = {"category": exc.reason_code, "detail": exc.detail}
+        _retain_pre_authoring_deferral(db, campaign)
+        return None
     except RequirementsPending:
         # Preserve the durable publication and review tasks in this transaction.
         # HTTP errors would roll them back and repeatedly rediscover the gate.
@@ -2108,6 +2115,8 @@ def _advance_governed_pipeline(db: Session, campaign: AlphaCampaign) -> Task | N
 
 
 PRE_AUTHORING_DEFERRALS = {
+    "produce_admitted_method_data": "Obtain trusted candidate/source-bound data checkpoint evidence; unchanged paid retries are prohibited.",
+    "assess_method_data_prerequisites": "Publish reviewed structured data prerequisites before reconsideration; coverage alone does not establish eligibility.",
     "method_design_deferred": "Retain the method episode and its blocker; reconsider only with changed evidence or explicitly renewed bounded authority.",
     "method_dependency_deferred": "Require verified source/candidate-bound native plans, a successor packet containing them, fresh review and explicit successor authority; do not retry unchanged planning evidence.",
     "scientific_requirements_rejected": "Preserve the independent rejection; submit a changed, evidence-bound method successor and obtain fresh independent review. Never retry unchanged inputs.",

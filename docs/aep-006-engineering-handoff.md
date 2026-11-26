@@ -423,3 +423,39 @@ binding, forged-receipt rejection and separate synthetic outcome-path coverage.
 Missing actual eligibility remains `await_data`; historical charges remain
 intact. Automatic bounded recovery is observed here, but successful autonomous
 engineering and discovery-to-results certification remain unproven.
+
+### November 26: data prerequisites before paid work
+
+The method-engineering commissioning path now requires an explicit
+`method-data-prerequisites-v1` document in the immutable evidence catalog,
+referenced by the `data_prerequisites` dependency. The prospective compiler
+`alpha_data_prerequisites.bind_data_prerequisites` binds candidate/source identity,
+normalizes duplicate checkpoints and refuses to replace an existing declaration.
+It does not alter approved records or select scientific requirements. Checkpoint
+completeness must be reviewed in the successor; no prose parsing infers eligibility.
+
+Before creating method-author work for an engineering campaign, and again before
+engineering handoff, the control plane resolves declared clocks through the
+registered point-in-time catalog/reference resolver. Resolved partitions must
+belong to the candidate's bound catalog, dataset and partition digests. Missing
+declarations or identity conflicts require assessment. Unavailable registered
+evidence yields `produce_admitted_method_data` / `await_data`, not paid repair.
+The existing durable candidate-deferral path advances the queue and preserves
+history with zero scientific trials. The blocker projection now honors the
+recorded typed disposition's owner and recovery condition.
+
+These checks establish only declared checkpoint readiness, not whole-window
+coverage, science, calibration or execution certification. The existing native
+plans and scientific gates remain required. Legacy packets without declarations
+cannot be silently grandfathered or edited; they require reviewed successors.
+This increment covers the opt-in method-engineering commissioning path, not a
+claim that every other research lane has equivalent prerequisite enforcement.
+
+A read-only probe of retained BTC catalog `4f007cc5...e594141` at the scientific
+training start returned `No market-data catalog was known at that time.` This
+demonstrates a registry provenance limitation, not absence of BTC price bars.
+Do not substitute today's knowledge clock or fabricate historical metadata to
+clear it. The previous candidate and expired campaign have not been rewritten.
+Controlled tests cover rejection before paid review/engineering and durable
+deferral followed by sibling cursor selection; live successor commissioning
+and producer selection of complete reviewed declarations remain outstanding.

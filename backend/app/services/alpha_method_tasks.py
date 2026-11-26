@@ -175,6 +175,13 @@ def materialize_method_task(db, campaign, source, parent, request):
                 or existing.task_type != 'alpha_method_design'):
             raise ValueError('Method task immutable identity conflict')
         return existing
+    if candidate_id in (campaign.specification.get('method_engineering_requests') or {}):
+        from app.services.alpha_data_prerequisites import require_data_prerequisites
+        from app.services.alpha_campaign import _source_bindings
+        require_data_prerequisites(db, {
+            'source_commit': contract.base_ref, 'dependencies': contract.dependencies,
+            'evidence': contract.evidence_catalog,
+        }, contract.candidate_digest, _source_bindings(campaign, source))
     task = build_task(TaskCreate(task_number=number, project='bulletproof_bt',
         task_type='alpha_method_design', title='Diagnose and repair a bounded scientific method',
         objective='Retain scientific identity and support minima; publish evidence for independent review, never approval.',
@@ -391,9 +398,16 @@ def advance_method_task(db, campaign, source, parent, request):
         str(task.input_contract['candidate_id']))
     if engineering_request is not None:
         from app.services.alpha_method_engineering import verified_plan_evidence, MethodPlanUnavailable
+        from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
         from app.schemas.alpha_campaign import MethodEngineeringRequest
         try:
             verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+        except DataPrerequisiteUnavailable as exc:
+            campaign.status = 'needs_attention'
+            campaign.next_action = exc.reason_code
+            campaign.terminal_reason = {'category': exc.reason_code, 'detail': {
+                'task_id': str(task.id), 'packet_digest': digest(packet), **exc.detail}}
+            raise RequirementsPending() from exc
         except MethodPlanUnavailable as exc:
             campaign.status = 'needs_attention'
             campaign.next_action = 'method_dependency_deferred'

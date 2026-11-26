@@ -506,3 +506,40 @@ def test_missing_native_dependency_defers_before_paid_review(monkeypatch):
     assert campaign.next_action == 'method_dependency_deferred'
     assert campaign.terminal_reason['detail']['feasibility_task_id'] == str(planning_id)
     assert campaign.terminal_reason['detail']['owner'] == 'native_feasibility_planner'
+
+
+@pytest.mark.parametrize('reason', ['produce_admitted_method_data', 'assess_method_data_prerequisites'])
+def test_data_prerequisite_gate_stops_before_review_and_engineering(monkeypatch, reason):
+    from copy import deepcopy
+    from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_method_engineering
+    from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
+    from app.services.alpha_requirements_handoff import RequirementsPending
+    from app.schemas.alpha_campaign import MethodEngineeringRequest
+    from .test_alpha_method_engineering import fixture as engineering_fixture
+    db, campaign, source, parent, request, _, _ = fixture()
+    task = ready_task()
+    task.plan_digest = '1'*64
+    template, _, _, _, _, plan_digest = engineering_fixture()
+    campaign.specification['method_engineering_requests'] = {task.input_contract['candidate_id']:
+        MethodEngineeringRequest(contract=template, feasibility_task_id=uuid4(),
+                                 plan_evidence_digest=plan_digest).model_dump(mode='json')}
+    before = deepcopy(campaign.specification)
+    monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
+    monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
+    monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *_: {'agent_id': 'producer'})
+    monkeypatch.setattr(alpha_campaign, '_append_event', lambda *args: None)
+    detail = {'missing': 'registered membership', 'execution_authority': False}
+    monkeypatch.setattr(alpha_method_engineering, 'verified_plan_evidence',
+                        MagicMock(side_effect=DataPrerequisiteUnavailable(reason, detail)))
+    review = MagicMock(side_effect=AssertionError('paid review must not start'))
+    engineer = MagicMock(side_effect=AssertionError('engineering must not start'))
+    monkeypatch.setattr(service, 'route_method_review', review)
+    monkeypatch.setattr(alpha_method_engineering, 'materialize_method_engineering', engineer)
+    db.scalar.side_effect = [None]
+    with pytest.raises(RequirementsPending):
+        service.advance_method_task(db, campaign, source, parent, request)
+    review.assert_not_called()
+    engineer.assert_not_called()
+    assert campaign.next_action == reason
+    assert campaign.terminal_reason['detail']['missing'] == 'registered membership'
+    assert campaign.specification == before

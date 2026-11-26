@@ -1038,7 +1038,7 @@ def test_deferral_cannot_claim_review_or_qualification():
             AlphaCampaignAttemptCreate.model_validate(changed)
 
 
-@pytest.mark.parametrize("action", ["produce_admitted_predictor_coverage", "scientific_requirements_rejected", "method_design_deferred", "method_dependency_deferred"])
+@pytest.mark.parametrize("action", ["produce_admitted_predictor_coverage", "scientific_requirements_rejected", "method_design_deferred", "method_dependency_deferred", "produce_admitted_method_data", "assess_method_data_prerequisites"])
 def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch, action):
     from copy import deepcopy
 
@@ -1071,6 +1071,8 @@ def test_pre_authoring_deferral_preserves_source_and_retry_condition(monkeypatch
     ("needs_attention", "scientific_requirements_rejected", True),
     ("needs_attention", "method_design_deferred", True),
     ("needs_attention", "method_dependency_deferred", True),
+    ("needs_attention", "produce_admitted_method_data", True),
+    ("needs_attention", "assess_method_data_prerequisites", True),
     ("running", "produce_admitted_predictor_coverage", False),
     ("running", "await_independent_requirements_review", False),
     ("needs_attention", "unknown_failure", False),
@@ -1085,6 +1087,20 @@ def test_only_known_blocked_requirements_defer(monkeypatch, status, action, expe
     monkeypatch.setattr(service, "_retain_pre_authoring_deferral", retain)
     assert service._advance_governed_pipeline(MagicMock(), record) is None
     assert retain.called is expected
+
+
+def test_materialization_data_gate_records_deferral_instead_of_paid_retry(monkeypatch):
+    from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
+    record = campaign()
+    detail = {'missing': 'trusted listing evidence', 'execution_authority': False}
+    monkeypatch.setattr(service, '_advance_governed_pipeline_ready',
+                        MagicMock(side_effect=DataPrerequisiteUnavailable('produce_admitted_method_data', detail)))
+    retain = MagicMock()
+    monkeypatch.setattr(service, '_retain_pre_authoring_deferral', retain)
+    assert service._advance_governed_pipeline(MagicMock(), record) is None
+    retain.assert_called_once()
+    assert record.next_action == 'produce_admitted_method_data'
+    assert record.terminal_reason['detail'] == detail
 
 
 @pytest.mark.parametrize("verified", [False, True])
@@ -3578,6 +3594,34 @@ def test_deferred_attempt_advances_queue_without_scientific_trials(monkeypatch):
     assert record.status == "running"
     assert record.candidate_attempt_id is None
     reconcile.assert_called_once_with(db, record)
+
+
+def test_data_blocker_records_durable_deferral_then_selects_sibling(monkeypatch):
+    from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
+    record = campaign()
+    first, sibling = record.specification['research_queue'][:2]
+    db = MagicMock()
+    db.scalar.return_value = None
+    events = []
+    def append(*args):
+        events.append((args[2], args[4]))
+        return SimpleNamespace(event_digest='4'*64)
+    monkeypatch.setattr(service, '_append_event', append)
+    selected = []
+    monkeypatch.setattr(service, 'reconcile_campaign',
+        lambda _, c: selected.append(c.specification['research_queue'][c.hypothesis_count]['source_candidate_id']))
+    monkeypatch.setattr(service, '_advance_governed_pipeline_ready',
+        MagicMock(side_effect=DataPrerequisiteUnavailable('produce_admitted_method_data',
+            {'reason': 'trusted membership unavailable', 'execution_authority': False})))
+    service._advance_governed_pipeline(db, record)
+    event = next(payload for kind, payload in events if kind == 'candidate_deferred')
+    assert event['source_candidate_id'] == first['source_candidate_id']
+    assert event['disposition']['disposition'] == 'await_data'
+    assert event['automatic_unchanged_retry_allowed'] is False
+    assert selected == [sibling['source_candidate_id']]
+    assert record.hypothesis_count == 1
+    assert record.trial_count == 0
+    assert record.specification['research_queue'][0] == first
 
 
 def test_completed_execution_recovery_is_agent_bound_and_resumable(monkeypatch):

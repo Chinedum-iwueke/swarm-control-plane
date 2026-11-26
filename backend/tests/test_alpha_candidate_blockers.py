@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy.dialects import postgresql
 from app.services.alpha_candidate_blockers import project, overview
+from app.services.alpha_disposition import disposition_for
 
 
 def campaign():
@@ -51,3 +52,22 @@ def test_filters_and_paging_are_database_bounded():
     assert "BTC/%" in statement.params.values()
     assert result["items"] == [] and result["has_more"] is False
     db.get.assert_not_called()
+
+
+def test_structured_data_deferral_retains_owner_after_campaign_advances():
+    c = campaign()
+    a = NS(id=uuid4(), source_candidate_id=uuid4(), question="Deferred question",
+           gate_report={"failed_gates": ["method_design_deferred", "Generic retry"]},
+           evidence_digests=["a" * 64], trial_count=0, created_at=datetime.now(UTC))
+    disposition = disposition_for("method_design_deferred", {"reason": "await_data"})
+    event = NS(payload={"reason": "method_design_deferred", "disposition": disposition,
+                        "retry_condition": "Generic retry", "detail": {"missing": "membership"}})
+    result = project(c, a, event)
+    assert result["responsible_component"] == "data_admission"
+    assert result["owner_basis"] == "recorded disposition"
+    assert result["retry_condition"] == disposition["recovery_condition"]
+    assert result["question"] == "Deferred question"
+    assert result["detail"] == {"missing": "membership"}
+    assert result["scientific_result"] is False
+    event.payload["disposition"] = {"owner": "unverified", "execution_authority": True}
+    assert project(c, a, event)["responsible_component"] == "Not recorded"
