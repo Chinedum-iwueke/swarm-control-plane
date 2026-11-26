@@ -79,7 +79,9 @@ def require_data_prerequisites(db, packet, candidate_digest, dataset_bindings):
         except (MarketDataUnknown, ReferenceDataUnknown) as exc:
             raise DataPrerequisiteUnavailable("produce_admitted_method_data", {
                 "checkpoint_index": index, "checkpoint": checkpoint.model_dump(mode="json"),
-                "reason": str(exc), "evidence_digest": key, "execution_authority": False}) from exc
+                "reason": str(exc),
+                "data_reason_code": getattr(exc, "reason_code", "reference_data_unknown"),
+                "evidence_digest": key, "execution_authority": False}) from exc
         except (MarketDataConflict, ReferenceDataConflict) as exc:
             raise DataPrerequisiteUnavailable("assess_method_data_prerequisites", {
                 "checkpoint_index": index, "reason": str(exc), "evidence_digest": key,

@@ -99,3 +99,65 @@ def test_producer_is_deterministic_idempotent_and_does_not_rebind_history():
 def test_producer_cannot_assert_no_data_requirements_with_an_empty_list():
     with pytest.raises(ValueError):
         module.bind_data_prerequisites({'candidate_digest':'a'*64, 'base_ref':'b'*40}, [])
+
+
+def test_real_resolver_preserves_provenance_failure_without_claiming_absent_bars():
+    db = Mock()
+    db.scalar.return_value = None
+    with pytest.raises(module.DataPrerequisiteUnavailable) as caught:
+        module.require_data_prerequisites(db, packet(), 'a'*64, [])
+    assert caught.value.detail['data_reason_code'] == 'catalog_not_known_at_requested_time'
+    assert caught.value.reason_code == 'produce_admitted_method_data'
+    assert disposition_for(caught.value.reason_code, caught.value.detail)['automatic_repair'] is False
+    db.scalar.assert_called_once()
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize('reason', [
+    'partition_admission_failed', 'source_not_available',
+    'membership_not_known_at_requested_clocks',
+])
+def test_typed_data_failure_survives_deferral(monkeypatch, reason):
+    monkeypatch.setattr(module, 'resolve_market_data', Mock(side_effect=
+        module.MarketDataUnknown('diagnostic', reason_code=reason)))
+    with pytest.raises(module.DataPrerequisiteUnavailable) as caught:
+        module.require_data_prerequisites(None, packet(), 'a'*64, [])
+    assert caught.value.detail['data_reason_code'] == reason
+    assert caught.value.detail['checkpoint']['known_at'] == '2025-01-01T00:00:00Z'
+
+
+@pytest.mark.parametrize('available', [True, False])
+def test_prospective_api_assessment_is_read_only_and_never_approves(monkeypatch, available):
+    from uuid import uuid4
+    from app.api.routes.alpha_campaign import DataPrerequisiteAssessment, assess_data_prerequisites, router
+    from app.core.security import require_orchestrator
+    p = packet()
+    catalog_id = uuid4()
+    binding = dict(dataset_build_id=uuid4(), catalog_id=catalog_id,
+        lake_governance_snapshot_id=uuid4(), producer_receipt_id=uuid4(),
+        dataset_key='panel', partition_digests=['d'*64],
+        evidence_class='live_exchange_history', research_principal='alpha-research-runner')
+    payload = DataPrerequisiteAssessment(declaration=next(iter(p['evidence'].values())),
+                                         dataset_bindings=[binding])
+    db = Mock()
+    if available:
+        resolver = Mock(return_value=SimpleNamespace(model_dump=lambda **_: {
+            'catalog_id':str(catalog_id), 'partition':{'content_digest':'d'*64}}))
+        monkeypatch.setattr(module, 'resolve_market_data', resolver)
+    else:
+        # Exercise the actual resolver's missing-catalog branch.
+        db.scalar.return_value = None
+    result = assess_data_prerequisites(payload, db)
+    assert result['status'] == ('declared_checkpoints_resolved' if available else 'blocked')
+    assert result['execution_authority'] is False
+    assert result['scientific_certification'] is False
+    assert result['declaration_completeness_reviewed'] is False
+    if not available:
+        assert result['detail']['data_reason_code'] == 'catalog_not_known_at_requested_time'
+        assert result['disposition']['automatic_repair'] is False
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+    db.flush.assert_not_called()
+    route = next(r for r in router.routes if r.path.endswith('/data-prerequisites/assess'))
+    assert any(d.call is require_orchestrator for d in route.dependant.dependencies)

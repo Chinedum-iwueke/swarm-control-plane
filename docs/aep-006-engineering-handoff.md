@@ -416,8 +416,8 @@ followed. The engineering agent remains drain-paused.
 
 Proposed mandate `ALPHA004-AEP007C-TRUSTED-ELIGIBILITY-20261125`, digest
 `4ef61b32fd6fa8afc4be39d563eb99434d88681cb722fd0a58bfa1565829604d`,
-is awaiting founder approval. It retains the original November 26 02:21 UTC
-expiry and science/source/data limits, and would allow a separately activated
+was awaiting founder approval and has now passed its original November 26 02:21 UTC
+expiry. It preserved the science/source/data limits and proposed a separately activated
 four-call/one-repair successor requiring an independently trusted receipt
 binding, forged-receipt rejection and separate synthetic outcome-path coverage.
 Missing actual eligibility remains `await_data`; historical charges remain
@@ -451,11 +451,67 @@ cannot be silently grandfathered or edited; they require reviewed successors.
 This increment covers the opt-in method-engineering commissioning path, not a
 claim that every other research lane has equivalent prerequisite enforcement.
 
-A read-only probe of retained BTC catalog `4f007cc5...e594141` at the scientific
-training start returned `No market-data catalog was known at that time.` This
+A read-only probe of retained BTC catalog `4f007cc5...e594141` at
+`2025-05-18T20:00:00Z` returned `No market-data catalog was known at that time.` This
 demonstrates a registry provenance limitation, not absence of BTC price bars.
 Do not substitute today's knowledge clock or fabricate historical metadata to
 clear it. The previous candidate and expired campaign have not been rewritten.
 Controlled tests cover rejection before paid review/engineering and durable
 deferral followed by sibling cursor selection; live successor commissioning
 and producer selection of complete reviewed declarations remain outstanding.
+
+Live registry inspection on November 26 found 39 snapshots, with catalog
+`as_of` values from August 26 to November 13, 2026. The bound BTC catalog has
+`as_of=2026-09-25T12:17:31.209761Z`; its partition spans January 1, 2021 through
+May 18, 2026 at 18:50 UTC. Both partition and membership availability are recorded
+at that final timestamp. The May 2025 probe is inside the partition, but precedes
+its registered availability and catalog knowledge dates. Subsequent inspection
+of the retained `accepted-method-evidence.json` confirms this is the training
+start in `accepted_method_handoff.packet.proposal.method.eligibility_policy`.
+
+The current resolver requires the catalog snapshot itself to be known at the
+requested historical clock. Consequently none of these 39 snapshots can resolve
+a knowledge clock within the historical envelope ending August 8, 2026. This
+is a system-wide provenance limitation for that resolver, not proof that all
+historical lake data is absent or scientifically unusable. A retrospectively
+registered historical archive and contemporaneously known universe membership
+are distinct claims. Any future support for retrospective archives needs explicit
+provenance semantics and independent review, not backdated registration or a
+substitution of today's knowledge clock. Until the accepted method's required
+claim has genuine evidence, it remains a data prerequisite rather than an
+authoring repair. No eligible live sibling has been demonstrated by these checks.
+
+Commit `ab10ab4` is deployed on VM2; the API health check passed and the running
+container imports `app.services.alpha_data_prerequisites`. Paid commissioning
+remains paused. The next producer increment must explicitly declare the claims
+needed by the method, preserve source/partition binding, and route unavailable
+provenance to data assessment before requesting new engineering authority.
+
+The subsequent local repair adds structured resolver failure codes to retained
+data-prerequisite diagnostics: catalog/reference knowledge-time gaps, partition
+availability, partition admission failure, source availability and universe
+membership are distinguished without parsing exception messages. They still
+defer with no paid repair; this does not grant historical provenance or relax
+the resolver. Producer-side declaration completeness and an authorized live
+successor remain outstanding.
+
+`POST /v1/research/alpha-campaigns/data-prerequisites/assess` provides a bounded,
+orchestrator-authenticated, read-only prospective check. Supply a typed
+`declaration` and candidate `dataset_bindings` before seeking approval. It returns
+the canonical declaration digest and either `declared_checkpoints_resolved` or
+a typed blocker/disposition. It never creates a task, approves a declaration,
+changes a campaign or certifies completeness; callers must still review the
+requirements and bind the resulting declaration into an authorized successor.
+The dispatch-time check remains necessary because this assessment is not a
+reusable execution permit.
+
+The same retained packet's `discovery_candidate.scientific_specification.
+missing_data_policy` explicitly makes absent independent listing/membership
+evidence a terminal validity limitation. This is not merely an assumption
+introduced by the new gate. Reinterpreting a fixed-instrument historical archive
+as adequate for that claim would require a separately reviewed method change;
+the existing accepted contract cannot be relaxed silently. A live read-only
+campaign inventory found zero running campaigns, 67 `completed_no_candidate`,
+63 `needs_attention` and 12 cancelled. These are campaign counts, not backtest
+results or counts of distinct hypotheses. No active sibling progression is
+proven, and expired legacy records must not be relabeled to imply otherwise.

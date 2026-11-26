@@ -22,7 +22,9 @@ class MarketDataConflict(ValueError):
 
 
 class MarketDataUnknown(LookupError):
-    pass
+    def __init__(self, message: str, *, reason_code: str = "market_data_unknown"):
+        super().__init__(message)
+        self.reason_code = reason_code
 
 
 def register_catalog(
@@ -120,7 +122,8 @@ def resolve_market_data(
         statement.order_by(MarketDataCatalogSnapshot.as_of.desc()).limit(1)
     )
     if record is None:
-        raise MarketDataUnknown("No market-data catalog was known at that time.")
+        raise MarketDataUnknown("No market-data catalog was known at that time.",
+                                reason_code="catalog_not_known_at_requested_time")
     catalog = ImmutableMarketDataCatalog.model_validate(record.catalog)
     reference = db.scalar(
         select(ReferenceDataSnapshot).where(
@@ -129,7 +132,8 @@ def resolve_market_data(
     )
     if reference is None or reference.as_of > request.known_at:
         raise MarketDataUnknown(
-            "Bound reference identity was unavailable at that time."
+            "Bound reference identity was unavailable at that time.",
+            reason_code="reference_not_known_at_requested_time",
         )
     identity = resolve_snapshot(
         PointInTimeReferenceSnapshot.model_validate(reference.snapshot),
@@ -157,7 +161,8 @@ def resolve_market_data(
     ]
     if not partitions:
         raise MarketDataUnknown(
-            "No point-in-time partition covers the requested clocks."
+            "No point-in-time partition covers the requested clocks.",
+            reason_code="partition_not_available_at_requested_clocks",
         )
     logical_keys = {item.partition_key for item in partitions}
     if len(logical_keys) != 1:
@@ -165,7 +170,8 @@ def resolve_market_data(
     partition = max(partitions, key=lambda item: (item.available_at, item.revision_id))
     if partition.duplicate_count or partition.gap_count:
         raise MarketDataUnknown(
-            "Point-in-time partition failed duplicate or coverage-gap admission."
+            "Point-in-time partition failed duplicate or coverage-gap admission.",
+            reason_code="partition_admission_failed",
         )
     availability = [
         item
@@ -176,11 +182,13 @@ def resolve_market_data(
     ]
     if not availability:
         raise MarketDataUnknown(
-            "Source availability is unknown at the requested clocks."
+            "Source availability is unknown at the requested clocks.",
+            reason_code="source_availability_unknown",
         )
     source = max(availability, key=lambda item: (item.available_at, item.revision_id))
     if source.status != "available":
-        raise MarketDataUnknown(f"Source was {source.status} at the requested clocks.")
+        raise MarketDataUnknown(f"Source was {source.status} at the requested clocks.",
+                                reason_code="source_not_available")
     membership = None
     if request.universe_key:
         memberships = [
@@ -194,7 +202,8 @@ def resolve_market_data(
         ]
         if not memberships:
             raise MarketDataUnknown(
-                "Instrument membership is unknown at the requested clocks."
+                "Instrument membership is unknown at the requested clocks.",
+                reason_code="membership_not_known_at_requested_clocks",
             )
         membership = max(
             memberships, key=lambda item: (item.available_at, item.revision_id)
