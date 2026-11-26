@@ -175,7 +175,8 @@ def materialize_method_task(db, campaign, source, parent, request):
                 or existing.task_type != 'alpha_method_design'):
             raise ValueError('Method task immutable identity conflict')
         return existing
-    if candidate_id in (campaign.specification.get('method_engineering_requests') or {}):
+    if (candidate_id in (campaign.specification.get('method_engineering_requests') or {})
+            or candidate_id in (campaign.specification.get('method_execution_preparation_requests') or {})):
         from app.services.alpha_data_prerequisites import require_data_prerequisites
         from app.services.alpha_campaign import _source_bindings
         require_data_prerequisites(db, {
@@ -396,12 +397,19 @@ def advance_method_task(db, campaign, source, parent, request):
     campaign.next_action = 'await_independent_method_review'
     engineering_request = (campaign.specification.get('method_engineering_requests') or {}).get(
         str(task.input_contract['candidate_id']))
-    if engineering_request is not None:
+    preparation_request = (campaign.specification.get('method_execution_preparation_requests') or {}).get(
+        str(task.input_contract['candidate_id']))
+    if engineering_request is not None or preparation_request is not None:
         from app.services.alpha_method_engineering import verified_plan_evidence, MethodPlanUnavailable
-        from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
+        from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable, require_data_prerequisites
         from app.schemas.alpha_campaign import MethodEngineeringRequest
         try:
-            verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+            if engineering_request is not None:
+                verified_plan_evidence(db, MethodEngineeringRequest.model_validate(engineering_request), packet, task)
+            else:
+                from app.services.alpha_campaign import _source_bindings
+                require_data_prerequisites(db, packet, task.input_contract['candidate_digest'],
+                                           _source_bindings(campaign, source))
         except DataPrerequisiteUnavailable as exc:
             campaign.status = 'needs_attention'
             campaign.next_action = exc.reason_code

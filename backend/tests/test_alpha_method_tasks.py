@@ -88,6 +88,23 @@ def test_method_task_materialization_reuses_exact_task_and_preserves_budget(monk
     assert campaign.specification == before
 
 
+@pytest.mark.parametrize('lane', ['method_engineering_requests', 'method_execution_preparation_requests'])
+def test_execution_lanes_require_data_declaration_before_method_author_creation(monkeypatch, lane):
+    from app.services import alpha_campaign
+    from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
+    db, campaign, source, parent, request, _, _ = fixture()
+    campaign.specification[lane] = {request['candidate_id']: {'frozen': 'request'}}
+    before = deepcopy(campaign.specification)
+    monkeypatch.setattr(alpha_campaign, '_source_bindings', lambda *_: [])
+    saved = MagicMock()
+    monkeypatch.setattr(service, 'persist_new_task', saved)
+    with pytest.raises(DataPrerequisiteUnavailable) as caught:
+        service.materialize_method_task(db, campaign, source, parent, request)
+    assert caught.value.reason_code == 'assess_method_data_prerequisites'
+    saved.assert_not_called()
+    assert campaign.specification == before
+
+
 @pytest.mark.parametrize('change', ['expired', 'revoked', 'source', 'candidate', 'request', 'activation'])
 def test_method_task_rejects_changed_or_unapproved_authority(monkeypatch, change):
     db, campaign, source, parent, request, mandate, _ = fixture()
@@ -386,9 +403,13 @@ def test_ready_packet_publication_is_idempotent_and_stops_before_engineering(mon
 @pytest.mark.parametrize('authorized', [False, True])
 def test_accepted_method_prepares_execution_only_with_explicit_request(monkeypatch, authorized):
     from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_execution_preparation
+    from app.services import alpha_data_prerequisites
     db, campaign, source, parent, request, _, _ = fixture()
     task = ready_task()
     task.plan_digest = '1'*64
+    monkeypatch.setattr(alpha_campaign, '_source_bindings', lambda *_: [])
+    data_gate = MagicMock(return_value={})
+    monkeypatch.setattr(alpha_data_prerequisites, 'require_data_prerequisites', data_gate)
     preparation = SimpleNamespace(status='pending_approval')
     if authorized:
         campaign.specification['method_execution_preparation_requests'] = {task.input_contract['candidate_id']:{'frozen':'request'}}
@@ -408,10 +429,12 @@ def test_accepted_method_prepares_execution_only_with_explicit_request(monkeypat
         assert campaign.phase=='execution_preparation'
         assert campaign.next_action=='approve_execution_preparation'
         dispatch.assert_called_once()
+        data_gate.assert_called_once()
     else:
         assert result is None
         assert campaign.next_action=='materialize_accepted_method_handoff'
         dispatch.assert_not_called()
+        data_gate.assert_not_called()
 
 
 def test_review_route_reuses_exact_publication_and_materializes_separate_tasks(monkeypatch):
@@ -509,9 +532,11 @@ def test_missing_native_dependency_defers_before_paid_review(monkeypatch):
 
 
 @pytest.mark.parametrize('reason', ['produce_admitted_method_data', 'assess_method_data_prerequisites'])
-def test_data_prerequisite_gate_stops_before_review_and_engineering(monkeypatch, reason):
+@pytest.mark.parametrize('lane', ['engineering', 'preparation'])
+def test_data_prerequisite_gate_stops_before_review_and_engineering(monkeypatch, reason, lane):
     from copy import deepcopy
     from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_method_engineering
+    from app.services import alpha_data_prerequisites, alpha_execution_preparation
     from app.services.alpha_data_prerequisites import DataPrerequisiteUnavailable
     from app.services.alpha_requirements_handoff import RequirementsPending
     from app.schemas.alpha_campaign import MethodEngineeringRequest
@@ -523,6 +548,11 @@ def test_data_prerequisite_gate_stops_before_review_and_engineering(monkeypatch,
     campaign.specification['method_engineering_requests'] = {task.input_contract['candidate_id']:
         MethodEngineeringRequest(contract=template, feasibility_task_id=uuid4(),
                                  plan_evidence_digest=plan_digest).model_dump(mode='json')}
+    if lane == 'preparation':
+        campaign.specification.pop('method_engineering_requests')
+        campaign.specification['method_execution_preparation_requests'] = {
+            task.input_contract['candidate_id']: {'frozen': 'request'}}
+    monkeypatch.setattr(alpha_campaign, '_source_bindings', lambda *_: [])
     before = deepcopy(campaign.specification)
     monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
     monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
@@ -531,10 +561,13 @@ def test_data_prerequisite_gate_stops_before_review_and_engineering(monkeypatch,
     detail = {'missing': 'registered membership', 'execution_authority': False}
     monkeypatch.setattr(alpha_method_engineering, 'verified_plan_evidence',
                         MagicMock(side_effect=DataPrerequisiteUnavailable(reason, detail)))
+    monkeypatch.setattr(alpha_data_prerequisites, 'require_data_prerequisites',
+                        MagicMock(side_effect=DataPrerequisiteUnavailable(reason, detail)))
     review = MagicMock(side_effect=AssertionError('paid review must not start'))
     engineer = MagicMock(side_effect=AssertionError('engineering must not start'))
     monkeypatch.setattr(service, 'route_method_review', review)
     monkeypatch.setattr(alpha_method_engineering, 'materialize_method_engineering', engineer)
+    monkeypatch.setattr(alpha_execution_preparation, 'materialize_execution_preparation', engineer)
     db.scalar.side_effect = [None]
     with pytest.raises(RequirementsPending):
         service.advance_method_task(db, campaign, source, parent, request)

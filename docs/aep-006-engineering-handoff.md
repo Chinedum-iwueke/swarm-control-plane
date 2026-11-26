@@ -448,8 +448,13 @@ These checks establish only declared checkpoint readiness, not whole-window
 coverage, science, calibration or execution certification. The existing native
 plans and scientific gates remain required. Legacy packets without declarations
 cannot be silently grandfathered or edited; they require reviewed successors.
-This increment covers the opt-in method-engineering commissioning path, not a
-claim that every other research lane has equivalent prerequisite enforcement.
+The deployed initial increment covers the opt-in method-engineering commissioning
+path, not a claim that every other research lane has equivalent enforcement.
+The subsequent local repair also gates released-strategy execution preparation
+before method-task creation and before paid method review. Reusing released code
+does not waive the accepted method's data prerequisites. Regression tests assert
+that neither review nor preparation is dispatched when required evidence is
+unavailable, and that approved campaign specifications remain unchanged.
 
 A read-only probe of retained BTC catalog `4f007cc5...e594141` at
 `2025-05-18T20:00:00Z` returned `No market-data catalog was known at that time.` This
@@ -515,3 +520,63 @@ campaign inventory found zero running campaigns, 67 `completed_no_candidate`,
 63 `needs_attention` and 12 cancelled. These are campaign counts, not backtest
 results or counts of distinct hypotheses. No active sibling progression is
 proven, and expired legacy records must not be relabeled to imply otherwise.
+
+### November 26: deployed prospective assessment
+
+Commit `ec2885e` is on main and deployed. The live read-only assessment of BTC
+candidate digest `6a898c4ff9cd928c7de2074fe4123a1cc6e21c7dfa0928a2ec0432ae6d12bb88`
+returned `await_data`, owner `data_admission`, `automatic_repair=false`, and
+`catalog_not_known_at_requested_time`. The declaration digest was
+`eb5cb0ec66253145c7ae562bf803d33a44d329fc3ccb45dd0da55c4eeaa153de`.
+This was a prospective checkpoint diagnostic, not a reviewed complete declaration
+or a mutation of an expired campaign. All 324 targeted tests passed before release.
+
+A separate diagnostic held `effective_at=2025-05-18T20:00:00Z` fixed and queried
+`known_at=2026-11-26T22:45:03.741116Z`. The existing resolver returned HTTP 200
+and the expected bound partition digest `9a211d88...4aacb`. This establishes
+present retrospective access only. It must not be supplied as historical
+decision-time eligibility, nor substituted into the accepted method declaration.
+
+Two distinct prospective paths require a decision before further commissioning:
+
+- Preserve historical knowledge-time claims and acquire genuine source evidence
+  for listing, membership and availability. Current catalog registration alone
+  does not establish those claims.
+- Prepare a separately reviewed retrospective fixed-asset research successor,
+  explicitly limiting its population and claims. Causal feature construction,
+  outcome separation, source integrity and scientific validation still apply;
+  retrospective selection cannot imply survivorship-free historical tradability.
+
+Neither path is implemented or approved by these diagnostics. The old candidate,
+reviews and charges remain unchanged. Discovery, representation and engineering
+agent pauses were verified after deployment; no new paid episode was dispatched.
+
+### Retained listing evidence versus eligibility proof
+
+Read-only inspection of registered producer receipt
+`2bf717d6-7337-4112-be6d-0b402ba43794` found `result.instrument_reference`:
+BTCUSDT / Bybit / perpetual, status `Trading`,
+`first_seen_ts=2020-03-15T00:00:00Z` and
+`last_seen_ts=2026-08-08T21:50:39.763308Z`. Its instrument-manifest digest is
+`392232e9020ee50eb17f6a1a83f9c3e5436f6e7e0bc60917e17d644a4d0d218e`.
+Thus listing metadata is retained; the limitation is the strength and temporal
+scope of the claim, not complete absence of instrument metadata.
+
+The current native Bybit adapter maps exchange `launchTime` to `first_seen_ts`
+and acquisition time to `last_seen_ts`. This explains current field semantics,
+but is not itself proof of the code or upstream payload used for that historical
+manifest. Native admission retains the instrument row and manifest digest;
+control-plane admission constructs reference/membership records using panel
+end time and registration time. Neither transformation produces an independent
+historical status-change ledger.
+
+| Claim | Retained evidence | Remaining boundary |
+| --- | --- | --- |
+| Present access to exact BTC archive | Registered partition resolves at current knowledge time | Not a historical knowledge-time claim |
+| Instrument identity and reported launch date | Registered instrument row and manifest digest | Original source payload/acquisition custody must be checked before strengthening the claim |
+| Historical listing continuity | No continuity ledger established by this inspection | Launch date plus later Trading status does not prove uninterrupted status |
+| Historical universe membership | Generated `alpha-preregistered-selection` record | A research basket selection is not an independently observed historical universe |
+
+Do not backdate catalog registration, infer continuity from price bars, or claim
+that inspecting this receipt has cleared the accepted method's terminal validity
+limitation. No new execution or review authority is implied.
