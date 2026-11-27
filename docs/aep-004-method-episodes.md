@@ -156,6 +156,12 @@ source reads, model action parsing and worker-to-API result publication. These t
 prove controller mechanics, not live reasoning quality or end-to-end autonomy.
 The November 27 verification run passed 195 backend tests and 190 worker tests,
 including discovery schema regressions and the method/review/handoff suites.
+An additional production-adapter regression covers each of the four registered
+tools through observation, correction, native recheck, review-packet publication
+and checkpoint reuse. The complete adapter file passes 20 tests. Model and native
+diagnostic responses are mocked in these four cases; pinned-source lookup and
+episode/result transport use the implementation. Missing pinned files return
+explicit unavailable observations rather than invented source or forced retries.
 
 ### Commissioning still required
 
