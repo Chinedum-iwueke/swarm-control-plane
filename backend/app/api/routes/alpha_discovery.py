@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.alpha_discovery import AlphaFounderResearchIdea, AlphaResearchMandate
 from app.schemas.alpha_discovery import (
     AlphaDataAdmissionRecovery,
+    AlphaDiscoveryCampaignPreparation,
     AlphaDiscoveryGroundingRecovery,
     AlphaDiscoveryOverview,
     AlphaDiscoveryStageRetry,
@@ -23,6 +24,7 @@ from app.schemas.alpha_discovery import (
 )
 from app.services.alpha_discovery import (
     approve_mandate,
+    prepare_discovery_campaign,
     canonicalize_mandates,
     overview,
     queue_founder_idea,
@@ -173,6 +175,28 @@ def reconcile(mandate_id: UUID, db: Annotated[Session, Depends(get_db)]):
     db.commit()
     db.refresh(mandate)
     return serialize_mandate(mandate)
+
+
+@router.post("/mandates/{mandate_id}/prepare-campaign")
+def prepare_campaign(
+    mandate_id: UUID,
+    payload: AlphaDiscoveryCampaignPreparation,
+    db: Annotated[Session, Depends(get_db)],
+):
+    from app.models.alpha_campaign import AlphaCampaign
+
+    mandate = _locked(db, mandate_id)
+    cycle = prepare_discovery_campaign(db, mandate, payload)
+    campaign = db.get(AlphaCampaign, cycle.campaign_id) if cycle.campaign_id else None
+    db.commit()
+    return {
+        "cycle_id": str(cycle.id),
+        "next_action": cycle.next_action,
+        "campaign_id": str(campaign.id) if campaign else None,
+        "campaign_digest": campaign.campaign_digest if campaign else None,
+        "campaign_status": campaign.status if campaign else None,
+        "execution_authority": False,
+    }
 
 
 @router.post("/mandates/{mandate_id}/recover-grounding")

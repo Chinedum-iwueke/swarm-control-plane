@@ -38,6 +38,7 @@ from app.schemas.alpha_campaign import (
 )
 from app.schemas.alpha_discovery import (
     AlphaDataAdmissionRecovery,
+    AlphaDiscoveryCampaignPreparation,
     AlphaDiscoveryStageRetry,
     AlphaFounderResearchIdeaCreate,
     AlphaMandateCanonicalization,
@@ -2569,6 +2570,7 @@ def _portfolio_and_campaign(
     mandate: AlphaResearchMandate,
     cycle: AlphaDiscoveryCycle,
     accepted: list[AlphaDiscoveryCandidate],
+    *, activate: bool = True,
 ) -> None:
     if not accepted:
         cycle.status = "rejected"
@@ -2690,23 +2692,24 @@ def _portfolio_and_campaign(
             created_by="alpha-continuous-director",
         ),
     )
-    activate_campaign(
-        db,
-        campaign,
-        AlphaCampaignActivation(
-            expected_campaign_digest=campaign.campaign_digest,
-            actor="alpha-continuous-director",
-            reason="Activated within the exact founder-approved canonical no-capital mandate.",
-        ),
-    )
+    if activate:
+        activate_campaign(
+            db,
+            campaign,
+            AlphaCampaignActivation(
+                expected_campaign_digest=campaign.campaign_digest,
+                actor="alpha-continuous-director",
+                reason="Activated within the exact founder-approved canonical no-capital mandate.",
+            ),
+        )
     cycle.discovery_portfolio_id = portfolio.id
     cycle.campaign_id = campaign.id
     cycle.phase = "campaign"
-    cycle.next_action = "await_bounded_bulletproof_results"
+    cycle.next_action = "await_bounded_bulletproof_results" if activate else "founder_campaign_activation"
     _event(
         db,
         mandate,
-        "campaign_replenished",
+        "campaign_replenished" if activate else "campaign_prepared_awaiting_activation",
         {
             "portfolio_id": str(portfolio.id),
             "campaign_id": str(campaign.id),
@@ -2849,6 +2852,7 @@ def _reconcile_data_admissions(
     db: Session,
     mandate: AlphaResearchMandate,
     cycle: AlphaDiscoveryCycle,
+    *, activate_campaign_after_admission: bool = True,
 ) -> bool:
     if cycle.status != "awaiting_data_admission":
         return False
@@ -2867,6 +2871,7 @@ def _reconcile_data_admissions(
             mandate,
             cycle,
             [item for item in candidates if item.disposition == "accepted"],
+            activate=activate_campaign_after_admission,
         )
         return True
     active = False
@@ -2995,8 +3000,37 @@ def _reconcile_data_admissions(
         "awaiting_data_admission": 0,
         "rejected": len(candidates) - len(accepted),
     }
-    _portfolio_and_campaign(db, mandate, cycle, accepted)
+    _portfolio_and_campaign(db, mandate, cycle, accepted, activate=activate_campaign_after_admission)
     return True
+
+
+def prepare_discovery_campaign(
+    db: Session,
+    mandate: AlphaResearchMandate,
+    payload: AlphaDiscoveryCampaignPreparation,
+) -> AlphaDiscoveryCycle:
+    """Retain admission and register a proposal; never activate or dispatch it."""
+    if mandate.mandate_digest != payload.expected_mandate_digest:
+        raise HTTPException(409, "Mandate digest changed before campaign preparation.")
+    if mandate.status != "active" or not mandate.valid_from <= now() < mandate.valid_until:
+        raise HTTPException(409, "Campaign preparation requires current mandate authority.")
+    cycle = db.scalar(select(AlphaDiscoveryCycle).where(
+        AlphaDiscoveryCycle.id == payload.expected_cycle_id,
+        AlphaDiscoveryCycle.mandate_id == mandate.id,
+    ).with_for_update())
+    if cycle is None:
+        raise HTTPException(409, "Discovery cycle does not belong to this mandate.")
+    if cycle.campaign_id is not None:
+        return cycle
+    if cycle.status != "awaiting_data_admission":
+        raise HTTPException(409, "Campaign preparation requires retained discovery and admission tasks.")
+    _reconcile_data_admissions(db, mandate, cycle, activate_campaign_after_admission=False)
+    _event(db, mandate, "campaign_preparation_requested", {
+        "actor": payload.actor, "reason": payload.reason,
+        "campaign_id": str(cycle.campaign_id) if cycle.campaign_id else None,
+        "execution_authority": False,
+    }, cycle)
+    return cycle
 
 
 def _duplicate_only_cycle(cycle: AlphaDiscoveryCycle) -> bool:

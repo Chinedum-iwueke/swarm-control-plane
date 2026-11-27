@@ -60,6 +60,98 @@ DIGEST = "a" * 64
 COMMIT = "b" * 40
 
 
+@pytest.mark.parametrize("blocker", [None, "digest", "expired", "inactive", "cycle", "stage", "existing"])
+def test_campaign_preparation_never_activates_and_checks_authority(monkeypatch, blocker):
+    from app.schemas.alpha_discovery import AlphaDiscoveryCampaignPreparation
+    from app.services import alpha_discovery as service
+
+    moment = datetime.now(UTC)
+    mandate = SimpleNamespace(id=uuid4(), mandate_digest=DIGEST, status="active",
+                              valid_from=moment-timedelta(hours=1),
+                              valid_until=moment+timedelta(hours=1))
+    cycle = SimpleNamespace(id=uuid4(), campaign_id=None, status="awaiting_data_admission")
+    payload = AlphaDiscoveryCampaignPreparation(expected_mandate_digest=DIGEST,
+        expected_cycle_id=cycle.id, actor="test-operator", reason="Prepare without granting activation.")
+    db = MagicMock()
+    db.scalar.return_value = cycle
+    if blocker == "digest":
+        mandate.mandate_digest = "f" * 64
+    elif blocker == "expired":
+        mandate.valid_until = moment-timedelta(seconds=1)
+    elif blocker == "inactive":
+        mandate.status = "superseded"
+    elif blocker == "cycle":
+        db.scalar.return_value = None
+    elif blocker == "stage":
+        cycle.status = "running"
+    elif blocker == "existing":
+        cycle.campaign_id = uuid4()
+    reconcile = MagicMock()
+    activate = MagicMock()
+    monkeypatch.setattr(service, "_reconcile_data_admissions", reconcile)
+    monkeypatch.setattr(service, "activate_campaign", activate)
+    monkeypatch.setattr(service, "_event", MagicMock())
+    if blocker not in {None, "existing"}:
+        with pytest.raises(HTTPException):
+            service.prepare_discovery_campaign(db, mandate, payload)
+        reconcile.assert_not_called()
+    else:
+        assert service.prepare_discovery_campaign(db, mandate, payload) is cycle
+        if blocker == "existing":
+            reconcile.assert_not_called()
+        else:
+            reconcile.assert_called_once_with(db, mandate, cycle,
+                activate_campaign_after_admission=False)
+    activate.assert_not_called()
+
+
+def test_prepared_campaign_survives_reconciliation_without_activation():
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(status="awaiting_activation")
+    cycle = SimpleNamespace(campaign_id=uuid4(), status="running", phase="campaign",
+                            next_action="founder_campaign_activation")
+    _reconcile_campaign_cycle(db, SimpleNamespace(), cycle, datetime.now(UTC))
+    assert cycle.next_action == "founder_campaign_activation"
+    assert cycle.status == "running"
+    db.add.assert_not_called()
+
+
+@pytest.mark.parametrize("activate", [False, True])
+def test_portfolio_registration_separates_activation(monkeypatch, activate):
+    from app.services import alpha_discovery as service
+
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [SimpleNamespace(id=uuid4())]
+    db.scalar.return_value = None
+    mandate = SimpleNamespace(id=uuid4(), objective="Archive-compatible research",
+        mandate_digest=DIGEST, trial_count=0, valid_until=datetime.now(UTC)+timedelta(hours=2),
+        budget={"maximum_candidates_per_cycle": 1, "maximum_total_trials": 4,
+                "maximum_variants_per_hypothesis": 2, "maximum_consecutive_failures": 2},
+        specification={"dataset_bindings": [], "bulletproof_source_commit": COMMIT,
+                       "allowed_venues": ["bybit"], "allowed_instruments": ["BTCUSDT"],
+                       "execution_window_start": "2025-05-18T00:00:00Z",
+                       "execution_window_end": "2026-05-18T00:00:00Z"})
+    cycle = SimpleNamespace(ordinal=1)
+    candidate = SimpleNamespace(id=uuid4(), candidate_key="archive-test", candidate_digest=DIGEST,
+        question="Does archived price geometry predict subsequent returns?",
+        document={"domain_key": "price", "cluster_key": "geometry",
+                  "expected_information_gain": 0.5, "feasibility": 0.8,
+                  "data": {"venue": "bybit", "instruments": ["BTCUSDT"]}})
+    # Validate activation side effects independently of registration's schema tests.
+    for schema in ("DiscoveryAttentionCandidate", "DiscoveryPortfolioCreate", "AlphaCampaignCreate"):
+        monkeypatch.setattr(service, schema, lambda **kwargs: SimpleNamespace(**kwargs))
+    campaign = SimpleNamespace(id=uuid4(), campaign_digest=DIGEST)
+    monkeypatch.setattr(service, "register_portfolio", MagicMock(return_value=SimpleNamespace(id=uuid4())))
+    monkeypatch.setattr(service, "register_campaign", MagicMock(return_value=campaign))
+    activation = MagicMock()
+    monkeypatch.setattr(service, "activate_campaign", activation)
+    monkeypatch.setattr(service, "_event", MagicMock())
+    service._portfolio_and_campaign(db, mandate, cycle, [candidate], activate=activate)
+    assert cycle.campaign_id == campaign.id
+    assert activation.call_count == int(activate)
+    assert cycle.next_action == ("await_bounded_bulletproof_results" if activate else "founder_campaign_activation")
+
+
 def test_commissioning_mandate_does_not_allocate_discovery(monkeypatch):
     from app.services import alpha_discovery as service
     moment = datetime.now(UTC)
