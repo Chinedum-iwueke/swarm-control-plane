@@ -1,5 +1,32 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Latest Checkpoint: November 27, 22:38 UTC
+
+Founder approved native-correction mandate digest
+`7fc9ff68f4b2178dd969de465743480b95d036098d44e04037261ed8fbbffa05`.
+Recovery cycle `f286a645-c631-4523-a617-b780962e5361` completed intelligence
+and hypothesis generation. Representation first failed before inference because
+the provider rejected a structured object constant in its output schema; three
+identical task attempts could not succeed. General repair `a35f7df` freezes values
+at scalar schema leaves and makes structured provider-schema errors non-retryable.
+The retained live contract was replayed without changing any support count.
+
+Representation successor `070cfced-867c-4188-833a-aa02b56de5c9` succeeded on its
+first attempt. Corrected candidate `058b4721-d95f-4209-869f-ff1968d701e4`, digest
+`e8605bbfed89c3b917c30a647533f2f04d46515964dadac1f27b7d734a3fa5b2`,
+is awaiting candidate-specific admission. Preparation is explicitly non-activating.
+No engineering, backtest or independent scientific acceptance is claimed.
+
+The separate investigation extension `1411165` is pushed to main and deployed:
+API image `sha256:619115c33b528b58b8d1b817d3c73a72549c6a948dabdb1ec5bd897d99bfc60b`
+is healthy; the method worker was restarted while idle. It remains opt-in and
+uncommissioned, not implicitly enabled by this mandate. See
+[AEP-004 investigation increment](aep-004-method-episodes.md#reasoning-led-investigation-increment-2026-11-27).
+Verification: 195 backend and 190 worker tests. Multi-stage dynamic autonomy remains
+an acceptance goal, not a claim established by these scripted tests.
+
+The sections below retain the earlier commissioning sequence and historical blockers.
+
 ## Authority and Scope
 
 Founder approved mandate `6787a6e6-e815-489b-a628-65844c8dc2e0`, digest
