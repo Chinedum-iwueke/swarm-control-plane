@@ -5,8 +5,10 @@ Inspection date: November 27, 2026, UTC. No historical record was modified.
 
 ## Bound Subject and Evidence
 
-- Candidate: `bfefd78f-113e-4383-beeb-1ba964a8622d`.
-- Candidate digest: `6a898c4ff9cd928c7de2074fe4123a1cc6e21c7dfa0928a2ec0432ae6d12bb88`.
+- Retained method's candidate: `bfefd78f-113e-4383-beeb-1ba964a8622d`.
+- Retained method's candidate digest: `6a898c4ff9cd928c7de2074fe4123a1cc6e21c7dfa0928a2ec0432ae6d12bb88`.
+- Assessment campaign queue candidate: `8621d8bd-edd3-43aa-aaad-3900d01bedd3`.
+- Queue candidate digest: `53c3fd509a3b962733beddbe8471345ac249cad7dffd296a32fe367fe875184f`.
 - Bulletproof source: `b9b19c2ce109392196e272920355af10f53a544e`.
 - Assessed campaign: `68ec2ce6-c99d-4d0c-99ef-e0458812daa9`, now `completed_no_candidate`.
 - Retained observations digest: `38c8a3f45a26340fa0af6cbcd5114a99139ed5aa3193c84c836ff5db103e63b8`.
@@ -51,6 +53,23 @@ alone. No additional reviewer allowance has been consumed for this assessment.
 The completed campaign and its disagreeing review receipts remain immutable.
 This document is a prospective assessment for a separately authorized handoff,
 not a replacement review receipt or a mutation of the candidate's live status.
+
+### Recorded Operational Disposition
+
+Live inspection confirms deferred attempt `1fefd9ad-76a3-404f-a95f-6ed06c311cb8`
+for the assessment campaign's queue candidate, with zero trials. Event sequence
+5 (`candidate_deferred`) retains `method_design_deferred`, nested reason
+`native_recheck_budget_exhausted`, disposition `await_authority_or_capacity`,
+owner `research_operations`, and `automatic_unchanged_retry_allowed=false`.
+Its event digest is
+`f87c059d6016b96f66b0a15dd0d662578ec157703deac4638f8dde0b53953a14`.
+
+This operational authority deferral is not the same as the scientific
+`await_data` assessment above. The live campaign has not been rewritten to
+replace one with the other. Renewed authority alone would not satisfy the missing
+historical evidence. Any successor must retain both constraints and the mapping
+between the retained method subject and the campaign queue candidate, rather
+than treating a fresh approval as scientific readiness.
 
 ## General Recovery Rule
 
