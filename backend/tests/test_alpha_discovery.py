@@ -2545,7 +2545,8 @@ def candidate(**changes):
 
 
 @pytest.mark.parametrize("existing_reasons", [[], ["duplicate_question"]])
-def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatch, existing_reasons):
+@pytest.mark.parametrize("catalog", [{}, None])
+def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatch, existing_reasons, catalog):
     parsed, object_id = candidate()
     raw = parsed.model_dump(mode="json")
     requirements = {
@@ -2567,7 +2568,7 @@ def test_requirements_need_candidate_coverage_even_for_admitted_bytes(monkeypatc
         "research_intelligence": {"citations": [{"object_id": str(object_id), "content_digest": DIGEST}]}
     })
     mandate = SimpleNamespace(budget={"maximum_candidates_per_cycle": 2}, specification={
-        "strategy_catalog": {"capabilities": []}, "discovery_catalog": {},
+        "strategy_catalog": {"capabilities": []}, "discovery_catalog": catalog,
     })
     db = MagicMock()
     db.scalars.return_value.all.return_value = []
@@ -2731,7 +2732,8 @@ def test_delegated_campaign_requires_mandate_digest():
         )
 
 
-def test_candidate_gate_accepts_predictive_available_question_and_rejects_instruction():
+@pytest.mark.parametrize("catalog", [{}, {"discovery_catalog": None}, {"discovery_catalog": {}}])
+def test_candidate_gate_accepts_predictive_available_question_and_rejects_instruction(catalog):
     value, object_id = candidate()
     cycle = SimpleNamespace(
         context={
@@ -2755,7 +2757,7 @@ def test_candidate_gate_accepts_predictive_available_question_and_rejects_instru
             ],
         }
     )
-    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0})
+    mandate = SimpleNamespace(specification={"minimum_liquidity_usd": 0, **catalog})
     reasons, index = _candidate_reasons(value, cycle, mandate, [])
     assert reasons == []
     assert index == 0

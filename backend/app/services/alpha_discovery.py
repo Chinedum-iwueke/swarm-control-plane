@@ -1601,7 +1601,7 @@ def recover_data_admission(
         )
     task = db.get(Task, payload.expected_task_id)
     contract = task.input_contract if task is not None else {}
-    catalog = mandate.specification.get("discovery_catalog", {})
+    catalog = mandate.specification.get("discovery_catalog") or {}
     if (
         task is None
         or task.status != "succeeded"
@@ -1901,7 +1901,7 @@ def _candidate_reasons(
     founder_constraints = cycle.context.get("founder_research_idea", {}).get(
         "constraints", {}
     )
-    catalog_policy = mandate.specification.get("discovery_catalog", {})
+    catalog_policy = mandate.specification.get("discovery_catalog") or {}
     maximum_assets = int(catalog_policy.get("maximum_assets_per_hypothesis", 128))
     if len(candidate.data.instruments) > maximum_assets:
         reasons.append("mandate_maximum_assets_exceeded")
@@ -2332,10 +2332,10 @@ def _materialize_candidates(
                 ),
                 "large_basket_governance": {
                     "required": len(candidate.data.instruments)
-                    >= mandate.specification.get("discovery_catalog", {}).get(
+                    >= (mandate.specification.get("discovery_catalog") or {}).get(
                         "large_basket_threshold", 20
                     ),
-                    "policy": mandate.specification.get("discovery_catalog", {}).get(
+                    "policy": (mandate.specification.get("discovery_catalog") or {}).get(
                         "large_basket_policy",
                         "point_in_time_overlap_liquidity_and_compute_admission",
                     ),
@@ -2892,7 +2892,7 @@ def _reconcile_data_admissions(
             admission.completed_at = now()
             continue
         document = task.result.get("summary", {}).get("alpha_data_admission", {})
-        catalog = mandate.specification.get("discovery_catalog", {})
+        catalog = mandate.specification.get("discovery_catalog") or {}
         if (
             document.get("schema_version")
             != "alpha007-selected-panel-admission-batch-v1.0.0"
@@ -3558,9 +3558,9 @@ def reconcile_mandate(db: Session, mandate: AlphaResearchMandate) -> None:
             {
                 "candidate_ids": [str(item.id) for item in awaiting_data],
                 "candidate_digests": [item.candidate_digest for item in awaiting_data],
-                "catalog_receipt_digest": mandate.specification.get(
-                    "discovery_catalog", {}
-                ).get("receipt_digest"),
+                "catalog_receipt_digest": (mandate.specification.get(
+                    "discovery_catalog"
+                ) or {}).get("receipt_digest"),
                 "execution_authority": False,
             },
             cycle,
