@@ -637,4 +637,8 @@ Local validation: 371 tests passed across data prerequisites, market catalog,
 dispositions, candidate blockers, method engineering/tasks, campaigns and
 execution preparation. New tests cover mixed checkpoint outcomes, unchanged
 fail-fast dispatch, immutable inputs, no database writes and infrastructure-error
-propagation. This follow-up is not yet deployed.
+propagation. Deployed to VM2 from `1b42371` after a fresh 371-test pass. The
+production assessment endpoint returned one historical-clock blocker and one
+later archive resolution, with `await_data`, owner `data_admission`, automatic
+repair disabled and no execution/scientific authority. Container health passed;
+no paid work was restarted.

@@ -64,5 +64,6 @@ claim must not automatically schedule code-authoring repairs.
 Relevant implementation: `backend/app/services/alpha_data_admission.py`
 constructs catalog partitions and membership; `alpha_data_prerequisites.py`
 checks declared clocks and bindings; `market_data_catalog.py` resolves trusted
-catalog records. The new all-checkpoint assessment is locally tested but not
-deployed. It does not automatically prove completeness of scientific claims.
+catalog records. The all-checkpoint assessment was deployed from `1b42371` and
+verified against the production catalog after 371 passing regression tests.
+It does not automatically prove completeness of scientific claims.
