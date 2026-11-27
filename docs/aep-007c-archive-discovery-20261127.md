@@ -1,5 +1,18 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Derived-State Rollout: November 27, 23:49 UTC
+
+Full run `280140ae-1664-4da9-9023-1b577d984487` failed closed on canonical epoch
+movement after completing projection work. Automatic incremental successor
+`cc4c8886-5a61-4198-b99d-8ea1a2f29f89` then succeeded at epoch 637420; both
+retrieval and graph report current. These runs used the old worker runtime.
+After verifying there were no active reconciliations and guarding scheduling,
+the continuous worker was restarted on repaired image
+`sha256:93b2a7fd2a3e6d2bef2776cb063c10ef566e24c81de7a2c11b8f39d21b873ae5`.
+Its first observed poll returned `no_change`. This proves deployment and idle
+health, not a new production race-recovery result. Campaign
+`9fd10630-2611-44ea-9778-f172bf9245e0` still awaits exact activation approval.
+
 ## Prepared Correction Campaign: November 27, 23:21 UTC
 
 Representation `c063a416-857d-4a10-8c0a-d53f794a5e9e` and candidate-specific

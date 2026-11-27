@@ -24,11 +24,15 @@ own affected identities and epoch range. Missing ledger epochs still force a
 full rebuild. This prevents a concurrent publication from being claimed by an
 older run and then disappearing from incremental recovery.
 
-On November 27, 2026, this race was observed at epochs 637412--637416. The
-regression repair has local tests; activation in the continuous worker still
-requires a rollout. Do not interrupt an active rebuild to restart that worker:
-wait for its terminal state, update the runtime, and verify a subsequent
-reconciliation before claiming production closure.
+On November 27, 2026, this race was observed at epochs 637412--637416. Repair
+`64981a8` passed 36 focused tests (one skipped), and a read-only production
+ledger replay verified snapshot bounds and preservation of historical claims.
+The continuous worker was updated at 23:49 UTC only after no queued/running
+reconciliation remained, with scheduling guarded by the advisory lock. Its new
+image is `sha256:93b2a7fd2a3e6d2bef2776cb063c10ef566e24c81de7a2c11b8f39d21b873ae5`;
+the first observed poll returned `no_change` with both projections current at
+epoch 637420. A subsequent production race recovery on this new runtime remains
+unobserved. Do not interrupt an active rebuild to restart the worker.
 
 The durable phase order is retrieval, graph, curricula and verification. Each
 completed phase has an immutable digest receipt, so a retry resumes after the
