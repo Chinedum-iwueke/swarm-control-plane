@@ -1,5 +1,30 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Correction Continuation: November 27, 23:15 UTC
+
+Founder approved mandate `5f0c7d25-d830-4766-9020-cd8bc82a4c31`, digest
+`d4acbf285126dc224aebbedac9413e88181bb3414280b0504fef375774654e59`,
+at 23:01 UTC. Grounding preflight initially deferred with no model task or cycle
+charge because retrieval was stale. Rebuild
+`280140ae-1664-4da9-9023-1b577d984487` brought retrieval to epoch 637416;
+its graph phase was still running at this checkpoint.
+
+Shared repair `64981a8` bounds change-ledger claims at the captured snapshot and
+replays unapplied claimed epochs without rewriting audit ownership. It is on main
+and deployed to the healthy API; the continuous worker remains on its old runtime
+until the active rebuild finishes. Verification: 36 tests passed, one skipped;
+a read-only production replay selected all seven retained changes in epochs
+637413--637416 and excluded them from the prior target 637412.
+
+Cycle `2b37308e-f5c6-4788-93bf-23bf04819cab` started after retrieval became fresh.
+Intelligence task `d4711e7b-0a57-4db8-a091-cb7bc35bc02e` succeeded on attempt one.
+Hypothesis task `8ef762e9-da90-4eb3-894d-175c9f6a1777` then succeeded on attempt
+one; representation task `c063a416-857d-4a10-8c0a-d53f794a5e9e` was dispatched
+at the 23:17 UTC checkpoint. These are task outcomes, not scientific acceptance.
+Continuation is supervised commissioning: explicit reconciliation is being used,
+campaign activation remains separate, and no engineering or market-data execution
+is authorized. The investigation tools remain uncommissioned on this candidate.
+
 ## Reviewed Successor: November 27, 22:57 UTC
 
 Founder activated campaign `e2c7b92a-41c6-40cd-872d-8cb519e3c1fe` at 22:48 UTC.
