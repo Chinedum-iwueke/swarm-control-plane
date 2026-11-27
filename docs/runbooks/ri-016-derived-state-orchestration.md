@@ -16,6 +16,20 @@ two strategies:
 - `full` for a first build, forced parity proof, incomplete history or an
   oversized batch.
 
+Scheduling bounds ledger selection at the captured target epoch. A ledger claim
+is not proof that a projection committed: previously claimed changes above the
+oldest projection epoch are included again when planning a successor. Their
+original reconciliation ownership remains unchanged; the successor records its
+own affected identities and epoch range. Missing ledger epochs still force a
+full rebuild. This prevents a concurrent publication from being claimed by an
+older run and then disappearing from incremental recovery.
+
+On November 27, 2026, this race was observed at epochs 637412--637416. The
+regression repair has local tests; activation in the continuous worker still
+requires a rollout. Do not interrupt an active rebuild to restart that worker:
+wait for its terminal state, update the runtime, and verify a subsequent
+reconciliation before claiming production closure.
+
 The durable phase order is retrieval, graph, curricula and verification. Each
 completed phase has an immutable digest receipt, so a retry resumes after the
 last completed phase. A corpus epoch movement fails the old run closed and lets

@@ -13,6 +13,89 @@ from app.services.derived_state import _next_version, select_strategy
 from fastapi import HTTPException
 
 
+def test_snapshot_excludes_future_changes_and_replays_unapplied_claims():
+    from app.models.derived_state import DerivedStateChange
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("""CREATE TABLE derived_state_changes (
+            id INTEGER PRIMARY KEY, source_epoch BIGINT, entity_kind TEXT, entity_id TEXT,
+            mutation TEXT, project TEXT, affected_object_ids JSON, transaction_id BIGINT,
+            reconciliation_id CHAR(32), changed_at DATETIME)""")
+    prior = uuid4()
+    with Session(engine) as db:
+        for ordinal, epoch, claim in [
+            (1, 40, prior),
+            (2, 41, prior),
+            (3, 42, None),
+            (4, 43, None),
+        ]:
+            db.add(
+                DerivedStateChange(
+                    id=ordinal,
+                    source_epoch=epoch,
+                    entity_kind="fixture",
+                    entity_id=str(ordinal),
+                    mutation="insert",
+                    project="fixture",
+                    affected_object_ids=[str(uuid4())],
+                    transaction_id=ordinal,
+                    reconciliation_id=claim,
+                    changed_at=datetime.now(UTC),
+                )
+            )
+        db.commit()
+        changes = service._changes_for_snapshot(db, 40, 42)
+        assert [c.source_epoch for c in changes] == [41, 42]
+        assert changes[0].reconciliation_id == prior
+        assert db.get(DerivedStateChange, 4).reconciliation_id is None
+        assert (
+            select_strategy(
+                force_full=False,
+                ledger_epochs=[c.source_epoch for c in changes],
+                source_epoch_start=40,
+                source_epoch_target=42,
+                projection_states_exist=True,
+                changed_object_count=len(changes),
+            )
+            == "incremental"
+        )
+
+
+def test_reconciliation_reuses_ledger_without_rewriting_historical_claim(monkeypatch):
+    prior = uuid4()
+    claimed = SimpleNamespace(
+        source_epoch=41,
+        reconciliation_id=prior,
+        affected_object_ids=["a"],
+        project="fixture",
+    )
+    pending = SimpleNamespace(
+        source_epoch=42,
+        reconciliation_id=None,
+        affected_object_ids=["b"],
+        project="fixture",
+    )
+    db = MagicMock()
+    db.scalar.return_value = None
+    db.get.return_value = SimpleNamespace(source_epoch=40)
+    monkeypatch.setattr(service, "_lock", lambda _: None)
+    monkeypatch.setattr(service, "freshness_snapshot", lambda _: ("f" * 64, 42))
+    monkeypatch.setattr(
+        service, "_curriculum_state_digest", lambda _: ("c" * 64, False)
+    )
+    monkeypatch.setattr(
+        service, "_changes_for_snapshot", lambda *args: [claimed, pending]
+    )
+    monkeypatch.setattr(service, "_publish_operation", lambda *args: None)
+    run = service.schedule_reconciliation(db, requested_by="fixture")
+    assert run.strategy == "incremental" and run.changed_object_ids == ["a", "b"]
+    assert claimed.reconciliation_id == prior
+    assert pending.reconciliation_id == run.id
+
+
 def test_strategy_uses_delta_only_for_complete_bounded_change_ledger() -> None:
     assert (
         select_strategy(

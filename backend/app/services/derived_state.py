@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import (
@@ -92,13 +92,10 @@ def schedule_reconciliation(
             DerivedStateReconciliation.created_at.desc()
         )
     )
-    pending = list(
-        db.scalars(
-            select(DerivedStateChange)
-            .where(DerivedStateChange.reconciliation_id.is_(None))
-            .order_by(DerivedStateChange.id)
-        ).all()
-    )
+    starts = [state.source_epoch for state in (retrieval, graph) if state is not None]
+    start_epoch = min(starts) if starts else 0
+    changes = _changes_for_snapshot(db, start_epoch, target_epoch)
+    pending = [change for change in changes if change.reconciliation_id is None]
     states_current = (
         retrieval is not None
         and graph is not None
@@ -115,14 +112,12 @@ def schedule_reconciliation(
     if not pending and states_current and curricula_current and not force_full:
         return None
     changed_ids = sorted(
-        {object_id for change in pending for object_id in change.affected_object_ids}
+        {object_id for change in changes for object_id in change.affected_object_ids}
     )
-    projects = sorted({change.project for change in pending})
-    starts = [state.source_epoch for state in (retrieval, graph) if state is not None]
-    start_epoch = min(starts) if starts else 0
+    projects = sorted({change.project for change in changes})
     strategy = select_strategy(
         force_full=force_full,
-        ledger_epochs=[change.source_epoch for change in pending],
+        ledger_epochs=[change.source_epoch for change in changes],
         source_epoch_start=start_epoch,
         source_epoch_target=target_epoch,
         projection_states_exist=retrieval is not None and graph is not None,
@@ -688,6 +683,26 @@ def _curriculum_state_digest(db: Session) -> tuple[str, bool]:
         "portfolios": [tuple(map(str, row)) for row in portfolios],
     }
     return canonical_digest(material), bool(curricula)
+
+
+def _changes_for_snapshot(
+    db: Session, start_epoch: int, target_epoch: int
+) -> list[DerivedStateChange]:
+    # A prior claim is not proof that its projection committed. Replay the
+    # unapplied epoch range, retaining original claim ownership for audit.
+    return list(
+        db.scalars(
+            select(DerivedStateChange)
+            .where(
+                DerivedStateChange.source_epoch <= target_epoch,
+                or_(
+                    DerivedStateChange.reconciliation_id.is_(None),
+                    DerivedStateChange.source_epoch > start_epoch,
+                ),
+            )
+            .order_by(DerivedStateChange.id)
+        ).all()
+    )
 
 
 def select_strategy(
