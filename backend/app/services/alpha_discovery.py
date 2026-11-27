@@ -2134,6 +2134,21 @@ def _question_similarity(first: str, second: str) -> float:
     return len(left & right) / len(left | right) if left or right else 1.0
 
 
+def _validate_support_gate_dependencies(candidate: dict) -> None:
+    """Reject dangling support references before registering new candidate evidence."""
+    specification = candidate.get("scientific_specification") or {}
+    requirements = candidate.get("scientific_requirements") or {}
+    available = requirements.get("minimum_event_support") or {}
+    missing = sorted({entry["gate"] for entry in specification.get("quantile_support_plan", [])
+                      if entry["gate"] not in available})
+    if missing:
+        raise ValueError(
+            "quantile support gates must exactly reference minimum_event_support keys; "
+            f"undefined gates: {missing}. Quantile variants belong in the quantile field, "
+            "not an invented gate suffix. Preserve the declared support minima."
+        )
+
+
 def _apply_representation_plans(
     raw_candidates: list[dict], raw_plans: list[dict], context: dict | None = None
 ) -> tuple[list[dict], dict]:
@@ -2214,6 +2229,7 @@ def _apply_representation_plans(
 
         recovery = (context or {}).get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery")
         method_reuse = apply_recovered_methods(candidate, recovery)
+        _validate_support_gate_dependencies(candidate)
         bound.append(candidate)
         audit[key] = {
             "data": candidate["data"],

@@ -60,6 +60,25 @@ DIGEST = "a" * 64
 COMMIT = "b" * 40
 
 
+@pytest.mark.parametrize("gate", ["validation_events", "validation_events_q90", "unknown"])
+def test_support_references_use_declared_gate_not_variant_suffix(gate):
+    from copy import deepcopy
+    from app.services.alpha_discovery import _validate_support_gate_dependencies
+
+    document = {"scientific_requirements": {"minimum_event_support": {"validation_events": 40}},
+                "scientific_specification": {"quantile_support_plan": [
+                    {"gate": gate, "quantile": q, "partition": "validation",
+                     "threshold_policy": "fixed_training_linear_strict_upper_tail"}
+                    for q in [0.9, 0.95]]}}
+    original = deepcopy(document)
+    if gate == "validation_events":
+        _validate_support_gate_dependencies(document)
+    else:
+        with pytest.raises(ValueError, match="undefined gates"):
+            _validate_support_gate_dependencies(document)
+    assert document == original
+
+
 @pytest.mark.parametrize("blocker", [None, "digest", "expired", "inactive", "cycle", "stage", "existing"])
 def test_campaign_preparation_never_activates_and_checks_authority(monkeypatch, blocker):
     from app.schemas.alpha_discovery import AlphaDiscoveryCampaignPreparation
