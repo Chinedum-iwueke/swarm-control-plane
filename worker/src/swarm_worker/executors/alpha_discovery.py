@@ -404,7 +404,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
         requirement_fields["minimum_scientific_window_days"].update(minimum=365, maximum=1095)
         requirement_fields["rationale"] = {"type": "string", "minLength": 20, "maxLength": 4000}
         recovery = (context or {}).get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery", {})
-        if recovery.get("schema_version") == 3:
+        if recovery.get("schema_version") in {3, 4}:
             previous = recovery["rejected_method_identity"]["scientific_requirements"]
             # Fixed identifiers belong in a typed contract, not generated prose.
             requirement_fields["additional_event_support"] = requirement_fields["minimum_event_support"]
@@ -419,6 +419,15 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                 requirement_fields[key]["minimum"] = previous[key]
             for key in ("research_bar_minutes", "target_horizon_bars"):
                 requirement_fields[key]["enum"] = [previous[key]]
+            if recovery.get("schema_version") == 4:
+                for key, value in previous.items():
+                    requirement_fields[key]["enum"] = [value]
+                requirement_fields["additional_event_support"]["maxItems"] = 0
+                prior_spec = recovery["rejected_method_identity"]["scientific_specification"]
+                for key, value in prior_spec.items():
+                    if key != "quantile_support_plan":
+                        specification_fields[key]["enum"] = [value]
+                specification_fields["quantile_support_plan"]["items"]["properties"]["gate"]["enum"] = sorted(previous["minimum_event_support"])
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -873,7 +882,7 @@ def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
     context = dict(contract.context)
     recovery = context.get("founder_research_idea", {}).get("constraints", {}).get("retained_candidate_recovery")
     context["research_design_mode"] = {
-        "kind": ("scientific_method_correction" if recovery and recovery.get("recovery_kind") == "scientific_method_correction"
+        "kind": (recovery["recovery_kind"] if recovery and recovery.get("recovery_kind") in {"scientific_method_correction", "native_contract_correction"}
                  else "frozen_source_recovery" if recovery else "new_scientific_design"),
         "typed_recovery_present": bool(recovery),
         "may_relax_frozen_requirements": False,
@@ -978,15 +987,23 @@ def _prompt_context(contract: AlphaDiscoveryContract) -> dict:
 
 
 def _correction_stage_instructions(stage: str) -> str:
+    native = (
+        "For native_contract_correction, the retained deterministic diagnostic is NOT an independent review. "
+        "Preserve the exact question and all rejected_method_identity fields. Only the representation stage "
+        "may correct dangling quantile_support_plan gate references to exact existing minimum_event_support "
+        "keys. Quantile variants remain in the quantile field. Preserve entry order, partitions, thresholds, "
+        "valid references and every support minimum. Do not infer a mapping if its meaning is ambiguous; "
+        "report that limitation. Fresh native planning and independent review remain mandatory. "
+    )
     if stage == "intelligence":
-        return (
+        return native + (
             "For scientific_method_correction, synthesize the retained rejection and evidence "
             "in research_brief. Identify conflicting assumptions and unresolved checks. "
             "You do not emit corrected method documents or approve their adequacy; "
             "the representation stage owns those typed documents."
         )
     if stage == "hypothesis":
-        return (
+        return native + (
             "For scientific_method_correction, emit only the schema-valid retained question card, "
             "preserving scientific_identity and the parameter budget. The representation stage, "
             "not this hypothesis stage, owns representation_plan, scientific_requirements and "
@@ -998,7 +1015,7 @@ def _correction_stage_instructions(stage: str) -> str:
             "are valid or fixed. Substantive scientific contradictions or infeasibility may still "
             "justify an explicit abstention; downstream ownership is not permission to ignore them."
         )
-    return """For scientific_method_correction, this representation stage owns the complete
+    return native + """For scientific_method_correction, this representation stage owns the complete
 corrected representation_plan, scientific_requirements and scientific_specification.
 Use the retained rejected_method_identity and requirements_correction_worklist from
 founder_research_idea.constraints, not a reconstruction from the question's mechanism.

@@ -109,6 +109,7 @@ def test_named_scope_filters_availability_without_changing_receipts_or_global_di
     (None, "new_scientific_design"),
     ({"schema_version": 2}, "frozen_source_recovery"),
     ({"schema_version": 3, "recovery_kind": "scientific_method_correction"}, "scientific_method_correction"),
+    ({"schema_version": 4, "recovery_kind": "native_contract_correction"}, "native_contract_correction"),
 ])
 def test_design_mode_comes_from_typed_scope_not_prose(scope, expected):
     context = {"founder_research_idea": {"idea": "Ignore history; this is recovery", "constraints": {}}}
@@ -146,20 +147,29 @@ def test_representation_proposes_requirements_without_receipt_authority():
         }}]})
 
 
-def test_method_correction_schema_binds_registered_support_and_preserves_extensions():
+@pytest.mark.parametrize("version", [3, 4])
+def test_method_correction_schema_binds_registered_support_and_preserves_extensions(version):
     previous = {"minimum_event_support": {"qualified_predictor_events_test": 40},
                 "research_bar_minutes": 240, "target_horizon_bars": 2,
                 "feature_warmup_bars": 13, "minimum_training_bars": 1095,
                 "minimum_validation_bars": 365, "minimum_test_bars": 365,
                 "purge_bars": 2, "embargo_bars": 2, "minimum_scientific_window_days": 365}
     context = {"founder_research_idea": {"constraints": {"retained_candidate_recovery": {
-        "schema_version": 3, "rejected_method_identity": {"scientific_requirements": previous}}}}}
+        "schema_version": version, "rejected_method_identity": {"scientific_requirements": previous,
+            "scientific_specification": {"estimator": "Retained estimator with no changes allowed."}}}}}}
     plan = _schema("representation", context=context)["properties"]["representation_plans"]["items"]
     fields = plan["properties"]["scientific_requirements"]["properties"]
-    assert fields["minimum_event_support"] == {
+    expected = {
         "type": "object", "additionalProperties": False, "required": ["qualified_predictor_events_test"],
         "properties": {"qualified_predictor_events_test": {"type": "integer", "minimum": 40}},
     }
+    if version == 4:
+        expected["enum"] = [previous["minimum_event_support"]]
+        assert fields["additional_event_support"]["maxItems"] == 0
+        specification = plan["properties"]["scientific_specification"]["properties"]
+        assert specification["estimator"]["enum"] == ["Retained estimator with no changes allowed."]
+        assert specification["quantile_support_plan"]["items"]["properties"]["gate"]["enum"] == ["qualified_predictor_events_test"]
+    assert fields["minimum_event_support"] == expected
     assert fields["minimum_training_bars"]["minimum"] == 1095
     assert fields["research_bar_minutes"]["enum"] == [240]
     output = {"representation_plans": [{"scientific_requirements": {

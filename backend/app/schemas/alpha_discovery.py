@@ -269,6 +269,8 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
     expected_recovery_candidate_digest: str | None = Field(default=None, pattern=_DIGEST)
     requirements_rejection_event_id: int | None = Field(default=None, strict=True, ge=1)
     expected_requirements_rejection_digest: str | None = Field(default=None, pattern=_DIGEST)
+    native_feasibility_task_id: uuid.UUID | None = None
+    expected_native_feasibility_digest: str | None = Field(default=None, pattern=_DIGEST)
     minimum_history_days: int = Field(default=365, ge=365, le=3650)
     maximum_variants: int = Field(default=8, ge=1, le=8)
     minimum_instruments: int = Field(default=1, ge=1, le=128)
@@ -282,6 +284,12 @@ class AlphaFounderResearchIdeaCreate(StrictModel):
 
     @model_validator(mode="after")
     def ordered_instrument_bounds(self):
+        if (self.native_feasibility_task_id is None) != (self.expected_native_feasibility_digest is None):
+            raise ValueError("native correction requires both task identity and evidence digest")
+        if self.native_feasibility_task_id is not None and (
+            self.recovery_candidate_id is None or self.requirements_rejection_event_id is not None
+        ):
+            raise ValueError("native correction requires a retained candidate and cannot impersonate independent review")
         if (self.recovery_candidate_id is None) != (self.expected_recovery_candidate_digest is None):
             raise ValueError("retained recovery requires both candidate identity and digest")
         if (self.requirements_rejection_event_id is None) != (self.expected_requirements_rejection_digest is None):

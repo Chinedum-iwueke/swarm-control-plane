@@ -1679,9 +1679,12 @@ def queue_founder_idea(
         try:
             constraints["retained_candidate_recovery"] = recovery_scope(
                 db, mandate, payload.recovery_candidate_id, payload.expected_recovery_candidate_digest,
-                schema_version=3 if payload.requirements_rejection_event_id is not None else 2,
+                schema_version=(4 if payload.native_feasibility_task_id is not None else
+                                3 if payload.requirements_rejection_event_id is not None else 2),
                 rejection_event_id=payload.requirements_rejection_event_id,
                 expected_rejection_digest=payload.expected_requirements_rejection_digest,
+                native_task_id=payload.native_feasibility_task_id,
+                expected_native_digest=payload.expected_native_feasibility_digest,
             )
             if constraints["retained_candidate_recovery"].get("schema_version") == 3:
                 from app.services.alpha_requirements_correction import correction_worklist

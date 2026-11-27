@@ -38,8 +38,9 @@ def panel_fields(fields, instruments):
 
 
 def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version=2,
-                   rejection_event_id=None, expected_rejection_digest=None):
-    if schema_version not in {1, 2, 3}:
+                   rejection_event_id=None, expected_rejection_digest=None,
+                   native_task_id=None, expected_native_digest=None):
+    if schema_version not in {1, 2, 3, 4}:
         raise ValueError("unsupported retained recovery scope version")
     candidate = db.get(AlphaDiscoveryCandidate, UUID(str(candidate_id)))
     if candidate is None or candidate.candidate_digest != expected_digest:
@@ -47,7 +48,7 @@ def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version
     cycle = db.get(AlphaDiscoveryCycle, candidate.cycle_id)
     original = db.get(AlphaResearchMandate, cycle.mandate_id) if cycle else None
     source = mandate.specification["bulletproof_source_commit"]
-    if original is None or (schema_version != 3 and original.specification["bulletproof_source_commit"] == source):
+    if original is None or (schema_version not in {3, 4} and original.specification["bulletproof_source_commit"] == source):
         raise ValueError("source recovery requires a distinct approved native revision")
     if candidate.disposition not in {"accepted", "deferred"}:
         raise ValueError("source recovery requires a previously admissible candidate")
@@ -81,6 +82,10 @@ def recovery_scope(db, mandate, candidate_id, expected_digest, *, schema_version
     if schema_version == 3:
         scope.update(method_revision_scope(db, candidate, cycle, rejection_event_id,
                                           expected_rejection_digest, scope["parent_source_commit"]))
+    if schema_version == 4:
+        from app.services.alpha_native_correction import native_revision_scope
+        scope.update(native_revision_scope(db, candidate, cycle, native_task_id,
+                                          expected_native_digest, source))
     return scope
 
 
@@ -176,6 +181,9 @@ def apply_recovered_methods(candidate, scope):
         raise ValueError("retained methods cannot be applied to another question")
     if scope.get("schema_version") == 3:
         return validate_method_revision(candidate, scope)
+    if scope.get("schema_version") == 4:
+        from app.services.alpha_native_correction import validate_native_revision
+        return validate_native_revision(candidate, scope)
     if scope.get("schema_version") != 2:
         raise ValueError("unsupported retained recovery scope version")
     methods = scope.get("method_identity", {})
@@ -202,7 +210,9 @@ def matching_recovery(db, mandate, cycle, candidate):
     current = recovery_scope(db, mandate, scope["candidate_id"], scope["candidate_digest"],
                              schema_version=scope.get("schema_version", 1),
                              rejection_event_id=scope.get("rejection_event_id"),
-                             expected_rejection_digest=scope.get("rejection_subject_digest"))
+                             expected_rejection_digest=scope.get("rejection_subject_digest"),
+                             native_task_id=scope.get("native_task_id"),
+                             expected_native_digest=scope.get("native_evidence_digest"))
     if current != scope:
         raise ValueError("retained recovery scope changed")
     identity = scope["scientific_identity"]
