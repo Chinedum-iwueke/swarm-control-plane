@@ -26,8 +26,9 @@ class MethodEpisodePolicy(BaseModel):
     max_duration_seconds: int = Field(default=1800, ge=1, le=7200)
     max_context_bytes: int = Field(default=48000, ge=1024, le=128000)
     allowed_method_fields: list[str] = Field(min_length=1, max_length=20)
+    investigation_tools: list[str] = Field(default_factory=list, max_length=12, exclude_if=lambda value: not value)
 
-    @field_validator('allowed_method_fields')
+    @field_validator('allowed_method_fields', 'investigation_tools')
     @classmethod
     def fields(cls, values):
         if len(values) != len(set(values)) or any(not v.isidentifier() for v in values):
@@ -56,6 +57,8 @@ class MethodTaskContract(BaseModel):
 
     @model_validator(mode='after')
     def exact(self):
+        from app.contracts.recovery_investigation import catalog
+        catalog(self.policy.investigation_tools)
         if self.valid_until.tzinfo is None:
             raise ValueError('timezone-aware authority expiry required')
         if set(self.proposal) != {'scientific_identity', 'support_minima', 'method'}:

@@ -264,9 +264,28 @@ def verified_method_result(task):
         mandate_digest=contract.mandate_digest, findings_digest=contract.findings_digest,
         contract_digest=result['contract_digest'], kind='method-episode-v1',
         initial_digest=digest(contract.proposal), policy=contract.policy.model_dump())
+    if contract.policy.investigation_tools:
+        from app.contracts.recovery_investigation import catalog
+        expected_binding['investigation_catalog'] = catalog(contract.policy.investigation_tools)
     if (state.get('binding') != expected_binding
             or state.get('scientific_approval') is not False or state.get('execution_authority') is not False):
         raise ValueError('Method state binding mismatch')
+    escalation = state.get('escalation')
+    if escalation is not None:
+        retained = state.get('evidence', {})
+        if (not contract.policy.investigation_tools or not isinstance(escalation, dict)
+                or set(escalation) != {'action', 'disposition', 'owner', 'recovery_condition', 'evidence_refs', 'rationale'}
+                or escalation.get('action') != 'escalate'
+                or escalation.get('disposition') not in {'await_data', 'scientifically_infeasible',
+                    'requirements_conflict', 'requires_new_question', 'await_authority_or_capacity', 'infrastructure_repair'}
+                or state.get('status') != 'deferred' or state.get('reason') != escalation.get('disposition')
+                or any(not isinstance(escalation.get(k), str) or not 1 <= len(escalation[k]) <= limit
+                    for k, limit in [('owner', 200), ('recovery_condition', 4000), ('rationale', 4000)])
+                or not isinstance(escalation.get('evidence_refs'), list)
+                or not 1 <= len(escalation['evidence_refs']) <= 32
+                or any(not isinstance(ref, str) or ref not in retained for ref in escalation['evidence_refs'])
+                or any(digest(v) != k for k, v in retained.items())):
+            raise ValueError('Invalid evidence-bound recovery escalation')
     proposal = state.get('proposal', {})
     if (proposal.get('scientific_identity') != contract.proposal['scientific_identity']
             or proposal.get('support_minima') != contract.proposal['support_minima']):
@@ -375,6 +394,8 @@ def advance_method_task(db, campaign, source, parent, request):
         campaign.terminal_reason = {'category': 'method_design_deferred',
             'detail': {'task_id': str(task.id), 'reason': state.get('reason'),
                        'result_digest': result['result_digest']}}
+        if state.get('escalation'):
+            campaign.terminal_reason['detail']['escalation'] = state['escalation']
         raise RequirementsPending()
     identity = task_producer_identity(db, task)
     if identity is None:

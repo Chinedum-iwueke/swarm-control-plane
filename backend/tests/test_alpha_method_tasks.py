@@ -205,6 +205,70 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     assert result['execution_authority'] is False
 
 
+def test_investigation_enabled_worker_result_publishes_with_exact_catalog(tmp_path, monkeypatch):
+    import asyncio
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / 'worker/src'))
+    from swarm_worker.method_task import MethodTaskContract as WorkerContract
+    from swarm_worker.method_episode import MethodEpisode
+    from swarm_worker.recovery_investigation import catalog as worker_catalog
+    from app.contracts.recovery_investigation import catalog
+    task = ready_task()
+    task.input_contract['policy']['investigation_tools'] = ['inspect_contract', 'read_evidence']
+    contract = WorkerContract.model_validate(task.input_contract)
+    assert contract.model_dump(mode='json') == MethodTaskContract.model_validate(task.input_contract).model_dump(mode='json')
+    assert worker_catalog(contract.policy.investigation_tools) == catalog(contract.policy.investigation_tools)
+    retained = {'failure': 'shared parser defect', 'synthetic': True}
+    ref = service.digest(retained)
+    async def diagnose(*_):
+        return dict(disposition='repair', evidence={ref: retained}, findings=[dict(
+            requirement_ref='parser', evidence_digest=ref, message='Fixture failure', verification='fixture')], work_units=1)
+    async def propose(context, *_):
+        return dict(action='escalate', disposition='infrastructure_repair', owner='platform',
+            recovery_condition='Independent shared-code review and deployment', evidence_refs=[ref],
+            rationale='Candidate corrections cannot fix the parser')
+    episode = MethodEpisode(tmp_path/'episode', binding=dict(task_id=str(task.id),
+        source_commit=contract.base_ref, mandate_digest=contract.mandate_digest,
+        findings_digest=contract.findings_digest, contract_digest=service.digest(task.input_contract)),
+        proposal=contract.proposal, policy=contract.policy, diagnose=diagnose, propose=propose,
+        authorized=lambda _: True, investigate=diagnose,
+        investigation_catalog=worker_catalog(contract.policy.investigation_tools))
+    state = asyncio.run(episode.run())
+    result = dict(schema_version='method-task-result-v1', contract_digest=service.digest(task.input_contract),
+        state=state, scientific_approval=False, execution_authority=False)
+    result['result_digest'] = service.digest(result)
+    task.result = {'summary': {'method_episode': result}}
+    assert service.verified_method_result(task)['state']['escalation']['owner'] == 'platform'
+    state['binding']['investigation_catalog']['read_evidence']['description'] = 'Changed semantics'
+    result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    with pytest.raises(ValueError, match='binding mismatch'):
+        service.verified_method_result(task)
+
+
+@pytest.mark.parametrize('defect', [None, 'evidence', 'scope'])
+def test_investigation_ready_packet_still_requires_exact_review_evidence(defect):
+    from app.contracts.recovery_investigation import catalog
+    task = ready_task()
+    task.input_contract['policy']['investigation_tools'] = ['inspect_contract']
+    result = task.result['summary']['method_episode']
+    result['contract_digest'] = service.digest(task.input_contract)
+    state = result['state']
+    state['binding'].update(contract_digest=result['contract_digest'],
+        policy=MethodTaskContract.model_validate(task.input_contract).policy.model_dump(),
+        investigation_catalog=catalog(['inspect_contract']))
+    result['review_packet']['method_episode_digest'] = service.digest(state)
+    if defect == 'evidence':
+        result['review_packet']['evidence'] = {}
+    elif defect == 'scope':
+        state['proposal']['scientific_identity']['question'] = 'Unapproved new question'
+        result['review_packet']['method_episode_digest'] = service.digest(state)
+    result['result_digest'] = service.digest({k: v for k, v in result.items() if k != 'result_digest'})
+    if defect:
+        with pytest.raises(ValueError):
+            service.verified_method_result(task)
+    else:
+        assert service.verified_method_result(task)['state']['status'] == 'ready_for_independent_review'
+
+
 def test_projected_native_receipt_is_reconstructed_and_verified(monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / 'worker/src'))
     from swarm_worker.native_diagnostic_client import referenced_catalog as worker_projection

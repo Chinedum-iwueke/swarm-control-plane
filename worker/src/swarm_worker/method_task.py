@@ -30,6 +30,8 @@ class MethodTaskContract(BaseModel):
 
     @model_validator(mode='after')
     def exact(self):
+        from swarm_worker.recovery_investigation import catalog
+        catalog(self.policy.investigation_tools)
         if self.valid_until.tzinfo is None:
             raise ValueError('timezone-aware authority expiry required')
         if set(self.proposal) != {'scientific_identity', 'support_minima', 'method'}:

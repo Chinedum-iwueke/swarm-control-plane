@@ -64,9 +64,12 @@ class AlphaMethodDesignExecutor:
             raise ValueError('Method workflow/source binding mismatch')
         started = time.monotonic()
         client = NativeDiagnosticClient(workspace.repository, self.python, contract.base_ref)
+        contract_document = contract.model_dump(mode='json')
+        if not contract.policy.investigation_tools:
+            contract_document['policy'].pop('investigation_tools', None)
         binding = dict(task_id=str(task.id), source_commit=contract.base_ref,
             mandate_digest=contract.mandate_digest, findings_digest=contract.findings_digest,
-            contract_digest=digest(contract.model_dump(mode='json')))
+            contract_digest=digest(contract_document))
         root = workspace.plan.attempt_directory.parent / 'method-episode'
 
         async def check_lease(stage):
@@ -163,10 +166,41 @@ class AlphaMethodDesignExecutor:
             await check_lease('method_correction_permit')
             return (await model_capacity_permit()).get('allowed') is True
 
+        from swarm_worker.recovery_investigation import catalog as tool_catalog
+        catalog = tool_catalog(contract.policy.investigation_tools)
+
+        async def investigate(request, proposal, operation, work, remaining):
+            await check_lease('method_investigation')
+            tool, arguments = request['tool'], request['arguments']
+            if tool == 'inspect_native_source' and set(arguments) == {'path'}:
+                from swarm_worker.recovery_tools import read_pinned_source
+                document = await read_pinned_source(workspace.repository, contract.base_ref,
+                    arguments['path'], timeout=remaining)
+                return {'evidence': {digest(document): document}, 'work_units': 1}
+            if tool == 'read_evidence' and set(arguments) == {'digest'}:
+                ref = arguments['digest']
+                document = (deepcopy(contract.evidence_catalog[ref]) if ref in contract.evidence_catalog
+                            else episode.read_evidence(ref))
+                return {'evidence': {digest(document): document}, 'work_units': 1}
+            if arguments:
+                raise ValueError('Investigation arguments exceed the approved tool contract')
+            if tool == 'inspect_contract':
+                document = {'schema_version': 'recovery-contract-inspection-v1',
+                    'binding': binding, 'requirements': contract.requirements,
+                    'policy': contract_document['policy'], 'dependencies': contract.dependencies,
+                    'scientific_identity': proposal['scientific_identity'],
+                    'support_minima': proposal['support_minima'], 'execution_authority': False}
+                return {'evidence': {digest(document): document}, 'work_units': 1}
+            if tool == 'reproduce_diagnostic':
+                result = await diagnose(proposal, operation, work, remaining)
+                return {'evidence': {digest(result): result}, 'work_units': result['work_units']}
+            raise ValueError('Investigation action is not available')
+
         episode = MethodEpisode(root, binding=binding, proposal=contract.proposal,
             policy=contract.policy, diagnose=diagnose, propose=propose,
             authorized=lambda _: datetime.now(timezone.utc) < contract.valid_until,
-            model_permitted=model_permitted)
+            model_permitted=model_permitted, investigate=investigate if catalog else None,
+            investigation_catalog=catalog)
         adapter = correction_proposer(self.engineering, workspace, heartbeat,
             read_evidence=episode.read_evidence, max_context_bytes=contract.policy.max_context_bytes,
             context_evidence=contract.evidence_catalog, requirements=contract.requirements)

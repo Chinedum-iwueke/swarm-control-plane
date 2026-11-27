@@ -107,3 +107,66 @@ scientific reasoning. Genuine candidate commissioning, independent design review
 production task routing and end-to-end acceptance remain separate. Rollback is to
 not select the opt-in adapter; do not delete retained episode state or reassign old
 tasks to a different source.
+
+## Reasoning-led investigation increment (2026-11-27)
+
+Implemented as an opt-in extension of this episode, not a second controller.
+An exact task policy may name `investigation_tools`. The production adapter accepts
+only `inspect_contract`, `read_evidence`, `inspect_native_source`, and
+`reproduce_diagnostic`. The API and worker share parity-tested capability definitions.
+Empty policies serialize exactly as before; historical task digests do not change.
+
+```mermaid
+flowchart TD
+    F[Retained native failure and frozen contract] --> D[Deterministic diagnosis]
+    D -->|Repairable| R[Reasoning session]
+    R -->|Inspect| T[Authorized read-only tool]
+    T --> O[Retain observation and charge budget]
+    O --> R
+    R -->|Correct allowed fields| V[Native verification]
+    V -->|Unresolved| R
+    V -->|Ready| I[Separate independent review]
+    R -->|Cannot repair within authority| E[Evidence-backed escalation]
+    E --> S[Owner and explicit reconsideration condition]
+```
+
+The model selects the next inspection or correction; the controller does not match
+specific error-message strings. Complete observations, proposals and prior events
+are retained across model calls. This is durable application-owned session context,
+not a persistent provider conversation: the existing ephemeral Codex invocation
+receives the reconstructed evidence each turn. Reviewers remain separate.
+
+Source inspection reads a Python blob from the exact authorized Git commit, never
+the mutable checkout. Paths, output size and duration are bounded; there is no
+model-selected shell command. Diagnostic reproduction invokes only the existing
+approved native diagnostic. No new calibration or market-data execution is granted.
+Inspections consume the same tool-call and worst-case work budgets as diagnostics;
+model-selected actions consume model calls. Interruptions do not refund reservations.
+Identical inspection requests against an unchanged proposal stop instead of looping.
+
+Escalations record a disposition, evidence, owner and recovery condition. Shared
+code defects use `infrastructure_repair`; they are proposals, not permission to edit
+or deploy platform code. Other dispositions cover missing data, infeasible science,
+conflicts, changed questions and authority/capacity. Independent review is still
+required after a correction passes native checks.
+
+Verification includes scripted timing/normalization/uncertainty repairs through the
+same controller, scope and authority violations, interrupted reservations, immutable
+source reads, model action parsing and worker-to-API result publication. These tests
+prove controller mechanics, not live reasoning quality or end-to-end autonomy.
+The November 27 verification run passed 195 backend tests and 190 worker tests,
+including discovery schema regressions and the method/review/handoff suites.
+
+### Commissioning still required
+
+- Deploy the tested extension and opt in an explicitly authorized method episode.
+- Observe genuine tool selection, diagnosis and repair without operator hints.
+- Run materially different hypotheses and deliberate infeasible/data-limited cases.
+- Integrate approved investigation adapters with discovery, representation and
+  engineering recovery. This increment does not make those stages use this session.
+- Verify independent review, downstream execution, publication and replenishment.
+- Measure completion without intervention, valid escalation, repair success, total
+  latency and model usage; do not optimize call count at the cost of completion.
+
+The narrow archive gate-reference mandate approved on November 27 does not authorize
+this broader commissioning. Existing campaigns and historical counters remain intact.

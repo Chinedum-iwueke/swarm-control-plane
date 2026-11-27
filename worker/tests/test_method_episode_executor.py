@@ -22,6 +22,40 @@ from test_engineering_episode_executor import fixture, step
 async def heartbeat(_): pass
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', ['inspect', 'correct', 'escalate'])
+async def test_investigation_model_adapter_preserves_observations_and_routes_actions(tmp_path, monkeypatch, action):
+    executor, _, _, workspace = fixture(tmp_path, '1', 1)
+    monkeypatch.delenv('SWARM_AGENT_TOKEN', raising=False)
+    observed = {'definition': 'complete retained definition', 'synthetic': True}
+    ref = canonical_digest(observed)
+    payloads = {
+        'inspect': {'tool': 'read_evidence', 'arguments_json': json.dumps({'digest': ref}), 'rationale': 'Inspect exact evidence'},
+        'correct': {'changes': {'dependence_assumptions': 'Completed bars'}, 'addressed_findings': ['a'*64], 'rationale': 'Match evidence'},
+        'escalate': {'disposition': 'infrastructure_repair', 'owner': 'platform',
+                    'recovery_condition': 'Independent shared-code repair', 'evidence_refs': [ref], 'rationale': 'Frozen parser defect'},
+    }
+    async def model(**kwargs):
+        assert 'complete retained definition' in kwargs['prompt']
+        assert 'Do not run commands yourself' in kwargs['prompt']
+        schema = json.loads((kwargs['workspace'].artifacts/'schema.json').read_text())
+        assert schema['properties']['inspection']['anyOf'][0]['properties']['tool']['enum'] == ['read_evidence']
+        result = dict(action=action, correction=None, inspection=None, escalation=None)
+        result[{'inspect': 'inspection', 'correct': 'correction', 'escalate': 'escalation'}[action]] = payloads[action]
+        (kwargs['workspace'].artifacts/'correction.json').write_text(json.dumps(result))
+        return step('method-proposal', kwargs['workspace'])
+    executor._run_codex = model
+    callback = correction_proposer(executor, workspace, heartbeat, read_evidence=lambda _: observed,
+                                  context_evidence={ref: observed})
+    result = await callback(dict(findings=[], finding_digests=['a'*64], evidence_refs=[ref],
+        allowed_method_fields=['dependence_assumptions'], investigation_tools={'read_evidence': {}},
+        observations=[{'evidence_refs': [ref]}]), 'c'*64, 30)
+    if action == 'correct':
+        assert result['changes'] == payloads[action]['changes']
+    else:
+        assert result['action'] == action
+
+
 def test_large_correction_context_is_lossless_and_bounded():
     from swarm_worker.executors.method_episode import correction_context
     from swarm_worker.review_context import canonical
