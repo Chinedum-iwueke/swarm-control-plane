@@ -231,6 +231,7 @@ class AlphaDiscoveryExecutor:
             workspace.plan.attempt_directory,
             {step.name: "codex"},
         )
+        invalid_schema = not success and _provider_schema_error(stderr_path)
         return WorkflowExecutionResult(
             workflow=workflow.name,
             repository=contract.repository,
@@ -244,6 +245,8 @@ class AlphaDiscoveryExecutor:
                 if success
                 else "provider_capacity"
                 if provider_capacity
+                else "provider_request_schema_invalid"
+                if invalid_schema
                 else "alpha_discovery_failed"
             ),
             worker_version=__version__,
@@ -252,15 +255,50 @@ class AlphaDiscoveryExecutor:
             ]
             if output_path.is_file()
             else [],
-            retryable=not success and provider_capacity is None,
+            retryable=not success and provider_capacity is None and not invalid_schema,
             summary=(
                 {"alpha_discovery_output": output}
                 if success
                 else {"provider_capacity": provider_capacity}
                 if provider_capacity
+                else {"recovery_disposition": "infrastructure_repair",
+                      "recovery_condition": "Correct and validate the provider output schema before an authorized retry."}
+                if invalid_schema
                 else {}
             ),
         )
+
+
+def _provider_schema_error(path):
+    # Only provider error records count, never quoted prompt/context text.
+    with path.open('rb') as stream:
+        stream.seek(0, 2)
+        stream.seek(max(0, stream.tell() - 65536))
+        lines = stream.read(65536).decode('utf-8', errors='replace').splitlines()
+    for line in lines:
+        if not line.startswith('ERROR: '):
+            continue
+        try:
+            record = json.loads(line.removeprefix('ERROR: '))
+        except ValueError:
+            continue
+        error = record.get('error') if isinstance(record, dict) else None
+        if isinstance(error, dict) and error.get('code') == 'invalid_json_schema':
+            return True
+    return False
+
+
+def _freeze_schema_value(shape, value):
+    """Freeze object members at scalar leaves; provider schemas reject object enums."""
+    if isinstance(value, dict):
+        if shape.get('type') != 'object' or set(shape.get('properties', {})) != set(value):
+            raise AlphaDiscoveryError('Frozen object differs from the declared schema')
+        for key, item in value.items():
+            _freeze_schema_value(shape['properties'][key], item)
+    elif isinstance(value, list):
+        raise AlphaDiscoveryError('Ordered array freezing requires a separately supported schema')
+    else:
+        shape['enum'] = [value]
 
 
 def _normalize_output(stage: str, output: dict, *, context: dict | None = None) -> dict:
@@ -421,7 +459,7 @@ def _schema(stage: str, *, context: dict | None = None) -> dict:
                 requirement_fields[key]["enum"] = [previous[key]]
             if recovery.get("schema_version") == 4:
                 for key, value in previous.items():
-                    requirement_fields[key]["enum"] = [value]
+                    _freeze_schema_value(requirement_fields[key], value)
                 requirement_fields["additional_event_support"]["maxItems"] = 0
                 prior_spec = recovery["rejected_method_identity"]["scientific_specification"]
                 for key, value in prior_spec.items():

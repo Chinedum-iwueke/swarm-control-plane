@@ -21,7 +21,8 @@ from swarm_worker.workflows import WorkflowLoader
 
 @pytest.mark.parametrize("stage", ["intelligence", "hypothesis", "representation"])
 @pytest.mark.parametrize("instruments", [["ETHUSDT"], ["SOLUSDT", "AVAXUSDT"]])
-def test_correction_stage_owns_only_its_output_and_retains_recovery_context(stage, instruments):
+@pytest.mark.parametrize('recovery_version', [3, 4])
+def test_correction_stage_owns_only_its_output_and_retains_recovery_context(stage, instruments, recovery_version):
     from copy import deepcopy
 
     document = alpha_discovery_contract()
@@ -36,7 +37,7 @@ def test_correction_stage_owns_only_its_output_and_retains_recovery_context(stag
     founder = {"idea": "Resolve the recorded scientific method defects.",
         "constraints": {
             "retained_candidate_recovery": {
-                "schema_version": 3, "recovery_kind": "scientific_method_correction",
+                "schema_version": recovery_version, "recovery_kind": "scientific_method_correction" if recovery_version == 3 else 'native_contract_correction',
                 "scientific_identity": {"data": {"instruments": instruments}},
                 "rejected_method_identity": {"scientific_requirements": requirements,
                     "scientific_specification": {"estimator": "retained rejected estimator"}},
@@ -67,6 +68,16 @@ def test_correction_stage_owns_only_its_output_and_retains_recovery_context(stag
         assert {"scientific_requirements", "scientific_specification"} <= fields.keys()
         support = fields["scientific_requirements"]["properties"]["minimum_event_support"]
         assert support["properties"]["held_out_events"]["minimum"] == 55
+        if recovery_version == 4:
+            assert 'enum' not in support
+            assert support['properties']['held_out_events']['enum'] == [55]
+            def no_structured_constants(value):
+                if isinstance(value, dict):
+                    assert all(not isinstance(item, (dict, list)) for item in value.get('enum', []))
+                    for child in value.values(): no_structured_constants(child)
+                elif isinstance(value, list):
+                    for child in value: no_structured_constants(child)
+            no_structured_constants(schema)
         assert "post-construction gates" in instructions
         assert "never fabricate" in instructions
     else:
@@ -164,7 +175,7 @@ def test_method_correction_schema_binds_registered_support_and_preserves_extensi
         "properties": {"qualified_predictor_events_test": {"type": "integer", "minimum": 40}},
     }
     if version == 4:
-        expected["enum"] = [previous["minimum_event_support"]]
+        expected['properties']['qualified_predictor_events_test']['enum'] = [40]
         assert fields["additional_event_support"]["maxItems"] == 0
         specification = plan["properties"]["scientific_specification"]["properties"]
         assert specification["estimator"]["enum"] == ["Retained estimator with no changes allowed."]
@@ -310,8 +321,9 @@ def test_alpha_discovery_contract_and_fixed_workflow():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('schema_error', [False, True])
 async def test_alpha_discovery_usage_limit_defers_through_provider_circuit(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, schema_error
 ):
     for name in ("artifacts", "logs", "repository", "codex-home"):
         (tmp_path / name).mkdir()
@@ -333,7 +345,8 @@ async def test_alpha_discovery_usage_limit_defers_through_provider_circuit(
 
     async def create_process(*_args, **kwargs):
         kwargs["stderr"].write(
-            b"ERROR: You have hit your usage limit. Retry in 30 minutes.\n"
+            b'ERROR: {"type":"error","error":{"code":"invalid_json_schema"},"status":400}\n'
+            if schema_error else b"ERROR: You have hit your usage limit. Retry in 30 minutes.\n"
         )
         kwargs["stderr"].flush()
         return Process()
@@ -361,8 +374,12 @@ async def test_alpha_discovery_usage_limit_defers_through_provider_circuit(
     )
 
     assert not result.success
-    assert result.termination_reason == "provider_capacity"
     assert result.retryable is False
+    if schema_error:
+        assert result.termination_reason == 'provider_request_schema_invalid'
+        assert result.summary['recovery_disposition'] == 'infrastructure_repair'
+        return
+    assert result.termination_reason == "provider_capacity"
     assert result.summary["provider_capacity"]["provider"] == "codex"
     assert result.summary["provider_capacity"]["retry_after_seconds"] == 21_600
 
