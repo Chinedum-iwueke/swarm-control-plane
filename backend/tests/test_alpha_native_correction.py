@@ -51,6 +51,35 @@ def test_native_correction_intake_requires_paired_distinct_evidence(fault):
         assert AlphaFounderResearchIdeaCreate.model_validate(payload).native_feasibility_task_id
 
 
+def test_same_source_native_successor_revalidates_identity_without_rewriting_parent():
+    from app.services.alpha_candidate_recovery import recovery_scope, matching_recovery, SCIENTIFIC_FIELDS
+
+    db, task, parent = fixture()
+    parent.cycle_id, parent.disposition = uuid4(), "accepted"
+    parent.document.update({key: "retained " + key for key in SCIENTIFIC_FIELDS})
+    parent.document["data"] = {"venue": "bybit", "instruments": ["BTCUSDT"],
+        "research_timeframe": "30m", "liquidity_floor_usd": 1000000,
+        "required_fields": ["close", "volume"]}
+    parent.question = parent.document["question"]
+    task.input_contract["feasibility_evidence"]["discovery_candidate"] = deepcopy(parent.document)
+    cycle = SimpleNamespace(mandate_id=uuid4(), campaign_id=uuid4())
+    mandate = SimpleNamespace(specification={"bulletproof_source_commit": "a"*40})
+    objects = {parent.id: parent, parent.cycle_id: cycle, cycle.mandate_id: mandate, task.id: task}
+    db.get.side_effect = lambda model, key: objects.get(key)
+    admission = SimpleNamespace(task_id=task.parent_task_id)
+    db.scalar.side_effect = [None, None, admission, None, None, admission]
+    before = deepcopy(parent.document)
+    scope = recovery_scope(db, mandate, parent.id, parent.candidate_digest, schema_version=4,
+        native_task_id=task.id, expected_native_digest=digest_document(native_failure_evidence(task)))
+    proposed = SimpleNamespace(**{key: before[key] for key in SCIENTIFIC_FIELDS},
+                               data=SimpleNamespace(**before["data"]))
+    successor = SimpleNamespace(context={"founder_research_idea": {
+        "constraints": {"retained_candidate_recovery": scope}}})
+    assert matching_recovery(db, mandate, successor, proposed) == scope
+    assert scope["execution_authority"] is False
+    assert parent.document == before
+
+
 @pytest.mark.parametrize("fault", [None, "digest", "source", "candidate", "parent", "document", "status", "failure", "absent_admission", "no_defect"])
 def test_native_basis_requires_exact_failed_task_and_reproduced_defect(fault):
     db, task, candidate = fixture()

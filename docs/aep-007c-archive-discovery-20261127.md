@@ -59,3 +59,25 @@ then native planning and independent review. An unchanged retry is not a remedy.
 Validation: 335 targeted tests passed across discovery, admission authority,
 campaigns, data prerequisites and portfolio tests. Broader dynamic autonomy
 remains unproven; these are observed stages and reusable guardrails, not certification.
+
+## Pre-Review Correction Successor
+
+Repair `8ee0066` adds a distinct native-contract correction basis to the existing
+retained-candidate successor path. It binds the failed planning task, exact input
+contract, failure digest and parent admission. The server independently reproduces
+undefined support references; a worker error alone does not authorize repair.
+This basis is not an independent reviewer rejection. Current editable scope is
+only dangling quantile-support gate references: all other method fields, entry
+order, thresholds, partitions, existing references and support minima are fixed.
+Ambiguous mappings must remain unresolved for review, not silently guessed.
+
+The API and three scoped discovery workers were deployed/restarted. No new model
+calls were authorized. Proposed mandate
+`4c7ad412-9414-4369-afb7-4004de1871de`, digest
+`7fc9ff68f4b2178dd969de465743480b95d036098d44e04037261ed8fbbffa05`,
+expires November 28 at 05:49 UTC and awaits exact approval. Typed request
+`e972bc87-a34a-4d95-9cd4-45bd0dd88bb3` is staged with native failure evidence
+`7e3f2785411c3985a31eaf57587700079975a8545786cb83f968ca11eb07c858`.
+One recovery cycle, only the retained question, two-hypothesis outer-schema
+ceiling, two variants, two trials, one campaign. No engineering or execution.
+Campaign activation and fresh independent review remain separate gates.
