@@ -18,7 +18,8 @@ from app.schemas.alpha_campaign import (
     AlphaDatasetBinding,
 )
 from app.services.alpha_data_prerequisites import (
-    DataPrerequisites, DataPrerequisiteUnavailable, require_data_prerequisites,
+    DataPrerequisites,
+    assess_data_prerequisite_checkpoints,
 )
 from app.services.graph import digest_document
 from app.services.alpha_campaign import (
@@ -46,32 +47,22 @@ class DataPrerequisiteAssessment(BaseModel):
 
 @router.post("/data-prerequisites/assess")
 def assess_data_prerequisites(
-    payload: DataPrerequisiteAssessment, db: Annotated[Session, Depends(get_db)],
+    payload: DataPrerequisiteAssessment,
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Prospective read-only assessment, not review or authority for a campaign."""
     declaration = payload.declaration.model_dump(mode="json")
     key = digest_document(declaration)
-    report = {
-        "requirements_digest": key,
-        "candidate_digest": payload.declaration.candidate_digest,
-        "source_commit": payload.declaration.source_commit,
-        "declaration_completeness_reviewed": False,
-        "execution_authority": False,
-        "scientific_certification": False,
-    }
-    try:
-        result = require_data_prerequisites(db, {
+    return assess_data_prerequisite_checkpoints(
+        db,
+        {
             "source_commit": payload.declaration.source_commit,
-            "dependencies": {"data_prerequisites": key}, "evidence": {key: declaration},
-        }, payload.declaration.candidate_digest,
-            [binding.model_dump(mode="json") for binding in payload.dataset_bindings])
-    except DataPrerequisiteUnavailable as exc:
-        from app.services.alpha_disposition import disposition_for
-        return {**report, "status": "blocked", "reason_code": exc.reason_code,
-                "detail": exc.detail,
-                "disposition": disposition_for(exc.reason_code, exc.detail)}
-    return {**report, "status": "declared_checkpoints_resolved",
-            "resolutions": result["resolutions"]}
+            "dependencies": {"data_prerequisites": key},
+            "evidence": {key: declaration},
+        },
+        payload.declaration.candidate_digest,
+        [binding.model_dump(mode="json") for binding in payload.dataset_bindings],
+    )
 
 
 def _locked(db: Session, campaign_id: UUID) -> AlphaCampaign:
@@ -130,6 +121,7 @@ def candidate_blockers(
     limit: Annotated[int, Query(ge=1, le=50)] = 25,
 ):
     from app.services.alpha_candidate_blockers import overview
+
     return overview(db, category=category, query=query, offset=offset, limit=limit)
 
 

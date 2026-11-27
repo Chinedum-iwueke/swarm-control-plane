@@ -580,3 +580,61 @@ historical status-change ledger.
 Do not backdate catalog registration, infer continuity from price bars, or claim
 that inspecting this receipt has cleared the accepted method's terminal validity
 limitation. No new execution or review authority is implied.
+
+### November 27: separately approved data-claim assessment
+
+The founder approved mandate `a4feb880-407e-4464-8a5c-eac05812262e`, digest
+`aae0851630f63f96b075952058dcd2aee6e9ebfe332d4cf9a0e05ae1acc66442`, then
+campaign `68ec2ce6-c99d-4d0c-99ef-e0458812daa9`, digest
+`87450f79ecc55d8585e742733d2b6647c7e96d7de2c75e6396e96b69a936dafc`.
+This is assessment-only: zero author/engineering calls, one static diagnostic,
+two independent reviews, unchanged scientific proposal, source, windows, minima
+and caps. Method authority ends November 27 at 22:53 UTC; mandate authority ends
+November 28 at 04:49 UTC. There is no calibration, backtest or trading authority.
+
+The successor preserves the old mandate-bound amendment and adds a digest-distinct
+amendment binding unchanged caps to the new mandate. Historical commissioning
+metadata is losslessly packed: 54 catalog entries, 406,637 serialized input bytes.
+No scientific evidence was dropped to fit transport limits.
+
+Deterministic draft task `f27359f1-f8f4-457b-b098-161d24c2a0f1` succeeded, followed
+by static method task `8f79c8b3-f913-49ea-b24b-7b55fb46c967`, completed at
+20:54:23 UTC. Independent review tasks `b419e90d-caaf-413f-a310-a0fb60173b96`
+and `0bf2e3ab-4e7b-41d1-902b-dedd9061d521` both completed. Causality accepted
+the unexecuted specification while retaining the historical-data limitations
+(review digest `997ee7cd7579988eaa622f12f348a96ab58bae8e8a3a61896e3d407c6f0ddc5c`).
+Specification rejected the incomplete claim-by-claim assessment: the packet
+had not explicitly classified which observations support which claims and which
+remain `await_data` (review digest
+`d4957ff6025e03cb86595908a060bb6e829717c3ea2e1a359b9db1259674983d`).
+
+Reconciliation ended the campaign as `completed_no_candidate`, with
+`selected_research_queue_exhausted`. No candidate advanced to engineering or
+execution. Static transport and separate reviewer execution succeeded; the
+scientific handoff did not. The commissioning setup required a completed
+assessment but authorized zero author corrections and supplied observations
+rather than an explicit claim-assessment result. This is an orchestration/input
+preparation defect, not evidence of missing bars and not a reason to retry the
+same review packet. Before any further review, its required assessment must
+exist as an explicit, provenance-bound artifact. Do not erase the disagreement
+or infer historical eligibility from the causality acceptance.
+
+### Read-only checkpoint assessment follow-up (local validation)
+
+The prospective assessment now collects every declared checkpoint (bounded to
+256), including successful resolutions, typed failures, ownership and recovery
+dispositions. Dispatch still fails closed on its first failed checkpoint using
+the same resolver and candidate-binding validation. Unexpected infrastructure
+errors propagate rather than being classified as missing scientific data.
+
+The report explicitly disclaims whole-window continuity, uninterrupted
+tradability and contemporaneous basket membership certification. This is a
+checkpoint assessment, **not** the complete scientific claim assessment required
+by the rejected handoff. That broader provenance-bound artifact and fresh review
+authority remain outstanding. No further reviewer calls were commissioned.
+
+Local validation: 371 tests passed across data prerequisites, market catalog,
+dispositions, candidate blockers, method engineering/tasks, campaigns and
+execution preparation. New tests cover mixed checkpoint outcomes, unchanged
+fail-fast dispatch, immutable inputs, no database writes and infrastructure-error
+propagation. This follow-up is not yet deployed.
