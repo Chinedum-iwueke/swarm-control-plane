@@ -1,5 +1,23 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Prepared Correction Campaign: November 27, 23:21 UTC
+
+Representation `c063a416-857d-4a10-8c0a-d53f794a5e9e` and candidate-specific
+admission `3d466a7a-803a-4fec-b272-60d80facf5bb` both succeeded on attempt one.
+Candidate `463eb526-3a77-4599-acca-4ecefd710735` is retained under the approved
+method-correction mandate. Campaign `9fd10630-2611-44ea-9778-f172bf9245e0`, key
+`ALPHA004-5f0c7d25-001`, digest
+`369b438756a4415c98acb57ddb3413edce7777b3e5bbcc0c69bef64cfaca20b4`,
+is prepared with `awaiting_activation`; preparation returned
+`execution_authority=false`. Exact activation approval is outstanding.
+
+This successor preserves source b9b19c2, the retained archive question and support
+minima. Scope is native feasibility, drafting and independent requirements review,
+not engineering, calibration, market-data backtests, orders or promotion. The four
+successful discovery/admission tasks do not prove scientific acceptance or
+unattended completion. The graph rebuild remains on its existing live run; the
+continuous worker's runtime restart is still deferred until that run is terminal.
+
 ## Correction Continuation: November 27, 23:15 UTC
 
 Founder approved mandate `5f0c7d25-d830-4766-9020-cd8bc82a4c31`, digest
