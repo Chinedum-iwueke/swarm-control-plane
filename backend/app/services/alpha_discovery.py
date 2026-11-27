@@ -27,6 +27,7 @@ from app.models.control import ControlScope
 from app.models.discovery_portfolio import DiscoveryPortfolioCandidate
 from app.models.execution_telemetry import ExecutionTelemetryReplay
 from app.models.quantitative_receipt import QuantitativeProducerReceipt
+from app.services.alpha_admission_authority import admission_authority, require_approved_panel_bytes
 from app.models.surveillance import SurveillancePublication, SurveillanceSource
 from app.models.task import Task
 from app.models.task_event import TaskEvent
@@ -1601,7 +1602,7 @@ def recover_data_admission(
         )
     task = db.get(Task, payload.expected_task_id)
     contract = task.input_contract if task is not None else {}
-    catalog = mandate.specification.get("discovery_catalog") or {}
+    catalog = admission_authority(db, mandate.specification, candidate.document["data"])
     if (
         task is None
         or task.status != "succeeded"
@@ -2437,10 +2438,8 @@ def _ensure_data_admission_task(
     )
     if existing is not None:
         return existing
-    catalog = mandate.specification.get("discovery_catalog")
-    if catalog is None:
-        raise HTTPException(409, "Candidate has no founder-approved discovery catalog.")
     data = candidate.document["data"]
+    catalog = admission_authority(db, mandate.specification, data)
     shared_fields = {field for field in data["required_fields"] if "__" not in field}
     assets = [
         {
@@ -2503,6 +2502,8 @@ def _ensure_data_admission_task(
                 "mandate_digest": mandate.mandate_digest,
                 "catalog_receipt_digest": catalog["receipt_digest"],
                 "risk": 0,
+                "admission_basis": catalog["basis"],
+                "approved_panels": catalog.get("panels", []),
             },
             approval_required=False,
             required_capabilities=[
@@ -2892,7 +2893,7 @@ def _reconcile_data_admissions(
             admission.completed_at = now()
             continue
         document = task.result.get("summary", {}).get("alpha_data_admission", {})
-        catalog = mandate.specification.get("discovery_catalog") or {}
+        catalog = admission_authority(db, mandate.specification, candidate.document["data"])
         if (
             document.get("schema_version")
             != "alpha007-selected-panel-admission-batch-v1.0.0"
@@ -2919,6 +2920,7 @@ def _reconcile_data_admissions(
         }
         if observed != expected:
             raise HTTPException(409, "Selected-panel admission assets changed.")
+        require_approved_panel_bytes(catalog, receipts)
         missing_contract = _missing_admission_fields(receipts, admission.assets)
         if missing_contract is not None:
             asset, missing = missing_contract

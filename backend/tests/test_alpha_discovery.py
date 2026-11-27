@@ -759,6 +759,7 @@ def test_failed_data_admission_recovery_reuses_exact_successful_task(monkeypatch
         cycle_id=cycle.id,
         candidate_digest="d" * 64,
         disposition="awaiting_data_admission",
+        document={"data": {}},
     )
     task = SimpleNamespace(
         id=uuid4(),
