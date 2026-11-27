@@ -1,5 +1,44 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Reviewed Successor: November 27, 22:57 UTC
+
+Founder activated campaign `e2c7b92a-41c6-40cd-872d-8cb519e3c1fe` at 22:48 UTC.
+Draft `9f3dcd26-6beb-46f3-b60c-21a97a143a0f` succeeded. Native feasibility task
+`6d42e41d-e1ac-4573-9e66-046556d8416d` published report
+`e2e50491e9ad2c11fbef218c856d2d4b32a895259f0acbbaa922238ab06cc91f`.
+The original window remains deferred; its coverage-selected successor supplies
+ready smoke/scientific plans with distinct warmup, split exclusions and target tail.
+This is planning evidence, not observed support or scientific validity.
+
+Both independent reviewers rejected subject
+`58fb04b8cda2e81e02bcd23da79566aae4d15484c8e358c78fb73fe1698d1c09`,
+route `d897a926-d5f7-4f64-8aba-4ec468420d19`, publication event `71177`:
+
+- Explicit variant/partition/direction support accounting and evaluator ownership.
+- Independently justified meaningful effect and prospective precision/adequacy rules.
+- Bootstrap block adequacy, dependence justification and fail-closed evidence outputs.
+
+Read-only source inspection qualifies the first finding: pinned native
+`event_support_planning.assess_event_support` keys designs by gate, partition,
+quantile and threshold policy, and retains assessments as a list. Shared gate names
+do not themselves overwrite native planner entries. This does not establish the
+unwritten downstream evaluator's per-variant accounting or satisfy the other findings.
+Rejection history is retained; no reviewer verdict was overridden.
+
+The campaign closed `completed_no_candidate` after retaining a repair disposition,
+with zero trials. That terminal label is not a backtest result. The approved mandate
+allowed only gate-reference correction, not these broader scientific revisions.
+
+Prepared (not approved) mandate `5f0c7d25-d830-4766-9020-cd8bc82a4c31`, digest
+`d4acbf285126dc224aebbedac9413e88181bb3414280b0504fef375774654e59`,
+expires November 28 at 06:56 UTC. Typed recovery request
+`8341f104-1ed9-4c02-b351-bd4c868e5734` binds the rejected candidate and exact
+independent review subject. One method-correction cycle, unchanged source/question
+and existing support minima, two variants, fresh admission/planning/review; no
+engineering, calibration, backtests, orders or promotion. Campaign activation is
+separate. This remains the existing representation correction path, not live
+commissioning of the new opt-in investigation tools.
+
 ## Latest Checkpoint: November 27, 22:40 UTC
 
 Founder approved native-correction mandate digest
