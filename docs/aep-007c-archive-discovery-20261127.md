@@ -81,3 +81,30 @@ expires November 28 at 05:49 UTC and awaits exact approval. Typed request
 One recovery cycle, only the retained question, two-hypothesis outer-schema
 ceiling, two variants, two trials, one campaign. No engineering or execution.
 Campaign activation and fresh independent review remain separate gates.
+
+## Offline Pre-Commissioning Replay
+
+With approval still pending, the retained recovery context was loaded read-only
+from the API. Context size was 19,487 bytes; generated worker schema was 21,950
+bytes. A test-only in-memory correction of the eight dangling gate references
+passed the native-correction validator and exact frozen-requirement schema enums.
+Nothing was published and no model was called. This test mapping is not a
+registered correction or a claim of independent scientific acceptance.
+
+The static native planner was then replayed from the failed task's retained
+`b9b19c2` checkout and assignment, with that same in-memory correction. It read
+retained metadata only, not market-data rows. The unchanged original window
+returned `scientific:insufficient_contiguous_eligible_basket_history`; the existing
+coverage-successor mechanism proposed ready smoke and scientific plans:
+
+- Structural feature-history lower bound: 49 bars; declared warmup: 50 bars.
+- Scientific warmup starts May 16, 2025 at 23:00 UTC; training starts May 18.
+- Validation starts January 17, 2026 at 18:00 UTC; test starts March 18 at 22:00 UTC.
+- Final target tail is May 17, 2026 at 22:00 UTC to May 18 at 00:00 UTC.
+- Smoke has a separate 31-day partition and distinct warmup/target tail.
+- Support planning reports no deterministic capacity blocker, but explicitly
+  establishes neither observed event counts nor statistical power.
+
+This verifies that coverage-aware planning can accommodate the warmup and tail
+without lowering minima. It does not replace successor publication, native
+receipt custody, independent review, engineering or execution authority.
