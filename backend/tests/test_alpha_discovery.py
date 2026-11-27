@@ -123,7 +123,7 @@ def test_portfolio_registration_separates_activation(monkeypatch, activate):
     db = MagicMock()
     db.scalars.return_value.all.return_value = [SimpleNamespace(id=uuid4())]
     db.scalar.return_value = None
-    mandate = SimpleNamespace(id=uuid4(), objective="Archive-compatible research",
+    mandate = SimpleNamespace(id=uuid4(), objective="Archive-compatible research " + "x" * 3972,
         mandate_digest=DIGEST, trial_count=0, valid_until=datetime.now(UTC)+timedelta(hours=2),
         budget={"maximum_candidates_per_cycle": 1, "maximum_total_trials": 4,
                 "maximum_variants_per_hypothesis": 2, "maximum_consecutive_failures": 2},
@@ -141,13 +141,20 @@ def test_portfolio_registration_separates_activation(monkeypatch, activate):
     for schema in ("DiscoveryAttentionCandidate", "DiscoveryPortfolioCreate", "AlphaCampaignCreate"):
         monkeypatch.setattr(service, schema, lambda **kwargs: SimpleNamespace(**kwargs))
     campaign = SimpleNamespace(id=uuid4(), campaign_digest=DIGEST)
-    monkeypatch.setattr(service, "register_portfolio", MagicMock(return_value=SimpleNamespace(id=uuid4())))
+    registration = MagicMock(return_value=SimpleNamespace(id=uuid4()))
+    monkeypatch.setattr(service, "register_portfolio", registration)
     monkeypatch.setattr(service, "register_campaign", MagicMock(return_value=campaign))
     activation = MagicMock()
     monkeypatch.setattr(service, "activate_campaign", activation)
     monkeypatch.setattr(service, "_event", MagicMock())
     service._portfolio_and_campaign(db, mandate, cycle, [candidate], activate=activate)
     assert cycle.campaign_id == campaign.id
+    objective = registration.call_args.args[1].objective
+    assert objective == mandate.objective
+    from app.schemas.discovery_portfolio import DiscoveryPortfolioCreate
+    from pydantic import TypeAdapter
+    from typing import Annotated
+    TypeAdapter(Annotated[str, DiscoveryPortfolioCreate.model_fields["objective"]]).validate_python(objective)
     assert activation.call_count == int(activate)
     assert cycle.next_action == ("await_bounded_bulletproof_results" if activate else "founder_campaign_activation")
 

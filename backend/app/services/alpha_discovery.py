@@ -2607,7 +2607,7 @@ def _portfolio_and_campaign(
             portfolio_key=f"ALPHA004-{str(mandate.id)[:8]}-{cycle.ordinal:03d}",
             version="1.0.0",
             project="bulletproof-bt",
-            objective=f"ALPHA-004 replenishment cycle {cycle.ordinal}: {mandate.objective}",
+            objective=mandate.objective,
             source_epoch=now(),
             policy=DiscoveryAttentionPolicy(
                 attention_budget=maximum,

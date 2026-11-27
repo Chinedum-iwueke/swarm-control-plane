@@ -56,7 +56,7 @@ class DiscoveryPortfolioCreate(BaseModel):
     portfolio_key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$")
     version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
     project: str = Field(min_length=1, max_length=100)
-    objective: str = Field(min_length=10, max_length=2000)
+    objective: str = Field(min_length=10, max_length=4000)
     source_epoch: datetime
     policy: DiscoveryAttentionPolicy
     candidates: list[DiscoveryAttentionCandidate] = Field(min_length=1, max_length=200)
