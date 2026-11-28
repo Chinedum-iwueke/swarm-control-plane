@@ -122,6 +122,17 @@ def rebind_for_review(proposal, catalog, clock, source_commit, digest):
     return payload, lineage
 
 
+def diagnostic_payload(proposal, catalog, dependencies, source_commit, digest):
+    """Use an explicitly bound clock; preserve legacy no-clock diagnostic receipts."""
+    reference = dependencies.get('requirements_clock')
+    if reference is None:
+        return planning_payload(proposal, catalog, source_commit, digest), None
+    clock = catalog.get(reference)
+    if not isinstance(clock, dict) or digest(clock) != reference:
+        raise ValueError('Requirements clock dependency custody mismatch')
+    return rebind_for_review(proposal, catalog, clock, source_commit, digest)
+
+
 def verify_ready(report, payload, source_commit, digest):
     """Planning readiness is not scientific adequacy, observed support or approval."""
     if (report.get('schema_version') != 'native-requirements-feasibility-v1'

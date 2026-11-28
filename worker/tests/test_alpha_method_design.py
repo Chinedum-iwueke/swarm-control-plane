@@ -53,7 +53,8 @@ def contract(source):
 
 
 @pytest.mark.asyncio
-async def test_requirements_episode_repairs_without_calibration_and_reuses_checkpoint(tmp_path, monkeypatch):
+@pytest.mark.parametrize('bind_clock', [False, True])
+async def test_requirements_episode_repairs_without_calibration_and_reuses_checkpoint(tmp_path, monkeypatch, bind_clock):
     from copy import deepcopy
     from test_engineering_episode_executor import step
     from swarm_worker.requirements_repair import TEXT_FIELDS, SCHEMA
@@ -63,12 +64,22 @@ async def test_requirements_episode_repairs_without_calibration_and_reuses_check
     candidate = {'question': 'Frozen synthetic target', 'scientific_specification': spec}
     inputs = dict(discovery_candidate=candidate, representation_plan={}, dataset_bindings=[],
                   window={}, validation_requirements={'requirements': {'minimum_events': 100}})
+    if bind_clock:
+        clock = dict(schema_version='admitted-research-clock-v1',
+            representation_digest=digest(inputs['representation_plan']), capital_or_order_authority=False)
+        clock['evidence_digest'] = digest(clock)
+        inputs['validation_requirements']['requirements']['basis_digest'] = digest(dict(
+            candidate=candidate, clock_digest=clock['evidence_digest'], source_commit=raw['base_ref']))
+        inputs['validation_requirements']['coverage'] = [{'eligibility_evidence_digest': clock['evidence_digest']}]
     document = dict(schema_version='requirements-repair-inputs-v1', source_commit=raw['base_ref'], inputs=inputs)
     raw.update(diagnostic='requirements_feasibility_v1', evidence_catalog={digest(document): document},
         proposal=dict(scientific_identity={'question': candidate['question']},
-            support_minima={'minimum_events': 100}, method={**spec, 'schema_version': SCHEMA,
+            support_minima=deepcopy(inputs['validation_requirements']['requirements']), method={**spec, 'schema_version': SCHEMA,
             'planning_inputs_digest': digest(document), 'quantile_support_plan': []}))
     raw['policy']['allowed_method_fields'] = ['uncertainty_procedure']
+    if bind_clock:
+        raw['evidence_catalog'][digest(clock)] = clock
+        raw['dependencies']['requirements_clock'] = digest(clock)
     proposal = deepcopy(raw['proposal'])
     finding = dict(schema_version='method-review-correction-v1', proposal_digest=digest(proposal),
         reviews=[{'method_verdict': {'findings': [dict(criterion='uncertainty',
@@ -92,7 +103,10 @@ async def test_requirements_episode_repairs_without_calibration_and_reuses_check
         native_calls.append(kwargs)
         assert kwargs['tool'] == 'requirements_feasibility_v1'
         assert 'calibration' not in kwargs['payload']
-        assert kwargs['payload']['validation_requirements']['requirements'] == proposal['support_minima']
+        requirements = kwargs['payload']['validation_requirements']['requirements']
+        assert {k:v for k,v in requirements.items() if k != 'basis_digest'} == {'minimum_events': 100}
+        if bind_clock:
+            assert requirements['basis_digest'] != proposal['support_minima']['basis_digest']
         report = dict(schema_version='native-requirements-feasibility-v1',
             source_commit=raw['base_ref'], input_digest=digest(kwargs['payload']), status='ready', reasons=[],
             validation_plans={mode: dict(status='ready', reasons=[]) for mode in ['smoke', 'scientific']},
@@ -114,6 +128,9 @@ async def test_requirements_episode_repairs_without_calibration_and_reuses_check
         assert state['repairs'] == state['model_calls'] == 1
         assert state['proposal']['scientific_identity'] == proposal['scientific_identity']
         assert state['proposal']['method']['target_equation'] == proposal['method']['target_equation']
+        if bind_clock:
+            assert any(v.get('schema_version') == 'requirements-method-successor-lineage-v1'
+                       for v in state['evidence'].values())
     assert len(calls) == len(native_calls) == 1
 
 

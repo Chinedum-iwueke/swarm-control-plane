@@ -105,10 +105,10 @@ class AlphaMethodDesignExecutor:
             # Missing fields are cheap, attributable preflight findings. Invalid
             # native values fail closed, never become invented passing receipts.
             if contract.diagnostic == 'requirements_feasibility_v1':
-                from swarm_worker.requirements_repair import planning_payload, verify_ready
+                from swarm_worker.requirements_repair import diagnostic_payload, verify_ready
                 from swarm_worker.native_diagnostic_client import referenced_catalog
                 try:
-                    payload = planning_payload(proposal, evidence_catalog, contract.base_ref, digest)
+                    payload, lineage = diagnostic_payload(proposal, evidence_catalog, contract.dependencies, contract.base_ref, digest)
                 except ValueError as exc:
                     report = dict(schema_version='requirements-repair-preflight-v1',
                                   proposal_digest=digest(proposal), defect=str(exc))
@@ -126,7 +126,8 @@ class AlphaMethodDesignExecutor:
                             for reason in report['reasons']])
                 verify_ready(report, payload, contract.base_ref, digest)
                 return dict(disposition='ready', work_units=1, findings=[],
-                            evidence={**evidence_catalog, digest(receipt): receipt})
+                            evidence={**evidence_catalog, digest(receipt): receipt,
+                                      **({digest(lineage): lineage} if lineage is not None else {})})
             invalid = defects(proposal['method'])
             if 'meaningful_effect' not in invalid:
                 if any(ref not in evidence_catalog

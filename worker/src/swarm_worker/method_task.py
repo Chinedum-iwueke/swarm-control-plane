@@ -56,10 +56,10 @@ class MethodTaskContract(BaseModel):
             raise ValueError('dependencies must be immutable digests')
         # The estimand belongs to the frozen question, not to method repair.
         if self.diagnostic == 'requirements_feasibility_v1':
-            from swarm_worker.requirements_repair import REPAIR_FIELDS, planning_payload
+            from swarm_worker.requirements_repair import REPAIR_FIELDS, diagnostic_payload
             if not set(self.policy.allowed_method_fields) <= REPAIR_FIELDS:
                 raise ValueError('Unsupported requirements repair scope')
-            planning_payload(self.proposal, self.evidence_catalog, self.base_ref, canonical_digest)
+            diagnostic_payload(self.proposal, self.evidence_catalog, self.dependencies, self.base_ref, canonical_digest)
             bounded(self.proposal)
             for document in self.evidence_catalog.values():
                 bounded(document)

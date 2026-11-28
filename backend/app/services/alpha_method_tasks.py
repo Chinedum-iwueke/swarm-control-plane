@@ -330,9 +330,14 @@ def verified_method_result(task):
             raise ValueError('Method review packet differs from retained state')
         from app.services.native_diagnostics import verify_diagnostic
         payload = proposal['method']
+        requirements_lineage = None
         if contract.diagnostic == 'requirements_feasibility_v1':
-            from app.contracts.requirements_repair import planning_payload
-            payload = planning_payload(proposal, contract.evidence_catalog, contract.base_ref, digest)
+            from app.contracts.requirements_repair import diagnostic_payload
+            payload, requirements_lineage = diagnostic_payload(proposal, contract.evidence_catalog,
+                contract.dependencies, contract.base_ref, digest)
+            if (requirements_lineage is not None
+                    and packet['evidence'].get(digest(requirements_lineage)) != requirements_lineage):
+                raise ValueError('Missing exact requirements successor lineage')
         request = dict(schema_version='native-diagnostic-request-v1', tool=contract.diagnostic,
                        source_commit=contract.base_ref, subject_digest=digest(proposal), payload=payload)
         from app.contracts.diagnostic_evidence import referenced_catalog

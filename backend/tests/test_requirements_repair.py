@@ -117,6 +117,26 @@ def test_rebinding_retains_science_but_never_inherits_old_receipts(monkeypatch, 
     assert verified['coverage_bound_basis_digest'] == lineage['successor_basis_digest']
     assert lineage['requires_fresh_native_planning'] and lineage['requires_fresh_independent_review']
     assert not lineage['scientific_approval'] and not lineage['execution_authority']
+    from .test_alpha_method_tasks import fixture as task_fixture, ready_task
+    from app.services.alpha_method_tasks import verified_method_result
+    raw = task_fixture()[4]
+    raw.update(proposal=proposal, evidence_catalog={**catalog, digest(clock): clock},
+               base_ref=source, diagnostic='requirements_feasibility_v1',
+               dependencies={'requirements_clock': digest(clock)})
+    raw['policy']['allowed_method_fields'] = ['uncertainty_procedure']
+    task = ready_task(raw=raw, projected=True)
+    assert verified_method_result(task)['state']['status'] == 'ready_for_independent_review'
+    retained = task.result['summary']['method_episode']
+    retained['state']['evidence'].pop(digest(lineage))
+    retained['review_packet']['evidence'].pop(digest(lineage), None)
+    retained['review_packet']['method_episode_digest'] = digest(retained['state'])
+    retained['result_digest'] = digest({k:v for k,v in retained.items() if k != 'result_digest'})
+    with pytest.raises(ValueError, match='successor lineage'):
+        verified_method_result(task)
+    raw['evidence_catalog'].pop(digest(clock))
+    from app.schemas.method_task import MethodTaskContract
+    with pytest.raises(ValueError, match='clock dependency'):
+        MethodTaskContract.model_validate(raw)
 
 
 @pytest.mark.parametrize('field', sorted(adapter.TEXT_FIELDS - adapter.REPAIR_FIELDS))

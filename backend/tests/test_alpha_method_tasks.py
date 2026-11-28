@@ -175,9 +175,10 @@ def ready_task(*, structured=False, consistency=None, projected=False, max_tool_
         proposal['method']['estimator_id'] = 'fixture justification ' + observation_ref
         evidence_catalog[observation_ref] = observation
     payload = proposal['method']
+    requirements_lineage = None
     if c.diagnostic == 'requirements_feasibility_v1':
-        from app.contracts.requirements_repair import planning_payload
-        payload = planning_payload(proposal, evidence_catalog, c.base_ref, service.digest)
+        from app.contracts.requirements_repair import diagnostic_payload
+        payload, requirements_lineage = diagnostic_payload(proposal, evidence_catalog, c.dependencies, c.base_ref, service.digest)
     request = dict(schema_version='native-diagnostic-request-v1', tool=c.diagnostic,
         source_commit=c.base_ref, subject_digest=service.digest(proposal), payload=payload)
     receipt = dict(schema_version='native-diagnostic-receipt-v1', tool=c.diagnostic,
@@ -209,6 +210,8 @@ def ready_task(*, structured=False, consistency=None, projected=False, max_tool_
         model_calls=0, repairs=0, tool_calls=1, reserved_work=c.policy.tool_work_limit,
         deadline=task.started_at.timestamp() + c.policy.max_duration_seconds,
         status='ready_for_independent_review', evidence={service.digest(receipt): receipt})
+    if requirements_lineage is not None:
+        state['evidence'][service.digest(requirements_lineage)] = requirements_lineage
     if observed:
         from app.contracts.recovery_investigation import catalog
         state['binding']['investigation_catalog'] = catalog(c.policy.investigation_tools)

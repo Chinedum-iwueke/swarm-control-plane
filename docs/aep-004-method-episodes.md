@@ -247,6 +247,15 @@ probe was not a scientific correction and was not published as a candidate. The
 primitive still needs to be connected to accepted-correction publication; its unit
 and retained-evidence tests do not establish automatic downstream materialization.
 
+Clock-bound tasks now apply that rebinding inside the existing native diagnosis,
+not as another model-driven stage. The approved `requirements_clock` dependency
+selects the verified clock; a missing or mismatched dependency fails validation.
+The worker retains the derived lineage with the native result, and the API
+recomputes both the diagnostic input and exact lineage before accepting readiness.
+Legacy no-clock receipts retain their prior verification semantics. This changes
+neither support minima nor authority and avoids an additional model call merely
+to repair a stale basis identifier. Accepted-candidate publication remains separate.
+
 ### Commissioning still required
 
 Rollout evidence, November 28: `6b875e8` pushed to main; VM2 API healthy at image
