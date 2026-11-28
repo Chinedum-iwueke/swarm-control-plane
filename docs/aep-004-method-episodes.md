@@ -186,8 +186,9 @@ remain charged and are not silently repeated. Stale projections and out-of-scope
 results fail closed. Citation coordinates remain unchanged and excerpt truncation
 is explicit. Worker callbacks are task-local; credentials are not model inputs.
 
-This is not deployed or live commissioned. No additional live model calls are
-authorized by this code.
+This extension was deployed with commit `6b875e8` on November 28 (rollout below).
+It is not live commissioned. No additional live model calls are authorized by
+deploying this code.
 
 ### Non-calibration requirements adapter (2026-11-28, local validation)
 
@@ -218,8 +219,8 @@ not its newer working-tree HEAD. Synthetic 370-day coverage produced ready plans
 `6ae0f8186df7c7a1fe897fde1246697ae9d1784b0fd8e8161a599847398ca10a`).
 No market data, paid inference or backtest was used in that replay.
 
-The combined local checks passed 238 backend tests (requirements adapter,
-evidence retrieval, method tasks and requirements handoff) and 126 worker tests
+The combined local checks passed 256 backend tests (requirements adapter,
+evidence retrieval, method tasks, recovery lineage and requirements handoff) and 126 worker tests
 (task-local search, method adapter/controller, provider adapter, worker service and
 API client). Model correction responses in the episode regression are scripted;
 the separate pinned-source planning replay above uses the actual native code.
@@ -231,7 +232,21 @@ not silently overwrite an admitted candidate or carry old approval into engineer
 
 ### Commissioning still required
 
-- Deploy the tested extension and opt in an explicitly authorized method episode.
+Rollout evidence, November 28: `6b875e8` pushed to main; VM2 API healthy at image
+`sha256:80d15cc8c5a2da627aef15bd413dc458aee9535688e9e6c15b259f849706a732`,
+started 00:46:21 UTC. The deployed OpenAPI includes the task-scoped evidence route
+and the schema includes both native diagnostic modes. VM1 method designer restarted
+at 00:46:56 UTC after the API reported no active tasks. No broad worker restart,
+discovery activation, graph rebuild or live model call was performed.
+
+The retained genuine candidate's prospective contract validates at 105,246 bytes.
+This is a shape/custody check, not scientific acceptance. Method-only mandate
+`44867788-9e75-4d33-b2a7-bc438525c733` is awaiting exact-digest approval:
+`8379b9c148140c7bb312f0fec4f374e925ab2bf52c96dab8e82a7a689c3a77c4`.
+Discovery is disabled; expiry is November 28 at 08:49:58 UTC. Campaign activation
+remains separate. The old campaign is `completed_no_candidate` and unchanged.
+
+- Opt in an explicitly authorized method episode on the deployed extension.
 - Observe genuine tool selection, diagnosis and repair without operator hints.
 - Run materially different hypotheses and deliberate infeasible/data-limited cases.
 - Integrate approved investigation adapters with discovery, representation and
