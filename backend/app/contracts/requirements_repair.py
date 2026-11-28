@@ -85,6 +85,43 @@ def planning_payload(proposal, catalog, source_commit, digest):
     return payload
 
 
+
+def rebind_for_review(proposal, catalog, clock, source_commit, digest):
+    """Derive new review inputs while retaining the parent's immutable preimage."""
+    payload = planning_payload(proposal, catalog, source_commit, digest)
+    parent = catalog[proposal['method']['planning_inputs_digest']]['inputs']
+    if (clock.get('schema_version') != 'admitted-research-clock-v1'
+            or clock.get('evidence_digest') != digest({
+                key: value for key, value in clock.items() if key != 'evidence_digest'})
+            or clock.get('representation_digest') != digest(parent['representation_plan'])
+            or clock.get('capital_or_order_authority') is not False):
+        raise ValueError('Requirements successor clock custody mismatch')
+    parent_basis = digest(dict(candidate=parent['discovery_candidate'],
+        clock_digest=clock['evidence_digest'], source_commit=source_commit))
+    if parent['validation_requirements']['requirements'].get('basis_digest') != parent_basis:
+        raise ValueError('Requirements successor parent basis preimage mismatch')
+    coverage = parent['validation_requirements'].get('coverage')
+    if (not isinstance(coverage, list) or not coverage
+            or any(item.get('eligibility_evidence_digest') != clock['evidence_digest']
+                   for item in coverage)):
+        raise ValueError('Requirements successor coverage clock mismatch')
+    candidate = payload['discovery_candidate']
+    basis = digest(dict(candidate=candidate, clock_digest=clock['evidence_digest'],
+                        source_commit=source_commit))
+    package = payload['validation_requirements']
+    package['requirements']['basis_digest'] = basis
+    package.pop('native_feasibility_receipt', None)
+    lineage = dict(schema_version='requirements-method-successor-lineage-v1',
+        parent_candidate_digest=digest(parent['discovery_candidate']),
+        successor_candidate_digest=digest(candidate),
+        parent_planning_inputs_digest=proposal['method']['planning_inputs_digest'],
+        parent_basis_digest=parent_basis, successor_basis_digest=basis,
+        clock_digest=clock['evidence_digest'], source_commit=source_commit,
+        requires_fresh_native_planning=True, requires_fresh_independent_review=True,
+        scientific_approval=False, execution_authority=False)
+    return payload, lineage
+
+
 def verify_ready(report, payload, source_commit, digest):
     """Planning readiness is not scientific adequacy, observed support or approval."""
     if (report.get('schema_version') != 'native-requirements-feasibility-v1'

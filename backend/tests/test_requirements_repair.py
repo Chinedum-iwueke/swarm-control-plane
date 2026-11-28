@@ -13,7 +13,7 @@ def fixture():
     evidence['window'] = {'start': '2025-01-01', 'end': '2026-01-01'}
     evidence.pop('selected_panel_admission')
     evidence['validation_requirements'] = {
-        'requirements': evidence['discovery_candidate']['scientific_requirements'],
+        'requirements': deepcopy(evidence['discovery_candidate']['scientific_requirements']),
         'review_receipt': {'old_approval': True},
     }
     document = {'schema_version': 'requirements-repair-inputs-v1',
@@ -68,6 +68,55 @@ def test_requirements_contract_and_api_accept_exact_planning_without_calibration
         raw['policy']['allowed_method_fields'] = [field]
         with pytest.raises(ValueError, match='repair scope'):
             MethodTaskContract.model_validate(raw)
+
+
+@pytest.mark.parametrize('defect', [None, 'display_card', 'source', 'clock', 'coverage'])
+def test_rebinding_retains_science_but_never_inherits_old_receipts(monkeypatch, defect):
+    from app.services.alpha_requirements_handoff import requirements_basis_lineage
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2]/'worker/src'))
+    from swarm_worker import requirements_repair as worker
+    proposal, catalog = fixture()
+    document = deepcopy(next(iter(catalog.values())))
+    inputs = document['inputs']
+    clock = dict(schema_version='admitted-research-clock-v1',
+        representation_digest=digest(inputs['representation_plan']), capital_or_order_authority=False)
+    clock['evidence_digest'] = digest(clock)
+    package = inputs['validation_requirements']
+    package['requirements']['basis_digest'] = digest(dict(candidate=inputs['discovery_candidate'],
+        clock_digest=clock['evidence_digest'], source_commit='a'*40))
+    package['coverage'] = [{'eligibility_evidence_digest': clock['evidence_digest']}]
+    package['native_feasibility_receipt'] = {'historical_only': True}
+    if defect == 'display_card':
+        inputs['discovery_candidate']['dataset_binding_scope'] = 'review_artifact_bundle.dataset_bindings'
+        proposal['scientific_identity']['dataset_binding_scope'] = 'review_artifact_bundle.dataset_bindings'
+    if defect == 'coverage': package['coverage'][0]['eligibility_evidence_digest'] = 'f'*64
+    if defect == 'clock': clock['representation_digest'] = 'f'*64
+    reference = digest(document)
+    catalog = {reference: document}
+    proposal['support_minima'] = deepcopy(package['requirements'])
+    proposal['method']['planning_inputs_digest'] = reference
+    proposal['method']['uncertainty_procedure'] = 'Revised uncertainty definition without changing the frozen scientific experiment.'
+    source = 'b'*40 if defect == 'source' else 'a'*40
+    before = deepcopy((proposal, catalog, clock))
+    if defect:
+        with pytest.raises(ValueError):
+            adapter.rebind_for_review(proposal, catalog, clock, source, digest)
+        return
+    payload, lineage = adapter.rebind_for_review(proposal, catalog, clock, source, digest)
+    assert (payload, lineage) == worker.rebind_for_review(proposal, catalog, clock, source, digest)
+    assert (proposal, catalog, clock) == before
+    assert lineage['parent_basis_digest'] != lineage['successor_basis_digest']
+    assert lineage['parent_candidate_digest'] != lineage['successor_candidate_digest']
+    current = payload['validation_requirements']
+    assert 'review_receipt' not in current and 'native_feasibility_receipt' not in current
+    assert {k:v for k,v in current['requirements'].items() if k != 'basis_digest'} == {
+        k:v for k,v in package['requirements'].items() if k != 'basis_digest'}
+    assert payload['window'] == inputs['window']
+    assert payload['dataset_bindings'] == inputs['dataset_bindings']
+    verified = requirements_basis_lineage(payload['discovery_candidate'], current, clock, source)
+    assert verified['coverage_bound_basis_digest'] == lineage['successor_basis_digest']
+    assert lineage['requires_fresh_native_planning'] and lineage['requires_fresh_independent_review']
+    assert not lineage['scientific_approval'] and not lineage['execution_authority']
 
 
 @pytest.mark.parametrize('field', sorted(adapter.TEXT_FIELDS - adapter.REPAIR_FIELDS))

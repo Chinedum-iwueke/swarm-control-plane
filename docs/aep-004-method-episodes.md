@@ -230,6 +230,23 @@ the genuine rejected candidate, and materialization of its corrected specificati
 with a newly bound requirements basis and fresh review receipts. The adapter does
 not silently overwrite an admitted candidate or carry old approval into engineering.
 
+The successor rebinding primitive has additional local verification. It rejects
+using a derived review-display card as the parent basis preimage, verifies the
+retained coverage clock and representation, and derives the new basis from the
+corrected canonical candidate, unchanged clock and pinned source. Only the basis
+identifier changes within the requirements; numeric support minima stay fixed.
+Old review and native feasibility receipts are removed from prospective inputs,
+while parent artifacts remain immutable. The returned lineage explicitly requires
+fresh native planning and independent review and grants no execution authority.
+
+A read-only replay against genuine planning task
+`31a220df-2b9d-4b6c-a082-446cb93911a6` verified the original preimage and an unchanged
+basis for the unchanged specification. A synthetic uncertainty-text replacement
+produced a distinct basis without changing coverage, windows or bindings. This
+probe was not a scientific correction and was not published as a candidate. The
+primitive still needs to be connected to accepted-correction publication; its unit
+and retained-evidence tests do not establish automatic downstream materialization.
+
 ### Commissioning still required
 
 Rollout evidence, November 28: `6b875e8` pushed to main; VM2 API healthy at image
