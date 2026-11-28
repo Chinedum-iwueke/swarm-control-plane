@@ -263,6 +263,17 @@ This is a shape/custody check, not scientific acceptance. Method-only mandate
 Discovery is disabled; expiry is November 28 at 08:49:58 UTC. Campaign activation
 remains separate. The old campaign is `completed_no_candidate` and unchanged.
 
+Subsequent authority check found that mandate active. Campaign
+`d9f2380f-6e6b-4158-a600-db2a6cb02034`,
+`AEP007C-BTC-REASONING-RECOVERY-20261128`, was registered awaiting activation at
+digest `4606f6ea246aef34fbc5dbd99fac253664b7aa4abf7c26ef86e6149473ba9b05`.
+Its 118,400-byte contract uses the original native planning input rather than the
+derived review card, includes both original rejection receipts and the verified
+coverage clock, and permits eight model calls, two corrections and eight bounded
+tools. Method deadline is November 28 at 02:56:06 UTC. Fresh separate reviews are
+required. There is no engineering, calibration or backtest authority. Registration
+did not activate or execute the episode.
+
 - Opt in an explicitly authorized method episode on the deployed extension.
 - Observe genuine tool selection, diagnosis and repair without operator hints.
 - Run materially different hypotheses and deliberate infeasible/data-limited cases.
