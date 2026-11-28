@@ -493,6 +493,12 @@ def advance_method_task(db, campaign, source, parent, request):
             campaign.phase = 'method_design'
             campaign.next_action = 'await_bounded_method_correction'
             return correction
+        if task.input_contract.get('diagnostic') == 'requirements_feasibility_v1':
+            from app.services.alpha_method_handoff import publish_requirements_handoff
+            publish_requirements_handoff(db, campaign, task)
+            if engineering_request is None and preparation_request is None:
+                campaign.next_action = 'authorize_accepted_requirements_successor'
+                return None
         preparation_request = (campaign.specification.get('method_execution_preparation_requests') or {}).get(
             str(task.input_contract['candidate_id']))
         if preparation_request is not None:

@@ -573,6 +573,39 @@ def test_accepted_method_prepares_execution_only_with_explicit_request(monkeypat
         data_gate.assert_not_called()
 
 
+@pytest.mark.parametrize('verdict', ['approve', 'reject'])
+def test_requirements_controller_publishes_only_after_accepted_reviews(monkeypatch, verdict):
+    from app.services import alpha_campaign, evaluator_routing, alpha_method_recovery, alpha_method_handoff
+    from app.services.alpha_requirements_handoff import RequirementsPending
+    from app.services.alpha_method_recovery import RecoveryDeferred
+    db, campaign, source, parent, request, _, _ = fixture()
+    task = ready_task()
+    verified = service.verified_method_result(task)
+    task.input_contract['diagnostic'] = 'requirements_feasibility_v1'
+    task.plan_digest = '1'*64
+    monkeypatch.setattr(service, 'verified_method_result', lambda *_: verified)
+    monkeypatch.setattr(service, 'materialize_method_task', lambda *_: task)
+    monkeypatch.setattr(alpha_method_recovery, 'recorded_successor', lambda *_: None)
+    monkeypatch.setattr(evaluator_routing, 'task_producer_identity', lambda *_: {'agent_id': 'producer'})
+    monkeypatch.setattr(service, 'route_method_review', lambda *_: (SimpleNamespace(id=uuid4(), status='completed'),
+        [SimpleNamespace(verdict=verdict), SimpleNamespace(verdict='approve')]))
+    monkeypatch.setattr(alpha_campaign, '_append_event', lambda *_: None)
+    monkeypatch.setattr(alpha_method_recovery, 'require_recovery_capacity',
+                        MagicMock(side_effect=RecoveryDeferred('bounded fixture')))
+    publish = MagicMock()
+    monkeypatch.setattr(alpha_method_handoff, 'publish_requirements_handoff', publish)
+    db.scalar.side_effect = None
+    db.scalar.return_value = None
+    if verdict == 'reject':
+        with pytest.raises(RequirementsPending):
+            service.advance_method_task(db, campaign, source, parent, request)
+        publish.assert_not_called()
+    else:
+        assert service.advance_method_task(db, campaign, source, parent, request) is None
+        publish.assert_called_once_with(db, campaign, task)
+        assert campaign.next_action == 'authorize_accepted_requirements_successor'
+
+
 def test_review_route_reuses_exact_publication_and_materializes_separate_tasks(monkeypatch):
     from app.services import alpha_campaign, evaluator_routing
     db, campaign, _, _, _, _, _ = fixture()
