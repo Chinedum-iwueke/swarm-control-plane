@@ -55,6 +55,43 @@ def test_scoped_search_retains_citation_and_marks_excerpt(monkeypatch):
     assert len(hit['text']) == 200 and hit['excerpt_truncated']
     assert len(original['hits'][0]['text']) > 200
     assert not result['scientific_approval'] and not result['execution_authority']
+    assert result['scope_status'] == 'matches'
+
+
+@pytest.mark.parametrize('available', [True, False])
+def test_empty_search_distinguishes_query_from_authorized_scope(monkeypatch, available):
+    data = response()
+    data.update(hits=[], abstained=True)
+    monkeypatch.setattr(service, 'hybrid_search', lambda *_: data)
+    def availability(db, request, access):
+        assert request.project == 'systematic-research'
+        assert access.max_access_class == 'public'
+        return available
+    monkeypatch.setattr(service, 'authorized_projection_available', availability)
+    result = service.retrieve_scoped_evidence(None,
+        scope=EvidenceRetrievalScope(project='systematic-research'), query='dependence',
+        task_id=uuid4(), operation_id='c'*64)
+    assert result['scope_status'] == ('no_matching_evidence' if available else 'empty_authorized_projection')
+    assert result['hits'] == [] and result['abstained']
+    assert result['scope']['max_access_class'] == 'public'
+    assert not result['scientific_approval'] and not result['execution_authority']
+
+
+def test_scope_availability_uses_authorized_filters():
+    from unittest.mock import MagicMock
+    from app.schemas.retrieval import HybridRetrievalRequest
+    from app.services.evidence import EvidenceAccessContext
+    from app.services.retrieval import authorized_projection_available
+    db = MagicMock()
+    db.scalar.return_value = False
+    assert not authorized_projection_available(db,
+        HybridRetrievalRequest(query='dependence', project='systematic-research'),
+        EvidenceAccessContext(actor='test', projects=frozenset({'systematic-research'}),
+                              max_access_class='public'))
+    params = db.scalar.call_args.args[0].compile().params
+    assert ['public'] in params.values()
+    assert 'systematic-research' in params.values()
+    assert ['canonical-evidence-v1.0.0'] in params.values()
 
 
 @pytest.mark.parametrize('defect', ['project','access','citation','stale','count'])

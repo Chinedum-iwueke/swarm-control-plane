@@ -38,6 +38,11 @@ async def test_investigation_model_adapter_preserves_observations_and_routes_act
     async def model(**kwargs):
         assert 'complete retained definition' in kwargs['prompt']
         assert 'Do not run commands yourself' in kwargs['prompt']
+        assert 'An empty search is evidence of a retrieval gap, not proof of scientific infeasibility.' in kwargs['prompt']
+        assert 'Separate compound evidence needs into focused methodological queries' in kwargs['prompt']
+        assert 'General evidence needs an explicit applicability argument' in kwargs['prompt']
+        assert 'never change frozen definitions, minima or authority' in kwargs['prompt']
+        assert 'Do not exhaust budgets on redundant searches' in kwargs['prompt']
         schema = json.loads((kwargs['workspace'].artifacts/'schema.json').read_text())
         assert schema['properties']['inspection']['anyOf'][0]['properties']['tool']['enum'] == ['read_evidence']
         result = dict(action=action, correction=None, inspection=None, escalation=None)

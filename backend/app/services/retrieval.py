@@ -881,6 +881,11 @@ def _authorized_projections(
     return sorted(candidates.values(), key=lambda item: str(item.object_id))
 
 
+def authorized_projection_available(db, request, access) -> bool:
+    """Check only the authorized scope, without exposing excluded corpus metadata."""
+    return db.scalar(select(_authorized_statement(request, access).exists())) is True
+
+
 def _authorized_statement(
     request: HybridRetrievalRequest,
     access: EvidenceAccessContext,

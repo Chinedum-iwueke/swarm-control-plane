@@ -2,7 +2,7 @@
 from app.schemas.retrieval import HybridRetrievalRequest, HybridRetrievalResponse
 from app.services.evidence import EvidenceAccessContext
 from app.services.graph import digest_document
-from app.services.retrieval import hybrid_search
+from app.services.retrieval import authorized_projection_available, hybrid_search
 
 
 def search_task_evidence(db, task, agent, *, lease_token, query, operation_id):
@@ -70,8 +70,12 @@ def retrieve_scoped_evidence(db, *, scope, query, task_id, operation_id):
         hits.append({**hit, 'text': original[:scope.max_excerpt_chars],
                      'excerpt_truncated': len(original) > scope.max_excerpt_chars,
                      'retrieved_text_digest': digest_document({'text': original})})
+    scope_status = ('matches' if hits else 'no_matching_evidence'
+                    if authorized_projection_available(db, request, access)
+                    else 'empty_authorized_projection')
     return {'schema_version': 'recovery-evidence-search-v1', 'task_id': str(task_id),
         'operation_id': operation_id, 'scope': scope.model_dump(mode='json'),
         'request': request.model_dump(mode='json'), 'corpus_digest': response['corpus_digest'],
         'projection_version': response['projection_version'], 'abstained': response['abstained'],
-        'hits': hits, 'scientific_approval': False, 'execution_authority': False}
+        'hits': hits, 'scope_status': scope_status,
+        'scientific_approval': False, 'execution_authority': False}
