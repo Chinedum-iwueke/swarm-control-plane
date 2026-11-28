@@ -165,6 +165,11 @@ class MethodEpisode:
                            observations=state.get('observations', []))
         return bounded(context, self.policy.max_context_bytes)
 
+    def diagnostic_catalog(self, initial):
+        from swarm_worker.recovery_investigation import diagnostic_catalog
+        return diagnostic_catalog(initial, self.store.load(),
+                                  self.policy.investigation_tools, canonical_digest)
+
     def _stop(self, state, reason, status="deferred"):
         state.update(status=status, reason=reason)
 

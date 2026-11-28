@@ -509,12 +509,16 @@ class WorkerService:
 
             try:
                 executor = self._executor_factory(settings)
-                execution_result = await executor.execute(
-                    task=task,
-                    workflow=validated.workflow,
-                    workspace=workspace,
-                    heartbeat=send_task_heartbeat,
-                )
+                from swarm_worker.recovery_tools import bind_recovery_search
+                async def search_recovery_evidence(query, operation_id):
+                    return await api.search_recovery_evidence(task.id, lease_token, query, operation_id)
+                with bind_recovery_search(search_recovery_evidence):
+                    execution_result = await executor.execute(
+                        task=task,
+                        workflow=validated.workflow,
+                        workspace=workspace,
+                        heartbeat=send_task_heartbeat,
+                    )
                 execution_result = WorkflowExecutionResult.model_validate(
                     execution_result.model_dump(mode="python")
                 )

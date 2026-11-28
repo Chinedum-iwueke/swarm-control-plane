@@ -157,37 +157,63 @@ def test_cached_method_authority_is_checked_again():
         service.require_current_method_authority(db, task)
 
 
-def ready_task(*, structured=False, consistency=None, projected=False, max_tool_calls=4):
-    raw = fixture()[4]
+def ready_task(*, structured=False, consistency=None, projected=False, max_tool_calls=4, observed=False, raw=None):
+    raw = deepcopy(raw) if raw is not None else fixture()[4]
     raw['policy']['max_tool_calls'] = max_tool_calls
+    if observed:
+        raw['policy']['investigation_tools'] = ['inspect_contract']
     if structured:
         raw['proposal']['method'].update(experiment={'synthetic': True}, calibration_design={})
     c = MethodTaskContract.model_validate(raw)
     task = SimpleNamespace(id=uuid4(), status='succeeded', input_contract=raw,
                            started_at=datetime.now(timezone.utc))
+    proposal = deepcopy(c.proposal)
+    evidence_catalog = deepcopy(c.evidence_catalog)
+    observation = {'schema_version': 'synthetic-inspection-v1', 'execution_authority': False}
+    observation_ref = service.digest(observation)
+    if observed:
+        proposal['method']['estimator_id'] = 'fixture justification ' + observation_ref
+        evidence_catalog[observation_ref] = observation
+    payload = proposal['method']
+    if c.diagnostic == 'requirements_feasibility_v1':
+        from app.contracts.requirements_repair import planning_payload
+        payload = planning_payload(proposal, evidence_catalog, c.base_ref, service.digest)
     request = dict(schema_version='native-diagnostic-request-v1', tool=c.diagnostic,
-        source_commit=c.base_ref, subject_digest=service.digest(c.proposal), payload=c.proposal['method'])
+        source_commit=c.base_ref, subject_digest=service.digest(proposal), payload=payload)
     receipt = dict(schema_version='native-diagnostic-receipt-v1', tool=c.diagnostic,
         request_digest=service.digest(request), source_commit=c.base_ref,
-        subject_digest=service.digest(c.proposal), evidence_catalog_digest=service.digest(c.evidence_catalog),
+        subject_digest=service.digest(proposal), evidence_catalog_digest=service.digest(evidence_catalog),
         execution_authority=False, scientific_certification=False, market_data_used=False,
         implementation_digests={'fixture': '0'*64}, evidence_kind='design_diagnostic',
         result={'status': 'requires_independent_review_and_native_calibration',
-                'contract_digest': service.digest(c.proposal['method'])})
+                'contract_digest': service.digest(proposal['method'])})
     if consistency is not None:
         receipt['result']['consistency'] = consistency
+    if c.diagnostic == 'requirements_feasibility_v1':
+        report = dict(schema_version='native-requirements-feasibility-v1',
+            source_commit=c.base_ref, input_digest=service.digest(payload), status='ready', reasons=[],
+            validation_plans={mode: dict(status='ready', reasons=[]) for mode in ['smoke', 'scientific']},
+            scientific_certification=False, execution_authority=False,
+            coverage_successor_proposal=None, successor_validation_plans=None)
+        report['report_digest'] = service.digest(report)
+        receipt['result'] = report
     if projected:
         from app.contracts.diagnostic_evidence import referenced_catalog
-        receipt['evidence_catalog_digest'] = service.digest(referenced_catalog(c.proposal['method'], c.evidence_catalog, service.digest))
+        receipt['evidence_catalog_digest'] = service.digest(referenced_catalog(payload, evidence_catalog, service.digest))
     receipt['receipt_digest'] = service.digest(receipt)
     state = dict(binding=dict(task_id=str(task.id), source_commit=c.base_ref,
         mandate_digest=c.mandate_digest, findings_digest=c.findings_digest,
         contract_digest=service.digest(raw), kind='method-episode-v1',
         initial_digest=service.digest(c.proposal), policy=c.policy.model_dump()),
-        proposal=c.proposal, scientific_approval=False, execution_authority=False,
+        proposal=proposal, scientific_approval=False, execution_authority=False,
         model_calls=0, repairs=0, tool_calls=1, reserved_work=c.policy.tool_work_limit,
         deadline=task.started_at.timestamp() + c.policy.max_duration_seconds,
         status='ready_for_independent_review', evidence={service.digest(receipt): receipt})
+    if observed:
+        from app.contracts.recovery_investigation import catalog
+        state['binding']['investigation_catalog'] = catalog(c.policy.investigation_tools)
+        state['observations'] = [{'request': {'tool': 'inspect_contract'}, 'evidence_refs': [observation_ref]}]
+        state['evidence'][observation_ref] = observation
     packet = dict(schema_version='method-review-packet-v1', method_episode_digest=service.digest(state),
         source_commit=c.base_ref, proposal=state['proposal'], requirements=c.requirements,
         dependencies=c.dependencies, evidence=state['evidence'], prior_requirements={})
@@ -203,6 +229,49 @@ def test_exact_method_result_verifies_but_not_scientific_acceptance():
     result = service.verified_method_result(task)
     assert result['scientific_approval'] is False
     assert result['execution_authority'] is False
+
+
+@pytest.mark.parametrize('projected', [False, True])
+def test_ready_method_verifies_observed_catalog_without_granting_approval(projected):
+    task = ready_task(observed=True, projected=projected)
+    assert service.verified_method_result(task)['scientific_approval'] is False
+    result = task.result['summary']['method_episode']
+    result['state']['observations'] = []
+    result['review_packet']['method_episode_digest'] = service.digest(result['state'])
+    result['result_digest'] = service.digest({k:v for k,v in result.items() if k != 'result_digest'})
+    with pytest.raises(ValueError, match='exact current native diagnosis'):
+        service.verified_method_result(task)
+
+
+def test_observation_catalog_parity_excludes_author_outputs(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / 'worker/src'))
+    from swarm_worker.recovery_investigation import diagnostic_catalog as worker_catalog
+    from app.contracts.recovery_investigation import diagnostic_catalog
+    from copy import deepcopy
+    initial = {'initial': True}
+    observed = {'schema_version': 'fixture-observation', 'scientific_approval': False}
+    authored = {'rationale': 'unsupported author claim'}
+    initial_catalog = {service.digest(initial): initial}
+    ref = service.digest(observed)
+    state = {'evidence': {ref: observed, service.digest(authored): authored},
+             'observations': [{'request': {'tool': 'inspect_contract'}, 'evidence_refs': [ref]}]}
+    for helper in (diagnostic_catalog, worker_catalog):
+        assert helper(initial_catalog, state, ['inspect_contract'], service.digest) == initial_catalog | {ref: observed}
+        assert helper(initial_catalog, {}, [], service.digest) == initial_catalog
+        with pytest.raises(ValueError, match='Unapproved'):
+            helper(initial_catalog, state, [], service.digest)
+        reread = deepcopy(state)
+        reread['observations'][0]['request']['tool'] = 'read_evidence'
+        with pytest.raises(ValueError, match='author claim'):
+            helper(initial_catalog, reread, ['read_evidence'], service.digest)
+        broken = deepcopy(state)
+        broken['evidence'][ref]['scientific_approval'] = True
+        with pytest.raises(ValueError, match='custody'):
+            helper(initial_catalog, broken, ['inspect_contract'], service.digest)
+        missing = deepcopy(state)
+        del missing['evidence'][ref]
+        with pytest.raises(ValueError, match='custody'):
+            helper(initial_catalog, missing, ['inspect_contract'], service.digest)
 
 
 def test_investigation_enabled_worker_result_publishes_with_exact_catalog(tmp_path, monkeypatch):

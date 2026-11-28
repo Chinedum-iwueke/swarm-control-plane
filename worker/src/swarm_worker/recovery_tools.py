@@ -2,8 +2,37 @@
 import asyncio
 import re
 from pathlib import PurePosixPath
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pydantic import BaseModel, ConfigDict, Field
 
 from swarm_worker.engineering_episode import EpisodeIntegrityError
+
+
+class RecoveryEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    lease_token: str = Field(min_length=1, max_length=512)
+    operation_id: str = Field(pattern=r'^[a-f0-9]{64}$')
+    query: str = Field(min_length=2, max_length=1000)
+
+
+_search = ContextVar('leased_recovery_search', default=None)
+
+
+@contextmanager
+def bind_recovery_search(callback):
+    token = _search.set(callback)
+    try:
+        yield
+    finally:
+        _search.reset(token)
+
+
+async def search_evidence(query, operation_id):
+    callback = _search.get()
+    if callback is None:
+        raise EpisodeIntegrityError('No leased evidence-search adapter is bound')
+    return await callback(query, operation_id)
 
 
 async def read_pinned_source(repository, source_commit, path, *, timeout):

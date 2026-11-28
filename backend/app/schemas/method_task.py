@@ -36,6 +36,14 @@ class MethodEpisodePolicy(BaseModel):
         return values
 
 
+class EvidenceRetrievalScope(BaseModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+    project: str = Field(pattern=r'^[a-z][a-z0-9._-]{0,99}$')
+    max_access_class: Literal['public', 'internal'] = 'public'
+    max_results: int = Field(default=3, ge=1, le=5)
+    max_excerpt_chars: int = Field(default=2000, ge=200, le=4000)
+
+
 class MethodTaskContract(BaseModel):
     model_config = ConfigDict(extra='forbid')
     repository: Literal['bulletproof_bt']
@@ -52,13 +60,16 @@ class MethodTaskContract(BaseModel):
     dependencies: dict[str, str] = Field(min_length=1, max_length=32)
     findings_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
     policy: MethodEpisodePolicy
-    diagnostic: Literal['design_adequacy_v1']
+    retrieval_scope: EvidenceRetrievalScope | None = Field(default=None, exclude_if=lambda value: value is None)
+    diagnostic: Literal['design_adequacy_v1', 'requirements_feasibility_v1']
     authority: Literal['method_design_no_execution']
 
     @model_validator(mode='after')
     def exact(self):
         from app.contracts.recovery_investigation import catalog
         catalog(self.policy.investigation_tools)
+        if ('search_evidence' in self.policy.investigation_tools) != (self.retrieval_scope is not None):
+            raise ValueError('Evidence search requires an explicit, exclusive retrieval scope')
         if self.valid_until.tzinfo is None:
             raise ValueError('timezone-aware authority expiry required')
         if set(self.proposal) != {'scientific_identity', 'support_minima', 'method'}:
@@ -71,6 +82,16 @@ class MethodTaskContract(BaseModel):
         if any(not re.fullmatch('[a-f0-9]{64}', v) for v in self.dependencies.values()):
             raise ValueError('dependencies must be immutable digests')
         # The estimand belongs to the frozen question, not to method repair.
+        if self.diagnostic == 'requirements_feasibility_v1':
+            from app.contracts.requirements_repair import REPAIR_FIELDS, planning_payload
+            if not set(self.policy.allowed_method_fields) <= REPAIR_FIELDS:
+                raise ValueError('Unsupported requirements repair scope')
+            planning_payload(self.proposal, self.evidence_catalog, self.base_ref, canonical_digest)
+            bounded(self.proposal)
+            for document in self.evidence_catalog.values():
+                bounded(document)
+            bounded(self.model_dump(mode='json'), 524288)
+            return self
         allowed = {'estimator_id', 'meaningful_effect', 'dependence_assumptions',
                    'multiplicity', 'eligibility_policy', 'undefined_replicate_policy', 'calibration', 'calibration_design', 'assurance'}
         if not set(self.policy.allowed_method_fields) <= allowed:

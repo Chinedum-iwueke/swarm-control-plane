@@ -329,12 +329,23 @@ def verified_method_result(task):
                 or any(digest(v) != k for k, v in packet['evidence'].items())):
             raise ValueError('Method review packet differs from retained state')
         from app.services.native_diagnostics import verify_diagnostic
+        payload = proposal['method']
+        if contract.diagnostic == 'requirements_feasibility_v1':
+            from app.contracts.requirements_repair import planning_payload
+            payload = planning_payload(proposal, contract.evidence_catalog, contract.base_ref, digest)
         request = dict(schema_version='native-diagnostic-request-v1', tool=contract.diagnostic,
-                       source_commit=contract.base_ref, subject_digest=digest(proposal), payload=proposal['method'])
+                       source_commit=contract.base_ref, subject_digest=digest(proposal), payload=payload)
         from app.contracts.diagnostic_evidence import referenced_catalog
-        catalogs = {digest(contract.evidence_catalog): contract.evidence_catalog}
-        projected = referenced_catalog(proposal['method'], contract.evidence_catalog, digest)
+        from app.contracts.recovery_investigation import diagnostic_catalog
+        current_catalog = diagnostic_catalog(contract.evidence_catalog, state,
+                                            contract.policy.investigation_tools, digest)
+        catalogs = {digest(current_catalog): current_catalog}
+        projected = referenced_catalog(payload, current_catalog, digest)
         catalogs[digest(projected)] = projected
+        if projected == referenced_catalog(proposal['method'], contract.evidence_catalog, digest):
+            # Older workers used the initial full catalog. Keep those receipts
+            # valid only when no newly observed evidence is needed by the method.
+            catalogs[digest(contract.evidence_catalog)] = contract.evidence_catalog
         receipts = [v for v in packet['evidence'].values()
                     if v.get('schema_version') == 'native-diagnostic-receipt-v1'
                     and v.get('subject_digest') == digest(proposal)
@@ -345,6 +356,10 @@ def verified_method_result(task):
             raise ValueError('Ready method requires exact current native diagnosis')
         verify_diagnostic(receipts[0], request, catalogs[receipts[0]['evidence_catalog_digest']], contract.base_ref, digest(proposal))
         assessment = receipts[0]['result']
+        if contract.diagnostic == 'requirements_feasibility_v1':
+            from app.contracts.requirements_repair import verify_ready
+            verify_ready(assessment, payload, contract.base_ref, digest)
+            return result
         if 'experiment' in proposal['method']:
             consistency = assessment.get('consistency', {})
             if (consistency.get('status') != 'structurally_consistent'
@@ -380,7 +395,8 @@ def advance_method_task(db, campaign, source, parent, request):
     state = result['state']
     if state['status'] != 'ready_for_independent_review':
         from app.contracts.native_design_shape import defects
-        if (state['status'] == 'blocked' and state.get('reason') == 'invalid_stage_result'
+        if (task.input_contract.get('diagnostic') == 'design_adequacy_v1'
+                and state['status'] == 'blocked' and state.get('reason') == 'invalid_stage_result'
                 and defects(state['proposal']['method'])):
             try:
                 correction = materialize_correction(db, campaign, task, result, [], diagnostic_recovery=True)

@@ -163,6 +163,72 @@ diagnostic responses are mocked in these four cases; pinned-source lookup and
 episode/result transport use the implementation. Missing pinned files return
 explicit unavailable observations rather than invented source or forced retries.
 
+### Observation custody repair (2026-11-28, local validation)
+
+Authorized tool observations now participate in the correction output schema,
+native diagnostic evidence catalog and API receipt verification. Previously the
+episode retained observations but those downstream consumers still required the
+initial catalog, preventing a correction from citing newly inspected evidence.
+The worker and API share parity-tested catalog construction. Only recorded tool
+observations are added; arbitrary retained author output is excluded, and a
+`read_evidence` reread cannot promote an author claim. Digests are checked, old
+catalog receipts remain valid when no new evidence is referenced, and independent
+scientific review is unchanged. Tests cover citation through correction, native
+recheck, checkpoint reuse, publication and rejection when observation custody is
+removed. These are synthetic tests, not live scientific acceptance.
+
+The accompanying local implementation adds opt-in `search_evidence` through the
+existing hybrid retrieval service. Its immutable task contract pins the project,
+public/internal access ceiling, result count and excerpt bound. A live task lease
+and current method authority are required. Reservations are retained before search;
+identical completed operations replay their receipt, while interrupted operations
+remain charged and are not silently repeated. Stale projections and out-of-scope
+results fail closed. Citation coordinates remain unchanged and excerpt truncation
+is explicit. Worker callbacks are task-local; credentials are not model inputs.
+
+This is not deployed or live commissioned. No additional live model calls are
+authorized by this code.
+
+### Non-calibration requirements adapter (2026-11-28, local validation)
+
+An explicitly approved `requirements_feasibility_v1` method task can now use the
+existing durable episode without inventing a calibration design. Its
+`requirements-method-repair-v1` proposal references immutable planning inputs.
+The adapter permits only a subset of specification fields selected by the task's
+approved policy: estimator, uncertainty procedure, missing-data policy,
+event-support rationale and falsification rule. Target equation, threshold rule,
+controls, splits and quantile support plans remain frozen. The complete candidate
+identity, support requirements, data bindings, coverage, windows and planning work
+limits remain bound to the input digest. A change outside that boundary needs a
+separately authorized successor, not a repair disguised as the same experiment.
+
+The prospective native input drops the old requirements review receipt. Static
+readiness is checked against the exact native report and both validation plans;
+it does not prove effect meaningfulness, dependence assumptions, observed support,
+scientific acceptance or execution authority. Fresh independent review remains
+mandatory. A native deferral enters bounded investigation/correction; the session
+must escalate if resolution needs changes outside its authority.
+
+Local tests exercise scoped corrections, immutable-field rejection, API receipt
+verification, worker repair and restart reuse. An additional offline replay used
+a temporary snapshot of Bulletproof `b9b19c2ce109392196e272920355af10f53a544e`,
+not its newer working-tree HEAD. Synthetic 370-day coverage produced ready plans
+(receipt `9d0bad4d4bd0f7b2e346784b5edf5fe6844b3f2d9055f65eed95b7aff65cabd7`);
+31-day coverage remained deferred for insufficient scientific history (receipt
+`6ae0f8186df7c7a1fe897fde1246697ae9d1784b0fd8e8161a599847398ca10a`).
+No market data, paid inference or backtest was used in that replay.
+
+The combined local checks passed 238 backend tests (requirements adapter,
+evidence retrieval, method tasks and requirements handoff) and 126 worker tests
+(task-local search, method adapter/controller, provider adapter, worker service and
+API client). Model correction responses in the episode regression are scripted;
+the separate pinned-source planning replay above uses the actual native code.
+
+Still outstanding: source-bound commissioning, independently reviewed recovery of
+the genuine rejected candidate, and materialization of its corrected specification
+with a newly bound requirements basis and fresh review receipts. The adapter does
+not silently overwrite an admitted candidate or carry old approval into engineering.
+
 ### Commissioning still required
 
 - Deploy the tested extension and opt in an explicitly authorized method episode.

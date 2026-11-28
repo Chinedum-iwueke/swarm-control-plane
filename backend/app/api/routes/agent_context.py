@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.security import get_current_agent, require_orchestrator
 from app.db.session import get_db
@@ -31,6 +32,22 @@ router = APIRouter(
     dependencies=[Depends(require_orchestrator)],
 )
 agent_router = APIRouter(prefix="/v1/agent/tasks", tags=["agent-context-runtime"])
+
+
+class RecoveryEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    lease_token: str = Field(min_length=1, max_length=512)
+    operation_id: str = Field(pattern=r'^[a-f0-9]{64}$')
+    query: str = Field(min_length=2, max_length=1000)
+
+
+@agent_router.post('/{task_id}/recovery-evidence')
+def recovery_evidence(task_id: UUID, payload: RecoveryEvidenceRequest,
+                      agent: Annotated[Agent, Depends(get_current_agent)],
+                      db: Annotated[Session, Depends(get_db)]):
+    from app.services.recovery_evidence import search_task_evidence
+    task = lock_task(db, task_id)
+    return search_task_evidence(db, task, agent, **payload.model_dump())
 
 
 @router.post("/manifests", response_model=AgentContextResponse, status_code=201)

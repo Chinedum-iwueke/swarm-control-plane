@@ -229,6 +229,14 @@ class SwarmAPIClient:
             secrets=(lease_token,),
         )
 
+    async def search_recovery_evidence(self, task_id, lease_token, query, operation_id):
+        from pydantic import RootModel
+        from swarm_worker.recovery_tools import RecoveryEvidenceRequest
+        response = await self._request('POST', f'/v1/agent/tasks/{task_id}/recovery-evidence',
+            RootModel[dict], payload=RecoveryEvidenceRequest(lease_token=lease_token,
+                query=query, operation_id=operation_id), secrets=(lease_token,))
+        return response.root
+
     async def submit_founder_proposal(
         self,
         task_id: UUID | str,

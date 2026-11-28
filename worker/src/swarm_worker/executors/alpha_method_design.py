@@ -80,6 +80,7 @@ class AlphaMethodDesignExecutor:
 
         async def diagnose(proposal, operation, work, remaining):
             await check_lease('native_diagnosis')
+            evidence_catalog = episode.diagnostic_catalog(contract.evidence_catalog)
             retained = contract.evidence_catalog.get(contract.findings_digest, {})
             if (retained.get('schema_version') == 'method-amendment-consistency-v1'
                     and retained.get('proposal_digest') == digest(proposal)):
@@ -103,11 +104,34 @@ class AlphaMethodDesignExecutor:
                             evidence=contract.evidence_catalog)
             # Missing fields are cheap, attributable preflight findings. Invalid
             # native values fail closed, never become invented passing receipts.
+            if contract.diagnostic == 'requirements_feasibility_v1':
+                from swarm_worker.requirements_repair import planning_payload, verify_ready
+                from swarm_worker.native_diagnostic_client import referenced_catalog
+                try:
+                    payload = planning_payload(proposal, evidence_catalog, contract.base_ref, digest)
+                except ValueError as exc:
+                    report = dict(schema_version='requirements-repair-preflight-v1',
+                                  proposal_digest=digest(proposal), defect=str(exc))
+                    return dict(disposition='repair', work_units=1, evidence={digest(report): report},
+                        findings=[dict(requirement_ref='requirements_contract', evidence_digest=digest(report),
+                            message=str(exc), verification='Preserve frozen planning inputs and satisfy specification field constraints')])
+                receipt = await client.run(tool=contract.diagnostic, subject_digest=digest(proposal),
+                    payload=payload, catalog=referenced_catalog(payload, evidence_catalog),
+                    work_limit=work, timeout=remaining)
+                report = receipt['result']
+                if report.get('status') == 'deferred' and report.get('reasons'):
+                    return dict(disposition='repair', work_units=1, evidence={digest(receipt): receipt},
+                        findings=[dict(requirement_ref='native_requirements', evidence_digest=digest(receipt),
+                            message=str(reason), verification='Resolve within approved fields or escalate with evidence; do not change data, support or experiment')
+                            for reason in report['reasons']])
+                verify_ready(report, payload, contract.base_ref, digest)
+                return dict(disposition='ready', work_units=1, findings=[],
+                            evidence={**evidence_catalog, digest(receipt): receipt})
             invalid = defects(proposal['method'])
             if 'meaningful_effect' not in invalid:
-                if any(ref not in contract.evidence_catalog
+                if any(ref not in evidence_catalog
                        for ref in proposal['method']['meaningful_effect']['evidence_digests']):
-                    invalid['meaningful_effect'] = 'Justification must reference evidence in the retained contract catalog'
+                    invalid['meaningful_effect'] = 'Justification must reference initial evidence or a retained authorized observation'
             if invalid:
                 report = {'schema_version': 'method-fields-preflight-v1',
                           'proposal_digest': digest(proposal), 'defects': invalid,
@@ -119,7 +143,7 @@ class AlphaMethodDesignExecutor:
                         message=message,
                         verification='Exact native design-adequacy field shape') for field, message in invalid.items()])
             receipt = await client.run(tool=contract.diagnostic, subject_digest=digest(proposal),
-                payload=proposal['method'], catalog=contract.evidence_catalog,
+                payload=proposal['method'], catalog=evidence_catalog,
                 work_limit=work, timeout=remaining)
             if receipt['result'].get('status') == 'requires_method_correction':
                 findings = receipt['result'].get('consistency', {}).get('findings', [])
@@ -172,6 +196,20 @@ class AlphaMethodDesignExecutor:
         async def investigate(request, proposal, operation, work, remaining):
             await check_lease('method_investigation')
             tool, arguments = request['tool'], request['arguments']
+            if tool == 'search_evidence' and set(arguments) == {'query'}:
+                from swarm_worker.recovery_tools import search_evidence
+                if contract.retrieval_scope is None:
+                    raise ValueError('Evidence search lacks approved scope')
+                document = await search_evidence(arguments['query'], operation)
+                if (document.get('schema_version') != 'recovery-evidence-search-v1'
+                        or document.get('task_id') != str(task.id)
+                        or document.get('operation_id') != operation
+                        or document.get('request', {}).get('query') != arguments['query']
+                        or document.get('scope') != contract.retrieval_scope.model_dump(mode='json')
+                        or document.get('scientific_approval') is not False
+                        or document.get('execution_authority') is not False):
+                    raise ValueError('Evidence search response binding mismatch')
+                return {'evidence': {digest(document): document}, 'work_units': 1}
             if tool == 'inspect_native_source' and set(arguments) == {'path'}:
                 from swarm_worker.recovery_tools import read_pinned_source
                 document = await read_pinned_source(workspace.repository, contract.base_ref,
