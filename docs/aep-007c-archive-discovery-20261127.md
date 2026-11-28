@@ -1,5 +1,34 @@
 # AEP-007C Archive-Compatible Discovery Commissioning
 
+## Independent Correction Review: November 28, 00:23 UTC
+
+Founder activated campaign `9fd10630-2611-44ea-9778-f172bf9245e0` at 00:21 UTC.
+Draft task `52991265-bba5-4675-a214-b659c4e2286b` succeeded on attempt one,
+returning `strategy_engineering_required`, not completed engineering.
+Independent route `0174e14f-3472-4c9f-8115-53318cd89e14` completed against subject
+`e72e577c8986c462a23ebf751f872cd47988563487ba165cff73c73c4d237bbe`.
+Both reviewers rejected the proposed 0.20 residual-SD meaningful-effect threshold
+for lack of independent scientific/economic justification. The specification
+review also rejected the unsupported dependence rationale for 24/48/96-bar
+bootstrap blocks. They accepted the improved per-variant support accounting,
+explicit ownership, successor-window separation and distinction between
+prospective checks and observations. No scientific acceptance is claimed.
+
+Reconciliation retained the rejection and closed the selected queue with
+`completed_no_candidate`; no engineering or backtest ran. The next repair must not
+be another unchanged discovery retry or an operator-invented threshold.
+
+Code inspection identifies a reusable recovery gap: `MethodTaskContract.diagnostic`
+currently permits only `design_adequacy_v1`, whose native contract requires a
+calibration declaration. The opt-in `read_evidence` tool reads the existing catalog
+but cannot retrieve additional canonical evidence. Requirements investigation for
+this non-calibration design therefore needs a bounded adapter in the existing
+episode, not an artificial calibration experiment. Required proof: immutable
+question/minima, controlled retrieval scope and evidence custody, charged tool/model
+budgets, exact downstream contract validation, explicit unresolved-evidence
+escalation, and fresh independent review. This adapter is not yet implemented or
+commissioned. A new exact authority packet is required before live correction.
+
 ## Derived-State Rollout: November 27, 23:49 UTC
 
 Full run `280140ae-1664-4da9-9023-1b577d984487` failed closed on canonical epoch
